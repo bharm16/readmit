@@ -65,6 +65,7 @@ export function HubPanel({
   const configured = status?.state === "completed" && Boolean(status.config_path);
   const authorized = (status?.projects ?? []).filter((entry) => entry.authorized);
   const selected = authorized.find((entry) => entry.project === project)?.project ?? authorized[0]?.project ?? null;
+  const unreadable = authorized.length === 0 ? (status?.projects ?? []).find((entry) => entry.reason)?.reason ?? null : null;
   // The project last opened, which offline revision drafts are kept for.
   const drafting = selected ?? project;
   useEffect(() => {
@@ -287,7 +288,12 @@ export function HubPanel({
         />
       </div>
       {selected === null ? (
-        <EmptyState title="No projects you can open" />
+        <>
+          {/* A project the hub could not be asked about says why, rather
+              than reading as one this person may not open. */}
+          {unreadable ? <p role="alert">{unreadable}</p> : null}
+          <EmptyState title="No projects you can open" />
+        </>
       ) : team === null ? (
         <p aria-live="polite">Reading…</p>
       ) : team.state !== "completed" ? (
@@ -350,10 +356,13 @@ function ConnectTeamSheet({
   const [name, setName] = useState("");
   const [choice, setChoice] = useState<HubConfigChoice | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  // A remembered configuration that no longer validates is not a team to
+  // edit: the sheet connects one afresh, as the page offered.
+  const saved = current?.state === "completed" && current.config_path ? current : null;
   useEffect(() => {
     if (!open) return;
-    setName(current?.team ?? "");
-    setChoice(current?.config_path ? { state: "completed", config: current.config_path, ...(current.hub_url ? { hub_url: current.hub_url } : {}) } : null);
+    setName(saved?.team ?? "");
+    setChoice(saved?.config_path ? { state: "completed", config: saved.config_path, ...(saved.hub_url ? { hub_url: saved.hub_url } : {}) } : null);
     setProblem(null);
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
   const choose = async () => {
@@ -369,10 +378,10 @@ function ConnectTeamSheet({
   return (
     <FormDialog
       open={open}
-      title={current?.config_path ? "Edit team" : "Connect team"}
+      title={saved ? "Edit team" : "Connect team"}
       submitLabel="Save"
       submitDisabled={!choice?.config || name.trim() === ""}
-      dirty={choice?.config !== current?.config_path || name.trim() !== (current?.team ?? "")}
+      dirty={choice?.config !== saved?.config_path || name.trim() !== (saved?.team ?? "")}
       onClose={onClose}
       status={problem ? <p role="alert">{problem}</p> : undefined}
       onSubmit={async () => {

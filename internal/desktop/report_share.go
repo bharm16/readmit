@@ -273,7 +273,9 @@ func bindReportShare(a *App, ctx context.Context, request PrepareActionRequest, 
 	}
 	bound := &reportShareBinding{item: records[0].ID, revision: backing.revision, title: share.Document.Title, options: options, share: share,
 		packetDir: backing.packetDir, authored: backing.authored}
-	display.Items, display.Rows, display.Issues = share.Items, share.Rows, share.Issues
+	// Each list is present when empty: a share with every row resolved has
+	// no issues, not an unknown set of them.
+	display.Items, display.Rows, display.Issues = nonNil(share.Items), nonNil(share.Rows), nonNil(share.Issues)
 	display.SourceValues, display.Redacted, display.Revealed = share.SourceValues, share.Redacted, options.Reveal
 	if !options.Reveal {
 		for i := range display.Rows {

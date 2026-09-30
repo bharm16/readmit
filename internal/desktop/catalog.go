@@ -579,7 +579,7 @@ func (r *CatalogResult) refuse(state State, reason string) { r.State, r.Reason =
 // snapshot, whatever changed on disk since. A cursor whose snapshot is no
 // longer held is refused, and the list is read again from its start.
 func (a *App) ListCatalog(query CatalogQuery) CatalogResult {
-	return runRead(a, false, func(ctx context.Context) CatalogResult {
+	result := runRead(a, false, func(ctx context.Context) CatalogResult {
 		result := CatalogResult{Context: query.Context}
 		if !slices.Contains(itemKinds, query.Kind) {
 			result.refuse(Failed, "the catalog lists one of the object kinds this release names")
@@ -652,6 +652,10 @@ func (a *App) ListCatalog(query CatalogQuery) CatalogResult {
 		}
 		return result
 	})
+	// Admission can refuse before the callback runs; even that answer belongs
+	// to this caller, so its loading state can finish and offer Retry.
+	result.Context = query.Context
+	return result
 }
 
 // readList reads, filters and orders one whole list — of the project's

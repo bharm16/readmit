@@ -2235,6 +2235,7 @@ function CredentialSheet({
           ...(replace ? { arguments: chosenArgs } : {}),
           replace_arguments: replace,
           ...(maxAge.trim() ? { max_age: maxAge.trim() } : {}),
+          ...(row ? { shown: { store: row.store, address: row.address, command: row.command, ...(row.max_age ? { max_age: row.max_age } : {}) } } : {}),
         });
         if (answer.state !== "completed") {
           const problems = answer.problems ?? [];

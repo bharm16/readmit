@@ -11,7 +11,7 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { UserEvent } from "@testing-library/user-event";
-import { byContent, Journey, press, region } from "../testkit/journey";
+import { Journey, press, region } from "../testkit/journey";
 import { goToView, page, sidebar } from "../testkit/navigation";
 import { activateLicense, createProject, EXPORTED_BOOKING, EXPORTED_RESCHEDULE, importExport, pressServed } from "./steps";
 
@@ -84,10 +84,14 @@ test("a note restored after a reopen cannot be stored once the activation is rel
   await journey.close();
   await journey.launch();
   await goToView(user, "Settings", "License");
-  const access = within(region("License"));
-  await press(user, access.getByText("Administrator setup"));
-  await pressServed(user, journey, access.getByRole("button", { name: "Release activation" }), "ReleaseOperations");
-  expect(await access.findByText(byContent(/This activation is released\.$/), undefined, { timeout: 10_000 })).toBeTruthy();
+  await press(user, await within(region("License")).findByRole("button", { name: "More license actions" }));
+  await press(user, await screen.findByRole("menuitem", { name: "Administrator setup" }));
+  const activation = within(await screen.findByRole("region", { name: "Activation folder" }));
+  await press(user, await activation.findByRole("button", { name: "More activation actions" }));
+  await press(user, await screen.findByRole("menuitem", { name: "Release activation" }));
+  const release = within(await screen.findByRole("dialog", { name: "Release activation?" }));
+  await pressServed(user, journey, release.getByRole("button", { name: "Release" }), "ReleaseOperations");
+  await waitFor(() => expect(within(activation.getByLabelText("Activation folder", { selector: "dl" })).getByText("Released")).toBeTruthy(), { timeout: 10_000 });
   await press(user, sidebar().getByRole("button", { name: "Projects" }));
   const restored = await restoreNote(user);
   await pressServed(user, journey, restored.getByRole("button", { name: "Save" }), "SaveNoteItem");

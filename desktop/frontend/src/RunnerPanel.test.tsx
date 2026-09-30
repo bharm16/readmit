@@ -57,8 +57,10 @@ test("the runner list is named actual state, with Not checked and Offline apart 
 test("Add runner saves the named runner and requests a real admission", async () => {
   const user = userEvent.setup();
   let rows: RunnerRow[] = [];
+  let environmentSaved = false;
   const facade = installFacade({
     ...base(() => rows),
+    ListCatalog: query => ({ state: environmentSaved ? "completed" : "empty", context: query.context, page: { items: environmentSaved ? [ENV] : [], total: environmentSaved ? 1 : 0, snapshot: "s", recorded: true, incomplete: [] } }),
     ChooseRunnerPath: (kind: string) => ({ state: "completed", kind, paths: [kind === "working-folder" ? "/Users/qa/runner" : `/etc/${kind}.pem`] }),
     PreviewRunnerConfig: () => ({ state: "completed", document: "{}" }),
     SaveItem: (request: SaveItemRequest) => {
@@ -71,7 +73,11 @@ test("Add runner saves the named runner and requests a real admission", async ()
     },
   });
   render(<RunnerPanel root={ROOT} />);
-  await user.click(await screen.findByRole("button", { name: "Add runner" }));
+  await screen.findByText("No runners");
+  // An environment saved after the list was first read must be offered by
+  // the newly opened flow, without reopening the project.
+  environmentSaved = true;
+  await user.click(screen.getAllByRole("button", { name: "Add runner" })[0]!);
   const sheet = await screen.findByRole("dialog", { name: "Add runner" });
   await user.type(within(sheet).getByLabelText("Name"), "QA runner");
   await user.type(within(sheet).getByLabelText("Customer hub"), "https://hub.example.test:8443");
@@ -262,4 +268,19 @@ test("enrollment reports the lease the hub granted", async () => {
   await user.click(screen.getByRole("button", { name: "Request admission" }));
   expect(await screen.findByText("600 s")).toBeTruthy();
   expect(screen.getByText("Max jobs")).toBeTruthy();
+});
+
+
+test("returning to Runners retains the opened runner while a different project clears it", async () => {
+  const user = userEvent.setup();
+  installFacade(base(() => [row()]));
+  const first = render(<RunnerPanel root={ROOT} />);
+  await user.dblClick(await screen.findByRole("row", { name: "QA runner" }));
+  await screen.findByRole("heading", { name: "QA runner" });
+  first.unmount();
+  const returned = render(<RunnerPanel root={ROOT} />);
+  await screen.findByRole("heading", { name: "QA runner" });
+  returned.rerender(<RunnerPanel root="/projects/other" />);
+  await screen.findByRole("table", { name: "Runners" });
+  expect(screen.queryByRole("heading", { name: "QA runner" })).toBeNull();
 });

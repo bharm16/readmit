@@ -55,7 +55,9 @@ test("a 10,000-message case is read one window at a time with no index set up, a
   // The first window: one read from the first message, as many rows as the
   // facade's bound on one window, of every booking the case holds.
   await waitFor(() => expect(Number(table.getAttribute("aria-rowcount")) - 1).toBe(GRID_WINDOW));
-  const reads = () => journey.callsTo("ReadMessages");
+  // A read answered busy while the case was still being opened is asked
+  // again; only the reads the facade served count.
+  const reads = () => journey.callsTo("ReadMessages").filter((read) => (read.result as { state?: string } | undefined)?.state !== "busy");
   expect(reads()).toHaveLength(1);
   expect(reads()[0]?.args[0]).toMatchObject({ offset: 0, limit: 0 });
   expect(reads()[0]?.result).toMatchObject({ state: "completed", total: OCCURRENCES, matched: OCCURRENCES, complete: true });
@@ -94,7 +96,7 @@ test("a 10,000-message case is read one window at a time with no index set up, a
 
   // The first booking's stored bytes change on disk after the window showed
   // the case. The next read of it is refused, and no row stands in for it.
-  const payload = `${project.slice(journey.path().length + 1)}/feed/payloads/${ids[0]}.bin`;
+  const payload = `${project.slice(journey.path().length + 1)}/case-001/payloads/${ids[0]}.bin`;
   journey.changeFile(payload, framed(BOOKING.replace("CTL-1", "CTL-2")));
   const asked = reads().length;
   await press(user, within(table).getByRole("button", { name: "Time" }));

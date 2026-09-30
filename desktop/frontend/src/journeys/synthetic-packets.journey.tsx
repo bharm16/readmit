@@ -1,18 +1,19 @@
-// The synthetic demonstration, reached from the packet panels. A person with
+// The synthetic demonstration, reached from Tools › Sample data. A person with
 // no activation at all — the synthetic walkthrough is ungated, as it is on the
 // command line — names a new folder in the save dialog and generates the
 // committed scenario into it against the built-in defective and fixed
-// receivers the window starts on loopback. The packet is labelled synthetic in
-// the panel and in the workspace listing, never as the person's own evidence,
-// and `readmit report verify` verifies it under the identity the window
-// showed. Runnable copies are prepared into a new folder outside it, byte for
-// byte what `readmit report prepare` writes from the same packet, after the
-// window refuses a folder inside the packet and an address that is not
-// numeric loopback in the command line's words. Once a file of the packet is
-// changed, both refuse it, and a folder that is not a packet is refused too.
+// receivers the window starts on loopback. The packet is labelled synthetic,
+// never as the person's own evidence, and `readmit report verify` verifies it
+// under the identity the window showed. Runnable copies are prepared into a
+// new folder outside it, byte for byte what `readmit report prepare` writes
+// from the same packet, after the window refuses a folder inside the packet
+// and an address that is not numeric loopback in the command line's words.
+// Once a file of the packet is changed, both refuse it, and a folder that is
+// not a packet is refused too.
 import { afterEach, beforeEach, expect, test } from "vitest";
-import { screen, within } from "@testing-library/react";
-import { byContent, enter, Journey, press, region } from "../testkit/journey";
+import { within } from "@testing-library/react";
+import { byContent, enter, Journey, press } from "../testkit/journey";
+import { goTo, page } from "../testkit/navigation";
 import userEvent from "@testing-library/user-event";
 
 let journey: Journey;
@@ -29,10 +30,9 @@ const PACKET_DIALOG = "Choose a new folder for the synthetic demonstration packe
 const VERIFY_DIALOG = "Choose a synthetic demonstration packet to verify";
 const RERUN_DIALOG = "Choose a new folder for the runnable copies";
 
-/** The synthetic demonstration section of the packet panels. */
+/** The synthetic demonstration section of Tools › Sample data. */
 function synthetic() {
-  const packets = within(screen.getByRole("region", { name: "Investigation packets" }));
-  return within(packets.getByRole("region", { name: "Samples" }));
+  return within(within(page().getByRole("region", { name: "Demo report" })).getByRole("region", { name: "Samples" }));
 }
 
 /** The text of the one line a pattern matches, once the window shows it. */
@@ -51,8 +51,9 @@ test("a synthetic demonstration packet is generated into a new folder, verified 
   const user = userEvent.setup();
   journey.makeFolder("demo");
   await journey.launch();
-  await journey.chooseFolder(journey.path("demo"), "Open project");
-  await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
+  // Tools › Sample data, with no project open and nothing activated.
+  await goTo(user, "Tools");
+  await press(user, page().getByRole("button", { name: "Sample data" }));
   const panel = synthetic();
 
   // Dismissing the save dialog names nothing, and nothing can be generated.
@@ -81,14 +82,6 @@ test("a synthetic demonstration packet is generated into a new folder, verified 
   expect(await line(panel, /^baseline: /)).toBe("baseline: assertion_failure · defective readmit built-in SIU fixture · 2 ledger records");
   expect(await line(panel, /^post-fix: /)).toBe("post-fix: pass · fixed readmit built-in SIU fixture · 1 ledger record");
   expect(await line(panel, /^Synthetic-only evidence; /)).toMatch(/no patient or customer-derived input/);
-
-  // The listing names it a synthetic demonstration packet, and the panels for
-  // the person's own retained packets do not offer it.
-  const navigation = within(region("Workspace"));
-  const listed = (await navigation.findByText("synthetic-demo")).closest("li")!;
-  expect(within(listed).getByText("Synthetic demonstration packet")).toBeTruthy();
-  const retained = within(screen.getByRole("region", { name: "Investigation packets" })).getByLabelText("Packets");
-  expect(within(retained).queryByRole("option", { name: "synthetic-demo" })).toBeNull();
 
   // The command line verifies the folder the window wrote, under the same
   // identity, and reads the same synthetic label from its manifest.

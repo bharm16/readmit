@@ -13,8 +13,8 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { UserEvent } from "@testing-library/user-event";
-import { byContent, enter, Journey, press, region } from "../testkit/journey";
-import { goToView, sidebar } from "../testkit/navigation";
+import { enter, Journey, press, region } from "../testkit/journey";
+import { goTo, goToView, openView, page, sidebar } from "../testkit/navigation";
 import { createProject, pressServed, submitProject } from "./steps";
 
 let journey: Journey;
@@ -27,19 +27,48 @@ afterEach(async () => {
   await journey.dispose();
 });
 
-/** The license and activation pane of the privacy region. */
-function access() {
-  return within(region("License"));
+/** One value of a read-only list, by its label. */
+function value(rows: HTMLElement, label: string): string | null | undefined {
+  return within(rows).getByText(label, { selector: "dt" }).nextElementSibling?.textContent;
 }
 
-/** The pane's status lines, once the window shows the one a pattern matches. */
-async function status(pattern: RegExp): Promise<string> {
-  return (await access().findByText(byContent(pattern))).textContent ?? "";
+/** An open sheet, by its title. */
+async function sheet(title: string) {
+  return within(await screen.findByRole("dialog", { name: title }));
 }
 
-/** Opens the license pane in Settings. */
-async function openLicensing(user: UserEvent) {
-  await goToView(user, "Settings", "License");
+async function closed(title: string) {
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: title })).toBeNull());
+}
+
+/** Settings › License › Administrator setup. */
+async function administratorSetup(user: UserEvent) {
+  // Settings returns to the page of it last shown.
+  await goTo(user, "Settings");
+  if (!screen.queryByRole("region", { name: "Activation folder" })) {
+    await openView(user, "License");
+    await press(user, await within(region("License")).findByRole("button", { name: "More license actions" }));
+    await press(user, await screen.findByRole("menuitem", { name: "Administrator setup" }));
+  }
+  await screen.findByRole("region", { name: "Activation folder" });
+  // The page reads the selected folder on arrival; a person acts once it has.
+  await journey.settled();
+}
+
+/** The selected activation folder's section. */
+function activation() {
+  return within(region("Activation folder"));
+}
+
+/** The selected folder's values, once they have been read. */
+function activationRows() {
+  return activation().getByLabelText("Activation folder", { selector: "dl" });
+}
+
+/** One item of the activation folder's More menu. */
+async function activationAction(user: UserEvent, item: string) {
+  await press(user, activation().getByRole("button", { name: "More activation actions" }));
+  await press(user, await screen.findByRole("menuitem", { name: item }));
 }
 
 /** Opens the open project's settings sheet from its switcher. */
@@ -59,34 +88,38 @@ test("a delivered license is verified, installed and activated without hand-writ
   journey.makeFolder("license-activation");
   journey.makeFolder("investigations");
   await journey.launch();
-  await openLicensing(user);
+  await administratorSetup(user);
 
-  // Verified from the two received documents, with every signed fact shown.
+  // Verified from the two received documents, and installed for the author
+  // and device it names into a new private folder; creating it activates
+  // nothing.
+  await activationAction(user, "Create activation folder");
+  const create = await sheet("Create activation folder");
   await journey.chooseFiles([journey.path("vendor-delivery/entitlement.json")], "Choose the received entitlement document");
   await journey.chooseFiles([journey.path("vendor-delivery/trust.json")], "Choose the vendor trust document");
-  // The supplied-folder workflow lives in the Administrator setup subview.
-  await press(user, access().getByText("Administrator setup"));
-  await press(user, access().getByRole("button", { name: "Verify license…" }));
-  const received = within(await access().findByRole("heading", { name: "Received license" }).then((heading) => heading.parentElement!));
-  const facts = received.getAllByRole("definition").map((item) => item.textContent ?? "");
-  expect(facts[0]).toBe("test-entitlement (current format)");
-  expect(facts[1]).toBe("test-organization");
-  expect(facts[3]).toMatch(/^\S+ to \S+; grace 0 days \(ends \S+\); state active$/);
-  expect(facts.slice(4)).toEqual(["1 author seats, 2 devices each; 16 runner instances", "author, execute, hub", "test-key (active)"]);
-
-  // Installed for the author and device it names, into a new private folder,
-  // and activated explicitly.
-  await user.selectOptions(received.getByLabelText("Author"), "test-author");
-  await user.selectOptions(received.getByLabelText("Device"), "test-device");
+  await press(user, create.getByRole("button", { name: "Choose files" }));
+  expect(await create.findByText("test-organization")).toBeTruthy();
+  expect(create.getByText("test-only")).toBeTruthy();
+  await press(user, create.getByRole("button", { name: "Next" }));
+  await user.selectOptions(await create.findByLabelText("Licensed user"), "test-author");
+  await user.selectOptions(create.getByLabelText("Device"), "test-device");
+  await press(user, create.getByRole("button", { name: "Next" }));
   await journey.chooseFolder(journey.path("license-activation"), "Choose the private folder for the local license activation");
-  await press(user, received.getByRole("button", { name: "Choose activation folder…" }));
-  expect(await received.findByText(byContent(/^Activation folder: /))).toBeTruthy();
-  await press(user, received.getByRole("button", { name: "Create activation folder" }));
-  expect(await access().findByText("the local activation is created; activate it to admit licensed work")).toBeTruthy();
-  await press(user, access().getByRole("button", { name: "Activate" }));
-  expect(await status(/^License: /)).toMatch(
-    /^License: active\. Organization: test-organization\. Named authors: 1; runner instances: 16\. Expires: \S+\. Grace ends: \S+\.$/,
-  );
+  await press(user, await create.findByRole("button", { name: "Choose folder" }));
+  expect(await create.findByText(journey.path("license-activation"))).toBeTruthy();
+  await press(user, create.getByRole("button", { name: "Create" }));
+  await closed("Create activation folder");
+  await waitFor(() => expect(value(activationRows(), "Status")).toBe("Not activated"));
+  expect(value(activationRows(), "Folder")).toBe("license-activation");
+
+  // Activated explicitly.
+  await activationAction(user, "Activation folder");
+  await press(user, (await sheet("Activation folder")).getByRole("button", { name: "Activate" }));
+  await closed("Activation folder");
+  await waitFor(() => expect(value(activationRows(), "Status")).toBe("Active"));
+  expect(value(activationRows(), "Organization")).toBe("test-organization");
+  expect(value(activationRows(), "Licensed user")).toBe("test-author");
+  expect(value(activationRows(), "Device")).toBe("test-device");
 
   // Licensed work is admitted: a new project, and a change to its settings
   // that renames it and declares an interface revision, which the command
@@ -97,7 +130,7 @@ test("a delivered license is verified, installed and activated without hand-writ
   await press(user, settings.getByRole("button", { name: "Add revision" }));
   await enter(user, settings.getByLabelText("Revision name", { selector: "#revision-0" }), "siu-2.5.1-v2");
   await pressServed(user, journey, settings.getByRole("button", { name: "Save" }), "SaveItem");
-  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Project settings" })).toBeNull());
+  await closed("Project settings");
   expect(await sidebar().findByRole("button", { name: "Project: Licensed handover" })).toBeTruthy();
   const settled = await journey.commandLine(["project", "show", project]);
   expect(settled.stdout).toMatch(/^Project: Licensed handover\n/);
@@ -107,23 +140,29 @@ test("a delivered license is verified, installed and activated without hand-writ
 
   // The same issue offered as a renewal is refused, and the installed
   // document exports byte for byte as it was received.
-  await openLicensing(user);
+  await administratorSetup(user);
+  await activationAction(user, "Renew activation");
+  const renew = await sheet("Renew activation");
   await journey.chooseFiles([journey.path("vendor-delivery/entitlement.json")], "Choose the later-issue entitlement document");
-  await press(user, access().getByRole("button", { name: "Renew activation…" }));
-  expect(await access().findByText("installed entitlement is already at this issue sequence or a later one")).toBeTruthy();
+  await press(user, renew.getByRole("button", { name: "Choose file" }));
+  await renew.findByRole("button", { name: "Replace" });
+  await press(user, renew.getByRole("button", { name: "Install renewal" }));
+  expect(await renew.findByText("installed entitlement is already at this issue sequence or a later one")).toBeTruthy();
+  await press(user, renew.getByRole("button", { name: "Cancel" }));
+  await closed("Renew activation");
   journey.makeFolder("exported");
   await journey.chooseFolder(journey.path("exported"), "Choose the folder to export the entitlement into");
-  await press(user, access().getByRole("button", { name: "Export license…" }));
-  expect(await status(/^Document test-entitlement written to /)).toBe(
-    `Document test-entitlement written to ${journey.path("exported", "test-entitlement.json")}, byte for byte as it was received.`,
-  );
+  await activationAction(user, "Export activation license");
+  await waitFor(() => expect(journey.callsTo("ExportLicenseDocument").at(-1)?.settled).toBe(true));
+  expect(activation().queryByRole("alert")).toBeNull();
   expect(journey.readFile("exported/test-entitlement.json")).toBe(journey.readFile("vendor-delivery/entitlement.json"));
 
   // Released: the window refuses new work, and so does the command line over
   // the same activation, with the same reason.
-  await press(user, access().getByRole("button", { name: "Refresh activation" }));
-  await press(user, access().getByRole("button", { name: "Release activation" }));
-  expect(await status(/This activation is released\.$/)).toMatch(/No unresolved clock rollback\. This activation is released\.$/);
+  await activationAction(user, "Release activation");
+  await press(user, (await sheet("Release activation?")).getByRole("button", { name: "Release" }));
+  await closed("Release activation?");
+  await waitFor(() => expect(value(activationRows(), "Status")).toBe("Released"));
   const renaming = await projectSettings(user);
   await enter(user, renaming.getByLabelText("Name", { selector: "#project-name" }), "Licensed work, renamed");
   await pressServed(user, journey, renaming.getByRole("button", { name: "Save" }), "SaveItem");
@@ -144,24 +183,32 @@ test("a delivered license is verified, installed and activated without hand-writ
   expect(refused.code).not.toBe(0);
   expect(refused.stderr).toContain("this device released its entitlement activation");
   expect((await journey.commandLine(["project", "show", project])).stdout).toMatch(/^Project: Licensed handover\n/);
-  // The refusal leaves the project, and its maintenance, on the screen.
+  // The refusal leaves the project open.
   expect(sidebar().getByRole("button", { name: "Project: Licensed handover" })).toBeTruthy();
-  const evidence = within(region("Evidence"));
 
   // What exists stays readable and can still be backed up, offline.
   journey.makeFolder("backups");
-  await press(user, evidence.getByRole("button", { name: "Maintenance" }));
-  const maintenance = within(screen.getByLabelText("Project maintenance"));
-  await journey.nameNewFolder(journey.path("backups/after-release"), "New backup folder");
-  await press(user, maintenance.getByRole("button", { name: "Choose destination…" }));
-  await press(user, maintenance.getByRole("button", { name: "Create backup" }));
-  expect(await maintenance.findByText("Backup created.", { selector: "p[role=status]" })).toBeTruthy();
-  await press(user, maintenance.getByRole("button", { name: "Close maintenance" }));
+  await goToView(user, "Settings", "Storage");
+  const storage = within(await page().findByRole("region", { name: "Storage" }));
+  await press(user, (await storage.findAllByRole("button", { name: "Create backup" }))[0]!);
+  const backup = await sheet("Create backup");
+  await journey.chooseFolder(journey.path("backups"), "Choose where backups are kept");
+  await press(user, backup.getByRole("button", { name: /^(Choose…|Change)$/ }));
+  await backup.findByText(journey.path("backups"));
+  await press(user, backup.getByRole("button", { name: "Create backup" }));
+  await closed("Create backup");
+  expect(await storage.findByText("Backup created")).toBeTruthy();
 
   // A released activation is not activated again: the new term needs a new
   // activation folder.
-  await press(user, access().getByRole("button", { name: "Activate" }));
-  expect(await access().findByText("operation activation is missing or invalid; select and activate an operation policy")).toBeTruthy();
+  await administratorSetup(user);
+  await activationAction(user, "Activation folder");
+  const again = await sheet("Activation folder");
+  await press(user, again.getByRole("button", { name: "Activate" }));
+  expect(await again.findByText("operation activation is missing or invalid; select and activate an operation policy")).toBeTruthy();
+  await press(user, again.getByRole("button", { name: "Cancel" }));
+  await closed("Activation folder");
+  expect(value(activationRows(), "Status")).toBe("Released");
 });
 
 test("the commercial portal is an operator-supplied destination: stated as missing, refused when invalid, and once chosen shown as a link that survives a restart", async () => {
@@ -175,62 +222,71 @@ test("the commercial portal is an operator-supplied destination: stated as missi
     '{"schema":"readmit-commercial-destinations/v1","environment":"sandbox","portal":"https://portal.example.test/account"}\n',
   );
   await journey.launch();
-  await openLicensing(user);
-  const commercial = () => within(access().getByRole("heading", { name: "Account" }).parentElement!);
-  // The account portal is configured in the Administrator setup subview.
-  await press(user, access().getByText("Administrator setup"));
-  const portalRow = () => {
-    const table = screen.getByRole("table", { name: "Deliberately configured activities and their destinations" });
-    const row = within(table).getAllByRole("row").find((candidate) => /commercial|portal/i.test(within(candidate).queryAllByRole("rowheader")[0]?.textContent ?? ""));
-    return within(row!);
-  };
-  expect(await commercial().findByText("the commercial portal destination is not configured; choose the operator-supplied destinations file")).toBeTruthy();
-  expect(portalRow().getAllByRole("cell")[3]?.textContent).toBe(
-    "Not configuredNo commercial destinations file is selected, so no portal address is shown anywhere.",
-  );
+  await goToView(user, "Settings", "License");
+  expect(within(region("License")).queryByRole("link", { name: "Manage account" })).toBeNull();
+  await administratorSetup(user);
+  const portal = () => within(region("Account portal"));
+  expect(await portal().findByText("No account portal")).toBeTruthy();
 
   // A destination that is not an https address is refused, and nothing is
-  // shown as a portal.
+  // saved as a portal.
+  await press(user, portal().getByRole("button", { name: "Set up" }));
+  const setup = await sheet("Account portal");
   await journey.chooseFiles([journey.path("operator/destinations-insecure.json")], "Choose the commercial destinations file");
-  await press(user, access().getByRole("button", { name: "Configure account portal…" }));
-  expect(
-    await commercial().findByText("the destinations file cannot be read here; choose a valid commercial destinations file again"),
-  ).toBeTruthy();
-  expect(commercial().queryByRole("link", { name: "Manage account" })).toBeNull();
+  await press(user, setup.getByRole("button", { name: "Choose file" }));
+  expect(await setup.findByText("the destinations file cannot be read here; choose a valid commercial destinations file again")).toBeTruthy();
+  expect((setup.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
 
-  // The operator's file: the destination and its environment, as a link the
-  // window itself never requests.
+  // The operator's file: the destination and its environment.
   await journey.chooseFiles([journey.path("operator/destinations.json")], "Choose the commercial destinations file");
-  await press(user, access().getByRole("button", { name: "Configure account portal…" }));
-  const destination = "Environment: sandbox. Destination: https://portal.example.test/account";
-  expect((await commercial().findByText(byContent(/^Environment: /))).textContent).toBe(destination);
-  const link = commercial().getByRole("link", { name: "Manage account" });
-  expect(link.getAttribute("href")).toBe("https://portal.example.test/account");
-  expect(link.getAttribute("target")).toBe("_blank");
-  await press(user, screen.getByRole("button", { name: "Refresh privacy status" }));
-  await waitFor(() =>
-    expect(portalRow().getAllByRole("cell")[3]?.textContent).toBe(
-      "Configured (browser only)A portal destination is configured. This window makes no request to it; opening it is a separate deliberate act in your browser.",
-    ),
-  );
+  await press(user, setup.getByRole("button", { name: /^(Choose file|Replace)$/ }));
+  expect(await setup.findByText("https://portal.example.test/account")).toBeTruthy();
+  await press(user, setup.getByRole("button", { name: "Save" }));
+  await closed("Account portal");
+  const rows = () => portal().getByLabelText("Account portal", { selector: "dl" });
+  await waitFor(() => expect(value(rows(), "Destination")).toBe("https://portal.example.test/account"));
+  expect(value(rows(), "Environment")).toBe("Sandbox");
+
+  // A link the window itself never requests.
+  const checkLink = async () => {
+    await goToView(user, "Settings", "License");
+    const link = await within(region("License")).findByRole("link", { name: "Manage account" });
+    expect(link.getAttribute("href")).toBe("https://portal.example.test/account");
+    expect(link.getAttribute("target")).toBe("_blank");
+  };
+  await checkLink();
+  await goToView(user, "Settings", "Security");
+  const connections = within(await page().findByRole("table", { name: "Connections" }));
+  expect(await connections.findByText("Customer portal", { selector: "td *, td, th *, th" })).toBeTruthy();
 
   // Kept across a restart: the selection is read back, still without any
   // request to the portal.
   await journey.close();
   await journey.launch();
-  await openLicensing(user);
-  expect((await commercial().findByText(byContent(/^Environment: /))).textContent).toBe(destination);
+  await checkLink();
+  await administratorSetup(user);
+  await waitFor(() => expect(value(rows(), "Destination")).toBe("https://portal.example.test/account"));
 });
 
-/** Selects one supplied activation folder in the license pane and returns
- * the status the pane then reads. */
+/** Chooses one supplied activation folder in Administrator setup, reads its
+ * status in the sheet and activates it, and returns the status the section
+ * then reads. */
 async function selectActivation(user: UserEvent, folder: string): Promise<string> {
-  // A project just opened finishes its reads before the folder is chosen.
-  await journey.settled();
+  await administratorSetup(user);
+  const choose = activation().queryByRole("button", { name: "Choose folder" });
+  if (choose) await press(user, choose);
+  else await activationAction(user, "Activation folder");
+  const selecting = await sheet("Activation folder");
   await journey.chooseFolder(journey.path(folder), "Choose the license activation folder");
-  await press(user, access().getByRole("button", { name: "Choose activation folder…" }));
-  await press(user, access().getByRole("button", { name: "Refresh activation" }));
-  return status(/^License: \w+\. Organization: test-organization\./);
+  const reviews = journey.callsTo("ReviewActivationFolder").length;
+  await press(user, selecting.getByRole("button", { name: /^(Choose folder|Replace)$/ }));
+  await waitFor(() => expect(journey.callsTo("ReviewActivationFolder")[reviews]?.settled).toBe(true));
+  await selecting.findByText(folder);
+  await press(user, selecting.getByRole("button", { name: "Activate" }));
+  await closed("Activation folder");
+  await waitFor(() => expect(value(activationRows(), "Folder")).toBe(folder));
+  expect(value(activationRows(), "Organization")).toBe("test-organization");
+  return value(activationRows(), "Status") ?? "";
 }
 
 /** Submits a new project from the New project sheet, in a parent folder
@@ -259,13 +315,10 @@ test("an expired term refuses new work until the later issue the vendor signs is
     { folder: "vendor-grace", sequence: 1, expires: "-24h", graceDays: 7 },
   ]);
   await journey.launch();
-  await openLicensing(user);
 
   // Expired: the window says so, and new work is refused with the reason,
   // in the window and on the command line alike; nothing is created.
-  // The supplied-folder workflow lives in the Administrator setup subview.
-  await press(user, access().getByText("Administrator setup"));
-  expect(await selectActivation(user, "vendor-expired")).toMatch(/^License: expired\. /);
+  expect(await selectActivation(user, "vendor-expired")).toBe("Expired");
   const reason = "entitlement expired and its grace period has ended";
   expect(await tryProject(user, "investigations", "expired-work", "Expired work")).toMatchObject({ state: "permission_denied", reason });
   const byHand = await journey.commandLine([
@@ -286,17 +339,21 @@ test("an expired term refuses new work until the later issue the vendor signs is
 
   // The later issue installs over the expired term as its renewal, and the
   // same work is admitted.
-  await openLicensing(user);
+  await administratorSetup(user);
+  await activationAction(user, "Renew activation");
+  const renew = await sheet("Renew activation");
   await journey.chooseFiles([journey.path("vendor-renewal/entitlement.json")], "Choose the later-issue entitlement document");
-  await press(user, access().getByRole("button", { name: "Renew activation…" }));
-  expect(await status(/^License: active\. /)).toMatch(/Expires: \S+\. Grace ends: \S+\.$/);
+  await press(user, renew.getByRole("button", { name: "Choose file" }));
+  expect(await renew.findByText("Issue", { selector: "dt" }).then((label) => label.nextElementSibling?.textContent)).toBe("2");
+  await press(user, renew.getByRole("button", { name: "Install renewal" }));
+  await closed("Renew activation");
+  await waitFor(() => expect(value(activationRows(), "Status")).toBe("Active"));
   const renewed = (await tryProject(user, "investigations", "renewed-work", "Renewed work")) as { state: string; project?: { summary: { project?: { folder: string } } } };
   expect(renewed).toMatchObject({ state: "completed" });
   expect((await journey.commandLine(["project", "show", renewed.project!.summary.project!.folder])).stdout).toMatch(/^Project: Renewed work\n/);
 
   // In its grace period, a term still admits new work, and says it is in
   // grace.
-  await openLicensing(user);
-  expect(await selectActivation(user, "vendor-grace")).toMatch(/^License: grace\. /);
+  expect(await selectActivation(user, "vendor-grace")).toBe("Grace period");
   expect(await tryProject(user, "investigations", "grace-work", "Grace work")).toMatchObject({ state: "completed" });
 });

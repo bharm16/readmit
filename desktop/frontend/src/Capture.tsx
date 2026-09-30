@@ -39,7 +39,7 @@ import {
   type RequestContext,
 } from "./bindings";
 import { DataTable, type Column } from "./DataTable";
-import { EmptyState, FormDialog, Menu, ValueRows, type SubmitFailure } from "./layout";
+import { EmptyState, FormDialog, Menu, Modal, ValueRows, type SubmitFailure } from "./layout";
 import { listDate } from "./Projects";
 import { MessageReader } from "./Inspector";
 import { DIRECTION_NAMES, NO_QUERY, rowType, sourceLabel, timeOfDay } from "./Messages";
@@ -72,6 +72,9 @@ const FAULT_WORDS: Record<string, string> = {
   "missing-response": "No response",
   disconnect: "Disconnect",
 };
+
+const APPLICATION_DELIVERY: Record<string, string> = { "same-connection": "Same connection", "separate-endpoint": "Separate endpoint" };
+const FAULT_STAGES: Record<string, string> = { application: "Application ACK", commit: "Commit ACK", accept: "Commit ACK", connection: "Connection" };
 
 /** How often a running capture's progress is read. */
 const PROGRESS_MS = 500;
@@ -440,6 +443,7 @@ function CaptureSetup({ open, context, onClose, onStart }: { open: boolean; cont
   const [environment, setEnvironment] = useState("");
   const [messages, setMessages] = useState("");
   const [editing, setEditing] = useState<null | "new" | "edit">(null);
+  const [details, setDetails] = useState(false);
   const [dirty, setDirty] = useState(false);
 
   const readSources = useCallback(async (select?: string) => {
@@ -527,6 +531,7 @@ function CaptureSetup({ open, context, onClose, onStart }: { open: boolean; cont
           <>
             <div className="section-header">
               <h3>{SOURCE_TYPES[draft.type] ?? "Source"}</h3>
+              {draft.evidence || draft.responder || draft.listener ? <button type="button" onClick={() => setDetails(true)}>Source details</button> : null}
               <button type="button" onClick={() => setEditing("edit")}>
                 Edit
               </button>
@@ -560,6 +565,7 @@ function CaptureSetup({ open, context, onClose, onStart }: { open: boolean; cont
         <label htmlFor="capture-message-limit">Message limit</label>
         <input id="capture-message-limit" type="text" inputMode="numeric" value={messages} onChange={(event) => { setMessages(event.target.value); setDirty(true); }} />
       </FormDialog>
+      {details && draft ? <CaptureSourceDetails source={draft} onClose={() => setDetails(false)} /> : null}
       {editing !== null ? (
         <SourceEditor
           context={context}
@@ -939,4 +945,36 @@ function ResponderSheet({
       ) : null}
     </FormDialog>
   );
+}
+
+
+/** The exact saved source and responder limits, inspected without starting it. */
+function CaptureSourceDetails({ source, onClose }: { source: CaptureSourceDraft; onClose: () => void }) {
+  const evidence = source.evidence;
+  const policy = source.responder;
+  const enhanced = policy?.enhanced_acknowledgement;
+  return <Modal open title="Source details" size="wide" onClose={onClose} footer={<div className="dialog-footer"><button type="button" onClick={onClose}>Close</button></div>}>
+    {evidence ? <ValueRows label="Source limits" rows={[
+      { label: "Name", value: evidence.name }, { label: "Scope", value: evidence.scope },
+      { label: "Maximum entries", value: String(evidence.quota.max_entries) },
+      { label: "Maximum entry bytes", value: String(evidence.quota.max_entry_bytes) },
+      { label: "Maximum total bytes", value: String(evidence.quota.max_total_bytes) },
+      { label: "Attempts", value: String(evidence.retry.attempts) },
+      { label: "Backoff", value: evidence.retry.backoff },
+    ]} /> : null}
+    {policy ? <>
+      <ValueRows label="Responder policy" rows={[
+        { label: "Name", value: policy.name }, { label: "Source label", value: policy.source_label },
+        { label: "Acknowledgement rule", value: policy.acknowledgement.operator === "original-mode-fixed-code" ? "Fixed response" : "Unsupported rule" }, { label: "ACK code", value: policy.acknowledgement.code },
+        { label: "Message type rule", value: policy.accepted_message_types.operator === "any-message-type" ? "Any message type" : policy.accepted_message_types.operator === "message-type-in" ? "Allowed types" : "Unsupported rule" },
+        { label: "Accepted message types", value: policy.accepted_message_types.values.join(", ") || "None listed" },
+        { label: "Enhanced acknowledgement", value: enhanced?.operator === "unsupported" ? "Not supported" : enhanced ? "Configured" : "Not configured" },
+        ...(enhanced ? [{ label: "Commit ACK", value: enhanced.accept_code }, { label: "Application ACK", value: enhanced.application_code }, { label: "Application delivery", value: APPLICATION_DELIVERY[enhanced.application_delivery] ?? "Unsupported delivery" }, { label: "Application endpoint", value: enhanced.application_endpoint || "None" }, { label: "Transport approved", value: enhanced.approved_transport ? "Yes" : "No" }] : []),
+      ]} />
+      {policy.faults ? <>
+        <ValueRows label="Fault scope" rows={[{ label: "Environment", value: policy.faults.environment_class === "nonproduction" ? "Nonproduction" : "Unknown classification" }, { label: "Approved test endpoints", value: policy.faults.approved_test_endpoints.join(", ") || "None listed" }]} />
+        <ol aria-label="Fault program">{policy.faults.steps.map((step, at) => <li key={at}>{`Message ${step.message} · ${FAULT_STAGES[step.stage] ?? "Unsupported stage"} · ${FAULT_WORDS[step.action] ?? "Unsupported action"} · ${step.delay_ms} ms`}</li>)}</ol>
+      </> : <p>No fault program</p>}
+    </> : source.listener ? <p>No separate responder policy</p> : null}
+  </Modal>;
 }

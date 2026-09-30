@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { RequestScope, executeReviewedAction, listCatalog, listWholeCatalog, newIntentId, saveItem } from "./bindings";
+import { RequestScope, executeReviewedAction, listCatalog, listWholeCatalog, newIntentId, prepareAction, saveItem } from "./bindings";
 import type { CatalogItem, CatalogPage, CatalogQuery, CatalogResult, SaveItemRequest } from "./bindings";
 import { installFacade } from "./testkit/wails";
 
@@ -103,6 +103,17 @@ describe("catalog bindings", () => {
     expect(saved.outcome).toBe("saved");
     const intents = stub.callsTo("SaveItem").map((call) => (call.args[0] as SaveItemRequest).intent_id);
     expect(intents).toEqual([intent, intent]);
+  });
+
+  it("asks a review again while a read holds the slot, and shows only the review", async () => {
+    let asked = 0;
+    const context = { project: "/projects/scheduling", generation: 1 };
+    const stub = installFacade({
+      PrepareAction: (request) => (++asked < 3 ? { state: "busy", context: request.context } : { state: "completed", context: request.context }),
+    });
+    const prepared = await prepareAction({ context, action: "run.test", items: [] });
+    expect(prepared.state).toBe("completed");
+    expect(stub.callsTo("PrepareAction")).toHaveLength(3);
   });
 
   it("never asks a final action again once the application answered it", async () => {

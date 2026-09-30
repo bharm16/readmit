@@ -115,7 +115,7 @@ type MessagesResult struct {
 	SearchIndex SearchIndexState `json:"search_index"`
 }
 
-func (r *MessagesResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+func (r *MessagesResult) refuse(state State, reason string) { *r = refusedMessages(state, reason) }
 
 func refusedMessages(state State, reason string) MessagesResult {
 	return MessagesResult{State: state, Reason: reason, Rows: []MessageRow{},

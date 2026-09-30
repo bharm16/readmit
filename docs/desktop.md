@@ -556,8 +556,12 @@ artifacts are never reported as completed.
 
 Exactly one operation runs at a time, except that a local read runs beside a
 capture (see *A capture records in the background* under Capture, collect and
-listen). A second request reports `busy` rather than racing the first, and a finished operation always releases the slot,
-including after a failure or a cancellation, so the next request proceeds.
+listen). An action arriving during a local read waits up to five seconds for
+that read; new reads yield to waiting actions. Its cancellation remains active
+through the wait and acquisition, so Stop during the wait prevents it from
+starting. An action arriving during another action reports `busy`. A finished
+operation always releases the slot, including after failure or cancellation,
+so the next request proceeds.
 `Filters`, `Shell`, `RecordView`, `SaveEditorDraft`,
 `DiscardEditorDraft` and `EditorDrafts` are the exceptions. The first three read one small local file each — `Shell` reads
 nothing at all — so none of them claims the slot and all stay available while

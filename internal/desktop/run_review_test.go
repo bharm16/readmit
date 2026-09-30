@@ -426,6 +426,40 @@ func TestASuiteVersionIsReviewedWithItsTestsAndSentOnceBySend(t *testing.T) {
 	}
 }
 
+// A job the queue skipped because the job it depends on did not pass wrote no
+// run of its own; its page still names the test it is of, never its job
+// identifier.
+func TestASkippedSuiteJobIsNamedByItsTest(t *testing.T) {
+	peer := newAckingPeer(t, "AE")
+	p := newSuiteProject(t, peer.address)
+	draft := p.smokeSuite()
+	draft.Datasets[0].Rows = draft.Datasets[0].Rows[1:]
+	draft.Environments = draft.Environments[:1]
+	draft.Environments[0].Bindings[1].Target = named(p.lab)
+	draft.Exclusions = []desktop.SuiteExclusion{}
+	draft.Concurrency = 1
+	ref := p.saveSuite(t, "create", "", "", "Scheduling smoke", draft)
+	review := runReview(t, p.app, desktop.PrepareActionRequest{Context: p.context, Action: desktop.RunSuiteAction, Items: []desktop.ItemRef{ref}})
+	confirmed := []string{}
+	for _, step := range review.Run.Setup {
+		confirmed = append(confirmed, step.ID)
+	}
+	sent := p.app.ExecuteReviewedAction(desktop.ExecuteActionRequest{Context: p.context, Token: review.Token, IntentID: "suite-skipped", Decisions: desktop.ReviewDecisions{Confirmed: confirmed}})
+	if sent.State != desktop.Completed || sent.Run == nil {
+		t.Fatalf("the suite send: %+v", sent)
+	}
+	opened := p.app.OpenRun(desktop.RunRequest{Context: p.context, Run: *sent.Run})
+	if opened.Run == nil || len(opened.Run.Jobs) != 2 {
+		t.Fatalf("the suite run's page: %+v", opened)
+	}
+	if first := opened.Run.Jobs[0]; first.Test != "Booking receives ACK" || first.Result != desktop.RunFailed {
+		t.Fatalf("the failed job: %+v", first)
+	}
+	if skipped := opened.Run.Jobs[1]; skipped.Test != "Reschedule keeps one appointment" || skipped.Admission != runqueue.Skipped || skipped.Reason == "" {
+		t.Fatalf("the skipped job: %+v", skipped)
+	}
+}
+
 func TestASuiteIncludesItsTestsInheritedEnvironmentReset(t *testing.T) {
 	peer, backup := newAckingPeer(t, "AA"), newAckingPeer(t, "AA")
 	p := newSuiteProject(t, peer.address)

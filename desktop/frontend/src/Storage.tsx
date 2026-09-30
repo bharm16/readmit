@@ -26,6 +26,8 @@ import {
   cancelOperation,
   prepareAction,
   repairSearch,
+  previewProjectMigration,
+  type MigrationPreviewResult,
   revealBackup,
   type ActionReview,
   type BackupResult,
@@ -214,7 +216,7 @@ function incompleteOutcome(result: ReviewedActionResult): ReactNode {
   );
 }
 
-type Task = null | "update-project" | "quota" | "create" | "restore" | "delete" | "archive" | "move" | "update" | "copies" | "restore-copy" | "repair";
+type Task = null | "update-project" | "quota" | "create" | "restore" | "delete" | "archive" | "move" | "update" | "copies" | "restore-copy" | "repair" | "compatibility";
 
 export function StorageView({
   root,
@@ -445,6 +447,7 @@ export function StorageView({
     },
     { label: "Move project…", onSelect: () => void withFolder("move-location", (path) => { setOptions({ location: path }); setTask("move"); }) },
     ...(repairable.length > 0 ? [{ label: "Repair search…", onSelect: () => setTask("repair") }] : []),
+    { label: "Compatibility…", onSelect: () => setTask("compatibility") },
     { label: "Staged update…", onSelect: startUpdateTask },
   ];
   usePaletteActions(projectName || "Storage", storageMenu);
@@ -587,6 +590,7 @@ export function StorageView({
         }}
         render={reviewBody}
       />
+      {root && task === "compatibility" ? <CompatibilitySheet root={root} onClose={() => setTask(null)} /> : null}
       {root ? (
         <ArchiveSheet open={task === "archive"} context={context} options={options} render={reviewBody} onClose={() => setTask(null)} onDone={() => void refresh()} />
       ) : null}
@@ -1248,4 +1252,27 @@ function QuotaSheet({ open, root, onClose }: { open: boolean; root: string; onCl
       </FormDialog>
     </>
   );
+}
+
+
+/** Read-only compatibility of every project document, through its existing reader. */
+function CompatibilitySheet({ root, onClose }: { root: string; onClose: () => void }) {
+  const [selected, setSelected] = useState<string | null>(null);
+  const [answer, setAnswer] = useState<MigrationPreviewResult | null>(null);
+  useEffect(() => {
+    let live = true;
+    void previewProjectMigration(root).then(result => { if (live) setAnswer(result); });
+    return () => { live = false; };
+  }, [root]);
+  return <Modal open title="Project compatibility" size="wide" onClose={onClose} footer={<div className="dialog-footer"><button type="button" onClick={onClose}>Close</button></div>}>
+    {!answer ? <p aria-live="polite">Reading…</p> : answer.state !== "completed" || !answer.plan ? <p role="alert">{answer.reason ?? "The project compatibility could not be read."}</p> : <>
+      <p>{answer.plan.compatible ? "Compatible" : "Unsupported documents"}</p>
+      <DataTable label="Document compatibility" selected={selected} onSelect={setSelected} onOpen={setSelected} rows={answer.plan.documents} rowId={row => row.document} rowLabel={row => row.document} columns={[
+        { key: "document", header: "Document", priority: 1, minWidth: 16, render: row => row.document },
+        { key: "supported", header: "Supported versions", priority: 2, minWidth: 12, render: row => row.supported },
+        { key: "action", header: "Action", priority: 1, minWidth: 16, render: row => row.action },
+      ]} />
+      {answer.guidance ? <p>{answer.guidance}</p> : null}
+    </>}
+  </Modal>;
 }

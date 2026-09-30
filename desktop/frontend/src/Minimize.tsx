@@ -122,19 +122,29 @@ export function useMinimize({
   const [linkRules, setLinkRules] = useState<CatalogItem[]>([]);
   const [changing, setChanging] = useState(false);
   const [reviewing, setReviewing] = useState(false);
-  const mine = activity && run && activity.run.id === run.id ? activity : null;
+  // A finished series stays on screen until the page is opened again, which
+  // starts a new one; a running series is shown whenever its run is.
+  const [ended, setEnded] = useState<string | null>(null);
+  const latest = useRef(activity);
+  latest.current = activity;
+  const mine = activity && run && activity.run.id === run.id && activity.intent !== ended ? activity : null;
 
   useEffect(() => {
     setSetup(null);
     setReviewing(false);
+    const held = latest.current;
+    setEnded(held?.result ? held.intent : null);
     if (!root || !run) return;
+    let live = true;
     void minimizeSetup({ context: context(), run, reveal: false }).then((answer) => {
+      if (!live) return;
       setSetup(answer);
       const found = answer.setup;
       setForm({ checks: found?.failed.map((check) => check.id) ?? [], grouping: "", rules: "", trials: "", confirmations: "", environment: found?.environment ?? null });
     });
-    void listWholeCatalog({ context: context(), kind: "environment", filter: {} }).then((answer) => setEnvironments((answer.page?.items ?? []).filter((item) => item.availability === "available")));
-    void listWholeCatalog({ context: context(), kind: "link-rules", filter: {} }).then((answer) => setLinkRules((answer.page?.items ?? []).filter((item) => item.availability === "available")));
+    void listWholeCatalog({ context: context(), kind: "environment", filter: {} }).then((answer) => { if (live) setEnvironments((answer.page?.items ?? []).filter((item) => item.availability === "available")); });
+    void listWholeCatalog({ context: context(), kind: "link-rules", filter: {} }).then((answer) => { if (live) setLinkRules((answer.page?.items ?? []).filter((item) => item.availability === "available")); });
+    return () => { live = false; };
     // Read again for each run the page is opened for.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [root, run?.id]);

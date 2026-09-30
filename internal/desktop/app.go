@@ -266,9 +266,9 @@ type NamedDestinationChooser interface {
 	ChooseNamedDestination(title, name string) (string, error)
 }
 
-// App runs exactly one operation at a time: a second request reports Busy
-// rather than racing the first, and a finished operation always releases the
-// slot, including after a failure or a cancellation.
+// App serializes actions: one arriving during a local read waits briefly;
+// one arriving during another action reports Busy. A finished operation always
+// releases the slot, including after failure or cancellation.
 type App struct {
 	operationMu     sync.Mutex
 	operationGuard  *operationguard.Guard
@@ -341,6 +341,12 @@ type App struct {
 	// under, if any, and how Cancel with that name stops it.
 	besideName   string
 	besideCancel context.CancelFunc
+	// reading is set while the slot is held by a local read (runRead), and
+	// waiting counts the person's actions waiting for such a read to end:
+	// while one waits, no further read takes the slot (see operate).
+	reading     bool
+	waiting     int
+	readWaiters map[*readWaiter]struct{}
 	// programs counts the operator-declared programs the operation holding
 	// the slot is running now, as the programs report themselves; see
 	// declaredProgramStarted.
@@ -472,6 +478,11 @@ func New(chooser FolderChooser, documents ShellDocuments) *App {
 func (a *App) Cancel(operation string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	for waiter := range a.readWaiters {
+		if waiter.cancel != nil && (operation == "" || operation == waiter.name) {
+			waiter.cancel()
+		}
+	}
 	if operation != "" && operation == a.besideName && a.besideCancel != nil {
 		a.besideCancel()
 		return
@@ -578,6 +589,7 @@ func (a *App) release() {
 		a.cancel = nil
 	}
 	a.running = false
+	a.reading = false
 	a.operation = ""
 	a.runOutput = ""
 	a.reaching = nil

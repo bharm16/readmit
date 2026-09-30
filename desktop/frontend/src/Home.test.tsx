@@ -522,3 +522,22 @@ test("a draft whose case is gone says so on Cases and opens nothing", async () =
   expect(facade.callsTo("DiscardEditorDraft")).toHaveLength(0);
   expect(facade.callsTo("StartDurableRun")).toHaveLength(0);
 });
+
+
+test("a retained project note reopens while the unrelated case list is still loading", async () => {
+ const user = userEvent.setup();
+ const draft = editorDraft("project-note", "note", { schema: "readmit-note-draft/v1", name: "", subject: "", title: "Hypothesis", body: "The receiver retains two appointments." }, { workspace: WORKSPACE_ROOT, case: "", content_schema: "readmit-note-draft/v1", item: { project_id: "p1", ref: OPEN_PROJECT.ref } });
+ let finish!: () => void;
+ const delayed = new Promise<void>(resolve => { finish = resolve; });
+ await renderApp({ ...openingProject(), EditorDrafts: () => ({ state: "completed", drafts: [draft] }), ListCatalog: async query => {
+  if (query.kind === "case") await delayed;
+  const items = query.kind === "project" ? [OPEN_PROJECT] : [];
+  return { state: "completed", context: query.context, page: { items, total: items.length, snapshot: "s", recorded: true, incomplete: [] } };
+ } });
+ try {
+  await user.click(await page().findByRole("button", { name: "Review" }));
+  await user.click(within(screen.getByRole("dialog", { name: "Drafts to restore" })).getByRole("button", { name: "Note · Hypothesis" }));
+  const sheet = within(await screen.findByRole("dialog", { name: "New note" }));
+  await waitFor(() => expect((sheet.getByLabelText("Content") as HTMLTextAreaElement).value).toBe("The receiver retains two appointments."));
+ } finally { finish(); }
+});

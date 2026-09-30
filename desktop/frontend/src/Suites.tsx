@@ -123,6 +123,8 @@ const REMOVE = "\u0000remove:";
 /** The project's objects a suite names, read once per list. */
 type Lists = { tests: CatalogItem[]; cases: CatalogItem[]; environments: CatalogItem[]; observations: CatalogItem[] };
 const NO_LISTS: Lists = { tests: [], cases: [], environments: [], observations: [] };
+/** How many more times a list still busy is read before it is left unread. */
+const BUSY_LIST_READS = 4;
 
 /** How a suite's members are named on screen. */
 function namer(draft: SuiteDraft, versions: SuiteTestVersion[], lists: Lists) {
@@ -232,11 +234,29 @@ export function useSuites({ root, shown: pageShown, place, go, back, busy, onRun
   const [opening, setOpening] = useState<string | null>(null);
   const [start, setStart] = useState<EditStart | null>(null);
 
+  const refreshGeneration = useRef(0);
   const refresh = useCallback(async () => {
     if (!root) return;
-    const [suites, tests, cases, environments, observations] = await Promise.all(
-      (["suite", "test", "case", "environment", "observation"] as const).map((kind) => listWholeCatalog({ context: context(), kind, filter: {} })),
-    );
+    const generation = ++refreshGeneration.current;
+    const requestContext = context();
+    const current = () => generation === refreshGeneration.current;
+    // One read at a time: the facade serves one operation at once, and five
+    // reads started together can keep one busy past its retries, which would
+    // read as an empty list and compose a suite without its cases.
+    // A list still busy past one read's retries is read again, a few times,
+    // rather than taken as empty: an empty environment list would name every
+    // bound environment Removed.
+    const read = [];
+    for (const kind of ["suite", "test", "case", "environment", "observation"] as const) {
+      let answer = await listWholeCatalog({ context: requestContext, kind, filter: {} });
+      if (!current()) return;
+      for (let again = 0; answer.state === "busy" && again < BUSY_LIST_READS; again++) {
+        answer = await listWholeCatalog({ context: requestContext, kind, filter: {} });
+        if (!current()) return;
+      }
+      read.push(answer);
+    }
+    const [suites, tests, cases, environments, observations] = read;
     const ok = (answer: typeof suites) => answer!.state === "completed" || answer!.state === "empty";
     if (ok(suites)) {
       setItems(suites!.page?.items ?? []);
@@ -245,17 +265,22 @@ export function useSuites({ root, shown: pageShown, place, go, back, busy, onRun
     } else {
       setFailure(suites!.reason ?? "The suites could not be read.");
     }
-    setLists({
-      tests: ok(tests) ? (tests!.page?.items ?? []) : [],
-      cases: ok(cases) ? (cases!.page?.items ?? []) : [],
-      environments: ok(environments) ? (environments!.page?.items ?? []) : [],
-      observations: ok(observations) ? (observations!.page?.items ?? []) : [],
-    });
+    // A list that could not be read keeps what was last read of it.
+    setLists((held) => ({
+      tests: ok(tests) ? (tests!.page?.items ?? []) : held.tests,
+      cases: ok(cases) ? (cases!.page?.items ?? []) : held.cases,
+      environments: ok(environments) ? (environments!.page?.items ?? []) : held.environments,
+      observations: ok(observations) ? (observations!.page?.items ?? []) : held.observations,
+    }));
   }, [context, root]);
 
   useEffect(() => {
     setItems(null);
+    setLists(NO_LISTS);
+    setIncomplete([]);
+    setFailure(null);
     setView(NO_VIEW);
+    return () => { refreshGeneration.current += 1; };
   }, [refresh]);
   useEffect(() => {
     if (pageShown) void refresh();
@@ -1121,6 +1146,8 @@ function useSuiteDetail({
   const [assessed, setAssessed] = useState<{ run: string; previous: string[] } | null>(null);
   const [sheet, setSheet] = useState<null | "run" | "export-run" | "ci" | "gate" | "approve-environment" | "duplicate" | "details" | "runs">(null);
   const [notice, setNotice] = useState<{ text: string; problem?: boolean } | null>(null);
+  // Counts approvals recorded from this page, so its versions are read again.
+  const [approvals, setApprovals] = useState(0);
   const ref = item?.ref ?? null;
 
   useEffect(() => {
@@ -1139,7 +1166,7 @@ function useSuiteDetail({
     return () => {
       live = false;
     };
-  }, [ref?.id, item?.updated_at]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ref?.id, item?.updated_at, approvals]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Coverage is read, never run: the assessment of this version over its
   // latest run, or the runs chosen.
@@ -1308,7 +1335,10 @@ function useSuiteDetail({
           prefill={latestEnvironmentApproval}
           context={context}
           onClose={() => setSheet(null)}
-          onDone={() => void refresh()}
+          onDone={() => {
+            setApprovals((count) => count + 1);
+            void refresh();
+          }}
         />
       ) : null}
       <DuplicateSheet

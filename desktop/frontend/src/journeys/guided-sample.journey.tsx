@@ -1,16 +1,19 @@
 // The documented interactive journey of docs/native-acceptance.md, driven the
-// way a person drives it: create the sample, verify and open `regression`,
-// answer every authoring stage and save a new test, run it against the
-// fixture as it misbehaves and watch it fail on the record count, run the same
-// test against the corrected fixture and watch it pass, then close the window,
-// reopen it and find both retained verdicts read back from disk. Every answer
-// on screen comes from the real facade over real files; the expected outcomes
-// below are the sample's documented defect, not what the engine reported.
-// The command line then reads the same two retained results and must agree.
+// way a person drives it: Try demo opens the synthetic demo project, and its
+// steps are walked in the ordinary screens they open — the sample messages,
+// the supplied test created in New test, a run against the receiver as it
+// misbehaves that fails on the record count, the failed check, a run against
+// the corrected receiver that passes, and the comparison of the two. The
+// window is then closed and reopened, and both retained verdicts are read back
+// from disk. Every answer on screen comes from the real facade over real
+// files; the expected outcomes below are the sample's documented defect, not
+// what the engine reported. The command line then reads the same two retained
+// results and must agree.
 import { afterEach, beforeEach, expect, test } from "vitest";
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Journey, press, region } from "../testkit/journey";
+import { Journey, press } from "../testkit/journey";
+import { goTo, page, sidebar } from "../testkit/navigation";
 
 let journey: Journey;
 
@@ -22,109 +25,108 @@ afterEach(async () => {
   await journey.dispose();
 });
 
-/** The practice result a run's verdict line belongs to. */
-function practiceOf(verdict: HTMLElement): HTMLElement {
-  const practice = verdict.closest<HTMLElement>("[role=status]");
-  if (!practice) throw new Error("the verdict is not inside a practice result");
-  return practice;
+/** The demo's steps in the sidebar. */
+const demo = () => within(sidebar().getByRole("region", { name: "Demo" }));
+
+/** Presses the demo step offered next, once it is offered. */
+async function step(user: ReturnType<typeof userEvent.setup>, title: string): Promise<void> {
+  await press(user, await demo().findByRole("button", { name: title }, { timeout: 30_000 }));
+}
+
+/** Waits for a demo step to read as done. */
+async function done(title: string): Promise<void> {
+  expect(await demo().findByRole("listitem", { name: `${title}, done` }, { timeout: 60_000 })).toBeTruthy();
+}
+
+/** The cells of a table's body rows, as text. */
+function rowsOf(table: HTMLElement): string[][] {
+  return within(table)
+    .getAllByRole("row")
+    .filter((row) => row.hasAttribute("data-row-id"))
+    .map((row) => Array.from(row.querySelectorAll("th,td")).map((cell) => cell.textContent ?? ""));
 }
 
 test("the guided sample is authored, fails on the defect, passes once it is corrected and reopens with both verdicts", async () => {
   const user = userEvent.setup();
-  journey.makeFolder("work");
   await journey.launch();
 
-  // Start from the first-run choice, picking the new sample's folder in the
-  // host's own dialog.
-  await journey.chooseFolder(journey.path("work"), "Choose sample location");
-  await press(user, screen.getByRole("button", { name: "Explore sample" }));
-  const guided = within(region("Guided sample"));
-  await press(user, await guided.findByRole("button", { name: "Open case" }));
+  // Try demo opens the synthetic demo project the application keeps in its
+  // own folder; it needs no activation and no folder of the person's.
+  await press(user, await page().findByRole("button", { name: "Try demo" }));
+  await sidebar().findByRole("region", { name: "Demo" }, { timeout: 30_000 });
+  expect(demo().getByText("Demo · Synthetic")).toBeTruthy();
 
-  // The case is verified, and its index opens as the grid authoring selects
-  // occurrences from.
-  const inspector = within(region("Inspector"));
-  expect(await inspector.findByText(/^regression · regression\.index\.json · verified [0-9a-f]{64}/)).toBeTruthy();
+  // The sample messages open from the verified case.
+  await step(user, "Open sample messages");
+  await done("Open sample messages");
+  expect(await screen.findByRole("region", { name: "Messages" })).toBeTruthy();
 
-  // Answer every stage the engine asks, one at a time.
-  const authoring = within(await screen.findByRole("region", { name: "Test authoring" }));
-  await user.type(authoring.getByLabelText("Name"), "reschedule-regression");
-  await press(user, authoring.getByRole("button", { name: "Save name" }));
-  await press(user, await authoring.findByRole("button", { name: "Send s0001-e000001" }));
-  await authoring.findByRole("button", { name: "Do not send s0001-e000001" });
-  await press(user, authoring.getByRole("button", { name: "Send s0001-e000002" }));
-  expect(
-    await authoring.findByText("Sent in the order the case records them: s0001-e000001, s0001-e000002."),
-  ).toBeTruthy();
-  await press(user, authoring.getByRole("button", { name: "Send to practice-target.json" }));
-  await press(user, await authoring.findByRole("button", { name: "Appointment records" }));
-  expect(await authoring.findByText("Initial state: empty-ledger.")).toBeTruthy();
-  await press(user, authoring.getByRole("button", { name: "Read the observation from this entry" }));
-  await user.type(
-    authoring.getByLabelText("Reset"),
-    "Restart the practice receiver with an empty appointment ledger.",
-  );
-  await press(user, authoring.getByRole("button", { name: "Save instructions" }));
-  await user.type(authoring.getByLabelText("Expectation name"), "one-appointment");
-  await user.clear(authoring.getByLabelText("Expected records"));
-  await user.type(authoring.getByLabelText("Expected records"), "1");
-  await press(user, authoring.getByRole("button", { name: "Expect count" }));
-  expect(await authoring.findByText("ledger_count · 1 records")).toBeTruthy();
-  for (const stage of authoring.getAllByText(/^(Answered|Asked now|Not answered)$/)) {
-    expect(stage.textContent).toBe("Answered");
-  }
+  // The supplied test opens in the ordinary New test editor and is created
+  // there; the project then holds it.
+  await step(user, "Create supplied test");
+  expect(await page().findByRole("heading", { level: 1, name: "New test" }, { timeout: 30_000 })).toBeTruthy();
+  await waitFor(() => expect((page().getByRole("textbox", { name: "Name" }) as HTMLInputElement).value).toBe("Rescheduling updates the original appointment"));
+  expect(page().getByText("SIU · S12, SIU · S13")).toBeTruthy();
+  expect((page().getByRole("radio", { name: "Appointment records" }) as HTMLInputElement).checked).toBe(true);
+  await press(user, page().getByRole("button", { name: "Next" }));
+  await press(user, await page().findByRole("button", { name: "Review" }));
+  await press(user, await page().findByRole("button", { name: "Create test" }, { timeout: 30_000 }));
+  await waitFor(() => expect(journey.callsTo("SaveItem").at(-1)?.settled).toBe(true), { timeout: 30_000 });
+  expect(journey.callsTo("SaveItem").at(-1)?.result).toMatchObject({ state: "completed" });
+  await done("Create supplied test");
 
-  // Save a new test; the guided sample reads the folder back and offers the run.
-  await user.type(authoring.getByLabelText("New entry in this workspace"), "reschedule-test.json");
-  await press(user, authoring.getByRole("button", { name: "Save test" }));
-  const written = await authoring.findByText(/^Written to reschedule-test\.json/);
-  expect(written.textContent).toMatch(/spec identity [0-9a-f]{64}\./);
-
-  // The fixture as it misbehaves leaves a second appointment: the saved
+  // The receiver as it misbehaves leaves a second appointment: the saved
   // expectation of one record fails, and that is an assertion failure, not an
-  // execution error.
-  await press(user, await guided.findByRole("button", { name: "Run failing example" }));
-  const baseline = await guided.findByText("baseline-run:");
-  expect(baseline.textContent).toBe("baseline-run: assertion_failure");
-  const failed = within(practiceOf(baseline));
-  expect(failed.getByText("one-appointment")).toBeTruthy();
-  expect(failed.getByText("ledger_count")).toBeTruthy();
-  expect(failed.getByText("failed")).toBeTruthy();
+  // execution error. The run opens on its ordinary page.
+  await step(user, "Run defective receiver");
+  await done("Run defective receiver");
+  const practices = () => journey.callsTo("RunPractice");
+  expect(practices()[0]?.result).toMatchObject({ state: "completed", practice: { trial: "baseline", status: "assertion_failure" } });
+  expect(await page().findByText(/^Failed · /, undefined, { timeout: 30_000 })).toBeTruthy();
 
-  // The same saved test against the corrected fixture passes.
-  await press(user, await guided.findByRole("button", { name: "Run fixed example" }));
-  const corrected = await guided.findByText("post-fix-run:");
-  expect(corrected.textContent).toBe("post-fix-run: pass");
-  const passed = within(practiceOf(corrected));
-  expect(passed.getByText("one-appointment")).toBeTruthy();
-  expect(passed.getByText("passed")).toBeTruthy();
-  expect(await guided.findByText(/Every step is done/)).toBeTruthy();
+  // The run's page leads with the failed check, what it expected and what it
+  // observed, and that is the step of viewing it.
+  await done("View failed check");
+  const failedChecks = await page().findByRole("table", { name: "Checks" });
+  expect(rowsOf(failedChecks)).toContainEqual(["Record count", "1", "2", "Failed"]);
+
+  // The same saved test against the corrected receiver passes.
+  await step(user, "Run fixed receiver");
+  await done("Run fixed receiver");
+  expect(practices()[1]?.result).toMatchObject({ state: "completed", practice: { trial: "post-fix", status: "pass" } });
+  expect(await page().findByText(/^Passed · /, undefined, { timeout: 30_000 })).toBeTruthy();
+
+  // The two runs compared: the record count changed from failed to passed.
+  await step(user, "Compare results");
+  await done("Compare results");
+  expect(await page().findByRole("heading", { level: 1, name: "Compare runs" })).toBeTruthy();
+  const compared = await page().findByRole("table", { name: "Checks" });
+  await waitFor(() => expect(rowsOf(compared)[0]?.slice(0, 3)).toEqual(["Record count", "2 / Failed", "1 / Passed"]));
 
   // Close the window and reopen it: nothing is held in the process, so both
-  // verdicts come back from what the folder retained.
+  // verdicts come back from what the demo project retained.
   await journey.close();
   await journey.launch();
-  await press(user, await screen.findByRole("button", { name: "Reopen session" }));
-  const reopened = within(region("Guided sample"));
-  expect(await reopened.findByText(/Every step is done/)).toBeTruthy();
-  const steps = reopened.getAllByRole("listitem");
-  const runStep = (title: string) => {
-    const step = steps.find((item) => within(item).queryByText(title));
-    if (!step) throw new Error(`no guided step titled ${title}`);
-    return step.textContent ?? "";
-  };
-  expect(runStep("Run failing example")).toContain("baseline-runassertion_failure");
-  expect(runStep("Run fixed example")).toContain("post-fix-runpass");
+  await press(user, await page().findByRole("button", { name: "Try demo" }));
+  await sidebar().findByRole("region", { name: "Demo" }, { timeout: 30_000 });
+  for (const title of ["Create supplied test", "Run defective receiver", "Run fixed receiver"]) await done(title);
+  await goTo(user, "Runs");
+  const runs = await page().findByRole("table", { name: "Runs" });
+  await waitFor(() => expect(rowsOf(runs)).toHaveLength(2));
+  const results = rowsOf(runs).map((row) => row.join(" "));
+  expect(results.some((row) => /Failed/.test(row))).toBe(true);
+  expect(results.some((row) => /Passed/.test(row))).toBe(true);
   // Reopening read; it sent nothing again.
-  expect(journey.callsTo("RunPractice")).toHaveLength(2);
+  expect(practices()).toHaveLength(2);
 
   // The command line reads the same two retained results through its own
   // entry point — the same engine, not the window — and must agree: the
   // defect failed and the fix passed on the same sent bytes.
+  const demoRoot = "shell-state/demo/readmit-sample";
   const cli = await journey.commandLine([
     "diff",
-    "work/readmit-sample/baseline-run/result",
-    "work/readmit-sample/post-fix-run/result",
+    `${demoRoot}/defective-run/result`,
+    `${demoRoot}/fixed-run/result`,
     "--format",
     "json",
   ]);

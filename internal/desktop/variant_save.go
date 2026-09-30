@@ -217,6 +217,37 @@ func verifyVariant(files map[string]string) error {
 	return nil
 }
 
+// errRevisionRegistered refuses a variant whose derived case the project
+// already registers as a revision: the same evidence is one revision however
+// often it is made, and the project's refusal is known before anything is
+// placed.
+var errRevisionRegistered = errors.New("the same revision identity is registered twice")
+
+// verifyNewVariant is verifyVariant, and refuses a derived case the project
+// already registers as another entry's revision.
+func verifyNewVariant(root string) catalog.Verifier {
+	return func(files map[string]string) error {
+		if err := verifyVariant(files); err != nil {
+			return err
+		}
+		derived, err := operation.OpenCase(files[catalog.EntryRole])
+		if err != nil {
+			return err
+		}
+		revisions, err := project.ReadRevisions(root)
+		if err != nil {
+			return err
+		}
+		for _, registered := range revisions.Revisions {
+			// A resumed save whose entry was already registered is itself.
+			if registered.Identity == derived.Identity && filepath.Join(root, registered.Name) != filepath.Clean(files[catalog.EntryRole]) {
+				return errRevisionRegistered
+			}
+		}
+		return nil
+	}
+}
+
 // associateEntry records what a published entry of the project owes: a
 // variant is registered as a revision of the case or revision it was derived
 // from, once.

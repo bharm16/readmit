@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/catalog"
@@ -312,18 +313,20 @@ func actionSlug(name string) string {
 	return strings.TrimSuffix(out.String(), "-")
 }
 
-// environmentSlug is a target name drawn from a display name: letters,
-// digits, '-', '_' and '.', at most 60 bytes so a suffix fits.
+// environmentSlug is a target name drawn from a display name: lowercase
+// letters, digits and '-', at most 60 bytes so a suffix fits. It is the
+// environment a run's prepared inputs bind, so it is also an environment ID
+// a runner and its hub accept.
 func environmentSlug(name string) string {
 	var out strings.Builder
 	dash := false
 	for _, r := range name {
 		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '_', r == '.':
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
 			if dash && out.Len() > 0 {
 				out.WriteByte('-')
 			}
-			out.WriteRune(r)
+			out.WriteRune(unicode.ToLower(r))
 			dash = false
 		default:
 			dash = true

@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/catalog"
 	"github.com/bharm16/readmit/internal/redact"
@@ -340,6 +341,17 @@ func executeShareCheck(a *App, ctx context.Context, bound *boundAction, _ Review
 	}
 	derived.Input.Case = filepath.Join(check.root, check.review, "case")
 	derived.Target = check.target
+	// The portable derived spec deliberately names a new observation.json.
+	// This local check instead reads the original test's project observation;
+	// anchoring it before moving the spec keeps the reviewed boundary intact.
+	if derived.Observation.Boundary == testrunner.LedgerBoundary {
+		observation := in.current.Spec.Observation.Path
+		if err := artifactpath.EntryName(observation); err != nil {
+			result.refuse(Failed, "the original observation must name one file of the project")
+			return result
+		}
+		derived.Observation.Path = filepath.Join(check.root, observation)
+	}
 	data, err := json.Marshal(derived, json.Deterministic(true))
 	if err != nil {
 		result.refuse(Failed, "the check's test cannot be written")

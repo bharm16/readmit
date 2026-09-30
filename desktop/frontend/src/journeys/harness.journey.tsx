@@ -9,7 +9,9 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Journey, press, region } from "../testkit/journey";
+import { Journey, press } from "../testkit/journey";
+import { goTo, page } from "../testkit/navigation";
+import { licensedProject } from "./steps";
 
 let journey: Journey;
 
@@ -21,14 +23,15 @@ afterEach(async () => {
   await journey.dispose();
 });
 
-const navigation = () => within(region("Workspace"));
+/** Projects' Open, which asks the host's folder dialog for a project. */
+const openButton = () => page().getByRole("button", { name: "Open" });
 
 test("a dialog the journey did not answer fails the journey instead of opening nothing quietly", async () => {
   const user = userEvent.setup();
   await journey.launch();
-  await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
+  await press(user, openButton());
   // The facade reports the dialog it could not show as unavailable.
-  expect(await navigation().findByText("the folder dialog is unavailable")).toBeTruthy();
+  expect(await page().findByText("the folder dialog is unavailable")).toBeTruthy();
   await expect(journey.close()).rejects.toThrow(
     'folder dialog "Open project": no answer was scripted for this dialog',
   );
@@ -38,8 +41,8 @@ test("an answer scripted for another dialog is refused and fails the journey", a
   const user = userEvent.setup();
   await journey.launch();
   await journey.chooseFolder(journey.path("somewhere"), "Choose sample location");
-  await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
-  expect(await navigation().findByText("the folder dialog is unavailable")).toBeTruthy();
+  await press(user, openButton());
+  expect(await page().findByText("the folder dialog is unavailable")).toBeTruthy();
   await expect(journey.close()).rejects.toThrow(
     /the next scripted answer is for the dialog titled Choose sample location[\s\S]*1 scripted dialog answer\(s\) were never used/,
   );
@@ -100,37 +103,40 @@ test("a dismissed dialog is a cancellation that opens nothing", async () => {
   const user = userEvent.setup();
   await journey.launch();
   await journey.dismissDialog("folder", "Open project");
-  await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
-  const status = (await navigation().findByText("no folder was chosen")).closest("[role=status]");
+  await press(user, openButton());
+  const status = (await page().findByText("no folder was chosen")).closest("[role=status]");
   expect(status?.classList.contains("status-cancelled")).toBe(true);
   expect(status?.textContent).toContain("Cancelled");
-  expect(screen.queryByRole("button", { name: "Open project" })).toBeNull();
+  // Still on Projects: no project was opened.
+  expect(screen.getByRole("heading", { level: 1, name: "Projects" })).toBeTruthy();
+  expect(journey.callsTo("OpenProjectOverview")).toHaveLength(0);
   await journey.close();
 });
 
 test("a crash abandons the window at once, and the next launch starts from what was on disk", async () => {
   const user = userEvent.setup();
-  const folder = journey.makeFolder("workspace");
-  await journey.launch();
-  await journey.chooseFolder(folder, "Open project");
-  await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
-  expect(await navigation().findByText(folder, { selector: ".root" })).toBeTruthy();
-  // The window has retained where the viewer is by the time it crashes.
-  await waitFor(() =>
-    expect(
-      journey
-        .callsTo("RecordView")
-        .some((call) => call.settled && (call.args[0] as { workspace: string }).workspace === folder),
-    ).toBe(true),
-  );
+  const folder = await licensedProject(journey, user);
+  const opened = journey.callsTo("OpenWorkspace").length;
   const exit = await journey.crash();
   expect(exit.signal).toBe("SIGKILL");
   await journey.launch();
-  // Where the viewer was survived the crash because it was retained as it
-  // happened, and reopening it is still the viewer's own act.
-  expect(await screen.findByText(new RegExp(`You had this open: ${folder}`))).toBeTruthy();
-  expect(journey.callsTo("OpenWorkspace")).toHaveLength(0);
-  await press(user, screen.getByRole("button", { name: "Reopen session" }));
-  expect(await navigation().findByText(folder, { selector: ".root" })).toBeTruthy();
+  // The project survived the crash because it was written as it happened, and
+  // opening it again is still the person's own act.
+  await goTo(user, "Projects");
+  const row = await projectRow("Scheduling interface");
+  expect(journey.callsTo("OpenWorkspace")).toHaveLength(opened);
+  await press(user, row);
+  expect(await screen.findByText("No cases yet")).toBeTruthy();
   expect(journey.callsTo("OpenWorkspace").at(-1)?.args).toEqual([folder]);
 });
+
+/** A row of the Projects table once the list has been read. */
+async function projectRow(name: string): Promise<HTMLElement> {
+  const list = await screen.findByRole("table", { name: "Projects" });
+  let row: HTMLElement | undefined;
+  await waitFor(() => {
+    row = within(list).getAllByRole("row").find((candidate) => candidate.getAttribute("aria-label") === name);
+    expect(row).toBeTruthy();
+  });
+  return row!;
+}

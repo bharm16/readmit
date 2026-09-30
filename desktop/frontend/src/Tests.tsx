@@ -153,14 +153,18 @@ export function useTests({ root, shown: pageShown, place, go, back, busy, onRun,
   const [start, setStart] = useState<EditorStart | null>(null);
   const [opening, setOpening] = useState<string | null>(null);
 
+  const refreshes = useRef(0);
   const refresh = useCallback(async () => {
     if (!root) return;
+    const asked = ++refreshes.current;
+    const request = context();
     const [tests, caseList, environmentList, groupList] = await Promise.all([
-      listWholeCatalog({ context: context(), kind: "test", filter: {} }),
-      listWholeCatalog({ context: context(), kind: "case", filter: {} }),
-      listWholeCatalog({ context: context(), kind: "environment", filter: {} }),
-      listWholeCatalog({ context: context(), kind: "check-group", filter: {} }),
+      listWholeCatalog({ context: request, kind: "test", filter: {} }),
+      listWholeCatalog({ context: request, kind: "case", filter: {} }),
+      listWholeCatalog({ context: request, kind: "environment", filter: {} }),
+      listWholeCatalog({ context: request, kind: "check-group", filter: {} }),
     ]);
+    if (asked !== refreshes.current) return;
     if (groupList.state === "completed" || groupList.state === "empty") setCheckGroups(groupList.page?.items ?? []);
     if (tests.state === "completed" || tests.state === "empty") {
       setItems(tests.page?.items ?? []);
@@ -176,6 +180,7 @@ export function useTests({ root, shown: pageShown, place, go, back, busy, onRun,
   useEffect(() => {
     setItems(null);
     setView(NO_TESTS_VIEW);
+    return () => { refreshes.current += 1; };
   }, [refresh]);
   // The list is read again each time it is shown, so a test saved elsewhere —
   // a suite, an import, another window — is listed.
@@ -183,6 +188,13 @@ export function useTests({ root, shown: pageShown, place, go, back, busy, onRun,
   useEffect(() => {
     if (listShown) void refresh();
   }, [listShown, refresh]);
+  // The editor offers the project's cases, environments and check groups as
+  // they are now: one opened straight from a case's messages, without the
+  // list shown first, reads them when it is shown.
+  const editorShown = pageShown && (place.kind === "new" || place.kind === "edit");
+  useEffect(() => {
+    if (editorShown && place.kind === "new") void refresh();
+  }, [editorShown, place.kind, refresh]);
 
   /** Opens the editor on a new test: from a case's chosen messages, a
    * finding's proposals, an import, or nothing yet. */
@@ -219,19 +231,31 @@ export function useTests({ root, shown: pageShown, place, go, back, busy, onRun,
   const held = useRef(start);
   held.current = start;
   const editDirty = useRef(false);
+  const [editFailure, setEditFailure] = useState<string | null>(null);
+  const [editRetry, setEditRetry] = useState(0);
   useEffect(() => {
     if (!editId) return;
     // Returning to an edit left unsaved keeps it; only another test reopens.
-    if (editDirty.current && held.current?.mode === "edit" && held.current.ref?.id === editId) return;
+    if (editDirty.current && held.current?.mode === "edit" && held.current.ref?.id === editId) {
+      void refresh();
+      return;
+    }
     let live = true;
     setStart(null);
+    setEditFailure(null);
     void openItemDraft({ context: context(), ref: { kind: "test", id: editId } }).then((answer) => {
-      if (live && answer.state === "completed") setStart(startOf("edit", answer));
+      if (!live) return;
+      if (answer.state === "completed") {
+        setStart(startOf("edit", answer));
+        // Load choice lists after the whole draft; concurrent catalog reads
+        // must not starve the editor's opening read at the shared facade slot.
+        void refresh();
+      } else setEditFailure(answer.reason ?? "This test could not be read.");
     });
     return () => {
       live = false;
     };
-  }, [editId, context]);
+  }, [editId, context, editRetry, refresh]);
 
   // Reopening a retained draft: the saved test (or the new test's case) is
   // read again for its current messages, and the draft's values replace its
@@ -334,7 +358,7 @@ export function useTests({ root, shown: pageShown, place, go, back, busy, onRun,
       back: <BackLink label={place.kind === "edit" ? (editingItem?.name ?? "Test") : "Tests"} onBack={editor.leave} />,
       actions: editor.actions,
       toolbar: null,
-      body: place.kind === "edit" && !start ? <p aria-live="polite">Reading…</p> : editor.body,
+      body: place.kind === "edit" && !start ? (editFailure ? <div role="alert"><p>{editFailure}</p><button type="button" onClick={() => setEditRetry(value => value + 1)}>Retry</button></div> : <p aria-live="polite">Reading…</p>) : editor.body,
       startNew,
       importTest,
     };

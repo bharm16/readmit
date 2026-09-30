@@ -612,6 +612,13 @@ func (c *loadedCatalog) suiteDetail(path string, detail *RunDetail) {
 		} else if job.Admission == runqueue.Refused || job.Admission == runqueue.StartFailed {
 			job.Result = RunBlocked
 		}
+		// A job that never ran, such as one skipped after its dependency
+		// failed, is named by the compiled test the suite retained for it.
+		if job.Test == queued.ID && filepath.Base(queued.Spec) == queued.Spec {
+			if spec, err := testrunner.ReadSpec(filepath.Join(path, queued.Spec)); err == nil && spec.Name != "" {
+				job.Test = spec.Name
+			}
+		}
 		detail.Jobs = append(detail.Jobs, job)
 	}
 }

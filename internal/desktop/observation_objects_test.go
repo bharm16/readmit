@@ -280,6 +280,19 @@ func TestObservationFieldsReadsOnlyTheChosenExportHeader(t *testing.T) {
 	}
 }
 
+// A receiver ledger handoff, the file a test run reads as appointment
+// records, names its record fields even before any record is written.
+func TestObservationFieldsOfAnEmptyReceiverLedgerNameItsRecordFields(t *testing.T) {
+	app, context := namedProject(t)
+	writeDocument(t, context.Project, "appointments.json", emptyLedger(t))
+	draft := observationDraft(t, "appointments")
+	draft.Source.File.Path = "appointments.json"
+	listed := app.ObservationFields(desktop.ObservationFieldsRequest{Context: context, Source: &draft.Source})
+	if listed.State != desktop.Completed || !slices.Equal(listed.Fields, []string{"record_id", "patient_id", "placer_id", "filler_id", "appointment_start"}) {
+		t.Fatalf("the ledger's fields: %+v", listed)
+	}
+}
+
 func TestAResetChecksTheNamedObservationsLatestCompletedCollection(t *testing.T) {
 	app, context := namedProject(t)
 	root := context.Project

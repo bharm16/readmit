@@ -282,7 +282,7 @@ export function useCheckGroup({
       setOpened(answer);
       if (!ref && answer.state === "completed" && answer.draft?.check_group) setEditing({ name: "", draft: answer.draft.check_group as GroupDraft });
     });
-  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [id, context]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setOpened(null);

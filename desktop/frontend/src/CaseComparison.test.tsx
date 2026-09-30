@@ -182,3 +182,103 @@ test("two cases compare by the keys a person chooses, keep unmatched and ambiguo
   expect(screen.getByRole("table", { name: "Plan of Booking only" })).toBeTruthy();
   expect(screen.getByText("Include message")).toBeTruthy();
 });
+
+test("what a variant was made from is shown while its differences still wait for keys", async () => {
+  const user = userEvent.setup();
+  installFacade({
+    ListCatalog: (query) => ({ state: "completed", context: query.context, page: { items: [], total: 0, snapshot: "s", recorded: true, incomplete: [] } }),
+    MessageFields: () => ({ state: "completed", fields: [], complete: true }),
+    CompareCases: (request) => {
+      const answered = compared({ ...request, keys: ["MSH-10"] }).comparison!;
+      return { ...compared(request), comparison: { ...answered, keys: [], rows: [], total: 0 } };
+    },
+  });
+  const flow = { current: CURRENT, other: OTHER, tab: "plan" as const, serial: 1 };
+  function Opened() {
+    const comparison = useCaseComparison({ root: CONTEXT.project, context, flow, busy: false, onCompareRuns: () => undefined });
+    return <>{comparison.body}</>;
+  }
+  render(<Opened />);
+  expect(await screen.findByText(/name the fields that identify one record/)).toBeTruthy();
+  expect(await screen.findByRole("table", { name: "Plan of Booking only" })).toBeTruthy();
+  await user.click(screen.getByRole("tab", { name: "Differences" }));
+  expect(screen.queryByRole("table", { name: "Differences" })).toBeNull();
+  expect(screen.queryByText("No differences")).toBeNull();
+});
+
+test("a policy opened for editing shows no rule until its own rules are read", async () => {
+  const user = userEvent.setup();
+  const POLICY: ItemRef = { kind: "normalization-policy", id: "policy-1", revision: "1" };
+  let answer: (() => void) | null = null;
+  installFacade({
+    ListCatalog: (query) => {
+      const items = query.kind === "normalization-policy" ? [item(POLICY, "Clock drift", { normalization_policy: { rules: 1 } })] : [];
+      return { state: "completed", context: query.context, page: { items, total: items.length, snapshot: "s", recorded: true, incomplete: [] } };
+    },
+    MessageFields: () => ({ state: "completed", fields: [], complete: true }),
+    CompareCases: (request) => compared({ ...request, keys: ["MSH-10"] }),
+    OpenItemDraft: (request) =>
+      request.ref.id === ""
+        ? { state: "completed", context: request.context, new: true, ref: { kind: "normalization-policy", id: "" }, draft: { normalization_policy: { schema: "readmit-normalization-policy/v1", rules: [] } } }
+        : new Promise((resolve) => {
+            answer = () =>
+              resolve({
+                state: "completed",
+                context: request.context,
+                new: false,
+                ref: POLICY,
+                draft: { name: "Clock drift", normalization_policy: { schema: "readmit-normalization-policy/v1", rules: [{ id: "rule-1", selector: "MSH-7", operator: "timestamp", precision: "minute" }] } },
+              });
+          }),
+  });
+  const flow = { current: CURRENT, other: OTHER, serial: 1 };
+  function Opened() {
+    const comparison = useCaseComparison({ root: CONTEXT.project, context, flow, busy: false, onCompareRuns: () => undefined });
+    return (
+      <>
+        {comparison.actions}
+        {comparison.body}
+      </>
+    );
+  }
+  render(<Opened />);
+
+  // A new policy is begun with two rules, and closed unsaved.
+  await user.click(await screen.findByRole("button", { name: "Comparison options" }));
+  await user.click(within(screen.getByRole("dialog", { name: "Comparison options" })).getByRole("button", { name: "New policy" }));
+  const blank = await screen.findByRole("dialog", { name: "New policy" });
+  await user.click(within(blank).getByRole("button", { name: "Add rule" }));
+  expect(within(blank).getAllByRole("group")).toHaveLength(2);
+  await user.click(within(blank).getByRole("button", { name: "Cancel" }));
+
+  // The saved policy opened for editing: none of those rules stands in for
+  // its own while they are read.
+  const options = await screen.findByRole("dialog", { name: "Comparison options" });
+  await user.selectOptions(await within(options).findByLabelText("Normalization policy"), POLICY.id);
+  await user.click(within(options).getByRole("button", { name: "Edit policy" }));
+  const editing = await screen.findByRole("dialog", { name: "Edit policy" });
+  expect(within(editing).queryAllByRole("group")).toHaveLength(0);
+  await waitFor(() => expect(answer).not.toBeNull());
+  answer!();
+  await waitFor(() => expect(within(editing).getAllByRole("group")).toHaveLength(1));
+});
+
+test("a comparison answered busy while another read holds the slot is asked again, never shown as its refusal", async () => {
+  let asked = 0;
+  installFacade({
+    ListCatalog: (query) => ({ state: "completed", context: query.context, page: { items: [], total: 0, snapshot: "s", recorded: true, incomplete: [] } }),
+    MessageFields: () => ({ state: "completed", fields: [], complete: true }),
+    CompareCases: (request) => {
+      asked += 1;
+      return asked === 1 ? { state: "busy", reason: "another operation is already running", context: request.context } : compared({ ...request, keys: ["MSH-10"] });
+    },
+  });
+  const flow = { current: CURRENT, other: OTHER, serial: 1 };
+  function Opened() {
+    const comparison = useCaseComparison({ root: CONTEXT.project, context, flow, busy: false, onCompareRuns: () => undefined });
+    return <>{comparison.body}</>;
+  }
+  render(<Opened />);
+  await waitFor(() => expect(asked).toBeGreaterThanOrEqual(2));
+  expect(screen.queryByText("another operation is already running")).toBeNull();
+});

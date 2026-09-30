@@ -1,11 +1,11 @@
-// The environment documents a person keeps beside a project, authored in the
-// window over the real facade: credential references registered, refused,
-// edited, cancelled and bound to a target, an approved send policy and a
-// fixture reset plan. Each save names the document it replaced by the SHA-256
-// of the bytes it wrote, and the journey states that identity from the file on
-// disk rather than from what the window answered. The command line reads every
-// document the window wrote unchanged, and the window opens and edits what the
-// command line wrote.
+// The environment a person keeps beside a project, authored in the window
+// over the real facade: credential references registered, refused, edited,
+// cancelled and bound to the environment's connection, its allowed
+// destinations and its reset. Each whole-environment save is recorded in the
+// project's catalog under the SHA-256 of the bytes it wrote, and the journey
+// states that identity from the file on disk rather than from what the window
+// answered. The command line reads every document the window wrote unchanged,
+// and the window opens and edits what the command line wrote.
 //
 // No credential value exists anywhere in this journey. A reference names the
 // program that would read a credential and the locator arguments that select
@@ -14,7 +14,8 @@
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
-import { byContent, enter, Journey, press, whenEnabled } from "../testkit/journey";
+import { enter, Journey, press } from "../testkit/journey";
+import { goTo, page } from "../testkit/navigation";
 import { licensedProject } from "./steps";
 
 let journey: Journey;
@@ -27,13 +28,13 @@ afterEach(async () => {
   await journey.dispose();
 });
 
-const PROJECT = "investigations/interface";
-const LOCATOR = "/usr/bin/security";
+/** The project folder, relative to the journey's root, once it is created. */
+let PROJECT = "";
+const ENVIRONMENT = "Lab SIU";
 
-/** The environment panel of the open project. */
-function environment() {
-  const heading = screen.getByRole("heading", { name: "Environments" });
-  return within(heading.closest("section") as HTMLElement);
+async function project(user: UserEvent): Promise<void> {
+  const folder = await licensedProject(journey, user);
+  PROJECT = folder.slice(journey.path().length + 1);
 }
 
 /** The command line over the journey's root, admitted by the activation the
@@ -42,148 +43,189 @@ function commandLine(args: string[]) {
   return journey.commandLine(["--operation-policy", journey.path("vendor-delivered-license", "operation-policy.json"), ...args]);
 }
 
-/** The identity the window names the document a save just wrote by. */
-async function writtenIdentity(file: string): Promise<string> {
-  const escaped = file.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const line = await environment().findByText(byContent(new RegExp(`^Written to ${escaped} · identity [0-9a-f]{64}$`)));
-  return (line.textContent ?? "").replace(/^.* · identity /, "");
+type Catalog = { items: { kind: string; name?: string; revisions: { members: { role: string; path: string; sha256: string }[] }[] }[] };
+
+/** The environment's saved revisions, as the project's catalog records them. */
+function revisions(name: string) {
+  const catalog = JSON.parse(journey.readFile(`${PROJECT}/.readmit/catalog.json`)) as Catalog;
+  return catalog.items.find((entry) => entry.kind === "environment" && entry.name === name)?.revisions ?? [];
 }
 
-/** Waits for the panel to say exactly this. */
-async function says(text: string): Promise<void> {
-  expect(await environment().findByText(text)).toBeTruthy();
+/** One role of the environment's current revision: the file it is kept in and
+ * the identity the catalog records for its bytes. */
+function member(name: string, role: string): { path: string; sha256: string } {
+  const found = revisions(name).at(-1)?.members.find((entry) => entry.role === role);
+  if (!found) throw new Error(`${name} has no ${role}`);
+  return { path: `${PROJECT}/${found.path}`, sha256: found.sha256 };
 }
 
-/** Moves focus with Tab until the control has it, as a keyboard user does,
- * with Shift+Tab when the control comes before the focus. */
-async function tabTo(user: UserEvent, control: HTMLElement): Promise<void> {
-  await whenEnabled(control);
-  for (let step = 0; step < 400; step++) {
-    const active = document.activeElement;
-    if (active === control) return;
-    const after = active !== null && active !== document.body && (control.compareDocumentPosition(active) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
-    await user.tab({ shift: after });
-  }
-  throw new Error(`${control.getAttribute("aria-label") ?? control.textContent} is not reachable with Tab`);
+/** Presses a control that starts work in the facade once the window has
+ * finished what it was reading, as a person acts on what has drawn: the
+ * facade runs one operation at a time and refuses a click that meets a read
+ * the window issued on its own. */
+async function act(user: UserEvent, control: HTMLElement): Promise<void> {
+  await journey.settled();
+  await press(user, control);
+}
+
+/** Adds a named nonproduction environment at an address, over TLS or plain
+ * TCP/MLLP, and lands on its page. */
+async function addEnvironment(user: UserEvent, address: string, transport: "TLS" | "TCP/MLLP"): Promise<void> {
+  const [host, port] = address.split(":") as [string, string];
+  await goTo(user, "Environments");
+  await press(user, (await page().findAllByRole("button", { name: "Add environment" }))[0]!);
+  const sheet = within(await screen.findByRole("dialog", { name: "Add environment" }));
+  await enter(user, await sheet.findByRole("textbox", { name: "Name" }), ENVIRONMENT);
+  await enter(user, sheet.getByRole("textbox", { name: "Host" }), host);
+  await enter(user, sheet.getByRole("textbox", { name: "Port" }), port);
+  await user.selectOptions(sheet.getByRole("combobox", { name: "Classification" }), "nonproduction");
+  await user.click(sheet.getByRole("radio", { name: transport }));
+  await act(user, sheet.getByRole("button", { name: "Save" }));
+  await page().findByRole("heading", { level: 1, name: ENVIRONMENT });
+}
+
+/** Opens one item of the environment's More menu. */
+async function environmentMenu(user: UserEvent, item: string): Promise<void> {
+  await press(user, page().getByRole("button", { name: "More environment actions" }));
+  await press(user, await screen.findByRole("menuitem", { name: item }));
+}
+
+/** A program a person installed to read credentials from their store. */
+function locator(name: string): string {
+  return journey.writeFile(`tools/${name}`, "#!/bin/sh\nexit 1\n", 0o700);
 }
 
 interface Registration {
   name: string;
-  purpose?: "mllp-endpoint" | "source-endpoint";
+  purpose?: "MLLP endpoint" | "Evidence source";
   address: string;
   command: string;
   arguments?: string[];
   maxAge?: string;
 }
 
-/** Fills in the registration form and presses Register. */
-async function register(user: UserEvent, reference: Registration): Promise<void> {
-  const panel = environment();
-  await enter(user, panel.getByLabelText("Reference Name"), reference.name);
-  await user.selectOptions(panel.getByLabelText("Purpose"), reference.purpose ?? "mllp-endpoint");
-  await enter(user, panel.getByLabelText("Target Address Constraint"), reference.address);
-  await enter(user, panel.getByLabelText("Locator Command (Path)"), reference.command);
-  await enter(user, panel.getByLabelText("Locator Arguments (one per line)"), (reference.arguments ?? []).join("{Enter}"));
-  await enter(user, panel.getByLabelText("Maximum Rotation Age"), reference.maxAge ?? "");
-  await press(user, panel.getByRole("button", { name: "Add credential reference" }));
+/** Fills in New credential, choosing the locator program in the host's file
+ * dialog, and presses Save. Returns the sheet. */
+async function register(user: UserEvent, reference: Registration) {
+  await press(user, page().getByRole("button", { name: "New credential" }));
+  const sheet = within(await screen.findByRole("dialog", { name: "New credential" }));
+  await enter(user, sheet.getByRole("textbox", { name: "Name" }), reference.name);
+  if (reference.purpose) await user.selectOptions(sheet.getByRole("combobox", { name: "Purpose" }), reference.purpose);
+  await enter(user, sheet.getByRole("textbox", { name: "Allowed address" }), reference.address);
+  await journey.chooseFiles([reference.command], "Choose the locator program");
+  await act(user, sheet.getByRole("button", { name: "Choose locator program" }));
+  await sheet.findByText(reference.command.split("/").pop()!);
+  const args = reference.arguments ?? [];
+  for (const [index, argument] of args.entries()) {
+    if (index > 0) await press(user, sheet.getByRole("button", { name: "Add argument" }));
+    await enter(user, sheet.getByRole("textbox", { name: `Argument ${index + 1}` }), argument);
+  }
+  if (reference.maxAge) await enter(user, sheet.getByRole("textbox", { name: "Maximum age" }), reference.maxAge);
+  await act(user, sheet.getByRole("button", { name: "Save" }));
+  return sheet;
 }
 
-/** The registered reference's row in the table. */
-function row(name: string) {
-  const table = environment().getByRole("table", { name: "Registered credential references" });
-  return within(within(table).getByText(name, { selector: "strong" }).closest("tr") as HTMLElement);
+/** The credential's row: name, purpose, store and rotation. */
+function row(name: string): string[] {
+  const table = page().getByRole("table", { name: "Credentials" });
+  const found = table.querySelector<HTMLElement>(`[data-row-id="${CSS.escape(name)}"]`);
+  if (!found) throw new Error(`no credential ${name}`);
+  return Array.from(found.querySelectorAll("td,th")).map((cell) => cell.textContent ?? "").slice(0, 4);
+}
+
+/** Opens the credential's Edit sheet from its row's menu. */
+async function editCredential(user: UserEvent, name: string) {
+  await press(user, page().getByRole("button", { name: `More actions for ${name}` }));
+  await press(user, await screen.findByRole("menuitem", { name: "Edit…" }));
+  return within(await screen.findByRole("dialog", { name: "Edit credential" }));
+}
+
+async function closed(title: string): Promise<void> {
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: title })).toBeNull());
 }
 
 test("credential references are registered, refused, edited, cancelled and bound in the window and read unchanged by the command line", async () => {
   const user = userEvent.setup();
-  await licensedProject(journey, user);
-  const panel = environment();
-  await press(user, panel.getByRole("button", { name: "Credential References" }));
-  expect(await panel.findByText("No credential references registered yet.")).toBeTruthy();
+  await project(user);
+  await addEnvironment(user, "127.0.0.1:2576", "TLS");
+  await environmentMenu(user, "Credentials");
+  expect(await page().findByText("No credentials")).toBeTruthy();
+  const security = locator("security");
 
   // A reference is registered. The locator argument with a space in it is one
-  // argument, and none of them is ever shown again: the row counts them.
-  const locator = ["find-generic-password", "-w", "-s", "readmit lab"];
-  await register(user, { name: "lab-mllp", address: "127.0.0.1:2575", command: LOCATOR, arguments: locator, maxAge: "720h" });
-  await says("Secret reference registered successfully.");
-  const registered = await writtenIdentity("secrets.json");
-  expect(registered).toBe(journey.digest(`${PROJECT}/secrets.json`));
-  expect(row("lab-mllp").getByText("127.0.0.1:2575")).toBeTruthy();
-  expect(row("lab-mllp").getByText(byContent(/^\/usr\/bin\/security \(4 locator arguments\)$/))).toBeTruthy();
+  // argument, and none of them is ever shown again.
+  const locatorArguments = ["find-generic-password", "-w", "-s", "readmit lab"];
+  await register(user, { name: "lab-mllp", address: "127.0.0.1:2575", command: security, arguments: locatorArguments, maxAge: "720h" });
+  await closed("New credential");
+  await waitFor(() => expect(row("lab-mllp")).toEqual(["lab-mllp", "MLLP endpoint", "OS keychain", expect.any(String)]));
   expect(document.body.textContent).not.toContain("readmit lab");
+  const registered = journey.digest(`${PROJECT}/secrets.json`);
 
   const shown = await journey.commandLine(["secret", "show", "--secrets", `${PROJECT}/secrets.json`]);
   expect(shown.code).toBe(0);
   expect(shown.stdout).toContain("  lab-mllp store=os-keychain purpose=mllp-endpoint address=127.0.0.1:2575 generation=1\n");
   expect(shown.stdout).toContain(" max-age: 720h\n");
-  expect(shown.stdout).toContain(`    command: ${LOCATOR} (4 locator arguments)\n`);
+  expect(shown.stdout).toContain(`    command: ${security} (4 locator arguments)\n`);
 
-  // A second registration under the same name, and one naming its program
-  // through PATH, are refused as the command line refuses them, and neither
-  // changes a byte. What was typed stays to be corrected.
-  await register(user, { name: "lab-mllp", address: "127.0.0.1:2575", command: LOCATOR });
-  await says("that name is already registered in this store");
-  await register(user, { name: "lab-path", address: "127.0.0.1:2575", command: "security" });
-  const pathRefusal = "reference command: must be an absolute path, never a name resolved through PATH";
-  await says(pathRefusal);
-  expect((panel.getByLabelText("Reference Name") as HTMLInputElement).value).toBe("lab-path");
-  expect(panel.queryByText(/^Written to /)).toBeNull();
+  // A second registration under the same name is refused as the command line
+  // refuses it, changes no byte, and keeps what was typed to be corrected.
+  const duplicate = await register(user, { name: "lab-mllp", address: "127.0.0.1:2575", command: security });
+  const nameRefusal = "that name is already registered in this store";
+  expect((await duplicate.findByRole("alert")).textContent).toContain(nameRefusal);
+  expect((duplicate.getByRole("textbox", { name: "Name" }) as HTMLInputElement).value).toBe("lab-mllp");
   const byHand = await commandLine([
-    "secret", "add", "--secrets", `${PROJECT}/secrets.json`, "--name", "lab-path",
-    "--store", "os-keychain", "--address", "127.0.0.1:2575", "--command", "security",
+    "secret", "add", "--secrets", `${PROJECT}/secrets.json`, "--name", "lab-mllp",
+    "--store", "os-keychain", "--address", "127.0.0.1:2575", "--command", security,
   ]);
   expect(byHand.code).not.toBe(0);
-  expect(byHand.stderr).toContain(pathRefusal);
+  expect(byHand.stderr).toContain(nameRefusal);
   expect(journey.digest(`${PROJECT}/secrets.json`)).toBe(registered);
-
-  // The edit, from the keyboard alone: Tab reaches it and Enter opens it with
-  // focus inside; Escape cancels it, writes nothing and returns focus.
-  const edit = row("lab-mllp").getByRole("button", { name: "Edit lab-mllp" });
-  await tabTo(user, edit);
-  await user.keyboard("{Enter}");
-  const form = within(await panel.findByRole("form", { name: "Edit credential reference lab-mllp" }));
-  expect(document.activeElement).toBe(form.getByLabelText("Store"));
-  expect(form.getByText(/^Purpose: mllp-endpoint\./)).toBeTruthy();
   await user.keyboard("{Escape}");
-  await says("Edit of lab-mllp cancelled; nothing was written.");
-  expect(panel.queryByRole("form", { name: "Edit credential reference lab-mllp" })).toBeNull();
-  await waitFor(() => expect(document.activeElement).toBe(edit));
+  await press(user, within(await screen.findByRole("dialog", { name: "Save changes?" })).getByRole("button", { name: "Discard" }));
+  await closed("New credential");
+
+  // The edit, from the keyboard alone: Enter on the row opens it; Escape with
+  // nothing changed closes it and writes nothing.
+  const credentialRow = page().getByRole("table", { name: "Credentials" }).querySelector<HTMLElement>('[data-row-id="lab-mllp"]')!;
+  credentialRow.focus();
+  await user.keyboard("{Enter}");
+  let form = within(await screen.findByRole("dialog", { name: "Edit credential" }));
+  expect((form.getByRole("textbox", { name: "Name" }) as HTMLInputElement).disabled).toBe(true);
+  expect((form.getByRole("checkbox", { name: "Replace arguments (4 stored)" }) as HTMLInputElement).checked).toBe(false);
+  await user.keyboard("{Escape}");
+  await closed("Edit credential");
   expect(journey.digest(`${PROJECT}/secrets.json`)).toBe(registered);
 
-  // An address the command line refuses is refused here with its words, and
-  // the edit stays open with what was typed.
-  await user.keyboard("{Enter}");
-  const editing = within(await panel.findByRole("form", { name: "Edit credential reference lab-mllp" }));
-  await user.tab();
-  expect(document.activeElement).toBe(editing.getByLabelText("Target Address Constraint"));
-  await user.keyboard("{Control>}a{/Control}127.0.0.1{Enter}");
+  // An address the command line refuses is refused here with its words, at
+  // its field, and the edit stays open with what was typed.
+  form = await editCredential(user, "lab-mllp");
+  await enter(user, form.getByRole("textbox", { name: "Allowed address" }), "127.0.0.1");
+  await act(user, form.getByRole("button", { name: "Save" }));
   const addressRefusal = "reference address: must be an explicit host and numeric port";
-  await says(addressRefusal);
-  expect((editing.getByLabelText("Target Address Constraint") as HTMLInputElement).value).toBe("127.0.0.1");
+  expect((await form.findByRole("alert")).textContent).toContain(addressRefusal);
+  expect(document.activeElement).toBe(form.getByRole("textbox", { name: "Allowed address" }));
   const refusedUpdate = await commandLine(["secret", "update", "--secrets", `${PROJECT}/secrets.json`, "--name", "lab-mllp", "--address", "127.0.0.1"]);
   expect(refusedUpdate.code).not.toBe(0);
   expect(refusedUpdate.stderr).toContain(addressRefusal);
   expect(journey.digest(`${PROJECT}/secrets.json`)).toBe(registered);
 
-  // Every member an edit may change, changed from the keyboard, and saved.
-  await user.keyboard("{Control>}a{/Control}127.0.0.1:2576");
-  await user.tab();
-  await user.keyboard("{Control>}a{/Control}/opt/vault/bin/vault");
-  await user.tab();
-  await user.keyboard("{Control>}a{/Control}2160h");
-  await user.tab();
-  expect(document.activeElement).toBe(editing.getByLabelText("Replace the 4 registered locator arguments"));
-  await user.keyboard(" ");
-  await user.tab();
-  await user.keyboard("kv{Enter}get{Enter}-field=password{Enter}lab/mllp");
-  await user.selectOptions(editing.getByLabelText("Store"), "customer-managed");
-  await tabTo(user, editing.getByRole("button", { name: "Save changes" }));
-  await user.keyboard("{Enter}");
-  await says("Credential reference lab-mllp updated.");
-  const edited = await writtenIdentity("secrets.json");
-  expect(edited).toBe(journey.digest(`${PROJECT}/secrets.json`));
-  expect(edited).not.toBe(registered);
-  await waitFor(() => expect(document.activeElement).toBe(row("lab-mllp").getByRole("button", { name: "Edit lab-mllp" })));
+  // Every member an edit may change, changed, and saved.
+  const vault = locator("vault");
+  await enter(user, form.getByRole("textbox", { name: "Allowed address" }), "127.0.0.1:2576");
+  await journey.chooseFiles([vault], "Choose the locator program");
+  await act(user, form.getByRole("button", { name: "Choose locator program" }));
+  await form.findByText("vault");
+  await enter(user, form.getByRole("textbox", { name: "Maximum age" }), "2160h");
+  await user.click(form.getByRole("checkbox", { name: "Replace arguments (4 stored)" }));
+  for (const [index, argument] of ["kv", "get", "-field=password", "lab/mllp"].entries()) {
+    if (index > 0) await press(user, form.getByRole("button", { name: "Add argument" }));
+    await enter(user, form.getByRole("textbox", { name: `Argument ${index + 1}` }), argument);
+  }
+  await user.selectOptions(form.getByRole("combobox", { name: "Store" }), "customer-managed");
+  await act(user, form.getByRole("button", { name: "Save" }));
+  await closed("Edit credential");
+  await waitFor(() => expect(row("lab-mllp")[2]).toBe("Customer-managed vault"));
+  expect(journey.digest(`${PROJECT}/secrets.json`)).not.toBe(registered);
   expect(document.body.textContent).not.toContain("lab/mllp");
 
   // The command line reads the edit unchanged: the configuration changed and
@@ -191,181 +233,160 @@ test("credential references are registered, refused, edited, cancelled and bound
   const reread = await journey.commandLine(["secret", "show", "--secrets", `${PROJECT}/secrets.json`]);
   expect(reread.stdout).toContain("  lab-mllp store=customer-managed purpose=mllp-endpoint address=127.0.0.1:2576 generation=1\n");
   expect(reread.stdout).toContain(" max-age: 2160h\n");
-  expect(reread.stdout).toContain("    command: /opt/vault/bin/vault (4 locator arguments)\n");
+  expect(reread.stdout).toContain(`    command: ${vault} (4 locator arguments)\n`);
   const rotatedAt = /rotated: (\S+) /;
   expect(reread.stdout.match(rotatedAt)?.[1]).toBe(shown.stdout.match(rotatedAt)?.[1]);
 
-  // A reference registered for evidence sources is refused when an MLLP
-  // target names it, as the command line refuses it, and the reference
-  // registered for that endpoint is bound instead.
-  await register(user, { name: "lab-source", purpose: "source-endpoint", address: "127.0.0.1:2576", command: LOCATOR });
-  await says("Secret reference registered successfully.");
-  await press(user, panel.getByRole("button", { name: "Target" }));
-  await enter(user, panel.getByLabelText("Target Config File"), "lab-target.json");
-  await enter(user, panel.getByLabelText("Environment Name"), "lab-siu");
-  await user.selectOptions(panel.getByLabelText("Classification"), "nonproduction");
-  await enter(user, panel.getByLabelText("Destination Address"), "127.0.0.1:2576");
-  await user.selectOptions(panel.getByLabelText("Credential Reference"), "lab-source");
-  await press(user, panel.getByRole("button", { name: "Save target" }));
+  // A reference registered for evidence sources is never offered to an MLLP
+  // connection, which the command line refuses as a different purpose; the
+  // reference registered for that endpoint is bound instead.
+  await register(user, { name: "lab-source", purpose: "Evidence source", address: "127.0.0.1:2576", command: security });
+  await closed("New credential");
+  await press(user, page().getAllByRole("button", { name: /^Back to / })[0]!);
+  await page().findByRole("heading", { level: 1, name: ENVIRONMENT });
+  await press(user, within(page().getByRole("region", { name: "Connection" })).getByRole("button", { name: "Edit" }));
+  const connection = within(await screen.findByRole("dialog", { name: "Edit connection" }));
+  const credential = connection.getByRole("combobox", { name: "Credential" });
+  await within(credential).findByRole("option", { name: "lab-mllp" });
+  expect(within(credential).getAllByRole("option").map((option) => option.textContent)).toEqual(["None", "lab-mllp"]);
   const purposeRefusal = "the credential reference declares a different purpose than this use";
-  await says(purposeRefusal);
   const boundByHand = await commandLine([
     "target", "set", "--target", `${PROJECT}/cli-target.json`, "--name", "lab-siu", "--classification", "nonproduction",
     "--address", "127.0.0.1:2576", "--secrets", "secrets.json", "--credential", "lab-source",
   ]);
   expect(boundByHand.code).not.toBe(0);
   expect(boundByHand.stderr).toContain(purposeRefusal);
-  await user.selectOptions(panel.getByLabelText("Credential Reference"), "lab-mllp");
-  await press(user, panel.getByRole("button", { name: "Save target" }));
-  await says("Target configuration saved successfully.");
-  const target = await journey.commandLine(["target", "show", "--target", `${PROJECT}/lab-target.json`]);
-  expect(target.code).toBe(0);
-  expect(target.stdout).toContain("Environment: lab-siu\n");
+  await user.selectOptions(credential, "lab-mllp");
+  await act(user, connection.getByRole("button", { name: "Save" }));
+  await closed("Edit connection");
+  await waitFor(() => expect(within(page().getByRole("region", { name: "Connection" })).getByText("lab-mllp")).toBeTruthy());
+  const target = member(ENVIRONMENT, "target");
+  expect(target.sha256).toBe(journey.digest(target.path));
+  expect(JSON.parse(journey.readFile(target.path)).credential).toEqual({ secrets_file: "secrets.json", reference: "lab-mllp" });
+  const targetShown = await journey.commandLine(["target", "show", "--target", target.path]);
+  expect(targetShown.code).toBe(0);
+  expect(targetShown.stdout).toContain("127.0.0.1:2576");
 
-  // A document the command line wrote opens in the window, is edited there,
-  // and reads back through the command line with the window's change.
+  // A reference the command line wrote is listed in the window, edited there,
+  // and read back through the command line with the window's change.
   const added = await commandLine([
-    "secret", "add", "--secrets", `${PROJECT}/cli-secrets.json`, "--name", "lab-cli", "--store", "os-keychain",
-    "--address", "127.0.0.1:2577", "--command", LOCATOR, "--argument", "find-generic-password", "--argument", "-w",
+    "secret", "add", "--secrets", `${PROJECT}/secrets.json`, "--name", "lab-cli", "--store", "os-keychain",
+    "--address", "127.0.0.1:2577", "--command", security, "--argument", "find-generic-password", "--argument", "-w",
   ]);
   expect(added.code).toBe(0);
-  await press(user, panel.getByRole("button", { name: "Credential References" }));
-  await enter(user, panel.getByLabelText("Secrets Document File"), "cli-secrets.json");
-  expect(await panel.findByText("lab-cli", { selector: "strong" })).toBeTruthy();
-  expect(row("lab-cli").getByText("127.0.0.1:2577")).toBeTruthy();
-  expect(row("lab-cli").getByText(byContent(/^\/usr\/bin\/security \(2 locator arguments\)$/))).toBeTruthy();
-  expect(row("lab-cli").getByText("Rotation age not declared")).toBeTruthy();
-  await press(user, row("lab-cli").getByRole("button", { name: "Edit lab-cli" }));
-  const cliForm = within(await panel.findByRole("form", { name: "Edit credential reference lab-cli" }));
-  await enter(user, cliForm.getByLabelText("Maximum Rotation Age"), "720h");
+  await environmentMenu(user, "Credentials");
+  await waitFor(() => expect(row("lab-cli")).toEqual(["lab-cli", "MLLP endpoint", "OS keychain", "Not declared"]));
+  const cliForm = await editCredential(user, "lab-cli");
+  await enter(user, cliForm.getByRole("textbox", { name: "Maximum age" }), "720h");
   // While the edit is open, the command line re-points the same reference.
   // The window writes only what the person changed, so that change survives.
-  const meanwhile = await commandLine(["secret", "update", "--secrets", `${PROJECT}/cli-secrets.json`, "--name", "lab-cli", "--address", "127.0.0.1:2578"]);
+  const meanwhile = await commandLine(["secret", "update", "--secrets", `${PROJECT}/secrets.json`, "--name", "lab-cli", "--address", "127.0.0.1:2578"]);
   expect(meanwhile.code).toBe(0);
-  await press(user, cliForm.getByRole("button", { name: "Save changes" }));
-  await says("Credential reference lab-cli updated.");
-  expect(await writtenIdentity("cli-secrets.json")).toBe(journey.digest(`${PROJECT}/cli-secrets.json`));
-  expect(row("lab-cli").getByText("127.0.0.1:2578")).toBeTruthy();
-  const cliShown = await journey.commandLine(["secret", "show", "--secrets", `${PROJECT}/cli-secrets.json`]);
+  await act(user, cliForm.getByRole("button", { name: "Save" }));
+  await closed("Edit credential");
+  const cliShown = await journey.commandLine(["secret", "show", "--secrets", `${PROJECT}/secrets.json`]);
   expect(cliShown.stdout).toContain("  lab-cli store=os-keychain purpose=mllp-endpoint address=127.0.0.1:2578 generation=1\n");
-  expect(cliShown.stdout).toContain(" max-age: 720h\n");
-  expect(cliShown.stdout).toContain(`    command: ${LOCATOR} (2 locator arguments)\n`);
+  expect(cliShown.stdout).toContain(`    command: ${security} (2 locator arguments)\n`);
+  expect(cliShown.stdout.slice(cliShown.stdout.indexOf("  lab-cli "))).toContain(" max-age: 720h\n");
 });
 
 test("a send policy and a reset plan are saved under the identity of their bytes, refused when invalid, and read unchanged by target check and the reset reader", async () => {
   const user = userEvent.setup();
   const downstream = await journey.startDownstream("downstream/appointments.csv", "fixed");
-  await licensedProject(journey, user);
-  const panel = environment();
-  await enter(user, panel.getByLabelText("Target Config File"), "lab-target.json");
-  await enter(user, panel.getByLabelText("Environment Name"), "lab-siu");
-  await user.selectOptions(panel.getByLabelText("Classification"), "nonproduction");
-  await enter(user, panel.getByLabelText("Destination Address"), downstream.address);
-  await enter(user, panel.getByLabelText("Message timeout"), "500ms");
-  await press(user, panel.getByRole("button", { name: "Save target" }));
-  await says("Target configuration saved successfully.");
+  await project(user);
+  await addEnvironment(user, downstream.address, "TCP/MLLP");
+  const saves = () => revisions(ENVIRONMENT).length;
 
-  // A prefix that is not in canonical masked form is refused on save and
-  // nothing is written; the draft stays to be corrected. Enter adds a prefix.
-  await press(user, panel.getByRole("button", { name: "Send policy" }));
-  await press(user, await panel.findByRole("button", { name: "New send policy" }));
-  await enter(user, panel.getByLabelText("Approved destination prefix"), "127.0.0.5/8{Enter}");
-  expect(await panel.findByText("127.0.0.5/8", { selector: "code" })).toBeTruthy();
-  await press(user, panel.getByRole("button", { name: "Save policy" }));
-  await says("every approved destination is one CIDR prefix in canonical masked form, such as 127.0.0.0/8 or 10.1.0.0/16");
-  expect(panel.queryByText(/^Written to /)).toBeNull();
-  expect(() => journey.readFile(`${PROJECT}/send-policy.json`)).toThrow();
-  await enter(user, panel.getByLabelText("Approved destination prefix"), "127.0.0.0/8{Enter}");
-  const refusedPrefix = within(panel.getByText("127.0.0.5/8", { selector: "code" }).closest("li") as HTMLElement);
-  await press(user, refusedPrefix.getByRole("button", { name: "Remove" }));
-  await press(user, panel.getByRole("button", { name: "Save policy" }));
-  await says("Approved-destination policy saved.");
-  const policy = await writtenIdentity("send-policy.json");
-  expect(policy).toBe(journey.digest(`${PROJECT}/send-policy.json`));
+  // A range that is not in canonical masked form is refused at its field and
+  // nothing is saved; the draft stays to be corrected.
+  await environmentMenu(user, "Allowed destinations");
+  await press(user, within(await screen.findByRole("dialog", { name: "Allowed destinations" })).getByRole("button", { name: "Edit" }));
+  const ranges = within(await screen.findByRole("dialog", { name: "Edit allowed destinations" }));
+  await enter(user, ranges.getByRole("textbox", { name: "Name of range 1" }), "Loopback");
+  await enter(user, ranges.getByRole("textbox", { name: "Range 1" }), "127.0.0.5/8");
+  const before = saves();
+  await act(user, ranges.getByRole("button", { name: "Save" }));
+  expect((await ranges.findByRole("alert")).textContent).toContain("canonical masked form");
+  expect(saves()).toBe(before);
+  expect((ranges.getByRole("textbox", { name: "Range 1" }) as HTMLInputElement).value).toBe("127.0.0.5/8");
+  await enter(user, ranges.getByRole("textbox", { name: "Range 1" }), "127.0.0.0/8");
+  await act(user, ranges.getByRole("button", { name: "Save" }));
+  await closed("Edit allowed destinations");
+  await waitFor(() => expect(saves()).toBe(before + 1));
+  const policy = member(ENVIRONMENT, "policy");
+  expect(policy.sha256).toBe(journey.digest(policy.path));
+  expect(JSON.parse(journey.readFile(policy.path))).toEqual({ schema: "readmit-send-policy/v1", approved_destinations: ["127.0.0.0/8"] });
 
-  // target check reads the policy the window wrote, and decides what the
-  // window's own check decides: the destination is approved, and a check is
-  // not a send.
-  const checked = await commandLine(["target", "check", "--target", `${PROJECT}/lab-target.json`, "--policy", `${PROJECT}/send-policy.json`]);
+  // target check reads the policy the window wrote, as the window's own
+  // destination check decides it: the downstream is inside the range, an
+  // address outside it is refused, and a check is not a send.
+  const target = member(ENVIRONMENT, "target");
+  const checked = await commandLine(["target", "check", "--target", target.path, "--policy", policy.path]);
   expect(checked.stderr).toBe("");
   expect(checked.stdout).toContain("Approved destinations: 127.0.0.0/8\n");
   expect(checked.stdout).toContain("Send policy: denied (send_not_explicit)\n");
-  await press(user, panel.getByRole("button", { name: "Target" }));
-  await press(user, panel.getByRole("button", { name: "Test connection" }));
-  const decision = await panel.findByText(byContent(/^Send Policy Decision: /));
-  expect(decision.textContent).toBe("Send Policy Decision: Refused (Reason: send_not_explicit)");
+  await environmentMenu(user, "Check destination…");
+  const destination = within(await screen.findByRole("dialog", { name: "Check destination" }));
+  await enter(user, destination.getByRole("textbox", { name: "Address" }), downstream.address);
+  await act(user, destination.getByRole("button", { name: "Check" }));
+  expect((await destination.findByRole("status")).textContent).toMatch(/^Allowed/);
+  await enter(user, destination.getByRole("textbox", { name: "Address" }), "10.1.2.3:2575");
+  await act(user, destination.getByRole("button", { name: "Check" }));
+  expect((await destination.findByRole("status")).textContent).toBe("Refused · Outside every allowed range");
+  await press(user, destination.getByRole("button", { name: "Cancel" }));
   expect(downstream.received()).toHaveLength(0);
+  expect(downstream.connected()).toBe(0);
 
-  // A reset plan: an observation action without its file is refused, and the
-  // plan saved without it is the plan the reset reader runs, by identity.
-  await press(user, panel.getByRole("button", { name: "Reset plan" }));
-  await press(user, await panel.findByRole("button", { name: "New reset plan" }));
-  await enter(user, panel.getByLabelText("Environment Name Match"), "lab-siu");
-  await enter(user, panel.getByLabelText("Action ID"), "stop-listener");
-  await enter(user, panel.getByLabelText("Reset instructions"), "Stop the prior listen session and wait for it to exit.");
-  await press(user, panel.getByRole("button", { name: "Add action" }));
-  await enter(user, panel.getByLabelText("Action ID"), "empty-ledger");
-  await user.selectOptions(panel.getByLabelText("Reviewed Operator"), "observation_empty");
-  await enter(user, panel.getByLabelText("Reset instructions"), "The fresh listener exports an empty ledger.");
-  await press(user, panel.getByRole("button", { name: "Add action" }));
-  await press(user, panel.getByRole("button", { name: "Save plan" }));
-  await says("an observation_empty action names one receiver observation file inside the plan's own directory");
-  expect(panel.queryByText(/^Written to /)).toBeNull();
-  const ledgerAction = within(panel.getByText("empty-ledger").closest(".action-item") as HTMLElement);
-  await press(user, ledgerAction.getByRole("button", { name: "Remove" }));
-  await press(user, panel.getByRole("button", { name: "Save plan" }));
-  await says("Fixture reset plan saved.");
-  const plan = await writtenIdentity("reset-plan.json");
-  expect(plan).toBe(journey.digest(`${PROJECT}/reset-plan.json`));
+  // A reset: an action that checks an observation names one, or is refused
+  // before it is added; the reset saved without it is the plan the reset
+  // reader runs, by identity.
+  await press(user, within(page().getByRole("region", { name: "Reset" })).getByRole("button", { name: "Add reset" }));
+  let sheet = within(await screen.findByRole("dialog", { name: "Edit reset" }));
+  await enter(user, sheet.getByRole("textbox", { name: "Name" }), "Fresh listener");
+  await press(user, sheet.getByRole("button", { name: "Add action" }));
+  let action = within(await screen.findByRole("dialog", { name: "Add action" }));
+  await enter(user, action.getByRole("textbox", { name: "Name" }), "Stop listener");
+  await user.selectOptions(action.getByRole("combobox", { name: "Type" }), "Manual confirmation");
+  await enter(user, action.getByRole("textbox", { name: "Instructions" }), "Stop the prior listen session and wait for it to exit.");
+  await press(user, action.getByRole("button", { name: "Done" }));
+  sheet = within(await screen.findByRole("dialog", { name: "Edit reset" }));
+  await press(user, sheet.getByRole("button", { name: "Add action" }));
+  action = within(await screen.findByRole("dialog", { name: "Add action" }));
+  await enter(user, action.getByRole("textbox", { name: "Name" }), "Empty ledger");
+  await user.selectOptions(action.getByRole("combobox", { name: "Type" }), "Check empty observation");
+  await press(user, action.getByRole("button", { name: "Done" }));
+  expect((await action.findByRole("alert")).textContent).toBe("Choose the observation to check.");
+  await user.keyboard("{Escape}");
+  await press(user, within(await screen.findByRole("dialog", { name: "Save changes?" })).getByRole("button", { name: "Discard" }));
+  sheet = within(await screen.findByRole("dialog", { name: "Edit reset" }));
+  const planned = Array.from(sheet.getByRole("table", { name: "Reset actions" }).querySelectorAll("tbody tr")).map((entry) => entry.querySelector("th")?.textContent);
+  expect(planned).toEqual(["Stop listener"]);
+  await act(user, sheet.getByRole("button", { name: "Save" }));
+  await closed("Edit reset");
+  const plan = member(ENVIRONMENT, "reset");
+  expect(plan.sha256).toBe(journey.digest(plan.path));
+  const actions = (JSON.parse(journey.readFile(plan.path)) as { actions: { id: string; operator: string }[] }).actions;
+  expect(actions).toMatchObject([{ operator: "operator_confirms" }]);
 
   const reset = await commandLine([
-    "target", "reset", "--target", `${PROJECT}/lab-target.json`, "--plan", `${PROJECT}/reset-plan.json`,
-    "--outcome", `${PROJECT}/reset-1.json`, "--confirm", "stop-listener",
+    "target", "reset", "--target", member(ENVIRONMENT, "target").path, "--plan", plan.path,
+    "--outcome", `${PROJECT}/reset-1.json`, "--confirm", actions[0]!.id,
   ]);
   expect(reset.stderr).toBe("");
   expect(reset.code).toBe(0);
-  expect(reset.stdout).toContain(`Reset plan: ${plan} (readmit-reset-plan/v1)\n`);
+  expect(reset.stdout).toContain(`Reset plan: ${plan.sha256} (readmit-reset-plan/v1)\n`);
   const outcome = JSON.parse(journey.readFile(`${PROJECT}/reset-1.json`)) as { plan_sha256: string; outcome: string };
-  expect(outcome).toMatchObject({ plan_sha256: plan, outcome: "confirmed" });
-});
+  expect(outcome).toMatchObject({ plan_sha256: plan.sha256, outcome: "confirmed" });
 
-test.each([false, true])("a credential bound from the default target file resolves the displayed secrets document in target check (symlinked: %s)", async (symlinked) => {
-  const user = userEvent.setup();
-  const downstream = await journey.startDownstream("downstream/default-target-ledger.csv", "fixed");
-  await licensedProject(journey, user);
-  if (symlinked) {
-    journey.makeFolder(`${PROJECT}/nested/targets`);
-    journey.writeFile(`${PROJECT}/nested/secrets.json`, "{}");
-    journey.makeLink(`${PROJECT}/targets`, journey.path(PROJECT, "nested/targets"));
-    journey.makeLink(`${PROJECT}/alias`, journey.path(PROJECT, "nested/targets"));
-  }
-  const panel = environment();
-  await press(user, panel.getByRole("button", { name: "Credential References" }));
-  if (symlinked) {
-    // The facade cleans a workspace-relative name before opening it. Keeping
-    // alias/.. in an absolute binding would instead reach nested/secrets.json.
-    await enter(user, panel.getByLabelText("Secrets Document File"), "alias/../secrets.json");
-  }
-  await register(user, { name: "default-target-key", address: downstream.address, command: LOCATOR });
-  await says("Secret reference registered successfully.");
-
-  await press(user, panel.getByRole("button", { name: "Target" }));
-  expect((panel.getByLabelText("Target Config File") as HTMLInputElement).value).toBe("targets/default.json");
-  await enter(user, panel.getByLabelText("Environment Name"), "default-lab");
-  await user.selectOptions(panel.getByLabelText("Classification"), "nonproduction");
-  await enter(user, panel.getByLabelText("Destination Address"), downstream.address);
-  await user.selectOptions(panel.getByLabelText("Credential Reference"), "default-target-key");
-  const secretsPath = journey.path(PROJECT, "secrets.json");
-  expect(panel.getByText(secretsPath, { selector: "code" })).toBeTruthy();
-  await press(user, panel.getByRole("button", { name: "Save target" }));
-  await says("Target configuration saved successfully.");
-
-  const saved = JSON.parse(journey.readFile(`${PROJECT}/targets/default.json`)) as { credential: { secrets_file: string; reference: string } };
-  expect(saved.credential).toEqual({ secrets_file: secretsPath, reference: "default-target-key" });
-  const checked = await commandLine(["target", "check", "--target", `${PROJECT}/targets/default.json`]);
-  expect(checked.code).toBe(0);
-  expect(checked.stderr).toBe("");
-  expect(checked.stdout).toContain("Environment: default-lab\n");
-  expect(checked.stdout).toContain("Diagnosis: reachable (phase=confirm)\n");
+  // The window's own reset of the same plan needs the manual step confirmed,
+  // and reports it done.
+  await press(user, await within(page().getByRole("region", { name: "Reset" })).findByRole("button", { name: "Reset" }));
+  const review = within(await screen.findByRole("dialog", { name: "Reset" }));
+  const final = (await review.findByRole("button", { name: "Reset" })) as HTMLButtonElement;
+  await review.findByText("Stop the prior listen session and wait for it to exit.");
+  expect(final.disabled).toBe(true);
+  await user.click(review.getByRole("checkbox", { name: "Done" }));
+  await act(user, final);
+  expect((await screen.findByRole("list", { name: "Reset results" })).textContent).toBe("Stop listener · Done");
   expect(downstream.received()).toHaveLength(0);
 });

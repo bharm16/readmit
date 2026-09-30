@@ -22,6 +22,7 @@ import (
 	"github.com/bharm16/readmit/internal/desktop"
 	"github.com/bharm16/readmit/internal/fixturereset"
 	"github.com/bharm16/readmit/internal/replay"
+	"github.com/bharm16/readmit/internal/runnerprotocol"
 	"github.com/bharm16/readmit/internal/secret"
 	"github.com/bharm16/readmit/internal/sendpolicy"
 )
@@ -149,12 +150,26 @@ func TestANewEnvironmentDraftProjectsValidatedDefaultsAndLeavesTransportUnchosen
 	}
 }
 
+// The name an environment's target records is the environment a run's
+// prepared inputs bind, which a runner is configured for by its hub's
+// environment ID: whatever the display name, it is one the runner accepts.
+func TestAnEnvironmentsTargetNameIsAnEnvironmentARunnerAccepts(t *testing.T) {
+	app, context := namedProject(t)
+	for index, display := range []string{"Scheduling QA", "Lab_2.East", "  QA  (night) "} {
+		saved := app.SaveItem(desktop.SaveItemRequest{Context: context, Kind: desktop.EnvironmentItem, IntentID: "env-" + strconv.Itoa(index),
+			Draft: desktop.ItemDraft{Name: display, Environment: environmentDraft("qa.example:2575", "nonproduction", "plain")}})
+		if saved.Outcome != desktop.SavedOutcome || saved.Projection == nil || !runnerprotocol.ID(saved.Projection.Environment.Name) {
+			t.Fatalf("%q was saved as a target no runner can be configured for: %+v", display, saved)
+		}
+	}
+}
+
 func TestSaveNeverApprovesATransportAndApprovalIsItsOwnReviewedAction(t *testing.T) {
 	app, context := namedProject(t)
 	request := desktop.SaveItemRequest{Draft: desktop.ItemDraft{Name: "Scheduling QA", Environment: environmentDraft("qa.example:2575", "nonproduction", "plain")}, IntentID: "first"}
 	request.Draft.Environment.ApprovedTransport = true
 	first := app.SaveItem(desktop.SaveItemRequest{Context: context, Kind: desktop.EnvironmentItem, Draft: request.Draft, IntentID: "first"})
-	if first.Outcome != desktop.SavedOutcome || first.Projection == nil || first.Projection.Environment.ApprovedTransport || first.Projection.Environment.Name != "Scheduling-QA" {
+	if first.Outcome != desktop.SavedOutcome || first.Projection == nil || first.Projection.Environment.ApprovedTransport || first.Projection.Environment.Name != "scheduling-qa" {
 		t.Fatalf("a save of a plain transport to a host name approved it: %+v", first)
 	}
 	if summary := catalogRow(t, app, context, *first.Saved).Summary.Environment; summary.TransportApproved || !summary.ApprovalRequired {
@@ -166,7 +181,7 @@ func TestSaveNeverApprovesATransportAndApprovalIsItsOwnReviewedAction(t *testing
 		t.Fatalf("a repeated click: %+v", again)
 	}
 	second := app.SaveItem(desktop.SaveItemRequest{Context: context, Kind: desktop.EnvironmentItem, Draft: request.Draft, IntentID: "second"})
-	if second.Outcome != desktop.SavedOutcome || second.Projection.Environment.Name != "Scheduling-QA-2" {
+	if second.Outcome != desktop.SavedOutcome || second.Projection.Environment.Name != "scheduling-qa-2" {
 		t.Fatalf("a second environment of the same name: %+v", second)
 	}
 	// Nothing reaches an address whose transport nobody approved.
@@ -199,7 +214,7 @@ func TestSaveNeverApprovesATransportAndApprovalIsItsOwnReviewedAction(t *testing
 	edit := desktop.ItemDraft{Name: "Scheduling QA renamed", Environment: environmentDraft("qa.example:2575", "nonproduction", "plain")}
 	edit.Environment.Name, edit.Environment.MessageTimeout = "something-else", "6s"
 	edited := app.SaveItem(desktop.SaveItemRequest{Context: context, Kind: desktop.EnvironmentItem, Item: first.Saved.ID, BaseRevision: "2", Draft: edit, IntentID: "edit"})
-	if edited.Outcome != desktop.SavedOutcome || edited.Projection.Environment.Name != "Scheduling-QA" || !edited.Projection.Environment.ApprovedTransport {
+	if edited.Outcome != desktop.SavedOutcome || edited.Projection.Environment.Name != "scheduling-qa" || !edited.Projection.Environment.ApprovedTransport {
 		t.Fatalf("an edit that keeps the transport: %+v", edited)
 	}
 	// A review prepared before a change is stale, and a changed address
@@ -244,7 +259,7 @@ func TestOpenItemDraftReturnsSavedValuesAndDuplicateKeepsTheOriginal(t *testing.
 	draft := opened.Draft
 	if opened.State != desktop.Completed || opened.New || *opened.Ref != original || draft == nil || draft.Name != "Scheduling QA" ||
 		draft.Environment.Address != "127.0.0.1:2575" || draft.SendPolicy == nil || !slices.Equal(draft.SendPolicy.ApprovedDestinations, []string{"127.0.0.1/32"}) ||
-		draft.ResetPlan == nil || draft.ResetPlan.Environment != "Scheduling-QA" || draft.ResetPlan.Actions[0].ID != "stop-listener" ||
+		draft.ResetPlan == nil || draft.ResetPlan.Environment != "scheduling-qa" || draft.ResetPlan.Actions[0].ID != "stop-listener" ||
 		draft.ResetPlan.Actions[1].ID != "ledger-is-empty" || draft.ResetPlan.Actions[1].Authority != fixturereset.ReadDeclaredFile ||
 		draft.Links == nil || draft.Links.Observation != observation.Saved.ID || draft.Links.ResetName != "Empty appointment store" {
 		t.Fatalf("the saved environment's draft: %+v", opened)
@@ -259,11 +274,11 @@ func TestOpenItemDraftReturnsSavedValuesAndDuplicateKeepsTheOriginal(t *testing.
 	// with a name of its own, and the original exactly as it was.
 	draft.Name = "Scheduling QA copy"
 	copied := app.SaveItem(desktop.SaveItemRequest{Context: context, Kind: desktop.EnvironmentItem, Draft: *draft, IntentID: "duplicate"})
-	if copied.Outcome != desktop.SavedOutcome || copied.Saved.ID == original.ID || copied.Projection.Environment.Name != "Scheduling-QA-copy" ||
-		copied.Projection.ResetPlan.Environment != "Scheduling-QA-copy" {
+	if copied.Outcome != desktop.SavedOutcome || copied.Saved.ID == original.ID || copied.Projection.Environment.Name != "scheduling-qa-copy" ||
+		copied.Projection.ResetPlan.Environment != "scheduling-qa-copy" {
 		t.Fatalf("a duplicate: %+v", copied)
 	}
-	if again := app.OpenItemDraft(desktop.ItemRequest{Context: context, Ref: original}); *again.Ref != original || again.Draft.Environment.Name != "Scheduling-QA" {
+	if again := app.OpenItemDraft(desktop.ItemRequest{Context: context, Ref: original}); *again.Ref != original || again.Draft.Environment.Name != "scheduling-qa" {
 		t.Fatalf("duplicating changed the original: %+v", again)
 	}
 }
@@ -596,5 +611,32 @@ func TestAnEnvironmentRefusalIsAnsweredAtTheFieldThatHoldsIt(t *testing.T) {
 		if refused.Outcome != desktop.InvalidOutcome || len(refused.Problems) != 1 || refused.Problems[0].Field != field {
 			t.Errorf("a refusal at %s: %+v", field, refused.Problems)
 		}
+	}
+}
+
+func TestACredentialEditKeepsAChangeMadeElsewhereWhileItWasOpen(t *testing.T) {
+	app, context := namedProject(t)
+	if created := app.SaveCredential(desktop.CredentialSaveRequest{Context: context, Name: "lab-cli", Purpose: secret.MLLPEndpoint, Store: secret.OSKeychain,
+		Address: "127.0.0.1:2577", Command: "/usr/bin/security"}); created.State != desktop.Completed {
+		t.Fatalf("a new credential: %+v", created)
+	}
+	shown := &desktop.CredentialShown{Store: secret.OSKeychain, Address: "127.0.0.1:2577", Command: "/usr/bin/security"}
+	// While the edit is open, the reference is re-pointed elsewhere.
+	if moved := app.SaveCredential(desktop.CredentialSaveRequest{Context: context, Name: "lab-cli", Update: true, Store: secret.OSKeychain,
+		Address: "127.0.0.1:2578", Command: "/usr/bin/security"}); moved.State != desktop.Completed {
+		t.Fatalf("the change made elsewhere: %+v", moved)
+	}
+	// The edit changed only the maximum age; the address it still shows is
+	// the one it opened with, not a change.
+	saved := app.SaveCredential(desktop.CredentialSaveRequest{Context: context, Name: "lab-cli", Update: true, Store: secret.OSKeychain,
+		Address: "127.0.0.1:2577", Command: "/usr/bin/security", MaxAge: "720h", Shown: shown})
+	if saved.State != desktop.Completed || saved.Credentials[0].Address != "127.0.0.1:2578" || saved.Credentials[0].MaxAge != "720h" {
+		t.Fatalf("the edit overwrote the change made elsewhere: %+v", saved)
+	}
+	// A member the person did change is written, whatever it was before.
+	changed := app.SaveCredential(desktop.CredentialSaveRequest{Context: context, Name: "lab-cli", Update: true, Store: secret.OSKeychain,
+		Address: "127.0.0.1:2579", Command: "/usr/bin/security", MaxAge: "720h", Shown: shown})
+	if changed.State != desktop.Completed || changed.Credentials[0].Address != "127.0.0.1:2579" {
+		t.Fatalf("an address the person changed: %+v", changed)
 	}
 }

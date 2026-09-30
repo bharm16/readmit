@@ -16,7 +16,8 @@ import userEvent from "@testing-library/user-event";
 import { OVERSCAN } from "../DataTable";
 import { ROW_REM } from "../geometry";
 import { rootFontSize } from "../measure";
-import { Journey, press, region } from "../testkit/journey";
+import { Journey, press } from "../testkit/journey";
+import { page, sidebar } from "../testkit/navigation";
 import { measuring } from "./probes.js";
 import { BOOKING, declareMllpImport, framed, GRID_WINDOW, licensedProject, logTiming, openedCase } from "./steps";
 
@@ -122,36 +123,49 @@ test.skipIf(!measuring())(
       console.log(`[window calls] ${scrolls} next-window scrolls each called: ${called}`);
     }
 
-    // Workspace search: the click to the answer drawn.
-    const commands = within(region("Commands and search"));
-    await user.type(commands.getByLabelText("Search workspace"), "CTL-1");
+    // Message search: Search in the Search messages sheet to the matching
+    // messages drawn, read with no index set up.
     const searches: number[] = [];
     for (let sample = 0; sample <= SAMPLES; sample++) {
-      const before = journey.callsTo("Search").length;
+      await press(user, messages.getByRole("button", { name: "Search messages" }));
+      const sheet = within(await screen.findByRole("dialog", { name: "Search messages" }));
+      const field = sheet.getByRole("searchbox", { name: "Search" });
+      await user.clear(field);
+      await user.type(field, sample % 2 === 0 ? "CTL-1" : "SYNTH-1");
+      await press(user, sheet.getByRole("radio", { name: "Message content" }));
+      const before = journey.callsTo("ReadMessages").length;
       const elapsed = await timed(
-        () => press(user, commands.getByRole("button", { name: "Search" })),
+        () => press(user, sheet.getByRole("button", { name: "Search" })),
         () =>
           waitFor(() => {
-            const calls = journey.callsTo("Search");
-            expect(calls.length).toBe(before + 1);
-            expect(calls.at(-1)?.settled).toBe(true);
-            expect(commands.getByRole("list", { name: "Search results" })).toBeTruthy();
-          }),
+            const answered = journey.callsTo("ReadMessages").slice(before).filter((call) => call.settled && (call.result as { state?: string }).state !== "busy");
+            expect(answered.at(-1)?.result).toMatchObject({ state: "completed", matched: OCCURRENCES });
+            expect(drawn()).toBeGreaterThan(0);
+          }, { timeout: 60_000 }),
       );
       if (sample > 0) searches.push(elapsed);
     }
-    logTiming("workspace search", searches);
+    logTiming(`message content search of ${OCCURRENCES} occurrences`, searches);
 
-    // Draft retention: one keystroke to the window saying it is retained.
-    const note = within(screen.getByRole("region", { name: "Note" }));
+    // Draft retention: one keystroke in a new note to the facade answering
+    // that the draft is retained.
+    await press(user, sidebar().getByRole("button", { name: /^Project: / }));
+    await press(user, await screen.findByRole("menuitem", { name: "Project settings" }));
+    await press(user, within(await screen.findByRole("dialog", { name: "Project settings" })).getByRole("button", { name: "Open notes" }));
+    await press(user, (await page().findAllByRole("button", { name: "New note" }))[0]!);
+    const note = within(await screen.findByRole("dialog", { name: "New note" }));
+    await user.type(note.getByLabelText("Name"), "Timing");
     const retentions: number[] = [];
     for (let sample = 0; sample <= SAMPLES; sample++) {
+      const before = journey.callsTo("SaveEditorDraft").length;
       const elapsed = await timed(
-        () => user.type(note.getByLabelText("Body"), "x"),
+        () => user.type(note.getByLabelText("Content"), "x"),
         () =>
           waitFor(() => {
-            expect(note.queryByText("Retaining this draft…")).toBeNull();
-            expect(note.getByText("Retained. It will come back if this window stops.")).toBeTruthy();
+            const calls = journey.callsTo("SaveEditorDraft");
+            expect(calls.length).toBeGreaterThan(before);
+            expect(calls.every((call) => call.settled)).toBe(true);
+            expect(calls.at(-1)?.result).toMatchObject({ state: "completed" });
           }),
       );
       if (sample > 0) retentions.push(elapsed);

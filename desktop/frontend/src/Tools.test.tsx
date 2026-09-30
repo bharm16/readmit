@@ -7,7 +7,7 @@ import userEvent from "@testing-library/user-event";
 import { renderApp } from "./testkit/app";
 import { folderWithCase, WORKSPACE_ROOT } from "./testkit/fixtures";
 import { details, goTo, page, sidebar } from "./testkit/navigation";
-import type { BenchmarkDefaults, BenchmarkInput, BenchmarkRecord, RequestContext } from "./bindings";
+import type { BenchmarkDefaults, BenchmarkInput, BenchmarkRecord, BenchmarkResult, RequestContext } from "./bindings";
 
 const PLAN = { schema: "readmit-import-plan/v1", framing: "mllp", terminator: "cr", encoding: "utf-8", direction: "unknown", members: [] } as const;
 
@@ -212,4 +212,31 @@ test("Generate input keeps its seed and base time while editing and adds the nam
   expect(start.getByText("Synthetic")).toBeTruthy();
   expect(facade.callsTo("StartBenchmark")).toHaveLength(0);
   expect(facade.callsTo("BenchmarkDefaults").length).toBeGreaterThan(0);
+});
+
+
+test("Stop preserves partial benchmark counts without claiming completed throughput or restarting", async () => {
+  const partial = record("partial", "Scheduling sample", "2026-09-29T11:00:00Z", false);
+  const { user, facade } = await openBenchmarks({
+    ListBenchmarkInputs: context => ({ state: "completed", context, inputs: [input("input-1", "Scheduling sample")] }),
+    CorpusProgress: () => ({ state: "completed", progress: { operation: "scan", messages: 0, bytes: 371000, records: 1234, occurrences: 1234, batches: 5 } }),
+    Cancel: async () => {},
+    OpenBenchmark: request => ({ state: "completed", context: request.context, result: partial, availability: "available" }),
+  });
+  const scanning = facade.park("StartBenchmark");
+  await user.click(await page().findByRole("button", { name: "Start benchmark" }));
+  const sheet = within(await screen.findByRole("dialog", { name: "Start benchmark" }));
+  await user.dblClick(sheet.getByRole("button", { name: "Start benchmark" }));
+  await page().findByText(/Scanning · 1,234 records/);
+  expect(facade.callsTo("StartBenchmark")).toHaveLength(1);
+  await user.click(sidebar().getByRole("button", { name: "Stop" }));
+  expect(facade.oneCall("Cancel")).toEqual(["corpus"]);
+  facade.reply({ ListBenchmarks: context => ({ state: "completed", context, results: [partial] }) });
+  scanning.resolve({ state: "cancelled", context: facade.oneCall("StartBenchmark")[0].context, result: partial, availability: "available" } satisfies BenchmarkResult);
+  const shown = within(await screen.findByRole("region", { name: "Details" }));
+  await shown.findByText("Incomplete");
+  expect(shown.getByText("1,234")).toBeTruthy();
+  expect(shown.getByText(/371,000 bytes/)).toBeTruthy();
+  for (const label of ["Duration", "Throughput", "Peak scan buffer"]) expect(shown.getByText(label).closest(".value-row")?.querySelector("dd")?.textContent).toBe("—");
+  expect(facade.callsTo("StartBenchmark")).toHaveLength(1);
 });

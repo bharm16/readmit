@@ -119,7 +119,7 @@ export function AttachmentsList({
   );
 }
 
-export function FilesList({ files, onOpen }: { files: ProjectFile[]; onOpen: (file: ProjectFile) => void }) {
+export function FilesList({ files, failure, onOpen }: { files: ProjectFile[]; failure?: string | null; onOpen: (file: ProjectFile) => void }) {
   const columns: Column<ProjectFile>[] = [
     { key: "name", header: "File", priority: 1, minWidth: 15, render: (file) => file.name },
     {
@@ -135,6 +135,7 @@ export function FilesList({ files, onOpen }: { files: ProjectFile[]; onOpen: (fi
     },
   ];
   const [selected, setSelected] = useState<string | null>(null);
+  if (failure) return <p role="alert">{failure}</p>;
   if (files.length === 0) return <EmptyState title="No other files" />;
   return (
     <DataTable

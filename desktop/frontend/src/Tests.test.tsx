@@ -217,6 +217,36 @@ test("Create test from selected case messages opens Setup prefilled in source or
   expect((page().getByRole("textbox", { name: "Name" }) as HTMLInputElement).value).toBe(CASE_ENTRY);
 });
 
+test("an environment saved after Tests was last listed is offered to a test created from a case's messages", async () => {
+  const user = userEvent.setup();
+  let environments: CatalogItem[] = [];
+  const { facade } = await renderApp({
+    SelectWorkspace: () => folderWithCase(),
+    OpenCase: () => caseResult(),
+    ReadMessages: () => messagesResult([messageRow(GRID_OCCURRENCE)]),
+    OpenItemDraft: (request) => newDraftAnswer(request),
+  });
+  facade.reply({
+    ListCatalog: (query) =>
+      query.kind === "environment"
+        ? { state: "completed", context: query.context, page: { items: environments, total: environments.length, snapshot: "s", recorded: true, incomplete: [] } }
+        : catalog([])(query, facade),
+  });
+  await goTo(user, "Projects");
+  await user.click(screen.getByRole("button", { name: "Open" }));
+  await goTo(user, "Tests");
+  await page().findByText("No tests yet");
+  // The environment is saved elsewhere after the list was read.
+  environments = [QA];
+  await goTo(user, "Cases");
+  await user.dblClick(await findCaseRow(CASE_ENTRY));
+  await page().findByRole("table", { name: "Messages" });
+  await user.click(await screen.findByRole("button", { name: "More case actions" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Create test" }));
+  const choice = await page().findByRole("combobox", { name: "Environment" });
+  await waitFor(() => expect(within(choice).queryByRole("option", { name: "Scheduling QA" })).toBeTruthy());
+});
+
 test("an ACK-only test is created through Setup, Checks and Review with one Create test", { timeout: 15_000 }, async () => {
   const user = userEvent.setup();
   const { facade } = await openTests(user, [], {
@@ -745,4 +775,46 @@ test("an interrupted save is listed with its reason and Discard drops only its s
   expect(facade.oneCall("DiscardIncompleteSave")[0].context).toBeTruthy();
   expect(facade.callsTo("ListCatalog").filter((call) => (call.args[0] as CatalogQuery).kind === "test").length).toBeGreaterThan(reads);
   expect(page().getByRole("table", { name: "Tests" })).toBeTruthy();
+});
+
+
+test("a failed editor read ends Reading and Retry opens the saved draft without writing", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openTests(user, [RESCHEDULE], {
+    OpenItemDraft: request => savedAnswer(request),
+    TestHistory: request => ({ state: "completed", context: request.context, versions: [], runs: [] }),
+  });
+  await user.dblClick(await page().findByText("Reschedule keeps one appointment"));
+  await waitFor(() => expect(page().getByRole("button", { name: "Edit" })).toHaveProperty("disabled", false));
+  facade.reply({ OpenItemDraft: request => ({ state: "failed", context: request.context, new: false, reason: "The test could not be opened." }) });
+  await user.click(page().getByRole("button", { name: "Edit" }));
+  await page().findByText("The test could not be opened.");
+  expect(page().queryByText("Reading…")).toBeNull();
+  facade.reply({ OpenItemDraft: request => savedAnswer(request) });
+  await user.click(page().getByRole("button", { name: "Retry" }));
+  await page().findByRole("tab", { name: "Checks" });
+  expect(facade.callsTo("SaveItem")).toHaveLength(0);
+});
+
+
+test("returning to a dirty saved-test edit preserves its values and refreshes newly available environments", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openTests(user, [RESCHEDULE], {
+    OpenItemDraft: request => savedAnswer(request),
+    TestHistory: request => ({ state: "completed", context: request.context, versions: [], runs: [] }),
+  });
+  await user.dblClick(await page().findByText("Reschedule keeps one appointment"));
+  await user.click(await page().findByRole("button", { name: "Edit" }));
+  const name = await page().findByRole("textbox", { name: "Name" });
+  await user.clear(name);
+  await user.type(name, "Kept draft");
+  await goTo(user, "Tools");
+  const newEnvironment = { ...QA, ref: { ...QA.ref, id: "new-environment" }, name: "New staging" };
+  facade.reply({ ListCatalog: query => query.kind === "environment"
+    ? { state: "completed", context: query.context, page: { items: [QA, newEnvironment], total: 2, snapshot: "new", recorded: true, incomplete: [] } }
+    : catalog([RESCHEDULE])(query, facade) });
+  await goTo(user, "Tests");
+  expect(await page().findByRole("textbox", { name: "Name" })).toHaveProperty("value", "Kept draft");
+  await within(page().getByRole("combobox", { name: "Environment" })).findByRole("option", { name: "New staging" });
+  expect(facade.callsTo("SaveItem")).toHaveLength(0);
 });

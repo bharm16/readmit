@@ -10,13 +10,25 @@
 // defect is the kind an interface investigation finds: in the defective mode
 // a reschedule is matched on the filler ID (SCH-2) instead, finds nothing,
 // and is answered AE with the ledger unchanged; the fixed mode matches on the
-// placer ID and answers AA. After every message it rewrites its own export —
+// placer ID and answers AA. The duplicating mode is the same defect as a
+// busy receiver commits it: the reschedule it cannot match on the filler ID is
+// booked as a new appointment under that ID and answered AA, so the ledger
+// holds two appointments where one was moved. After every message it rewrites its own export —
 // a CSV of the ledger, written whole and renamed into place — which is the
 // external state a journey observes.
+//
+// Given an observation path it also keeps the observation handoff docs/listen.md
+// documents for a fixture receiver: a readmit-observation/v1 snapshot of its
+// appointment records and the occurrences it processed, written inconsistent,
+// updated, written consistent and only then acknowledged, and a ZRT receipt
+// segment naming its session and its own received occurrence on every ACK. The
+// snapshot is written from that description alone, so a test run that reads it
+// is reading a receiver it did not write.
 //
 // This file is JavaScript for the same reason as bridge-process.js;
 // downstream.d.ts states its interface.
 import { createServer } from "node:net";
+import { randomBytes } from "node:crypto";
 import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
@@ -24,9 +36,13 @@ const START = 0x0b;
 const END = [0x1c, 0x0d];
 
 /** Starts the downstream system on an ephemeral loopback port. */
-export function startDownstream({ exportPath, mode = "defective" }) {
+export function startDownstream({ exportPath, observationPath, mode = "defective" }) {
   const state = {
     mode,
+    observationPath,
+    session: randomBytes(16).toString("hex"),
+    processed: [],
+    records: [],
     received: [],
     ledger: new Map(),
     held: null,
@@ -40,6 +56,7 @@ export function startDownstream({ exportPath, mode = "defective" }) {
     renameSync(`${exportPath}.partial`, exportPath);
   };
   writeExport();
+  if (observationPath) writeObservation(state, true);
 
   const server = createServer((socket) => {
     state.connections.add(socket);
@@ -59,7 +76,9 @@ export function startDownstream({ exportPath, mode = "defective" }) {
         }
         const payload = wire.subarray(1, wire.length - 2).toString("latin1");
         state.received.push(payload);
+        if (state.observationPath) writeObservation(state, false);
         const reply = frame(answer(state, payload));
+        if (state.observationPath) writeObservation(state, true);
         writeExport();
         if (state.holding) {
           // The message was received and applied; its acknowledgement waits,
@@ -102,6 +121,11 @@ export function startDownstream({ exportPath, mode = "defective" }) {
       reset() {
         state.ledger.clear();
         writeExport();
+        if (state.observationPath) {
+          state.processed = [];
+          state.records = [];
+          writeObservation(state, true);
+        }
       },
       /** Every message payload received, in order, exactly as it arrived. */
       received() {
@@ -167,8 +191,8 @@ function answer(state, payload) {
   if (trigger === "S12") {
     state.ledger.set(placer, start);
   } else if (trigger === "S13") {
-    const key = state.mode === "defective" ? filler : placer;
-    if (state.ledger.has(key)) {
+    const key = state.mode === "fixed" ? placer : filler;
+    if (state.ledger.has(key) || state.mode === "duplicating") {
       state.ledger.set(key, start);
     } else {
       code = "AE";
@@ -178,11 +202,63 @@ function answer(state, payload) {
     code = "AR";
     error = "unsupported trigger";
   }
+  if (state.observationPath) applyToRecords(state, message, trigger, control, code === "AA" || state.mode === "duplicating");
   const s = message.separator;
   const segments = [
     ["MSH", "^~\\&", "DOWNSTREAM", "SYNTHETIC", message.field("MSH", 3), message.field("MSH", 4), "20260101120000+0000", "", `ACK^${trigger}^ACK`, `ACK-${control}`, "P", "2.5.1"].join(s),
     ["MSA", code, control].join(s),
   ];
   if (error) segments.push(["ERR", "", "", "", "E", "", "", "", error].join(s));
+  if (state.observationPath) segments.push(["ZRT", "readmit-receipt/v1", state.session, state.processed.at(-1).occurrence_id].join(s));
   return segments.join("\r") + "\r";
+}
+
+/** An EI or CX identifier with its assigning authority, as the observation
+ * handoff records it: value, namespace, universal ID and its type. */
+function identifier(message, value, authority) {
+  const sub = "&";
+  const parts = (authority ?? "").split(sub);
+  return { value, namespace: parts[0] ?? "", universal_id: parts[1] ?? "", universal_id_type: parts[2] ?? "" };
+}
+
+/** Records the occurrence this receiver processed and, for an accepted
+ * booking or reschedule, the appointment record it keeps: a reschedule
+ * updates the record it names, except in the duplicating mode, which books it
+ * again as a new record. */
+function applyToRecords(state, message, trigger, control, accepted) {
+  const occurrence = `s0001-e${String(state.processed.length + 1).padStart(6, "0")}`;
+  state.processed.push({ occurrence_id: occurrence, control_id: control });
+  if (!accepted) return;
+  const component = (value, index) => value.split(message.component)[index] ?? "";
+  const pid = message.field("PID", 3).split("~")[0] ?? "";
+  const placer = message.field("SCH", 1);
+  const filler = message.field("SCH", 2);
+  const record = {
+    patient_id: identifier(message, component(pid, 0), component(pid, 3)),
+    placer_id: { value: component(placer, 0), namespace: component(placer, 1), universal_id: component(placer, 2), universal_id_type: component(placer, 3) },
+    filler_id: { value: component(filler, 0), namespace: component(filler, 1), universal_id: component(filler, 2), universal_id_type: component(filler, 3) },
+    appointment_start: component(message.field("SCH", 11), 3),
+  };
+  const same = state.records.findIndex((held) => held.filler_id.value === record.filler_id.value && held.placer_id.value === record.placer_id.value);
+  if (trigger === "S13" && state.mode === "fixed" && same >= 0) {
+    state.records[same] = { ...state.records[same], appointment_start: record.appointment_start };
+    return;
+  }
+  state.records.push({ record_id: `r${String(state.records.length + 1).padStart(6, "0")}`, ...record });
+}
+
+/** Installs the observation snapshot whole, by a rename in its folder. */
+function writeObservation(state, consistent) {
+  mkdirSync(dirname(state.observationPath), { recursive: true });
+  const snapshot = {
+    schema: "readmit-observation/v1",
+    profile: "readmit-siu-v1",
+    session_id: state.session,
+    mode: state.mode === "fixed" ? "fixed" : "defective",
+    processed: state.processed,
+    consistent,
+    records: state.records,
+  };
+  writeFileSync(`${state.observationPath}.partial`, JSON.stringify(snapshot) + "\n", { mode: 0o600 });
+  renameSync(`${state.observationPath}.partial`, state.observationPath);
 }

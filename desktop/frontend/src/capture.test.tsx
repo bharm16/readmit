@@ -427,3 +427,26 @@ test("Escape closes a sheet without stopping capture and the indicator returns t
   expect(await page().findByText("Waiting for messages", undefined, { timeout: 3000 })).toBeTruthy();
   expect(page().getByRole("heading", { level: 1, name: "Capture" })).toBeTruthy();
 });
+
+
+test("Source details preserves saved quotas, retry rules and full responder policy without starting capture", async () => {
+ const user = userEvent.setup();
+ const responder = { schema: "readmit-receiver-policy/v3", name: "Synthetic responder", source_label: "Scheduling lab", acknowledgement: { operator: "original-mode-fixed-code", code: "AA" }, accepted_message_types: { operator: "message-type-in", values: ["SIU^S12", "SIU^S13"] }, enhanced_acknowledgement: { operator: "enhanced-mode-fixed-codes", accept_code: "CA", application_code: "AA", application_delivery: "same-connection", application_endpoint: "", approved_transport: false }, faults: { environment_class: "nonproduction", approved_test_endpoints: ["127.0.0.1:2575"], steps: [{ message: 2, stage: "application", action: "delay", delay_ms: 75 }] } };
+ const folder = { ...DRAFTS[FOLDER.id]!, evidence: { ...DRAFTS[FOLDER.id]!.evidence!, quota: { max_entries: 17, max_entry_bytes: 4096, max_total_bytes: 32768 }, retry: { attempts: 3, backoff: "2s" } } };
+ const { facade } = renderCapture({ OpenItemDraft: request => ({ state: "completed", context: request.context, new: false, ref: request.ref, draft: { name: "Source", source: request.ref.id === FOLDER.id ? folder : { ...DRAFTS[LISTENER.id]!, responder } } }) });
+ const setup = await openSetup(user);
+ await user.selectOptions(await setup.findByLabelText("Source"), FOLDER.id);
+ await user.click(await setup.findByRole("button", { name: "Source details" }));
+ let details = within(await screen.findByRole("dialog", { name: "Source details" }));
+ for (const value of ["appointments", "17", "4096", "32768", "3", "2s"]) expect(details.getByText(value)).toBeTruthy();
+ await user.click(details.getByRole("button", { name: "Close" }));
+ await user.selectOptions(setup.getByLabelText("Source"), LISTENER.id);
+ await waitFor(() => expect(setup.getByText("MLLP listener")).toBeTruthy());
+ await user.click(setup.getByRole("button", { name: "Source details" }));
+ details = within(await screen.findByRole("dialog", { name: "Source details" }));
+ for (const value of ["Synthetic responder", "Scheduling lab", "SIU^S12, SIU^S13", "CA", "Fixed response", "Allowed types", "Same connection", "Message 2 · Application ACK · Delay · 75 ms"]) expect(details.getByText(value)).toBeTruthy();
+ expect(details.queryByText("original-mode-fixed-code")).toBeNull();
+ expect(details.queryByText("message-type-in")).toBeNull();
+ expect(facade.callsTo("StartCapture")).toHaveLength(0);
+ expect(facade.callsTo("SaveItem")).toHaveLength(0);
+});

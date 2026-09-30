@@ -355,6 +355,25 @@ test("a failed import keeps the selection, mapping and reason", async () => {
   expect(names()).toEqual(["feed.csv"]);
 });
 
+test("Stop cancels an import while it writes its case, and the flow keeps its selection and says why", async () => {
+  const user = userEvent.setup();
+  const { facade, onImported } = renderFlow({ ProbeImport: probing([CSV, TEXT], CSV_SAMPLE) });
+  const writing = facade.park("ImportCase");
+  await chooseFiles(user, facade, ["/exports/feed.csv"]);
+  await user.click(flow().getByRole("button", { name: "Next" }));
+  await mapCsv(user);
+  await user.click(flow().getByRole("button", { name: "Next" }));
+  await flow().findByRole("table", { name: "Preview" });
+  expect(flow().queryByRole("button", { name: "Stop" })).toBeNull();
+  await user.click(flow().getByRole("button", { name: "Import" }));
+  await user.click(await flow().findByRole("button", { name: "Stop" }));
+  expect(facade.callsTo("Cancel").at(-1)?.args).toEqual(["import"]);
+  writing.resolve({ state: "cancelled", reason: "the operation was cancelled", context: CONTEXT, replayed: false });
+  expect(await flow().findByText("the operation was cancelled")).toBeTruthy();
+  expect(flow().queryByRole("button", { name: "Stop" })).toBeNull();
+  expect(onImported).not.toHaveBeenCalled();
+});
+
 test("Save mapping asks a name and publishes a preset", async () => {
   const user = userEvent.setup();
   const { facade } = renderFlow({
