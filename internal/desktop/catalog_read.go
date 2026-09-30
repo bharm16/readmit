@@ -289,6 +289,7 @@ func inWindow(name, lower, upper string) bool {
 // a file declaring a version this release does not read is still listed as
 // that kind of object — unsupported — rather than dropped.
 var familyKinds = map[string]ItemKind{
+	"readmit-fhir-connection/":    EnvironmentItem,
 	"readmit-target/":             EnvironmentItem,
 	"readmit-test/":               TestItem,
 	"readmit-test-release/":       TestItem,
@@ -663,6 +664,7 @@ func unsupportedDeclaration(path string) bool {
 
 // extraSchemas are the contracts the catalog reads beyond the listing's own.
 var extraSchemas = []string{observesource.SchemaV1, observesource.Schema, observesource.SchemaDatabase,
+	FHIRConnectionSchema,
 	assertion.Schema, scenario.Schema, scenario.OrderSchema, scenariogen.Schema, "readmit-runner/v1", "readmit-hub-schedules/v1"}
 
 // admissions are what the operation guard admits now.
@@ -715,7 +717,13 @@ func capabilitiesFor(item CatalogItem, admitted admissions) []ActionID {
 		actions = append(actions, DeriveReviewAction)
 	}
 	if kind == EnvironmentItem {
-		actions = append(actions, ApproveTransportAction)
+		if item.Summary.Environment != nil && item.Summary.Environment.Protocol == "fhir-r4" {
+			if admitted.execute {
+				actions = append(actions, CheckFHIRConnectionAction, CheckFHIRAuthorizationAction, CheckFHIRCapabilitiesAction)
+			}
+		} else {
+			actions = append(actions, ApproveTransportAction)
+		}
 	}
 	if admitted.execute {
 		switch kind {

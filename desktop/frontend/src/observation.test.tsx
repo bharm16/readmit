@@ -16,12 +16,15 @@ import type {
   CredentialRow,
   ItemDraft,
   ObservationAdapterSupport,
+  ObservationSource,
+  ObservationWindow,
   ReviewedActionResult,
   SaveItemRequest,
   SaveItemResult,
 } from "./bindings";
 
 type User = ReturnType<typeof userEvent.setup>;
+type LegacyDraft = ItemDraft & { observation: { source: ObservationSource; window: ObservationWindow } };
 
 const OBSERVATION_REF = { kind: "observation" as const, id: "obs-appointments", revision: "rev-1" };
 
@@ -59,7 +62,7 @@ const LINKED_ENVIRONMENT: CatalogItem = {
   },
 };
 
-const OBSERVATION_DRAFT: ItemDraft = {
+const OBSERVATION_DRAFT: LegacyDraft = {
   name: "Appointments",
   observation: {
     source: {
@@ -83,7 +86,7 @@ const OBSERVATION_DRAFT: ItemDraft = {
 };
 
 /** The facade's validated defaults a new observation starts from. */
-const NEW_OBSERVATION: ItemDraft = {
+const NEW_OBSERVATION: LegacyDraft = {
   observation: {
     source: { ...OBSERVATION_DRAFT.observation!.source, extraction: { envelope: "csv", encoding: "utf-8", record_key: [] }, file: { path: "", max_bytes: 65536 } },
     window: OBSERVATION_DRAFT.observation!.window,
@@ -128,11 +131,14 @@ function handlers(extra: FacadeHandlers = {}): FacadeHandlers {
     ObservationHistory: (request) => ({ state: "completed", context: request.context, collections: COLLECTIONS }),
     ListCredentials: (request) => ({ state: "completed", context: request.context, credentials: CREDENTIALS, referring: [] }),
     ObservationSupport: () => ({ state: "completed", support: [FILE_SUPPORT, DATABASE_SUPPORT] }),
-    ObservationFields: (request) => ({
-      state: "completed",
-      context: request.context,
-      fields: request.source.file?.path.endsWith("visits.csv") ? ["visit", "clinic"] : ["appointment", "status"],
-    }),
+    ObservationFields: (request) => {
+      if (!request.source) throw new Error("The legacy field picker requires its source");
+      return {
+        state: "completed",
+        context: request.context,
+        fields: request.source.file?.path.endsWith("visits.csv") ? ["visit", "clinic"] : ["appointment", "status"],
+      };
+    },
     ...extra,
   };
 }
@@ -333,8 +339,8 @@ test("a File export observation offers only its own fields, picks the record key
   const request = facade.oneCall("SaveItem")[0] as SaveItemRequest;
   expect(request).toMatchObject({ kind: "observation", item: "obs-appointments", base_revision: "rev-1" });
   const saved = request.draft.observation!;
-  expect(saved.source.file).toEqual({ path: `${WORKSPACE_ROOT}/exports/visits.csv`, max_bytes: 4096 });
-  expect(saved.source.extraction?.record_key).toEqual(["visit"]);
+  expect(saved.source?.file).toEqual({ path: `${WORKSPACE_ROOT}/exports/visits.csv`, max_bytes: 4096 });
+  expect(saved.source?.extraction?.record_key).toEqual(["visit"]);
   expect(saved.window).toEqual(OBSERVATION_DRAFT.observation!.window);
   expect(facade.callsTo("PrepareAction")).toHaveLength(0);
 });
@@ -370,12 +376,12 @@ test("an HTTPS API observation offers its URL, classification, server name, name
   await waitFor(() => expect(facade.callsTo("SaveItem")).toHaveLength(1));
   const saved = savedDraft(facade).observation!;
   expect(saved.credential).toBe("records-api");
-  expect(saved.source.source.kind).toBe("http-api");
-  expect(saved.window.source.kind).toBe("http-api");
-  expect(saved.source.http).toMatchObject({ url: "https://records-endpoint/appointments", classification: "nonproduction", server_name: "records-endpoint", credential: { header: "Authorization" } });
-  expect(saved.source.extraction).toMatchObject({ envelope: "json", record_key: ["appointment", "id"] });
-  expect(saved.source.file).toBeNull();
-  expect(saved.window.completion).toEqual(OBSERVATION_DRAFT.observation!.window.completion);
+  expect(saved.source?.source.kind).toBe("http-api");
+  expect(saved.window?.source.kind).toBe("http-api");
+  expect(saved.source?.http).toMatchObject({ url: "https://records-endpoint/appointments", classification: "nonproduction", server_name: "records-endpoint", credential: { header: "Authorization" } });
+  expect(saved.source?.extraction).toMatchObject({ envelope: "json", record_key: ["appointment", "id"] });
+  expect(saved.source?.file).toBeNull();
+  expect(saved.window?.completion).toEqual(OBSERVATION_DRAFT.observation!.window.completion);
 });
 
 test("a Downstream capture observation offers its named case, HL7 record key and occurrences, and saves them in one save", async () => {
@@ -398,10 +404,10 @@ test("a Downstream capture observation offers its named case, HL7 record key and
 
   await waitFor(() => expect(facade.callsTo("SaveItem")).toHaveLength(1));
   const saved = savedDraft(facade).observation!;
-  expect(saved.source.capture).toEqual({ path: "downstream.case", kinds: ["message"], record_key: "SCH-1.1", max_occurrences: 250 });
-  expect(saved.source.extraction).toBeNull();
-  expect(saved.source.file).toBeNull();
-  expect(saved.window.source.kind).toBe("downstream-capture");
+  expect(saved.source?.capture).toEqual({ path: "downstream.case", kinds: ["message"], record_key: "SCH-1.1", max_occurrences: 250 });
+  expect(saved.source?.extraction).toBeNull();
+  expect(saved.source?.file).toBeNull();
+  expect(saved.window?.source.kind).toBe("downstream-capture");
 });
 
 test("a Database view observation offers the adapters this release has, its connection, named credential, view, key and filters, and saves them in one save", async () => {
@@ -434,7 +440,7 @@ test("a Database view observation offers the adapters this release has, its conn
   await waitFor(() => expect(facade.callsTo("SaveItem")).toHaveLength(1));
   const saved = savedDraft(facade).observation!;
   expect(saved.credential).toBe("records-db-reader");
-  expect(saved.source.database).toMatchObject({
+  expect(saved.source?.database).toMatchObject({
     driver: "postgresql",
     address: "records-db:5432",
     name: "scheduling",
@@ -444,8 +450,8 @@ test("a Database view observation offers the adapters this release has, its conn
     record_key: "appointment_id",
     filters: [{ column: "status", value: "booked" }],
   });
-  expect(saved.source.extraction).toBeNull();
-  expect(saved.window.source.kind).toBe("database-query");
+  expect(saved.source?.extraction).toBeNull();
+  expect(saved.window?.source.kind).toBe("database-query");
 });
 
 test("a database filter is added only whole, an un-added filter holds Save back, and a driver this release lacks says so", async () => {
@@ -492,9 +498,9 @@ test("Completion asks for a Position only for Declared position and a Baseline o
 
   await waitFor(() => expect(facade.callsTo("SaveItem")).toHaveLength(1));
   const window = savedDraft(facade).observation!.window;
-  expect(window.watermark).toEqual({ kind: "declared-position", position: "ledger-42" });
-  expect(window.pre_existing_state).toEqual({ declaration: "recorded-baseline", baseline_identity: "sha256:baseline-002" });
-  expect(window.completion).toEqual(OBSERVATION_DRAFT.observation!.window.completion);
+  expect(window?.watermark).toEqual({ kind: "declared-position", position: "ledger-42" });
+  expect(window?.pre_existing_state).toEqual({ declaration: "recorded-baseline", baseline_identity: "sha256:baseline-002" });
+  expect(window?.completion).toEqual(OBSERVATION_DRAFT.observation!.window.completion);
 });
 
 test("a refused observation save opens the step that holds the field and keeps every value, and a non-number stays with its error", async () => {

@@ -510,7 +510,7 @@ func jsonPaths(head []byte) [][]string {
 			break
 		}
 		top := len(stack) - 1
-		if top >= 0 && stack[top].object && stack[top].key {
+		if top >= 0 && stack[top].object && stack[top].key && token.Kind() == '"' {
 			// This token is a member name.
 			stack[top].name, stack[top].key = token.String(), false
 			path := current()

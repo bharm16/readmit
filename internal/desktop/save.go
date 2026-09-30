@@ -57,17 +57,19 @@ var documentKinds = []ItemKind{CaseItem, ProjectItem}
 // test the editor cannot represent whole is saved from TestDocument, the
 // exact readmit-test/v1 bytes, instead of Test.
 type ItemDraft struct {
-	Name         string             `json:"name,omitzero"`
-	Environment  *replay.Target     `json:"environment,omitzero"`
-	SendPolicy   *sendpolicy.Policy `json:"policy,omitzero"`
-	ResetPlan    *fixturereset.Plan `json:"reset,omitzero"`
-	Links        *EnvironmentLinks  `json:"links,omitzero"`
-	Test         *testauthor.Draft  `json:"test,omitzero"`
-	TestLinks    *TestLinks         `json:"test_links,omitzero"`
-	TestDocument string             `json:"test_document,omitzero"`
-	Observation  *ObservationDraft  `json:"observation,omitzero"`
-	Case         *CaseDraft         `json:"case,omitzero"`
-	Project      *ProjectDraft      `json:"project,omitzero"`
+	Name         string                `json:"name,omitzero"`
+	Environment  *replay.Target        `json:"environment,omitzero"`
+	FHIR         *FHIRConnection       `json:"fhir,omitzero"`
+	Isolation    *EnvironmentIsolation `json:"isolation,omitzero"`
+	SendPolicy   *sendpolicy.Policy    `json:"policy,omitzero"`
+	ResetPlan    *fixturereset.Plan    `json:"reset,omitzero"`
+	Links        *EnvironmentLinks     `json:"links,omitzero"`
+	Test         *testauthor.Draft     `json:"test,omitzero"`
+	TestLinks    *TestLinks            `json:"test_links,omitzero"`
+	TestDocument string                `json:"test_document,omitzero"`
+	Observation  *ObservationDraft     `json:"observation,omitzero"`
+	Case         *CaseDraft            `json:"case,omitzero"`
+	Project      *ProjectDraft         `json:"project,omitzero"`
 	// AnalysisSettings is a named diagnosis configuration, saved as the
 	// readmit-diagnose-config/v1 document `readmit diagnose --config` reads.
 	AnalysisSettings *diagnose.Config `json:"analysis_settings,omitzero"`
@@ -103,9 +105,10 @@ type ItemDraft struct {
 // presents, empty for none: a save resolves it into the source, and a draft
 // opened from a saved observation never carries the reference's arguments.
 type ObservationDraft struct {
-	Source     observesource.Source `json:"source"`
-	Window     observewindow.Window `json:"window"`
-	Credential string               `json:"credential,omitzero"`
+	Connected  *ConnectedObservation `json:"connected,omitzero"`
+	Source     observesource.Source  `json:"source,omitzero"`
+	Window     observewindow.Window  `json:"window,omitzero"`
+	Credential string                `json:"credential,omitzero"`
 }
 
 // FieldProblem is one reason a draft cannot be saved, at the member it is
@@ -410,6 +413,9 @@ func validateItemDraft(scope draftScope, kind ItemKind, draft ItemDraft) ([]cata
 	if kind != EnvironmentItem && (draft.SendPolicy != nil || draft.ResetPlan != nil || draft.Links != nil) {
 		problems = append(problems, FieldProblem{Field: "kind", Problem: "only an environment carries a send policy, a reset plan or links"})
 	}
+	if kind != EnvironmentItem && (draft.FHIR != nil || draft.Isolation != nil) {
+		problems = append(problems, FieldProblem{Field: "kind", Problem: "Only an environment carries protocol connections or isolation"})
+	}
 	if kind != TestItem && (draft.TestLinks != nil || draft.TestDocument != "") {
 		problems = append(problems, FieldProblem{Field: "kind", Problem: "only a test carries test links or a test document"})
 	}
@@ -417,6 +423,12 @@ func validateItemDraft(scope draftScope, kind ItemKind, draft ItemDraft) ([]cata
 	normalized := ItemDraft{Name: draft.Name}
 	switch kind {
 	case EnvironmentItem:
+		if draft.FHIR != nil {
+			members, environment, found := validateFHIRConnectionDraft(scope, draft)
+			problems = append(problems, found...)
+			staged, normalized = members, environment
+			break
+		}
 		if draft.Environment == nil {
 			return nil, nil, append(problems, FieldProblem{Field: "environment", Problem: "an environment is a target configuration"})
 		}
@@ -549,6 +561,23 @@ func validateItemDraft(scope draftScope, kind ItemKind, draft ItemDraft) ([]cata
 	default:
 		return nil, nil, append(problems, FieldProblem{Field: "kind", Problem: savedKindsRule})
 	}
+	if kind == EnvironmentItem && draft.Isolation != nil && scope.loaded != nil {
+		classification := replay.Unclassified
+		if normalized.FHIR != nil {
+			classification = normalized.FHIR.Classification
+		} else if normalized.Environment != nil {
+			classification = normalized.Environment.Classification
+		}
+		members, isolation, found := validateIsolationDraft(scope.loaded.document.Project.ID, *draft.Isolation, classification, normalized.SendPolicy)
+		problems = append(problems, found...)
+		if len(found) == 0 {
+			staged = append(staged, members...)
+			normalized.Isolation = &isolation
+		}
+		if draft.ResetPlan != nil && len(draft.ResetPlan.Actions) > 0 {
+			problems = append(problems, FieldProblem{Field: "isolation", Problem: "Choose check-only reset or typed isolation explicitly; the saved check-only plan is never changed into mutations"})
+		}
+	}
 	if len(problems) > 0 {
 		return nil, nil, problems
 	}
@@ -589,7 +618,10 @@ func verifierFor(kind ItemKind) catalog.Verifier {
 	return func(files map[string]string) error {
 		switch kind {
 		case EnvironmentItem:
-			return verifyEnvironment(files)
+			if err := verifyEnvironment(files); err != nil {
+				return err
+			}
+			return verifyEnvironmentIsolation(files)
 		case TestItem:
 			return verifyTest(files)
 		case ObservationItem:

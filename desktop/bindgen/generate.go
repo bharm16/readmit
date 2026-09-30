@@ -220,7 +220,7 @@ func (g *generator) expr(t reflect.Type) (string, error) {
 	case rawMessageType, jsontextType:
 		return "unknown", nil
 	}
-	if encodesItself(t) {
+	if encodesItself(t) && !g.names.wireShapes[goName(t)] {
 		return "", fmt.Errorf("%s marshals itself, so its JSON is not its Go shape; declare what it writes in bindgen", goName(t))
 	}
 	switch t.Kind() {

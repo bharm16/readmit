@@ -34,6 +34,9 @@ export type ActionID =
   | "item.locate"
   | "item.save"
   | "replay.send"
+  | "environment.check-fhir-connection"
+  | "environment.check-fhir-authorization"
+  | "environment.check-fhir-capabilities"
   | "export.derived-packet"
   | "suite.approve-promotion"
   | "observation.collect"
@@ -44,6 +47,10 @@ export type ActionID =
   | "team.upload"
   | "team.revision"
   | "team.resolve"
+  | "environment.isolation.preflight"
+  | "environment.isolation.setup"
+  | "environment.isolation.reconcile"
+  | "environment.isolation.cleanup"
   | "run.test"
   | "run.suite"
   | "run.resume"
@@ -62,6 +69,8 @@ export type ActionID =
 
 /** internal/desktop.ActionReview */
 export interface ActionReview {
+  isolation?: IsolationActionReview;
+  fhir_check?: FHIRConnectionReview;
   token?: string;
   action: ActionID;
   consent: Consent;
@@ -464,6 +473,12 @@ export type BundleDirection = "unknown" | "inbound" | "outbound";
 
 /** internal/bundle.Mode */
 export type BundleMode = "imported" | "generated" | "recorded" | "derived" | "collected";
+
+/** internal/desktop.BusinessKeyMapping */
+export interface BusinessKeyMapping {
+  field: string;
+  variable: string;
+}
 
 /** internal/suite.GateReport */
 export interface CIGateReport {
@@ -1076,6 +1091,7 @@ export type ClockKind = "session" | "source" | "sender";
 
 /** internal/desktop.CollectReview */
 export interface CollectReview {
+  typed?: TypedCollectReview;
   revision: string;
   source: string;
   source_type: string;
@@ -1276,6 +1292,7 @@ export interface ComparisonSummary {
 
 /** internal/desktop.CompletionInspection */
 export interface CompletionInspection {
+  typed?: TypedCollectionView;
   entry: string;
   closed_at: string | null;
   status: string;
@@ -1321,11 +1338,45 @@ export interface ConnectedActionOptions {
   credential?: string;
 }
 
+/** internal/desktop.ConnectedObservation */
+export interface ConnectedObservation {
+  schema: string;
+  environment?: string;
+  namespace: string;
+  phase: string;
+  business_keys: BusinessKeyMapping[];
+  baseline: string;
+  barrier_observation?: string;
+  barrier_destination?: string;
+  barrier_work?: string;
+  completion: ObserveintervalDefinition;
+  projection?: DatasetProjection;
+  fhir?: FHIRSearchDraft;
+}
+
+/** internal/desktop.ConnectedVocabulary */
+export interface ConnectedVocabulary {
+  connection: FHIRConnection;
+  observation: ConnectedObservation;
+  search: FHIRSearchDraft;
+  resources: FHIRProjectionChoice[];
+  value_types: string[];
+  phases: string[];
+  boundaries: string[];
+  baseline_modes: string[];
+}
+
 /** internal/desktop.ConnectionAction */
 export type ConnectionAction = "edit" | "disconnect";
 
 /** internal/desktop.ConnectionDetail */
 export interface ConnectionDetail {
+  data?: string;
+  authorization?: string;
+  protocol?: string;
+  version?: string;
+  authentication?: string;
+  validator?: string;
   transport?: string;
   classification?: string;
   source_type?: string;
@@ -1388,6 +1439,13 @@ export type ConnectionState =
   | "checked"
   | "not-checked"
   | "unavailable";
+
+/** internal/desktop.ConnectionValidation */
+export interface ConnectionValidation {
+  capability: string;
+  engine: string;
+  socket?: string;
+}
 
 /** internal/desktop.ConnectionsResult */
 export interface ConnectionsResult {
@@ -1771,6 +1829,72 @@ export interface CustomerRunnerStatus {
   schema: string;
   state: string;
   jobs: number;
+}
+
+/** internal/dataset.Column */
+export interface DatasetColumn {
+  name: string;
+  type: string;
+  locator?: string[];
+  selector?: string;
+  key: boolean;
+  required: boolean;
+  repeated: boolean;
+  code_system?: string;
+}
+
+/** internal/dataset.Envelope */
+export interface DatasetEnvelope {
+  encoding: ImportEncoding;
+  csv?: ImportCSVDialect;
+  text?: ImportTextDialect;
+  json?: ImportDocumentDialect;
+  xml?: ImportDocumentDialect;
+}
+
+/** internal/dataset.Limits */
+export interface DatasetLimits {
+  max_rows: number;
+  max_bytes: number;
+  timeout_ms: number;
+}
+
+/** internal/dataset.Projection */
+export interface DatasetProjection {
+  continuation?: string[];
+  order: string;
+  schema: string;
+  id: string;
+  format: string;
+  envelope?: DatasetEnvelope;
+  columns: DatasetColumn[];
+  limits: DatasetLimits;
+}
+
+/** internal/dataset.Provenance */
+export interface DatasetProvenance {
+  record: number;
+  offset: number;
+  size: number;
+  source_record?: string;
+}
+
+/** internal/dataset.Row */
+export interface DatasetRow {
+  id: string;
+  values: DatasetValue[];
+  provenance: DatasetProvenance;
+}
+
+/** internal/dataset.Value */
+export interface DatasetValue {
+  state: string;
+  type: string;
+  text?: string;
+  precision?: string;
+  timezone?: string;
+  code_system?: string;
+  items?: DatasetValue[];
 }
 
 /** internal/desktop.DeriveReviewOptions */
@@ -2213,7 +2337,21 @@ export type EnvironmentFileKind =
   | "ca-certificate"
   | "client-certificate"
   | "locator-program"
-  | "observation-input";
+  | "observation-input"
+  | "public-keys"
+  | "validator-capability"
+  | "isolation-registry";
+
+/** internal/desktop.EnvironmentIsolation */
+export interface EnvironmentIsolation {
+  schema: string;
+  name: string;
+  registry_file: string;
+  adapter: string;
+  mode: string;
+  resources: IsolationResource[];
+  manual: IsolationManual[];
+}
 
 /** internal/desktop.EnvironmentLinks */
 export interface EnvironmentLinks {
@@ -2269,6 +2407,14 @@ export interface EnvironmentResetReview {
 
 /** internal/desktop.EnvironmentSummary */
 export interface EnvironmentSummary {
+  isolation_name?: string;
+  isolation_outcome?: IsolationOutcome;
+  protocol?: string;
+  version?: string;
+  authentication?: string;
+  validator?: string;
+  capabilities?: FHIRCapabilityCheck;
+  authorization?: FHIRCapabilityCheck;
   classification: string;
   address: string;
   transport: string;
@@ -2451,6 +2597,142 @@ export interface ExportTestResult {
   reason?: string;
   context: RequestContext;
   path?: string;
+}
+
+/** internal/desktop.FHIRCapabilityCheck */
+export interface FHIRCapabilityCheck {
+  revision: string;
+  checked_at: string;
+  outcome: string;
+  claims?: Fhirr4Capabilities;
+}
+
+/** internal/desktop.FHIRConnection */
+export interface FHIRConnection {
+  validation?: ConnectionValidation;
+  schema: string;
+  base: string;
+  version: string;
+  classification: TargetClassification;
+  authentication: string;
+  server_name: string;
+  ca_file?: string;
+  client_id?: string;
+  token_endpoint?: string;
+  algorithm?: string;
+  scopes?: string[];
+  key_reference?: string;
+  key_id?: string;
+  public_keys_file?: string;
+}
+
+/** internal/desktop.FHIRConnectionReview */
+export interface FHIRConnectionReview {
+  protocol: string;
+  authentication: string;
+  client_id?: string;
+  scopes: string[];
+  key_reference?: string;
+  effect: string;
+}
+
+/** internal/desktop.FHIRCriterion */
+export interface FHIRCriterion {
+  parameter: string;
+  type: string;
+  system?: string;
+  value: string;
+}
+
+/** internal/desktop.FHIRFieldProjection */
+export interface FHIRFieldProjection {
+  name: string;
+  field: string;
+  key: boolean;
+  required: boolean;
+}
+
+/** internal/desktop.FHIRProjectionChoice */
+export interface FHIRProjectionChoice {
+  resource: string;
+  fields: Fhirr4ProjectionField[];
+}
+
+/** internal/desktop.FHIRSearchDraft */
+export interface FHIRSearchDraft {
+  resource: string;
+  boundary: string;
+  criteria: FHIRCriterion[];
+  fields: FHIRFieldProjection[];
+  budget: FhirrestBudget;
+}
+
+/** internal/fhirr4.Capabilities */
+export interface Fhirr4Capabilities {
+  source_identity: string;
+  schema: string;
+  occurrence: string;
+  fhir_version: string;
+  formats: string[];
+  patch_formats: string[];
+  rest: Fhirr4RESTClaims[];
+}
+
+/** internal/fhirr4.ProjectionField */
+export interface Fhirr4ProjectionField {
+  id: string;
+  type: string;
+  code_system?: string;
+  selector: Fhirr4Selector;
+  repeated: boolean;
+}
+
+/** internal/fhirr4.RESTClaims */
+export interface Fhirr4RESTClaims {
+  mode: string;
+  resources: Fhirr4ResourceClaims[];
+  interactions: string[];
+}
+
+/** internal/fhirr4.ResourceClaims */
+export interface Fhirr4ResourceClaims {
+  type: string;
+  profile: string;
+  supported_profiles: string[];
+  interactions: string[];
+  search: Fhirr4SearchParameter[];
+  versioning: string;
+  conditional_create: boolean | null;
+  conditional_read: string;
+  conditional_update: boolean | null;
+  conditional_delete: string;
+}
+
+/** internal/fhirr4.SearchParameter */
+export interface Fhirr4SearchParameter {
+  name: string;
+  type: string;
+  definition: string;
+}
+
+/** internal/fhirr4.Selector */
+export interface Fhirr4Selector {
+  steps: Fhirr4Step[];
+}
+
+/** internal/fhirr4.Step */
+export interface Fhirr4Step {
+  field: string;
+  index?: number;
+  each: boolean;
+}
+
+/** internal/fhirrest.Budget */
+export interface FhirrestBudget {
+  pages: number;
+  rows: number;
+  bytes: number;
+  timeout_ms: number;
 }
 
 /** internal/localprofile.Field */
@@ -3996,10 +4278,96 @@ export interface InventoryDeclaration {
   digest: string;
 }
 
+/** internal/desktop.IsolationActionReview */
+export interface IsolationActionReview {
+  name: string;
+  adapter: string;
+  registered_environment: string;
+  environment_revision: string;
+  tenant: string;
+  namespace: string;
+  effects: IsolationEffectReview[];
+  manual: IsolationManual[];
+  effect: string;
+}
+
+/** internal/desktop.IsolationAdapterChoice */
+export interface IsolationAdapterChoice {
+  id: string;
+  revision: string;
+  project: string;
+  environment: string;
+  environment_revision: string;
+  tenant: string;
+  namespace: string;
+  address: string;
+  templates: TestisolationTemplate[];
+}
+
+/** internal/desktop.IsolationEditorRequest */
+export interface IsolationEditorRequest {
+  context: RequestContext;
+  registry_file: string;
+}
+
+/** internal/desktop.IsolationEditorResult */
+export interface IsolationEditorResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  adapters: IsolationAdapterChoice[];
+  modes: string[];
+  resource_kinds: string[];
+  ownership: string[];
+}
+
+/** internal/desktop.IsolationEffectReview */
+export interface IsolationEffectReview {
+  resource: string;
+  kind: string;
+  operation: string;
+  logical_id?: string;
+  version?: string;
+}
+
+/** internal/desktop.IsolationManual */
+export interface IsolationManual {
+  id: string;
+  name: string;
+  instructions: string;
+}
+
+/** internal/desktop.IsolationOutcome */
+export interface IsolationOutcome {
+  action: ActionID;
+  checked_at: string;
+  setup: string;
+  cleanup: string;
+  complete: boolean;
+  resources: number;
+  manual: TestisolationManualClaim[];
+}
+
+/** internal/desktop.IsolationResource */
+export interface IsolationResource {
+  id: string;
+  name: string;
+  kind: string;
+  template: string;
+  ownership: string;
+  logical_id?: string;
+  version?: string;
+  depends_on: string[];
+  attributes: Record<string, string>;
+  identifiers: TestisolationIdentifier[];
+}
+
 /** internal/desktop.ItemDraft */
 export interface ItemDraft {
   name?: string;
   environment?: Target;
+  fhir?: FHIRConnection;
+  isolation?: EnvironmentIsolation;
   policy?: SendPolicy;
   reset?: ResetPlan;
   links?: EnvironmentLinks;
@@ -4969,8 +5337,9 @@ export interface ObservationCompletionResult {
 
 /** internal/desktop.ObservationDraft */
 export interface ObservationDraft {
-  source: ObservationSource;
-  window: ObservationWindow;
+  connected?: ConnectedObservation;
+  source?: ObservationSource;
+  window?: ObservationWindow;
   credential?: string;
 }
 
@@ -4981,14 +5350,29 @@ export interface ObservationExplainRequest {
   window_file?: string;
 }
 
+/** internal/desktop.ObservationFieldChoice */
+export interface ObservationFieldChoice {
+  id: string;
+  locator?: string[];
+  selector?: string;
+}
+
 /** internal/desktop.ObservationFieldsRequest */
 export interface ObservationFieldsRequest {
+  typed?: boolean;
+  environment?: string;
+  resource?: string;
+  schema_sample?: string;
   context: RequestContext;
-  source: ObservationSource;
+  source?: ObservationSource;
 }
 
 /** internal/desktop.ObservationFieldsResult */
 export interface ObservationFieldsResult {
+  continuations?: ObservationFieldChoice[];
+  projection?: DatasetProjection;
+  choices?: ObservationFieldChoice[];
+  search?: Fhirr4SearchParameter[];
   state: State;
   reason?: string;
   context: RequestContext;
@@ -5164,6 +5548,9 @@ export interface ObservationSourceRetry {
 
 /** internal/desktop.ObservationSummary */
 export interface ObservationSummary {
+  typed?: boolean;
+  fields?: number;
+  completion?: string;
   source_type: string;
   enabled: boolean;
   latest_collection: string | null;
@@ -5307,6 +5694,31 @@ export type ObservationWindowStop = "none" | "cancelled" | "timed_out" | "interr
 export interface ObservationWindowWatermark {
   kind: string;
   position: string;
+}
+
+/** internal/observeinterval.Barrier */
+export interface ObserveintervalBarrier {
+  projection: DatasetProjection;
+  source: string;
+  destination: string;
+  work: string;
+}
+
+/** internal/observeinterval.Definition */
+export interface ObserveintervalDefinition {
+  schema: string;
+  source: string;
+  namespace: string;
+  enabled: boolean;
+  mode: string;
+  freshness: string;
+  horizon_ms: number;
+  sample_ms: number;
+  max_gap_ms: number;
+  max_samples: number;
+  max_records: number;
+  max_bytes: number;
+  barrier?: ObserveintervalBarrier;
 }
 
 /** internal/bundle.EventKind */
@@ -7408,6 +7820,9 @@ export interface ReviewSurface {
 
 /** internal/desktop.ReviewedActionResult */
 export interface ReviewedActionResult {
+  isolation?: IsolationOutcome;
+  typed_collection?: TypedCollectionView;
+  fhir_check?: FHIRCapabilityCheck;
   state: State;
   reason?: string;
   context: RequestContext;
@@ -10349,6 +10764,26 @@ export interface TestVersion {
   current: boolean;
 }
 
+/** internal/testisolation.Identifier */
+export interface TestisolationIdentifier {
+  scope: string;
+  namespace: string;
+  value: string;
+}
+
+/** internal/testisolation.ManualClaim */
+export interface TestisolationManualClaim {
+  id: string;
+  provenance: string;
+}
+
+/** internal/testisolation.Template */
+export interface TestisolationTemplate {
+  id: string;
+  kind: string;
+  attributes: string[];
+}
+
 /** internal/desktop.Theme */
 export type Theme = "system" | "light" | "dark";
 
@@ -10529,6 +10964,24 @@ export interface TransportReview {
   classification: string;
 }
 
+/** internal/desktop.TypedCollectReview */
+export interface TypedCollectReview {
+  columns: DatasetColumn[];
+  max_pages: number;
+  max_rows: number;
+  max_bytes: number;
+  timeout_ms: number;
+  meaning: string;
+}
+
+/** internal/desktop.TypedCollectionView */
+export interface TypedCollectionView {
+  columns: DatasetColumn[];
+  rows: DatasetRow[];
+  meaning: string;
+  coverage: string;
+}
+
 /** internal/desktop.UpgradeCheckRequest */
 export interface UpgradeCheckRequest {
   candidate: string;
@@ -10631,6 +11084,7 @@ export interface ViewsResult {
 
 /** internal/desktop.Vocabulary */
 export interface Vocabulary {
+  connected: ConnectedVocabulary;
   diagnosis_builtins: DiagnosisBuiltin[];
   import_plan: ImportPlanVocabulary;
   import_engines: EngineExportEngine[];
@@ -10798,6 +11252,7 @@ export interface Facade {
   GenerateScenarioCases(request: ScenarioCasesRequest): Promise<ScenarioCasesResult>;
   GenerateSynth(request: SynthGenerateRequest): Promise<SynthGenerateResult>;
   GenerateSyntheticPacket(request: SyntheticPacketRequest): Promise<SyntheticPacketResult>;
+  GetIsolationEditor(request: IsolationEditorRequest): Promise<IsolationEditorResult>;
   GroupDiagnoses(request: GroupDiagnosesRequest): Promise<DiagnosisGroupsResult>;
   Guide(workspace: string): Promise<GuideResult>;
   HubStatus(): Promise<HubResult>;

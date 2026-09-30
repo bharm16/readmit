@@ -207,6 +207,25 @@ test("visiting Security calls no check, Hub status, credential or runner operati
   expect(facade.callsTo("ListConnections").length).toBeGreaterThanOrEqual(2);
 });
 
+test("Security reads the saved FHIR protocol and authentication boundaries without checking the connection", async () => {
+  const user = userEvent.setup();
+  const fhir = connection({ ref: "environment:fhir-qa", name: "FHIR QA", kind: "environment", state: "not-checked", destination: "fhir-peer", owner: { kind: "environment", object_id: "fhir-qa" }, actions: ["edit"], detail: { signed_in: false, protocol: "fhir-r4", version: "4.0.1", authentication: "smart", transport: "https", validator: "capability-installed-worker-not-checked", data: "Reviewed FHIR resource reads", authorization: "Registered observer scope" } });
+  const { facade } = await renderApp({ ListConnections: (context) => ({ state: "completed", context, rows: [fhir] }) });
+  const table = await openSecurity(user);
+  await user.click(await within(table).findByText("FHIR QA"));
+  const detail = await screen.findByRole("dialog", { name: "FHIR QA" });
+  expect(within(detail).getByText("FHIR R4 4.0.1")).toBeTruthy();
+  expect(within(detail).getByText("SMART Backend Services")).toBeTruthy();
+  expect(within(detail).getByText("HTTPS")).toBeTruthy();
+  expect(within(detail).getByText("Local, offline · Worker not checked")).toBeTruthy();
+  expect(within(detail).getByText("Reviewed FHIR resource reads")).toBeTruthy();
+  expect(within(detail).getByText("Registered observer scope")).toBeTruthy();
+  expect(within(detail).getByText("Not checked")).toBeTruthy();
+  expect(facade.callsTo("CheckEnvironment")).toHaveLength(0);
+  expect(facade.callsTo("PrepareAction")).toHaveLength(0);
+  expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
+});
+
 test("an explicit environment check reads Checked with its time, never Connected", async () => {
   const user = userEvent.setup();
   await renderApp({ ListConnections: (context) => ({ state: "completed", context, rows: [QA] }) });

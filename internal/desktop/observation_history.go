@@ -101,6 +101,9 @@ func (a *App) ObservationHistory(request ItemRequest) ObservationHistoryResult {
 			result.refuse(declined.state, declined.reason)
 			return result
 		}
+		if draft.Connected != nil {
+			return typedObservationHistory(loaded, request, draft)
+		}
 		entries, err := os.ReadDir(loaded.root)
 		if err != nil {
 			result.refuse(Failed, "the project folder cannot be read")
@@ -148,6 +151,7 @@ type CompletionRequest struct {
 // Supported is false, with its reason, for a collection made under a window
 // since changed or one its own samples do not bear out.
 type CompletionInspection struct {
+	Typed *TypedCollectionView `json:"typed,omitzero"`
 	CollectionRow
 	OpenedAt      *string `json:"opened_at"`
 	Samples       int     `json:"samples"`
@@ -178,6 +182,9 @@ func (a *App) InspectCompletion(request CompletionRequest) CompletionInspectionR
 		if loaded == nil {
 			result.refuse(declined.state, declined.reason)
 			return result
+		}
+		if draft.Connected != nil {
+			return typedObservationInspection(loaded, request, draft)
 		}
 		path, err := artifactpath.File(loaded.root, request.Entry)
 		if err != nil {

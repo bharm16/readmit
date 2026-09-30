@@ -271,6 +271,8 @@ import type {
   CredentialCheckResult,
   ObservationHistoryResult,
   CollectionProgressResult,
+  IsolationEditorRequest,
+  IsolationEditorResult,
   ObservationFieldsRequest,
   ObservationFieldsResult,
   CompletionRequest,
@@ -2073,4 +2075,9 @@ export function analyzeRun(request: RunAnalysisRequest): Promise<RunAnalysisResu
 /** Two runs compared, with up to fourteen more counted. */
 export function compareRunItems(request: RunComparisonItemsRequest): Promise<RunComparisonItemsResult> {
   return guard(() => facade().CompareRunItems(request), { state: "failed", context: request.context });
+}
+
+/** Reads operator-selected local fixture adapter metadata; never resolves a credential. */
+export function getIsolationEditor(request: IsolationEditorRequest): Promise<IsolationEditorResult> {
+  return retryingRead(() => facade().GetIsolationEditor(request), { state: "failed", context: request.context, adapters: [], modes: [], resource_kinds: [], ownership: [] });
 }

@@ -294,6 +294,9 @@ func (a *App) RemoveCredential(request CredentialRequest) CredentialsResult {
 			case string(EnvironmentItem):
 				target, err := loaded.targetOf(item)
 				presents = err == nil && target.Credential.Reference == request.Name && filepath.Clean(target.Credential.SecretsFile) == ProjectSecrets
+				if members, err := loaded.environmentOf(item); err == nil && members.fhir != nil {
+					presents = members.fhir.KeyReference == request.Name
+				}
 			case string(ObservationItem):
 				if paths, availability, _ := loaded.backing(item); availability == ItemAvailable && paths["links"] != "" {
 					links, err := readObservationLinks(paths["links"])

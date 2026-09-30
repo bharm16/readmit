@@ -2,7 +2,7 @@
 // that result is complete. The page shows the saved source and completion
 // rule and the actual collections; Edit is one editor with one Save, and
 // Collect is a reviewed, read-only collection. Nothing collects on opening.
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   chooseEnvironmentFile,
   collectionProgress,
@@ -29,23 +29,31 @@ import {
   type ObservationSource,
   type ObservationSourceDatabaseFilter,
   type ObservationSourceExtraction,
+  type ObservationFieldsResult,
+  type ObservationWindow,
+  type FHIRSearchDraft,
   type RequestContext,
+  type DatasetRow,
+  type DatasetValue,
+  type TypedCollectionView,
 } from "./bindings";
 import { DataTable, type Column } from "./DataTable";
-import { EmptyState, FormDialog, Menu, Modal, ValueRows, type SubmitFailure } from "./layout";
+import { BackLink, EmptyState, FormDialog, Menu, Modal, ValueRows, type SubmitFailure } from "./layout";
 import { IconButton } from "./IconButton";
 import { listDate } from "./Projects";
 import { FilePicker, fileName, wholeNumber } from "./Environments";
 import { ReviewSheet } from "./ReviewSheet";
 import { useVocabulary } from "./vocabulary";
+import { ConnectedObservationFields, type ConnectedNumberProblem } from "./ConnectedObservationFields";
 
-type SourceKind = "file-export" | "http-api" | "downstream-capture" | "database-query";
+type SourceKind = "file-export" | "http-api" | "downstream-capture" | "database-query" | "fhir-r4";
 
 const SOURCE_KINDS: Record<SourceKind, string> = {
   "file-export": "File export",
   "http-api": "HTTPS API",
   "downstream-capture": "Downstream capture",
   "database-query": "Database view",
+  "fhir-r4": "FHIR R4 search",
 };
 
 const WATERMARKS: Record<string, string> = {
@@ -108,14 +116,55 @@ function formatText(extraction: ObservationSourceExtraction | null | undefined):
   return extraction ? (FORMATS[extraction.envelope] ?? "Unsupported") : "—";
 }
 
+function ObservationValue({ value }: { value: DatasetValue | undefined }) {
+  if (!value) return <>Unavailable</>;
+  if (value.state !== "present") return <>{({ empty: "Empty", null: "Null", absent: "Not present", invalid: "Invalid", unavailable: "Unavailable" } as Record<string, string>)[value.state] ?? "Unavailable"}</>;
+  if (value.items) return value.items.length ? <ol>{value.items.map((item, index) => <li key={index}><ObservationValue value={item} /></li>)}</ol> : <>Present · No values</>;
+  return <>{value.text === "" ? "Present · Empty" : value.text ?? "Unavailable"}{value.precision ? ` · ${value.precision}` : ""}{value.timezone ? ` · ${value.timezone}` : ""}{value.code_system ? ` · ${value.code_system}` : ""}</>;
+}
+
+function TypedReadings({ view }: { view: TypedCollectionView }) {
+  const [selected, setSelected] = useState<string | null>(null);
+  const row = view.rows.find((entry) => entry.id === selected);
+  const columns: Column<DatasetRow>[] = [
+    { key: "record", header: "Record", priority: 1, minWidth: 7, render: (entry) => <button type="button" className="quiet" onClick={(event) => { event.stopPropagation(); setSelected(entry.id); }}>Record {view.rows.indexOf(entry) + 1}</button> },
+    ...view.columns.map((column, index) => ({ key: `field-${index}`, header: column.name, priority: index === 0 ? 1 : 2, minWidth: 8, flex: true, render: (entry: DatasetRow) => <ObservationValue value={entry.values[index]} /> })),
+  ];
+  return <>
+    <ValueRows rows={[{ label: "Coverage", value: STATUSES[view.coverage] ?? "Unavailable" }, { label: "Boundary", value: view.meaning }]} />
+    {row ? <>
+      <BackLink label="Records" onBack={() => setSelected(null)} />
+      <h3>Record {view.rows.indexOf(row) + 1}</h3>
+      <ValueRows rows={view.columns.map((column, index) => ({ label: column.name, value: <ObservationValue value={row.values[index]} /> }))} />
+    </> : view.rows.length ? <DataTable label="Observed records" rows={view.rows} columns={columns} rowId={(entry) => entry.id} rowLabel={(entry) => `Record ${view.rows.indexOf(entry) + 1}`} selected={selected} onSelect={setSelected} onOpen={setSelected} /> : <p>{view.coverage === "complete" ? "No records observed" : "No readings available"}</p>}
+  </>;
+}
+
 /** The name of the project case a downstream capture reads. */
 function caseName(path: string, cases: CatalogItem[]): string {
   return cases.find((entry) => (entry.summary.case?.entry ?? entry.name) === path)?.name ?? fileName(path);
 }
 
-function sourceRows(draft: ObservationDraft | undefined, cases: CatalogItem[]): { label: string; value: ReactNode }[] {
+function sourceRows(draft: ObservationDraft | undefined, cases: CatalogItem[], environments: CatalogItem[]): { label: string; value: ReactNode }[] {
   if (!draft) return [];
   const source = draft.source;
+  if (draft.connected?.fhir) {
+    const setup = draft.connected;
+    return [
+      { label: "Type", value: "FHIR R4 search" },
+      { label: "Environment", value: environments.find((item) => item.ref.id === setup.environment)?.name ?? "Environment no longer available" },
+      { label: "Resource type", value: setup.fhir!.resource },
+      { label: "Source boundary", value: ({ "authoritative-application-api": "Application API", "delayed-replica": "Delayed replica", "reference-fhir-store": "Reference FHIR store" } as Record<string, string>)[setup.fhir!.boundary] ?? "Not declared" },
+      { label: "Criteria", value: setup.fhir!.criteria.map((criterion) => `${criterion.parameter === "_id" ? "Logical ID" : criterion.parameter === "identifier" ? "Identifier" : criterion.parameter}: ${criterion.system ? criterion.system + " · " : ""}${criterion.value}`).join(", ") },
+      { label: "Fields", value: setup.fhir!.fields.map((field) => `${field.name}: ${field.field === "resource-identity" ? "Resource identity" : field.field}`).join(", ") || "None" },
+      { label: "Run business keys", value: setup.business_keys.map((key) => `${key.field} → ${key.variable}`).join(", ") || "None" },
+      { label: "Maximum pages", value: String(setup.fhir!.budget.pages) },
+      { label: "Maximum resources", value: String(setup.fhir!.budget.rows) },
+      { label: "Maximum response bytes", value: String(setup.fhir!.budget.bytes) },
+      { label: "Search deadline", value: `${setup.fhir!.budget.timeout_ms} ms` },
+    ];
+  }
+  if (!source) return [{ label: "Source", value: "Unavailable" }];
   const kind = source.source.kind as SourceKind;
   const rows: { label: string; value: ReactNode }[] = [
     { label: "Type", value: SOURCE_KINDS[kind] ?? "Unsupported" },
@@ -150,6 +199,9 @@ function sourceRows(draft: ObservationDraft | undefined, cases: CatalogItem[]): 
       ...(database.filters.length > 0 ? [{ label: "Filters", value: database.filters.map((filter) => `${filter.column} equals ${filter.value}`).join(", ") }] : []),
     );
   }
+  if (draft.connected?.projection) {
+    rows.push({ label: "Fields", value: draft.connected.projection.columns.map((field) => field.name).join(", ") || "None" }, { label: "Run business keys", value: draft.connected.business_keys.map((key) => `${key.field} → ${key.variable}`).join(", ") || "None" });
+  }
   return rows;
 }
 
@@ -180,6 +232,7 @@ export function useObservation({
   const [historyFailure, setHistoryFailure] = useState<string | null>(null);
   // The project's cases, which name a downstream capture's case.
   const [cases, setCases] = useState<CatalogItem[]>([]);
+  const [environments, setEnvironments] = useState<CatalogItem[]>([]);
   const [failure, setFailure] = useState<string | null>(null);
   const [sheet, setSheet] = useState<null | "edit" | "collect" | "remove">(null);
   const [inspected, setInspected] = useState<CompletionInspection | null>(null);
@@ -196,12 +249,14 @@ export function useObservation({
       setFailure(listed.reason ?? "This observation is not in the project.");
       return;
     }
-    const [opened, collected, caseList] = await Promise.all([
+    const [opened, collected, caseList, environmentList] = await Promise.all([
       openItemDraft({ context: context(), ref: found.ref }),
       observationHistory({ context: context(), ref: found.ref }),
       listWholeCatalog({ context: context(), kind: "case", filter: {} }),
+      listWholeCatalog({ context: context(), kind: "environment", filter: {} }),
     ]);
     setCases(caseList.page?.items ?? []);
+    setEnvironments(environmentList.page?.items ?? []);
     if (opened.draft) {
       setDraft(opened.draft);
       setFailure(null);
@@ -282,13 +337,22 @@ export function useObservation({
         <header className="value-group-header">
           <h2 id="observation-source">Source</h2>
         </header>
-        <ValueRows rows={sourceRows(observation, cases)} />
+        <ValueRows rows={sourceRows(observation, cases, environments)} />
       </section>
       <section className="value-group" aria-labelledby="observation-completion">
         <header className="value-group-header">
           <h2 id="observation-completion">Completion</h2>
         </header>
-        {rule ? (
+        {observation?.connected ? (
+          <ValueRows rows={[
+            { label: "Baseline", value: observation.connected.baseline === "before-run" ? "Recorded before this run" : "Unsupported saved baseline" },
+            { label: "Observe", value: ({ before: "Before run", after: "After run", both: "Before and after" } as Record<string, string>)[observation.connected.phase] ?? "Unsupported" },
+            { label: "Completion", value: observation.connected.barrier_observation ? "Processing barrier or full horizon" : "Full observation horizon" },
+            { label: "Observation horizon", value: `${observation.connected.completion.horizon_ms} ms` },
+            { label: "Sample interval", value: `${observation.connected.completion.sample_ms} ms` },
+            { label: "Maximum sample gap", value: `${observation.connected.completion.max_gap_ms} ms` },
+          ]} />
+        ) : rule ? (
           <ValueRows
             rows={[
               { label: "Watermark", value: WATERMARKS[rule.watermark.kind] ?? "Unsupported" },
@@ -369,8 +433,9 @@ export function useObservation({
           onDone={() => void read()}
           onRunning={setCollecting}
           whileRunning={progress ? <span role="status">{progressText(progress)}</span> : null}
-          consequence={`Reads ${item.name} once; source records are not changed.`}
+          {...(!observation?.connected ? { consequence: `Reads ${item.name} once; source records are not changed.` } : {})}
           render={(review) => (
+            <>
             <ValueRows
               rows={[
                 { label: "Source", value: item.name },
@@ -380,13 +445,26 @@ export function useObservation({
                 ...(review.collect?.destination
                   ? [{ label: "Destination", value: review.collect.source_type === "file-export" || review.collect.source_type === "downstream-capture" ? fileName(review.collect.destination) : review.collect.destination }]
                   : []),
-                { label: "Deadline", value: review.collect?.bounds.deadline ?? "—" },
-                { label: "Quiet period", value: review.collect?.bounds.quiet_period ?? "—" },
-                { label: "Stable samples", value: String(review.collect?.bounds.stable_samples ?? "—") },
+                ...(review.collect?.typed ? [
+                  { label: "Fields", value: review.collect.typed.columns.map((column) => column.name).join(", ") },
+                  ...(review.collect.source_type === "fhir-r4" ? [{ label: "Maximum pages", value: String(review.collect.typed.max_pages) }] : []),
+                  { label: "Maximum records", value: String(review.collect.typed.max_rows) },
+                  { label: "Maximum bytes", value: String(review.collect.typed.max_bytes) },
+                  { label: "Collection deadline", value: `${review.collect.typed.timeout_ms} ms` },
+                ] : [
+                  { label: "Deadline", value: review.collect?.bounds.deadline ?? "—" },
+                  { label: "Quiet period", value: review.collect?.bounds.quiet_period ?? "—" },
+                  { label: "Stable samples", value: String(review.collect?.bounds.stable_samples ?? "—") },
+                ]),
               ]}
             />
+            {review.collect?.typed ? <p className="consequence">{review.collect.typed.meaning}</p> : null}
+            </>
           )}
-          outcome={(result) => (result.collected ? <p role="status">{statusText(result.collected)}</p> : null)}
+          outcome={(result) => <>
+            {result.collected ? <p role="status">{statusText(result.collected)}</p> : null}
+            {result.typed_collection ? <TypedReadings view={result.typed_collection} /> : null}
+          </>}
         />
       ) : null}
       <FormDialog
@@ -411,7 +489,10 @@ export function useObservation({
         <p className="consequence">Removes it from this project; its collections stay readable.</p>
       </FormDialog>
       <Modal open={inspected !== null} title="Completion" onClose={() => setInspected(null)}>
-        {inspected ? (
+        {inspected?.typed ? <>
+          <ValueRows rows={[{ label: "Result", value: statusText(inspected) }, { label: "Collected", value: collectedAt(inspected.closed_at) }, ...(inspected.supported ? [] : [{ label: "Current mapping", value: inspected.unsupported ?? "No longer supported" }])]} />
+          <TypedReadings view={inspected.typed} />
+        </> : inspected ? (
           <ValueRows
             rows={[
               { label: "Result", value: statusText(inspected) },
@@ -494,6 +575,7 @@ export function NewObservationEditor({
 // ---------- The editor ----------
 
 type Filter = ObservationSourceDatabaseFilter;
+type EditableObservationDraft = ObservationDraft & { source: ObservationSource; window: ObservationWindow };
 
 /** Numeric fields hold what was typed until Save reads it. */
 type Numbers = { maxBytes: string; maxOccurrences: string; stableSamples: string };
@@ -537,6 +619,22 @@ const FIELDS: Record<string, string> = {
   "observation.window.completion.deadline": "observation-deadline",
   "observation.window.completion.quiet_period": "observation-quiet",
   "observation.window.completion.stable_samples": "observation-stable",
+  "observation.connected": "observation-type",
+  "observation.connected.environment": "observation-connected-environment",
+  "observation.connected.fhir": "observation-connected-fields",
+  "observation.connected.fhir.resource": "observation-connected-resource",
+  "observation.connected.fhir.criteria": "observation-connected-criteria",
+  "observation.connected.projection": "observation-connected-fields",
+  "observation.connected.projection.continuation": "observation-projection-continuation",
+  "observation.connected.business_keys": "observation-connected-business-keys",
+  "observation.connected.phase": "observation-connected-phase",
+  "observation.connected.namespace": "observation-connected-namespace",
+  "observation.connected.baseline": "observation-connected-barrier",
+  "observation.connected.barrier_observation": "observation-connected-barrier",
+  "observation.connected.barrier_destination": "observation-barrier-destination",
+  "observation.connected.barrier_work": "observation-barrier-work",
+  "observation.connected.completion": "observation-connected-horizon",
+  "observation.connected.completion.horizon_ms": "observation-connected-horizon",
 };
 
 function fieldOf(field: string): string | undefined {
@@ -568,13 +666,23 @@ function ObservationEditor({
   onSaved: (saved: ItemRef) => void | Promise<void>;
 }) {
   const [step, setStep] = useState<"source" | "completion">("source");
-  const [held, setHeld] = useState<ObservationDraft | null>(null);
-  const starts = useVocabulary()?.observation_starts ?? [];
+  const [held, setHeld] = useState<EditableObservationDraft | null>(null);
+  const [readFailure, setReadFailure] = useState<string | null>(null);
+  const baseDraft = useRef(draft);
+  const baseRef = useRef<ItemRef | null>(null);
+  const initialized = useRef(false);
+  const vocabulary = useVocabulary();
+  const starts = vocabulary?.observation_starts ?? [];
   const [name, setName] = useState("");
   const [numbers, setNumbers] = useState<Numbers>({ maxBytes: "", maxOccurrences: "", stableSamples: "" });
   const [cases, setCases] = useState<CatalogItem[]>([]);
   const [credentials, setCredentials] = useState<CredentialRow[]>([]);
   const [support, setSupport] = useState<ObservationAdapterSupport[]>([]);
+  const [environments, setEnvironments] = useState<CatalogItem[]>([]);
+  const [observations, setObservations] = useState<CatalogItem[]>([]);
+  const [numberProblem, setNumberProblem] = useState<ConnectedNumberProblem | null>(null);
+  const [typedOptions, setTypedOptions] = useState<ObservationFieldsResult | null>(null);
+  const fhirSearch = useRef<FHIRSearchDraft | null>(null);
   const [fields, setFields] = useState<{ fields: string[]; reason?: string } | null>(null);
   const [dirty, setDirty] = useState(false);
   const [chooseFailure, setChooseFailure] = useState<string | null>(null);
@@ -603,31 +711,42 @@ function ObservationEditor({
   );
 
   useEffect(() => {
-    if (!open || !draft.observation) return;
+    if (!open) { initialized.current = false; return; }
+    if (!draft.observation || initialized.current) return;
     const start = structuredClone(draft.observation);
-    setHeld(start);
-    setExtraction(structuredClone(start.source.extraction));
-    setName(draft.name ?? item?.name ?? "");
-    setNumbers({
-      maxBytes: String(start.source.file?.max_bytes ?? ""),
-      maxOccurrences: String(start.source.capture?.max_occurrences ?? ""),
-      stableSamples: String(start.window.completion.stable_samples),
-    });
-    setStep("source");
-    setDirty(false);
-    setChooseFailure(null);
-    setFilterDraft({ column: "", value: "" });
-    setFields(null);
-    readFields(start.source);
+    let live = true;
+    const fill = (defaults?: ObservationDraft) => {
+      const source = start.source ?? defaults?.source;
+      const window = start.window ?? defaults?.window;
+      if (!source || !window) { setReadFailure("The observation's editing definitions could not be read."); return; }
+      initialized.current = true;
+      baseDraft.current = draft;
+      baseRef.current = item?.ref ?? null;
+      setHeld({ ...start, source, window });
+      setReadFailure(null);
+      fhirSearch.current = start.connected?.fhir ?? null;
+      setNumberProblem(null);
+      setExtraction(structuredClone(source.extraction));
+      setName(draft.name ?? item?.name ?? "");
+      setNumbers({ maxBytes: String(source.file?.max_bytes ?? ""), maxOccurrences: String(source.capture?.max_occurrences ?? ""), stableSamples: String(window.completion.stable_samples) });
+      setStep("source"); setDirty(false); setChooseFailure(null); setFilterDraft({ column: "", value: "" }); setFields(null);
+      if (!start.connected?.fhir) readFields(source);
+    };
+    if (start.source && start.window) fill();
+    else if (start.connected?.fhir) void openItemDraft({ context: context(), ref: { kind: "observation", id: "" } }).then((answer) => { if (live) fill(answer.draft?.observation); });
+    else setReadFailure("The saved observation's source or completion rule is unavailable.");
     void listWholeCatalog({ context: context(), kind: "case", filter: {} }).then((answer) => setCases(answer.page?.items ?? []));
     void listCredentials({ context: context(), ref: { kind: "environment", id: "" } }).then((answer) => setCredentials(answer.credentials.filter((row) => row.purpose === "source-endpoint")));
     void observationSupport().then((answer) => setSupport(answer.support ?? []));
+    void listWholeCatalog({ context: context(), kind: "environment", filter: {} }).then((answer) => setEnvironments(answer.page?.items ?? []));
+    void listWholeCatalog({ context: context(), kind: "observation", filter: {} }).then((answer) => setObservations((answer.page?.items ?? []).filter((entry) => entry.ref.id !== item?.ref.id)));
+    return () => { live = false; };
   }, [open, draft, item, context, readFields]);
 
-  if (!held) return null;
+  if (!held) return readFailure ? <Modal open={open} title={item ? "Edit observation" : "Add observation"} onClose={onClose}><p role="alert">{readFailure}</p></Modal> : null;
   const source = held.source;
-  const kind = source.source.kind as SourceKind;
-  const change = (next: (value: ObservationDraft) => void) => {
+  const kind: SourceKind = held.connected?.fhir ? "fhir-r4" : source.source.kind as SourceKind;
+  const change = (next: (value: EditableObservationDraft) => void) => {
     setHeld((current) => {
       if (!current) return current;
       const copy = structuredClone(current);
@@ -644,8 +763,18 @@ function ObservationEditor({
   // with what has no default left empty.
   const startOf = (next: SourceKind) => starts.find((entry) => entry.source.kind === next);
   const setKind = (next: SourceKind) => {
+    if (next === "fhir-r4") {
+      if (!vocabulary?.connected) return;
+      change((value) => {
+        value.connected ??= structuredClone(vocabulary.connected.observation);
+        value.connected.fhir = structuredClone(fhirSearch.current ?? vocabulary.connected.search);
+      });
+      return;
+    }
+    if (held.connected?.fhir) fhirSearch.current = structuredClone(held.connected.fhir);
     const start = startOf(next);
     change((value) => {
+      if (value.connected) delete value.connected.fhir;
       value.source.source.kind = next;
       value.window.source.kind = next;
       if (start) value.source.schema = start.schema;
@@ -687,6 +816,7 @@ function ObservationEditor({
   const databaseSupport = support.filter((row) => row.kind === "database-query");
   const driverSupport = database ? databaseSupport.find((row) => row.adapter === database.driver) : undefined;
   const recordKey = source.extraction?.record_key.join(".") ?? "";
+  const typedKey = typedOptions?.choices?.find((choice) => source.extraction && JSON.stringify(choice.locator) === JSON.stringify(source.extraction.record_key))?.id ?? recordKey;
   const baselines = history.filter((row) => row.baseline);
 
   const credentialPicker = (optional: boolean) => (
@@ -776,6 +906,7 @@ function ObservationEditor({
           </option>
         ))}
       </select>
+      {kind !== "fhir-r4" ? <>
       <label htmlFor="observation-scope">Scope</label>
       <input id="observation-scope" type="text" value={source.source.scope} onChange={(event) => change((value) => { value.source.source.scope = event.target.value; value.window.source.scope = event.target.value; })} />
       <label htmlFor="observation-max-age">Maximum age</label>
@@ -805,8 +936,8 @@ function ObservationEditor({
           <select
             id="observation-record-key"
             disabled={!fields || fields.fields.length === 0}
-            value={recordKey}
-            onChange={(event) => change((value) => { if (value.source.extraction) value.source.extraction.record_key = event.target.value ? event.target.value.split(".") : []; })}
+            value={held.connected ? typedKey : recordKey}
+            onChange={(event) => change((value) => { if (value.source.extraction) value.source.extraction.record_key = held.connected ? [...(typedOptions?.choices?.find((choice) => choice.id === event.target.value)?.locator ?? value.source.extraction.record_key)] : event.target.value ? event.target.value.split(".") : []; })}
           >
             {recordKey === "" ? <option value="">Choose a field</option> : null}
             {(fields?.fields ?? []).map((field) => (
@@ -852,7 +983,11 @@ function ObservationEditor({
           ) : null}
           {formatFields}
           <label htmlFor="observation-record-key">Record key path</label>
-          <input id="observation-record-key" type="text" spellCheck={false} value={recordKey} onChange={(event) => change((value) => { if (value.source.extraction) value.source.extraction.record_key = event.target.value.split("."); })} />
+          {held.connected ? <select id="observation-record-key" value={typedKey} onChange={(event) => change((value) => { const chosen = typedOptions?.choices?.find((choice) => choice.id === event.target.value); if (chosen?.locator && value.source.extraction) value.source.extraction.record_key = [...chosen.locator]; })}>
+            <option value="">Choose a field</option>
+            {(typedOptions?.choices ?? []).map((choice) => <option key={choice.id} value={choice.id}>{choice.id}</option>)}
+            {typedKey && !typedOptions?.choices?.some((choice) => choice.id === typedKey) ? <option value={typedKey}>Unsupported saved key</option> : null}
+          </select> : <input id="observation-record-key" type="text" spellCheck={false} value={recordKey} onChange={(event) => change((value) => { if (value.source.extraction) value.source.extraction.record_key = event.target.value.split("."); })} />}
         </>
       ) : null}
 
@@ -871,7 +1006,11 @@ function ObservationEditor({
             ) : null}
           </select>
           <label htmlFor="observation-capture-key">Record key HL7 field</label>
-          <input id="observation-capture-key" type="text" spellCheck={false} value={source.capture.record_key} onChange={(event) => change((value) => { value.source.capture!.record_key = event.target.value; })} />
+          {held.connected ? <select id="observation-capture-key" value={source.capture.record_key} onChange={(event) => change((value) => { const choice = typedOptions?.choices?.find((entry) => entry.id === event.target.value); if (choice?.selector) value.source.capture!.record_key = choice.selector; })}>
+            <option value="">Choose a field</option>
+            {(typedOptions?.choices ?? []).map((choice) => <option key={choice.id} value={choice.id}>{choice.id}</option>)}
+            {source.capture.record_key && !typedOptions?.choices?.some((choice) => choice.selector === source.capture!.record_key) ? <option value={source.capture.record_key}>Unsupported saved key</option> : null}
+          </select> : <input id="observation-capture-key" type="text" spellCheck={false} value={source.capture.record_key} onChange={(event) => change((value) => { value.source.capture!.record_key = event.target.value; })} />}
           <label htmlFor="observation-max-occurrences">Maximum occurrences</label>
           <input id="observation-max-occurrences" type="text" inputMode="numeric" value={numbers.maxOccurrences} onChange={(event) => typed("maxOccurrences", event.target.value)} />
         </>
@@ -893,6 +1032,7 @@ function ObservationEditor({
               {DRIVERS[database.driver] ?? database.driver} is not available in this release.
             </p>
           ) : null}
+          {driverSupport?.qualification === "unqualified" ? <p className="field-error" role="status">Unqualified adapter; verify its server/version and authentication.</p> : null}
           <label htmlFor="observation-db-address">Address</label>
           <input id="observation-db-address" type="text" spellCheck={false} value={database.address} onChange={(event) => change((value) => { value.source.database!.address = event.target.value; })} />
           <label htmlFor="observation-db-name">Database name</label>
@@ -922,7 +1062,11 @@ function ObservationEditor({
           <div className="field-pair">
             <div>
               <label htmlFor="observation-db-key">Record key column</label>
-              <input id="observation-db-key" type="text" spellCheck={false} value={database.record_key} onChange={(event) => change((value) => { value.source.database!.record_key = event.target.value; })} />
+              {held.connected ? <select id="observation-db-key" value={database.record_key} onChange={(event) => change((value) => { const choice = typedOptions?.choices?.find((entry) => entry.id === event.target.value); if (choice?.locator?.length === 1) value.source.database!.record_key = choice.locator[0]!; })}>
+                <option value="">Choose a column</option>
+                {(typedOptions?.choices ?? []).filter((choice) => choice.locator?.length === 1).map((choice) => <option key={choice.id} value={choice.id}>{choice.id}</option>)}
+                {database.record_key && !typedOptions?.choices?.some((choice) => choice.id === database.record_key) ? <option value={database.record_key}>Unsupported saved key</option> : null}
+              </select> : <input id="observation-db-key" type="text" spellCheck={false} value={database.record_key} onChange={(event) => change((value) => { value.source.database!.record_key = event.target.value; })} />}
             </div>
             <div>
               <label htmlFor="observation-db-key-type">Key type</label>
@@ -960,7 +1104,11 @@ function ObservationEditor({
               ))}
               <tr>
                 <td>
-                  <input id="observation-filter-column" type="text" aria-label="Filter column" spellCheck={false} value={filterDraft.column} onChange={(event) => setFilterDraft({ ...filterDraft, column: event.target.value })} />
+                  {held.connected ? <select id="observation-filter-column" aria-label="Filter column" value={filterDraft.column} onChange={(event) => setFilterDraft({ ...filterDraft, column: event.target.value })}>
+                    <option value="">Choose a column</option>
+                    {(typedOptions?.choices ?? []).filter((choice) => choice.locator?.length === 1).map((choice) => <option key={choice.id} value={choice.locator![0]}>{choice.id}</option>)}
+                    {filterDraft.column && !typedOptions?.choices?.some((choice) => choice.locator?.[0] === filterDraft.column) ? <option value={filterDraft.column}>Unsupported saved column</option> : null}
+                  </select> : <input id="observation-filter-column" type="text" aria-label="Filter column" spellCheck={false} value={filterDraft.column} onChange={(event) => setFilterDraft({ ...filterDraft, column: event.target.value })} />}
                 </td>
                 <td>
                   <select aria-label="Filter operator" value="equals" disabled>
@@ -988,6 +1136,14 @@ function ObservationEditor({
         </>
       ) : null}
       {chooseFailure ? <p className="field-error" role="alert">{chooseFailure}</p> : null}
+      {vocabulary?.connected ? <label className="check">
+        <input type="checkbox" checked={Boolean(held.connected)} onChange={(event) => change((value) => {
+          if (event.target.checked) value.connected = structuredClone(vocabulary.connected.observation);
+          else delete value.connected;
+        })} />
+        Typed fields and run completion
+      </label> : null}
+      </> : null}
     </>
   );
 
@@ -1056,12 +1212,12 @@ function ObservationEditor({
     <FormDialog
       open={open}
       title={item ? "Edit observation" : "Add observation"}
-      size="wide"
       submitLabel="Save"
       dirty={dirty}
       onClose={onClose}
       onSubmit={async (): Promise<SubmitFailure | null> => {
         if (filterDraft.column.trim() !== "" || filterDraft.value !== "") return refuse("Add this filter or clear it.", "observation-filter-column", "source");
+        if (held.connected && numberProblem) return refuse(`Enter a whole number for ${numberProblem.label}.`, numberProblem.field, numberProblem.step);
         const next = structuredClone(held);
         // Dotted paths keep what was typed while editing; the saved path has
         // no empty parts.
@@ -1070,32 +1226,36 @@ function ObservationEditor({
           if (next.source.extraction.json) next.source.extraction.json.record_path = next.source.extraction.json.record_path.filter(Boolean);
         }
         if (next.source.database) next.source.database.view = next.source.database.view.filter(Boolean);
-        if (next.source.file) {
+        if (!next.connected?.fhir && next.source.file) {
           const bytes = wholeNumber(numbers.maxBytes);
           if (bytes === null) return refuse("Enter a whole number of bytes.", "observation-max-bytes", "source");
           next.source.file.max_bytes = bytes;
         }
-        if (next.source.capture) {
+        if (!next.connected?.fhir && next.source.capture) {
           const occurrences = wholeNumber(numbers.maxOccurrences);
           if (occurrences === null) return refuse("Enter a whole number.", "observation-max-occurrences", "source");
           next.source.capture.max_occurrences = occurrences;
         }
-        const stable = wholeNumber(numbers.stableSamples);
-        if (stable === null) return refuse("Enter a whole number.", "observation-stable", "completion");
-        next.window.completion.stable_samples = stable;
+        if (!next.connected?.fhir) {
+          const stable = wholeNumber(numbers.stableSamples);
+          if (stable === null) return refuse("Enter a whole number.", "observation-stable", "completion");
+          next.window.completion.stable_samples = stable;
+        }
+        const published: ObservationDraft = { ...next };
+        if (published.connected?.fhir) { delete published.source; delete published.window; }
         const answer = await saveItem({
           context: context(),
           kind: "observation",
-          ...(item ? { item: item.ref.id } : {}),
-          ...(item?.ref.revision ? { base_revision: item.ref.revision } : {}),
-          draft: { ...draft, name: name.trim(), observation: next },
+          ...(baseRef.current ? { item: baseRef.current.id } : {}),
+          ...(baseRef.current?.revision ? { base_revision: baseRef.current.revision } : {}),
+          draft: { ...baseDraft.current, name: name.trim(), observation: published },
           intent_id: newIntentId(),
         });
         if (answer.outcome !== "saved" || !answer.saved) {
           if (answer.outcome === "conflict") return { reason: "This changed since you opened it. Close and open it again." };
           const problem = answer.problems.find((entry) => fieldOf(entry.field)) ?? answer.problems[0];
           const reason = answer.problems.map((entry) => entry.problem).join(" ") || answer.reason || "Not saved.";
-          return refuse(reason, problem ? fieldOf(problem.field) : undefined, problem?.field.startsWith("observation.window") ? "completion" : "source");
+          return refuse(reason, problem ? fieldOf(problem.field) : undefined, problem?.field.startsWith("observation.window") || problem?.field.startsWith("observation.connected.completion") || problem?.field.startsWith("observation.connected.barrier_") ? "completion" : "source");
         }
         setDirty(false);
         await onSaved(answer.saved);
@@ -1110,7 +1270,23 @@ function ObservationEditor({
           Completion
         </button>
       </div>
-      {step === "source" ? sourceStep : completionStep}
+      {step === "source" ? sourceStep : held.connected ? null : completionStep}
+      {held.connected && vocabulary?.connected ? <>
+        {held.connected.fhir && held.connected.projection ? <p role="alert">The previous source's projection is still held. Replace it explicitly to use the FHIR fields.<button type="button" className="quiet" onClick={() => change((value) => { delete value.connected!.projection; })}>Replace previous projection</button></p> : null}
+        <ConnectedObservationFields
+          step={step}
+          setup={held.connected}
+          source={source}
+          vocabulary={vocabulary.connected}
+          context={context}
+          environments={environments}
+          observations={observations}
+          onChange={(apply) => change((value) => apply(value.connected!))}
+          onTouched={() => setDirty(true)}
+          onNumberProblem={setNumberProblem}
+          onOptions={setTypedOptions}
+        />
+      </> : null}
     </FormDialog>
   );
 }

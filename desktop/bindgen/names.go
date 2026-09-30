@@ -14,8 +14,11 @@ import (
 // name the panels import under another spelling. A new type needs an entry
 // only when the generator refuses a name two Go types would share.
 type names struct {
-	prefixes map[string]string // package import path, relative to the module, to its prefix
-	types    map[string]string // Go type, as goName writes it, to its TypeScript name
+	// wireShapes are custom serializers whose output remains exactly their
+	// declared optional Go fields. Every exception needs a wire roundtrip test.
+	wireShapes map[string]bool
+	prefixes   map[string]string // package import path, relative to the module, to its prefix
+	types      map[string]string // Go type, as goName writes it, to its TypeScript name
 	// vocabularies name the choices a panel offers for members Go carries as
 	// plain strings, each by the Go constants that name them: the const block
 	// that declares one constant, or exactly the constants listed.
@@ -43,6 +46,7 @@ func capitalized(name string) string {
 
 // facadeNames is the naming the committed declarations use.
 var facadeNames = names{
+	wireShapes: map[string]bool{"internal/desktop.ObservationDraft": true},
 	prefixes: map[string]string{
 		"desktop/hubadmin":          "HubAdmin",
 		"internal/assertionauthor":  "AssertionAuthor",

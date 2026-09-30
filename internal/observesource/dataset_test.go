@@ -59,6 +59,31 @@ func TestTypedDatasetFileAndCaptureReopenWithoutOriginalSources(t *testing.T) {
 		t.Fatal("capture re-derivation lost occurrence identity", err)
 	}
 }
+
+func TestTypedDatasetAcquiresRelativeCaptureWithoutChangingDeclaredIdentity(t *testing.T) {
+	source, original, _ := declaredCapture(t, declaredCaptureSource, time.Now(), downstreamBooking)
+	source.Capture.Path = filepath.Base(original)
+	p := datasetProjection("hl7")
+	p.Columns = []dataset.Column{{Name: "key", Type: "text", Selector: "SCH-1.1", Key: true, Required: true}, {Name: "sender", Type: "text", Selector: "MSH-3", Required: true}}
+	output := filepath.Join(t.TempDir(), "relative-capture")
+	request := datasetRequest(source, p, output)
+	request.SourceRoot = filepath.Dir(original)
+	result, err := observesource.CollectDataset(context.Background(), request)
+	if err != nil || !result.Usable() || len(result.Document().Rows) != 1 || result.Document().Rows[0].Values[0].Text != "APPT-001" {
+		t.Fatalf("relative capture acquisition: %v", err)
+	}
+	declared, err := observesource.DecodeSource(result.Document().Acquisition.SourceConfiguration)
+	if err != nil || declared.Capture.Path != source.Capture.Path || declared.Identity() != request.Binding.Source {
+		t.Fatalf("declared capture scope changed during acquisition: %v", err)
+	}
+	if err := os.Rename(original, original+"-moved"); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := observesource.OpenDataset(context.Background(), output)
+	if err != nil || reopened.Identity() != result.Identity() || reopened.Document().Binding != request.Binding {
+		t.Fatalf("offline relative capture: %v", err)
+	}
+}
 func TestTypedHTTPDatasetRetainsBodyAndRefusesContinuation(t *testing.T) {
 	for _, mode := range []string{"complete", "next", "link"} {
 		t.Run(mode, func(t *testing.T) {

@@ -100,13 +100,16 @@ const (
 type ActionID string
 
 const (
-	OpenAction             ActionID = "item.open"
-	RenameAction           ActionID = "item.rename"
-	LocateAction           ActionID = "item.locate"
-	SaveAction             ActionID = "item.save"
-	ReplaySendAction       ActionID = "replay.send"
-	ExportPacketAction     ActionID = "export.derived-packet"
-	ApprovePromotionAction ActionID = "suite.approve-promotion"
+	OpenAction                   ActionID = "item.open"
+	RenameAction                 ActionID = "item.rename"
+	LocateAction                 ActionID = "item.locate"
+	SaveAction                   ActionID = "item.save"
+	ReplaySendAction             ActionID = "replay.send"
+	CheckFHIRConnectionAction    ActionID = "environment.check-fhir-connection"
+	CheckFHIRAuthorizationAction ActionID = "environment.check-fhir-authorization"
+	CheckFHIRCapabilitiesAction  ActionID = "environment.check-fhir-capabilities"
+	ExportPacketAction           ActionID = "export.derived-packet"
+	ApprovePromotionAction       ActionID = "suite.approve-promotion"
 	// CollectObservationAction reads an observation's source once.
 	CollectObservationAction ActionID = "observation.collect"
 	// ResetEnvironmentAction runs an environment's reset plan.
@@ -354,17 +357,25 @@ type RunSummary struct {
 // name, with that observation's name, and ResetName the name its reset was
 // given.
 type EnvironmentSummary struct {
-	Classification    string   `json:"classification"`
-	Address           string   `json:"address"`
-	Transport         string   `json:"transport"`
-	LastCheckedAt     *string  `json:"last_checked_at"`
-	LastCheckOutcome  string   `json:"last_check_outcome,omitzero"`
-	LastCheckRevision string   `json:"last_check_revision,omitzero"`
-	Observation       *ItemRef `json:"observation"`
-	ObservationName   string   `json:"observation_name,omitzero"`
-	HasPolicy         bool     `json:"has_policy"`
-	ResetName         string   `json:"reset_name,omitzero"`
-	ResetActions      int      `json:"reset_actions"`
+	IsolationName     string               `json:"isolation_name,omitzero"`
+	IsolationOutcome  *IsolationOutcome    `json:"isolation_outcome,omitzero"`
+	Protocol          string               `json:"protocol,omitzero"`
+	Version           string               `json:"version,omitzero"`
+	Authentication    string               `json:"authentication,omitzero"`
+	Validator         string               `json:"validator,omitzero"`
+	Capabilities      *FHIRCapabilityCheck `json:"capabilities,omitzero"`
+	Authorization     *FHIRCapabilityCheck `json:"authorization,omitzero"`
+	Classification    string               `json:"classification"`
+	Address           string               `json:"address"`
+	Transport         string               `json:"transport"`
+	LastCheckedAt     *string              `json:"last_checked_at"`
+	LastCheckOutcome  string               `json:"last_check_outcome,omitzero"`
+	LastCheckRevision string               `json:"last_check_revision,omitzero"`
+	Observation       *ItemRef             `json:"observation"`
+	ObservationName   string               `json:"observation_name,omitzero"`
+	HasPolicy         bool                 `json:"has_policy"`
+	ResetName         string               `json:"reset_name,omitzero"`
+	ResetActions      int                  `json:"reset_actions"`
 	// TransportApproved says a person approved the transport to this address
 	// through its own reviewed action. ApprovalRequired says the address is
 	// one a check, send or reset reaches only once it is approved; a loopback
@@ -376,6 +387,9 @@ type EnvironmentSummary struct {
 // ObservationSummary is an observation source's type and its latest completed
 // collection among the project's retained completion records.
 type ObservationSummary struct {
+	Typed            bool    `json:"typed,omitzero"`
+	Fields           int     `json:"fields,omitzero"`
+	Completion       string  `json:"completion,omitzero"`
 	SourceType       string  `json:"source_type"`
 	Enabled          bool    `json:"enabled"`
 	LatestCollection *string `json:"latest_collection"`

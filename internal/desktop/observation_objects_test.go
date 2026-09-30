@@ -264,7 +264,7 @@ func TestObservationFieldsReadsOnlyTheChosenExportHeader(t *testing.T) {
 	writeDocument(t, context.Project, "export.csv", "appointment,status\nA1,booked\n")
 	before := entries(t, context.Project)
 	draft := observationDraft(t, "appointments")
-	listed := app.ObservationFields(desktop.ObservationFieldsRequest{Context: context, Source: draft.Source})
+	listed := app.ObservationFields(desktop.ObservationFieldsRequest{Context: context, Source: &draft.Source})
 	if listed.State != desktop.Completed || !slices.Equal(listed.Fields, []string{"appointment", "status"}) {
 		t.Fatalf("the export's fields: %+v", listed)
 	}
@@ -272,10 +272,10 @@ func TestObservationFieldsReadsOnlyTheChosenExportHeader(t *testing.T) {
 		t.Fatalf("listing fields wrote: %v", after)
 	}
 	draft.Source.File.Path = "not-exported.csv"
-	if missing := app.ObservationFields(desktop.ObservationFieldsRequest{Context: context, Source: draft.Source}); missing.State != desktop.Failed || len(missing.Fields) != 0 {
+	if missing := app.ObservationFields(desktop.ObservationFieldsRequest{Context: context, Source: &draft.Source}); missing.State != desktop.Failed || len(missing.Fields) != 0 {
 		t.Fatalf("fields of an absent export: %+v", missing)
 	}
-	if http := app.ObservationFields(desktop.ObservationFieldsRequest{Context: context, Source: observationOf(t, httpObservationSource).Source}); http.State != desktop.Failed {
+	if http := app.ObservationFields(desktop.ObservationFieldsRequest{Context: context, Source: &observationOf(t, httpObservationSource).Source}); http.State != desktop.Failed {
 		t.Fatalf("fields of an HTTPS source: %+v", http)
 	}
 }

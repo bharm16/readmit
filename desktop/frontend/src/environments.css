@@ -126,6 +126,12 @@
   gap: var(--s2);
 }
 
+.isolation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+
 /* Rows edited in place inside a sheet: allowed ranges, database filters. */
 .edit-table input,
 .edit-table select {

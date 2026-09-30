@@ -31,7 +31,7 @@ import { IconButton } from "./IconButton";
 import { EmptyState, FormDialog, Menu, Modal, ValueRows, type SubmitFailure } from "./layout";
 import { listDate } from "./Projects";
 import { instantOf } from "./Messages";
-import { CHECK_OUTCOMES, TRANSPORTS } from "./Environments";
+import { authenticationText, CHECK_OUTCOMES, TRANSPORTS, validatorText } from "./Environments";
 import { THEMES, term } from "./display";
 
 // ---------- Preferences ----------
@@ -554,8 +554,12 @@ function ConnectionDetail({
               : []),
             ...(row.last_seen ? [{ label: "Last seen", value: new Date(row.last_seen).toLocaleString() }] : []),
             ...(detail?.operation ? [{ label: "Activity", value: detail.operation }] : []),
-            ...(disclosure ? [{ label: "Data", value: disclosure.data }] : []),
-            ...(disclosure ? [{ label: "Authorization", value: disclosure.authorization }] : []),
+            ...(detail?.data || disclosure?.data ? [{ label: "Data", value: detail?.data || disclosure?.data }] : []),
+            ...(detail?.authorization || disclosure?.authorization ? [{ label: "Authorization", value: detail?.authorization || disclosure?.authorization }] : []),
+            ...(detail?.protocol === "fhir-r4" ? [{ label: "Protocol", value: `FHIR R4 ${detail.version || "4.0.1"}` }] : []),
+            ...(detail?.authentication ? [{ label: "Authentication", value: authenticationText(detail.authentication) }] : []),
+            ...(detail?.transport === "https" ? [{ label: "Transport", value: "HTTPS" }] : []),
+            ...(detail?.validator ? [{ label: "Validation", value: validatorText(detail.validator) }] : []),
             ...(detail?.transport && TRANSPORTS.some((entry) => entry.value === detail.transport)
               ? [{ label: "Transport", value: TRANSPORTS.find((entry) => entry.value === detail.transport)!.label }]
               : []),

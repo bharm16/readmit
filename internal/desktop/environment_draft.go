@@ -55,6 +55,9 @@ type EnvironmentLinks struct {
 const TransportProblem = "Choose a transport"
 
 func readEnvironment(c *loadedCatalog, item catalog.Item, paths map[string]string) (view, error) {
+	if declares(paths["target"], FHIRConnectionSchema) {
+		return readFHIRConnection(c, item, paths)
+	}
 	if err := verifyEnvironment(paths); err != nil {
 		return view{}, err
 	}
@@ -92,6 +95,14 @@ func readEnvironment(c *loadedCatalog, item catalog.Item, paths map[string]strin
 	}
 	if check, err := readCheck(c.root, item.ID); err == nil {
 		summary.LastCheckedAt, summary.LastCheckOutcome, summary.LastCheckRevision = &check.CheckedAt, check.Outcome, check.Revision
+	}
+	if path, held := paths["isolation"]; held {
+		if plan, err := readEnvironmentIsolation(path); err == nil {
+			summary.IsolationName = plan.Name
+		}
+		if state, err := readIsolationState(c.root, item.ID); err == nil {
+			summary.IsolationOutcome = state.Outcome
+		}
 	}
 	return view{name: target.Name, summary: ItemSummary{Environment: summary}}, nil
 }
@@ -245,6 +256,13 @@ func normalizedPlan(plan fixturereset.Plan, environment, drafted string, names [
 		taken[action.ID] = true
 	}
 	for i := range plan.Actions {
+		if plan.Actions[i].Instructions == "" && plan.Actions[i].Operator != fixturereset.OperatorConfirms {
+			if i < len(names) && names[i] != "" {
+				plan.Actions[i].Instructions = names[i]
+			} else {
+				plan.Actions[i].Instructions = resetEffect(plan.Actions[i], environment)
+			}
+		}
 		action := &plan.Actions[i]
 		if action.Authority == "" {
 			if required, ok := fixturereset.RequiredAuthority(action.Operator); ok {
@@ -441,6 +459,9 @@ func readLinks(path string) (EnvironmentLinks, error) {
 // verifyEnvironment reads a staged environment revision through the readers
 // the command line reads each of its documents with, together.
 func verifyEnvironment(files map[string]string) error {
+	if declares(files["target"], FHIRConnectionSchema) {
+		return verifyFHIRConnection(files)
+	}
 	target, err := replay.ReadRecordedTarget(files["target"])
 	if err != nil {
 		return err
@@ -471,16 +492,22 @@ func verifyEnvironment(files map[string]string) error {
 			}
 		}
 	}
+	if path, held := files["isolation"]; held {
+		_, err := readEnvironmentIsolation(path)
+		return err
+	}
 	return nil
 }
 
 // environmentMembers is what an environment's current backing declares.
 type environmentMembers struct {
-	target replay.Target
-	policy *sendpolicy.Policy
-	reset  *fixturereset.Plan
-	links  EnvironmentLinks
-	paths  map[string]string
+	isolation *EnvironmentIsolation
+	fhir      *FHIRConnection
+	target    replay.Target
+	policy    *sendpolicy.Policy
+	reset     *fixturereset.Plan
+	links     EnvironmentLinks
+	paths     map[string]string
 }
 
 // environmentOf reads every member an available environment declares.
@@ -488,6 +515,9 @@ func (c *loadedCatalog) environmentOf(item catalog.Item) (*environmentMembers, e
 	paths, availability, reason := c.backing(item)
 	if availability != ItemAvailable {
 		return nil, errors.New(reason)
+	}
+	if declares(paths["target"], FHIRConnectionSchema) {
+		return c.fhirEnvironmentOf(paths)
 	}
 	target, err := replay.ReadDeclaredRecordedTarget(paths["target"])
 	if err != nil {
@@ -512,6 +542,13 @@ func (c *loadedCatalog) environmentOf(item catalog.Item) (*environmentMembers, e
 		if members.links, err = readLinks(path); err != nil {
 			return nil, err
 		}
+	}
+	if path, held := paths["isolation"]; held {
+		isolation, err := readEnvironmentIsolation(path)
+		if err != nil {
+			return nil, err
+		}
+		members.isolation = &isolation
 	}
 	return members, nil
 }
@@ -714,6 +751,10 @@ func (a *App) OpenItemDraft(request ItemRequest) ItemDraftResult {
 				return result
 			}
 			draft.Environment, draft.SendPolicy, draft.ResetPlan = &members.target, members.policy, members.reset
+			draft.Isolation = members.isolation
+			if members.fhir != nil {
+				draft.Environment, draft.FHIR = nil, members.fhir
+			}
 			if draft.ResetPlan != nil {
 				plan := *draft.ResetPlan
 				loaded.observationIdentities(&plan)
@@ -745,6 +786,9 @@ func (c *loadedCatalog) observationOf(item catalog.Item) (*ObservationDraft, err
 	paths, availability, reason := c.backing(item)
 	if availability != ItemAvailable {
 		return nil, errors.New(reason)
+	}
+	if _, held := paths["setup"]; held {
+		return openConnectedObservation(paths)
 	}
 	data, err := boundedFile(paths["source"], catalog.MaxMemberBytes)
 	if err != nil {

@@ -32,13 +32,14 @@ import (
 // identity, the completion bounds it is held to, and where the source is
 // read from.
 type CollectReview struct {
-	Revision    string             `json:"revision"`
-	Source      string             `json:"source"`
-	SourceType  string             `json:"source_type"`
-	Scope       string             `json:"scope"`
-	Window      string             `json:"window"`
-	Bounds      observewindow.Rule `json:"bounds"`
-	Destination string             `json:"destination"`
+	Typed       *TypedCollectReview `json:"typed,omitzero"`
+	Revision    string              `json:"revision"`
+	Source      string              `json:"source"`
+	SourceType  string              `json:"source_type"`
+	Scope       string              `json:"scope"`
+	Window      string              `json:"window"`
+	Bounds      observewindow.Rule  `json:"bounds"`
+	Destination string              `json:"destination"`
 }
 
 // ResetReviewAction is one saved reset action as its review shows it: its
@@ -143,6 +144,9 @@ func bindCollect(a *App, ctx context.Context, request PrepareActionRequest, held
 		return nil, declined
 	}
 	paths, _, _ := loaded.backing(records[0])
+	if _, heldSetup := paths["setup"]; heldSetup {
+		return bindTypedCollect(a, ctx, request, held, loaded, items, records[0], paths)
+	}
 	if paths["window"] == "" {
 		return nil, refusal{Failed, "an observation is collected through its window; save the observation with one first"}
 	}
@@ -192,6 +196,9 @@ func bindCollect(a *App, ctx context.Context, request PrepareActionRequest, held
 // collection that did not complete is reported with the reason it observed
 // nothing, never as having found no records.
 func executeCollect(a *App, ctx context.Context, bound *boundAction, _ ReviewDecisions) ReviewedActionResult {
+	if bound.typedCollect != nil {
+		return executeTypedCollect(a, ctx, bound)
+	}
 	a.reach(reachingTarget{ref: "observation:" + bound.origin.Items[0].ID, name: bound.review.Items[0].Name,
 		kind: ConnectionSource, destination: bound.review.Destination.Address})
 	request := bound.collect.request

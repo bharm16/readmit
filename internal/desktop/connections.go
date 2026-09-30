@@ -93,6 +93,12 @@ const (
 
 // ConnectionDetail is the technical configuration a row's selection shows.
 type ConnectionDetail struct {
+	Data           string `json:"data,omitzero"`
+	Authorization  string `json:"authorization,omitzero"`
+	Protocol       string `json:"protocol,omitzero"`
+	Version        string `json:"version,omitzero"`
+	Authentication string `json:"authentication,omitzero"`
+	Validator      string `json:"validator,omitzero"`
 	Transport      string `json:"transport,omitzero"`
 	Classification string `json:"classification,omitzero"`
 	SourceType     string `json:"source_type,omitzero"`
@@ -346,6 +352,35 @@ func (a *App) projectConnections(request RequestContext) ([]ConnectionRow, strin
 		switch ItemKind(item.Kind) {
 		case EnvironmentItem:
 			rows = append(rows, environmentConnection(loaded.read(item)))
+			if members, err := loaded.environmentOf(item); err == nil && members.isolation != nil {
+				plan := members.isolation
+				row := ConnectionRow{Ref: "fixture:" + item.ID, Name: plan.Name, Kind: ConnectionEnvironment, State: ConnectionNotChecked, Owner: ConnectionOwner{Kind: OwnerEnvironment, ObjectID: item.ID}, Disclosure: "environment", Actions: []ConnectionAction{ConnectionEdit}, Detail: ConnectionDetail{Protocol: "fixture-adapter", Operation: "read, authorized setup, guarded cleanup"}, Reason: "Customer fixture adapter; side effects require their explicit reviews"}
+				choices, err := isolationRegistryChoices(plan.RegistryFile)
+				if err != nil {
+					row.State = ConnectionUnavailable
+					row.Reason = "The selected fixture registration is unavailable"
+				} else {
+					for _, choice := range choices {
+						if choice.ID == plan.Adapter {
+							row.Destination = choice.Address
+							row.Detail.Classification = "nonproduction"
+							row.Detail.Revision = choice.Revision
+						}
+					}
+					if row.Destination == "" {
+						row.State = ConnectionUnavailable
+						row.Reason = "The selected fixture adapter is no longer registered"
+					}
+				}
+				if state, err := readIsolationState(loaded.root, item.ID); err == nil && state.Outcome != nil {
+					row.CheckedAt = &state.Outcome.CheckedAt
+					if row.State != ConnectionUnavailable {
+						row.State = ConnectionChecked
+						row.Detail.Outcome = state.Outcome.Setup + " / " + state.Outcome.Cleanup
+					}
+				}
+				rows = append(rows, row)
+			}
 		case ObservationItem:
 			rows = append(rows, loaded.observationConnection(item))
 		}
@@ -364,7 +399,12 @@ func environmentConnection(item CatalogItem) ConnectionRow {
 	default:
 		row.Destination = summary.Address
 		row.Detail = ConnectionDetail{Transport: summary.Transport, Classification: summary.Classification,
+			Protocol: summary.Protocol, Version: summary.Version, Authentication: summary.Authentication, Validator: summary.Validator,
 			Outcome: summary.LastCheckOutcome, Revision: summary.LastCheckRevision}
+		if summary.Protocol == "fhir-r4" {
+			row.Detail.Data = "Test connection opens TLS only. Test authorization reads the registered key and requests a token. Check capabilities reads public metadata. Observe reads the reviewed typed resource search; no clinical payload is sent by these actions."
+			row.Detail.Authorization = "The saved connection revision, explicit operation review, allowed destinations and registered SMART scope authorize only that action. Local offline validation is a separate installed capability."
+		}
 		if summary.LastCheckedAt != nil {
 			row.State, row.CheckedAt = ConnectionChecked, summary.LastCheckedAt
 		}
@@ -384,6 +424,26 @@ func (c *loadedCatalog) observationConnection(item catalog.Item) ConnectionRow {
 	}
 	row.Detail = ConnectionDetail{SourceType: summary.SourceType, Outcome: summary.LatestStatus}
 	if paths, availability, _ := c.backing(item); availability == ItemAvailable {
+		if _, held := paths["setup"]; held {
+			if draft, err := openConnectedObservation(paths); err == nil && draft.Connected.FHIR != nil {
+				row.Detail.Protocol = "fhir-r4"
+				row.Detail.Version = "4.0.1"
+				if i := c.document.Find(draft.Connected.Environment); i >= 0 {
+					environment := c.read(c.document.Items[i])
+					if summary := environment.Summary.Environment; summary != nil {
+						row.Destination = summary.Address
+						row.Detail.Authentication = summary.Authentication
+						row.Detail.Validator = summary.Validator
+					}
+				}
+				if summary.LatestCollection != nil {
+					row.State = ConnectionChecked
+					row.CheckedAt = summary.LatestCollection
+					row.Detail.Outcome = summary.LatestStatus
+				}
+				return row
+			}
+		}
 		if source, _, err := operation.ValidateObservationSource(paths[primaryRole(ObservationItem)]); err == nil {
 			row.Destination = sourceDestination(source)
 		}

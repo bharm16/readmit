@@ -30,6 +30,7 @@ import (
 // always one the facade reads and a page it asks for is always one the facade
 // answers.
 type Vocabulary struct {
+	Connected ConnectedVocabulary `json:"connected"`
 	// DiagnosisBuiltins are the built-in configurations a diagnosis can run
 	// under, each named by the selection a diagnosis request makes.
 	DiagnosisBuiltins []DiagnosisBuiltin `json:"diagnosis_builtins"`
@@ -197,6 +198,7 @@ func vocabulary() Vocabulary {
 		builtins = append(builtins, DiagnosisBuiltin{ID: builtin.id, Name: profileName(config.Profile), Profile: config.Profile, Ruleset: config.Ruleset})
 	}
 	return Vocabulary{
+		Connected:           connectedVocabulary(),
 		DiagnosisBuiltins:   builtins,
 		ImportPlan:          importer.Vocabulary(),
 		ImportEngines:       engineexport.Supported(),
