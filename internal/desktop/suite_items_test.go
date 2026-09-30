@@ -776,6 +776,11 @@ func TestATeamReviewOfASuiteVersionIsTheSignedInReviewers(t *testing.T) {
 		w.WriteHeader(http.StatusCreated)
 		_ = json.MarshalWrite(w, event)
 	})
+	hubMux.HandleFunc("/v2/projects/cardio-study/reviewers", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.MarshalWrite(w, hubprotocol.ProjectMembers{Schema: hubprotocol.ProjectMembersSchema, Project: "cardio-study", Issuer: "https://idp.hospital.org",
+			Members: []hubprotocol.ProjectMember{{Subject: "author@hospital.org", Role: "owner", Status: "active"}, {Subject: "reviewer@hospital.org", Role: "reviewer", Status: "active"}}})
+	})
 	scopes := []string{"evidence.read", "evidence.write", "approval"}
 	author := newAuthenticatedHubApp(t, hubMux, "author@hospital.org", scopes)
 	p := suiteProjectOn(t, author.app, author.dialog, "127.0.0.1:2575")
@@ -784,8 +789,8 @@ func TestATeamReviewOfASuiteVersionIsTheSignedInReviewers(t *testing.T) {
 	ref := p.saveSuite(t, "create", "", "", "Scheduling smoke", draft)
 	approve(t, p, desktop.PrepareActionRequest{Context: p.context, Action: desktop.ApproveSuiteBaselineAction, Items: []desktop.ItemRef{ref}}, "baseline")
 
-	if reviewers := p.app.SuiteReviewers(p.context); reviewers.State != desktop.Completed || reviewers.SignedIn != "author@hospital.org" || len(reviewers.Reviewers) != 0 {
-		t.Fatalf("the reviewers of an empty history: %+v", reviewers)
+	if reviewers := p.app.SuiteReviewers(p.context); reviewers.State != desktop.Completed || reviewers.SignedIn != "author@hospital.org" || !slices.Equal(reviewers.Reviewers, []string{"reviewer@hospital.org"}) {
+		t.Fatalf("the reviewers the project's members name: %+v", reviewers)
 	}
 	request := desktop.PrepareActionRequest{Context: p.context, Action: desktop.RequestSuiteReviewAction, Items: []desktop.ItemRef{ref},
 		SuiteApproval: &desktop.SuiteApprovalOptions{Reviewer: "reviewer@hospital.org"}}
@@ -829,7 +834,7 @@ func TestATeamReviewOfASuiteVersionIsTheSignedInReviewers(t *testing.T) {
 		t.Fatalf("the release: %+v %+v", released, events)
 	}
 	if reviewers := q.app.SuiteReviewers(q.context); !slices.Equal(reviewers.Reviewers, []string{"author@hospital.org"}) {
-		t.Fatalf("the reviewers the history names: %+v", reviewers)
+		t.Fatalf("the reviewers the project's members name: %+v", reviewers)
 	}
 	history := p.app.SuiteHistory(desktop.ItemRequest{Context: p.context, Ref: ref})
 	scopes = []string{}

@@ -73,12 +73,14 @@ static build stand unchanged. Nothing here is added to the release archives.
   (`readmit-desktop-storage/v1`, amended 2026-09-26 by #565),
   the theme, text size and local reviewer name a person saved
   (`readmit-desktop-preferences/v1`, amended 2026-09-26 by #561),
-  and the paths of three operator-supplied files the
+  the paths of three operator-supplied files the
   person selected: the operation policy
   (`readmit-desktop-operation-selection/v1`), the commercial destinations
   (`readmit-desktop-commercial-selection/v1`) and the customer hub
-  configuration (`readmit-desktop-hub-selection/v1`). Saved field terms and a
-  retained draft can contain patient data typed by the operator. All ten files
+  configuration (`readmit-desktop-hub-selection/v1`), and the name the person
+  gave that team (`readmit-desktop-hub-team/v1`, amended 2026-09-29 by #562).
+  Saved field terms and a
+  retained draft can contain patient data typed by the operator. All eleven files
   are owner-readable, replaced atomically, and kept
   outside evidence; unreadable documents are reported rather than overwritten.
   No evidence read from a case is persisted in shell state. No document is

@@ -5,7 +5,7 @@
 // a type error rather than a title-cased code on screen. Only stable concepts
 // are mapped: payload text, filenames and exact protocol values are shown as
 // they are, never humanized.
-import type { CheckChange, RunCheckResult, RunDelivery, RunQueueIsolation, RunResult, BundleMode, CorrelationDecisionAction, CorrelationReviewStatus, SequenceAnalysisDeclaredCoverage, SequenceAnalysisRetryBasis, SearchField, Theme, DiagnosisClassification, DiagnosisSeverity, FindingScope, FindingVerdict, SimilarMemberState, FieldState, ResetOperator, ResetReason, SendPolicyReason, TargetClassification, TestBoundary, TestChange, TestExpectationOperator, TestRunnerStatus, SuiteApprovalScope, SuiteResult } from "./bindings";
+import type { CheckChange, RunCheckResult, RunDelivery, RunQueueIsolation, RunResult, BundleMode, CorrelationDecisionAction, CorrelationReviewStatus, SequenceAnalysisDeclaredCoverage, SequenceAnalysisRetryBasis, SearchField, Theme, DiagnosisClassification, DiagnosisSeverity, FindingScope, FindingVerdict, SimilarMemberState, FieldState, ResetOperator, ResetReason, SendPolicyReason, TargetClassification, TestBoundary, TestChange, TestExpectationOperator, TestRunnerStatus, SuiteApprovalScope, SuiteResult, HubActivityKind, HubFileType, HubReviewStatus, RetentionChange } from "./bindings";
 
 /** A caption for every member of one closed vocabulary. */
 export type DisplayMap<K extends string> = Record<K, string>;
@@ -300,4 +300,59 @@ export const STABILITY_STATES: DisplayMap<"insufficient_history" | "unresolved" 
   unresolved: "Unresolved",
   no_observed_flakiness: "No check changed result",
   possible_flakiness: "Some checks changed result",
+};
+
+/** What one recorded team event did, as Activity lists it. */
+export const TEAM_ACTIVITY: DisplayMap<HubActivityKind> = {
+  comment: "Commented",
+  assignment: "Assigned",
+  "review-request": "Requested review",
+  approval: "Approved",
+  "change-request": "Requested changes",
+  "support-policy": "Published sharing policy",
+  "support-request": "Requested summary approval",
+  "support-approval": "Approved summary",
+  revision: "Added revision",
+  resolve: "Resolved revisions",
+  "remove-user": "Removed member",
+  retention: "Set retention",
+  retire: "Retired file",
+  "audit-export": "Exported audit",
+};
+
+/** What a team project's records say a file is. */
+export const TEAM_FILE_TYPES: DisplayMap<HubFileType> = {
+  revision: "Revision",
+  "test-release": "Test release",
+  evidence: "Evidence",
+  "sharing-policy": "Sharing policy",
+  "support-summary": "Support summary",
+  file: "File",
+};
+
+/** Where one team review stands. */
+export const TEAM_REVIEW_STATUSES: DisplayMap<HubReviewStatus> = {
+  requested: "Requested",
+  approved: "Approved",
+  "changes-requested": "Changes requested",
+  stale: "Stale",
+};
+
+/** A role a team's access policy grants. */
+export const TEAM_ROLES: DisplayMap<"owner" | "admin" | "analyst" | "reviewer" | "runner" | "viewer"> = {
+  owner: "Owner",
+  admin: "Administrator",
+  analyst: "Analyst",
+  reviewer: "Reviewer",
+  runner: "Runner",
+  viewer: "Viewer",
+};
+
+/** What a retention change does, or did, to one file. */
+export const RETENTION_CHANGES: DisplayMap<RetentionChange> = {
+  extends: "Extended",
+  unchanged: "Unchanged",
+  retired: "Retired",
+  applied: "Applied",
+  failed: "Not changed",
 };

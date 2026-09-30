@@ -32,15 +32,15 @@ separately; desktop session/filter text can contain patient information.
 
 ## Hub and identity-provider setup
 
-The desktop hub panel can prepare validated handoffs for all seven host
-maintenance commands. Supply copies of the host configuration and, for
+Settings › Team › Administrator setup › Host tasks can prepare validated
+handoffs for all seven host maintenance commands. Supply copies of the host configuration and, for
 `schedule-init`, the operation and schedule policies; it checks their strict
 schemas and produces a quoted step for the Linux host. It can verify a copied
 backup offline and compute a schedule pin's input identity using the hub's own
 functions. Neither action runs a host command or authorizes an operation.
 Compare the reviewed copies with what is installed on the host, stop the
 service, verify the backup and retain the host's own result before proceeding.
-The desktop [handoff guide](desktop.md#hub-host-administration-handoffs)
+The desktop [handoff guide](desktop.md#host-tasks)
 describes each field and its limits.
 
 Use [the hub installation procedure](../hub/README.md#build-and-install) to
@@ -128,7 +128,7 @@ ordinary backup directories are not encrypted by Readmit.
 | Recovery unit | What to retain and verify |
 | --- | --- |
 | Project | `backup create`, `verify`, then `restore` to a new directory. Includes recovery copies and registrations; derived indexes rebuild with their original expiry. Runs/reports outside the project need separate backup. |
-| Hub without initialized scheduling | Stopped `readmit-hub ... backup` and `verify-backup`, then restore into a separately provisioned empty database/artifact root. Current backup v5 records metadata 6, objects, links, team mode, reviews and lifecycle removals/retirements. |
+| Hub without initialized scheduling | Stopped `readmit-hub ... backup` and `verify-backup`, then restore into a separately provisioned empty database/artifact root. Current backup v6 records metadata 7, objects, links and who linked them, team mode, reviews and lifecycle removals/retirements. |
 | Hub with initialized scheduling | Artifact-only backup refuses. Use a consistent stopped-deployment snapshot of PostgreSQL, the entire artifact root including scheduler history, every runner root/claim, policies, pinned specs/inputs, binaries and timezone input, plus separate configuration/secret recovery. There is no automated scheduler restore. |
 
 For the second row, use the exact [hub backup/restore commands](../hub/README.md#backup-restore-and-upgrades).

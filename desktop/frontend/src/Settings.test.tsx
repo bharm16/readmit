@@ -566,29 +566,33 @@ test("Edit on a source connection opens its observation editor and returns to it
 
 test("Add connection › Team chooses a hub configuration and returns to the Team hub", async () => {
   const user = userEvent.setup();
-  let choice: "cancelled" | "completed" = "cancelled";
+  let saved = false;
   const { facade } = await renderApp({
-    ListConnections: (context) => ({ state: "completed", context, rows: choice === "completed" ? [HUB, QA] : [QA] }),
-    ChooseHubConfig: () =>
-      choice === "completed"
-        ? { state: "completed", connected: false, authenticated: false, config_path: "/etc/readmit/hub-client.json", hub_url: "https://team.example.test" }
-        : { state: "cancelled", connected: false, authenticated: false },
+    ListConnections: (context) => ({ state: "completed", context, rows: saved ? [HUB, QA] : [QA] }),
+    ChooseHubTeamConfig: () => ({ state: "completed", config: "/etc/readmit/hub-client.json", hub_url: "https://team.example.test", projects: ["cardio"], name: "team.example.test" }),
+    SaveHubTeam: (request) => {
+      saved = true;
+      return { state: "completed", connected: false, authenticated: false, config_path: request.config, hub_url: "https://team.example.test", team: request.name };
+    },
   });
-  // A cancelled choice leaves the person on Team with nothing chosen.
+  // Closing Connect team leaves the person on Team with nothing chosen.
   await openSecurity(user);
   await user.click(await page().findByRole("button", { name: "Add connection" }));
   await user.click(await screen.findByRole("menuitem", { name: "Team" }));
-  await waitFor(() => expect(facade.callsTo("ChooseHubConfig").length).toBeGreaterThan(0));
+  let sheet = await screen.findByRole("dialog", { name: "Connect team" });
+  await user.click(within(sheet).getByRole("button", { name: "Close connect team" }));
   expect(await page().findByRole("button", { name: "Team", current: "page" })).toBeTruthy();
   expect(page().queryByRole("table", { name: "Connections" })).toBeNull();
+  expect(facade.callsTo("SaveHubTeam")).toHaveLength(0);
 
-  // A completed choice returns to Security with the Team hub open.
-  choice = "completed";
-  const before = facade.callsTo("ChooseHubConfig").length;
+  // A saved team returns to Security with the Team hub open.
   await openSecurity(user);
   await user.click(await page().findByRole("button", { name: "Add connection" }));
   await user.click(await screen.findByRole("menuitem", { name: "Team" }));
-  await waitFor(() => expect(facade.callsTo("ChooseHubConfig").length).toBeGreaterThan(before));
+  sheet = await screen.findByRole("dialog", { name: "Connect team" });
+  await user.click(within(sheet).getByRole("button", { name: "Choose file…" }));
+  await user.click(await within(sheet).findByRole("button", { name: "Save" }));
+  await waitFor(() => expect(facade.callsTo("SaveHubTeam").length).toBe(1));
   const detail = await screen.findByRole("dialog", { name: "Team hub" });
   expect(within(detail).getByText("team.example.test")).toBeTruthy();
   expect(page().getByRole("button", { name: "Security", current: "page" })).toBeTruthy();

@@ -407,22 +407,4 @@ export const privateData = {
       ],
     },
   },
-  lifecycleWrite: {
-    result: {
-      state: "completed",
-      event: {
-        schema: "readmit-hub-lifecycle-event/v1",
-        project: "synthetic-project",
-        sequence: 1,
-        issuer: "https://idp.example",
-        actor: "synthetic-reviewer",
-        at: STAMP,
-        kind: "archive",
-        reason: "Synthetic screenshot fixture.",
-        command_id: "synthetic-archive-command",
-        resource: "sample-case",
-      },
-      replay: false,
-    },
-  },
 };

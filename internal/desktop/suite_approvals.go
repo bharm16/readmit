@@ -821,9 +821,8 @@ func (a *App) recordSuiteApproval(ctx context.Context, bound *boundAction, recor
 	return &shown, refusal{}
 }
 
-// SuiteReviewers are the reviewers a team review request can ask: every
-// subject the hub project's review history names as an actor or a
-// recipient, other than the person signed in.
+// SuiteReviewers are the reviewers a team review request can ask: the hub
+// project's active members who may approve, other than the person signed in.
 func (a *App) suiteReviewers(ctx context.Context, result *SuiteReviewersResult) {
 	client, session, declined := a.signedIn()
 	if declined.state != "" {
@@ -835,16 +834,14 @@ func (a *App) suiteReviewers(ctx context.Context, result *SuiteReviewersResult) 
 		result.refuse(declined.state, declined.reason)
 		return
 	}
-	history, err := client.ListHistory(ctx, project)
+	reviewers, err := client.ListReviewers(ctx, project)
 	if err != nil {
-		result.refuse(Failed, "the customer hub's review history cannot be read: "+err.Error())
+		result.refuse(hubReadState(err), "the customer hub's reviewers cannot be read: "+err.Error())
 		return
 	}
-	for _, event := range history.Events {
-		for _, subject := range []string{event.Actor, event.Command.Recipient} {
-			if subject != "" && subject != session.Subject && !slices.Contains(result.Reviewers, subject) {
-				result.Reviewers = append(result.Reviewers, subject)
-			}
+	for _, member := range reviewers.Members {
+		if member.Subject != session.Subject {
+			result.Reviewers = append(result.Reviewers, member.Subject)
 		}
 	}
 	slices.Sort(result.Reviewers)

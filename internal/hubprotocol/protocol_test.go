@@ -213,19 +213,19 @@ func TestReviewQueriesSayWhatTheContractCannotCarry(t *testing.T) {
 
 func TestARecordedEventCarriesItsFamilysEventVersion(t *testing.T) {
 	support := hubprotocol.ReviewEvent{Schema: hubprotocol.ReviewEventV2, Command: hubprotocol.ReviewCommand{Schema: hubprotocol.ReviewCommandV2, Kind: "support-policy"}}
-	if hubprotocol.ValidEventVersion(support, false) || !hubprotocol.ValidEventVersion(support, true) {
+	if hubprotocol.ValidEventVersion(support, false, false) || !hubprotocol.ValidEventVersion(support, true, true) {
 		t.Fatal("the frozen event boundary widened")
 	}
 	support.Schema = hubprotocol.ReviewEventV1
-	if hubprotocol.ValidEventVersion(support, true) {
+	if hubprotocol.ValidEventVersion(support, true, true) {
 		t.Fatal("a support command under the v1 event")
 	}
 	comment := hubprotocol.ReviewEvent{Schema: hubprotocol.ReviewEventV1, Command: hubprotocol.ReviewCommand{Schema: hubprotocol.ReviewCommandV1, Kind: "comment"}}
-	if !hubprotocol.ValidEventVersion(comment, false) {
+	if !hubprotocol.ValidEventVersion(comment, false, false) {
 		t.Fatal("a v1 comment refused")
 	}
 	comment.Schema = hubprotocol.ReviewEventV2
-	if hubprotocol.ValidEventVersion(comment, true) {
+	if hubprotocol.ValidEventVersion(comment, true, true) {
 		t.Fatal("a v1 command under the v2 event")
 	}
 }

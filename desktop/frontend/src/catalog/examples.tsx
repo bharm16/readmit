@@ -9,7 +9,7 @@ import { HelpTopics } from "../ContextHelp";
 import { ControlledDetails } from "../ControlledDetails";
 import { EnvironmentBanner } from "../EnvironmentBanner";
 import { GuidedSample } from "../GuidedSample";
-import { HubAdministration } from "../HubAdministration";
+import { TeamAdministratorSetup, HostTasks } from "../HubAdministration";
 import { HubPanel } from "../HubPanel";
 import { IconButton } from "../IconButton";
 import { MessageReader } from "../Inspector";
@@ -33,7 +33,7 @@ import { SendReview } from "../RunPanel";
 import { RunnerPanel } from "../RunnerPanel";
 import { SyntheticPackets } from "../SyntheticPackets";
 import { TaskTabs, TaskPanel } from "../TaskTabs";
-import { TeamCollaboration, OfflineRevisionDraft } from "../TeamCollaboration";
+import { TeamCollaboration } from "../TeamCollaboration";
 import { RetentionStatus } from "../drafting";
 import {
   Page,
@@ -137,7 +137,10 @@ export const examples: Example[] = [
       onCancel={noop}
     />
   )),
-  e("HubAdministration", () => <HubAdministration />),
+  e("HostTasks", () => <HostTasks />),
+  e("TeamAdministratorSetup", () => (
+    <TeamAdministratorSetup status={f.defaultHubResult({ authenticated: true, connected: true })} project="cardio-study" team={f.teamResult()} teamName="Integration team" workspace={f.WORKSPACE_ROOT} onBack={noop} onRead={async () => {}} onCreateRevision={noop} />
+  )),
   e("HubPanel", () => <HubPanel {...common} />),
   e("IconButton", () => (
     <IconButton label="Refresh" icon="refresh" onClick={noop} />
@@ -247,17 +250,8 @@ export const examples: Example[] = [
       {content}
     </TaskPanel>
   )),
-  e("TeamCollaboration", () => <TeamCollaboration {...common} />),
-  e("OfflineRevisionDraft", () => (
-    <OfflineRevisionDraft
-      workspace={f.WORKSPACE_ROOT}
-      context={{
-        project: "synthetic-project",
-        resource: "synthetic-resource",
-        tips: ["revision-1"],
-        head: 1,
-      }}
-    />
+  e("TeamCollaboration", () => (
+    <TeamCollaboration project="cardio-study" teamName="Integration team" team={f.teamResult()} workspace={f.WORKSPACE_ROOT} onRead={async () => {}} onCreateRevision={noop} />
   )),
   e(
     "RetentionStatus",

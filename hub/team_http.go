@@ -69,6 +69,10 @@ func (s *Store) teamRequest(w http.ResponseWriter, r *http.Request, access *Acce
 			s.supportExport(w, r, access, project, parts[4])
 			return
 		}
+		if len(parts) == 4 && (parts[3] == "files" || parts[3] == "members" || parts[3] == "reviewers") {
+			s.directoryRequest(w, r, access, project, parts[3])
+			return
+		}
 		if len(parts) != 4 || (parts[3] != "reviews" && parts[3] != "history" && parts[3] != "notifications") {
 			http.NotFound(w, r)
 			return
@@ -130,7 +134,7 @@ func (s *Store) teamRequest(w http.ResponseWriter, r *http.Request, access *Acce
 			return true, ""
 		}
 	}
-	_, proj, release, ok := s.authorizeWrite(access, r, w, project, adm)
+	principal, proj, release, ok := s.authorizeWrite(access, r, w, project, adm)
 	if !ok {
 		return
 	}
@@ -173,5 +177,5 @@ func (s *Store) teamRequest(w http.ResponseWriter, r *http.Request, access *Acce
 	if r.Method == "GET" {
 		w.Header().Set(hubprotocol.CustodyHeader, hubprotocol.CustodyWarning)
 	}
-	s.artifactRequest(w, r, ctx, d, project)
+	s.artifactRequest(w, r, ctx, d, project, principal)
 }

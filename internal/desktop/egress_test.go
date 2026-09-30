@@ -313,6 +313,9 @@ var destinationActivities = map[string]string{
 	"PostHubReview": "hub", "PostHubSupportReview": "hub", "SuiteReviewers": "hub",
 	"ListHubLifecycle": "hub", "PostHubLifecycle": "hub", "DownloadHubExport": "hub", "ReconcileHubOfflineDraft": "hub",
 	"ConnectOperatorHub": "hub", "ReadOperatorHubArtifact": "hub", "StoreOperatorHubArtifact": "hub",
+	"ReadHubTeam": "hub", "ListHubMembers": "hub", "ListHubReviewers": "hub", "DownloadHubFile": "hub", "DownloadHubSummary": "hub",
+	"ReconcileTeamTransfer": "hub",
+	"ReadHubSupportSummary": "hub", "PreviewHubRetention": "hub", "ApplyHubRetention": "hub", "OpenHubConflict": "hub",
 }
 
 // operationsRunningDeclaredPrograms is the reviewed inventory of bound

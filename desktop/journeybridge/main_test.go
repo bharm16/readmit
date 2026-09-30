@@ -67,7 +67,7 @@ func TestHubAdministrationJourneyBindingMatchesTheShellBinding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"hubadmin.Admin.Preview", "hubadmin.Admin.CancelPreview"} {
+	for _, name := range []string{"hubadmin.Admin.Preview", "hubadmin.Admin.CancelPreview", "hubadmin.Admin.PrepareMembership"} {
 		if _, ok := production[name]; !ok {
 			t.Errorf("shell has no %s binding", name)
 		}

@@ -115,6 +115,8 @@ type PrepareActionRequest struct {
 	// Run names the suite environment or original phase a run review is
 	// asked for (#555).
 	Run *RunActionOptions `json:"run,omitzero"`
+	// Team names a team transfer's project, file, resource and resolution.
+	Team *TeamActionOptions `json:"team,omitzero"`
 }
 
 // ReviewDestination is where an action's effect lands: a named target and
@@ -152,6 +154,7 @@ type ActionReview struct {
 	Derive        *DeriveReviewView       `json:"derive,omitzero"`
 	Transport     *TransportReview        `json:"transport,omitzero"`
 	Run           *RunReview              `json:"run,omitzero"`
+	Team          *TeamActionReview       `json:"team,omitzero"`
 }
 
 // ExportReviewView is the export review a derived packet is exported from:
@@ -242,6 +245,8 @@ type ReviewedActionResult struct {
 	// Run is the run a run, resume or send retained, as the project lists
 	// it, so the window opens it.
 	Run *ItemRef `json:"run,omitzero"`
+	// Team is what a team transfer recorded.
+	Team *TeamActionOutcome `json:"team,omitzero"`
 }
 
 func (r *ReviewedActionResult) refuse(state State, reason string) {
@@ -273,6 +278,8 @@ type boundAction struct {
 	transport *transportBinding
 	// run is what a reviewed run executes.
 	run *runBinding
+	// team is what a team transfer sends.
+	team *teamBinding
 }
 
 // slot is the operation slot one step of an action holds: a declared,
@@ -320,6 +327,12 @@ var actionPolicies = map[ActionID]actionPolicy{
 		review: slot{}, perform: slot{profile: "DeriveExportReview"}, bind: bindDeriveReview, execute: executeDeriveReview},
 	ApproveTransportAction: {consent: ApproveConsent, review: slot{}, perform: slot{writes: true},
 		bind: bindApproveTransport, execute: executeApproveTransport},
+	TeamUploadAction: {consent: UploadConsent, review: slot{}, perform: slot{profile: "UploadHubArtifact"},
+		bind: bindTeamUpload, execute: executeTeam},
+	TeamRevisionAction: {consent: UploadConsent, requirements: []ReviewRequirement{RationaleRequirement},
+		review: slot{profile: "ReadHubTeam"}, perform: slot{profile: "PostHubLifecycle"}, bind: bindTeamRevision, execute: executeTeam},
+	TeamResolveAction: {consent: UploadConsent, requirements: []ReviewRequirement{RationaleRequirement},
+		review: slot{profile: "ReadHubTeam"}, perform: slot{profile: "PostHubLifecycle"}, bind: bindTeamResolve, execute: executeTeam},
 }
 
 // hold runs work holding one slot.
@@ -373,6 +386,9 @@ func (s *reviewStore) forget(now time.Time) {
 		}
 	}
 	for id, intent := range s.intents {
+		if intent.result.Outcome == ActionUncertain && intent.result.Team != nil {
+			continue
+		}
 		if intent.at.Add(2 * reviewLifetime).Before(now) {
 			select {
 			case <-intent.done:

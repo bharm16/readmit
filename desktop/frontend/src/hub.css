@@ -1,240 +1,130 @@
-.hub-panel {
-  border-top: 1px solid var(--line);
-  padding-top: 1rem;
-  margin-top: 1.5rem;
-}
-
-.hub-context-status {
-  background: color-mix(in srgb, var(--surface) 90%, CanvasText 10%);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-control);
-  padding: 0.75rem 1rem;
-  margin: 0.75rem 0;
-}
-
-.hub-mode-badge {
-  display: inline-block;
-  padding: 0.2rem 0.5rem;
-  border-radius: var(--radius-control);
-  font-weight: bold;
-}
-
-.hub-mode-badge.connected {
-  background: transparent;
-  border: 1px solid currentColor;
-  color: var(--success);
-}
-
-.hub-mode-badge.offline {
-  background: transparent;
-  border: 1px solid currentColor;
-  color: var(--text-muted);
-}
-
-.hub-custody-warning {
-  background: var(--panel);
-  border-left: 3px solid var(--warning);
-  padding: 0.75rem 1rem;
-  margin: 0.75rem 0;
-}
-
-.hub-actions {
+.team-view {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin: 1rem 0;
-}
-
-.hub-admin-section {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-control);
-  padding: 1rem;
-  margin: 1rem 0;
-}
-
-.hub-admin-section form {
-  display: grid;
-  gap: 0.5rem;
-  max-width: 48rem;
-}
-
-.hub-admin-section input,
-.hub-admin-section select {
+  flex-direction: column;
+  gap: var(--s3);
   min-width: 0;
-  width: 100%;
-  box-sizing: border-box;
 }
 
-.hub-admin-section form > div {
+.team-header {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
 }
 
+.team-name {
+  font-size: var(--text-section);
+  line-height: var(--line-section);
+  font-weight: 600;
+  margin: 0;
+}
+
+.team-separator {
+  color: var(--muted);
+}
+
+.team-account {
+  margin-inline-start: auto;
+}
+
+.task-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-block-start: thin solid var(--line);
+}
+
+.task-list li {
+  border-block-end: thin solid var(--line);
+}
+
+.task-row {
+  width: 100%;
+  text-align: start;
+  background: none;
+  border: none;
+  padding: var(--s3) var(--s2);
+}
+
+.task-row:hover {
+  background: var(--hover);
+}
+
+.field-with-action {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+}
+
+.field-with-action > span {
+  overflow-wrap: anywhere;
+}
+
+.sign-in-steps {
+  margin: 0;
+  padding-inline-start: var(--s6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.sign-in-steps li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s4);
+}
+
+.sign-in-steps li[data-state="waiting"] {
+  color: var(--muted);
+}
+
+.step-state {
+  color: var(--muted);
+}
+
+.discussion li {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  padding-block: var(--s2);
+  border-block-end: thin solid var(--line);
+}
+
+.discussion-meta {
+  color: var(--muted);
+  font-size: var(--text-support);
+  line-height: var(--line-support);
+}
+
+.merge-conflict {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--s2);
+}
+
+.merge-conflict legend {
+  grid-column: 1 / -1;
+}
+
+.merge-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  min-width: 0;
+}
+
+.merge-side pre,
 .hub-admin-command {
+  margin: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
-.hub-diagnosis-results,
-.hub-auth-section,
-.hub-identity-section,
-.hub-projects-section,
-.hub-artifacts-section {
-  background: color-mix(in srgb, var(--surface) 95%, CanvasText 5%);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-control);
-  padding: 1rem;
-  margin: 1rem 0;
-}
-
-.hub-checks-list {
-  list-style: none;
-  padding-left: 0;
-}
-
-.hub-checks-list li {
-  padding: 0.35rem 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.check-indicator {
-  display: inline-block;
-  font-weight: bold;
-  font-size: 0.85rem;
-  padding: 0.1rem 0.4rem;
-  border-radius: var(--radius-control);
-  margin-right: 0.5rem;
-}
-
-.check-passed .check-indicator {
-  color: var(--success);
-}
-
-.check-failed .check-indicator {
-  color: var(--danger);
-}
-
-.hub-projects-list {
-  list-style: none;
-  padding-left: 0;
-}
-
-.hub-project-card {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-control);
-  padding: 0.75rem;
-  margin-bottom: 0.75rem;
-}
-
-.hub-project-header {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 0.5rem;
-}
-
-.capability-badge {
-  font-family: monospace;
-  font-size: 0.85rem;
-  margin-right: 0.4rem;
-  color: var(--muted);
-}
-
-.hub-artifacts-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 0.75rem;
-}
-
-.hub-artifacts-table th,
-.hub-artifacts-table td {
-  border: 1px solid var(--line);
-  text-align: left;
-}
-
-.hub-transfer-controls,
-.hub-upload-controls {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin: 0.5rem 0;
-}
-
-.hub-team-section {
-  margin-top: 1.25rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--line);
-}
-
-.hub-team-note {
-  color: color-mix(in srgb, CanvasText 70%, transparent);
-  max-width: 48rem;
-}
-
-.hub-collab-block,
-.hub-collab-form {
-  background: color-mix(in srgb, var(--surface) 95%, CanvasText 5%);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-control);
-  padding: 1rem;
-  margin: 1rem 0;
-}
-
-.hub-collab-form label {
-  display: block;
-  margin: 0.5rem 0;
-}
-
-.hub-collab-form input,
-.hub-collab-form textarea,
-.hub-collab-form select {
-  display: block;
-  width: min(100%, 36rem);
-  margin-top: 0.25rem;
-}
-
-.hub-message {
-  color: var(--danger);
-}
-
-.hub-operator-mode {
-  background: color-mix(in srgb, var(--surface) 95%, CanvasText 5%);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-control);
-  padding: 0.75rem 1rem;
-  margin: 1rem 0;
-}
-
-.hub-operator h4 button {
-  font-weight: bold;
-}
-
-.hub-operator-read {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.hub-operator-read input {
-  font-family: monospace;
-  min-width: 36ch;
-}
-
-/* The team panel's tasks: one tablist, wrapping at large text sizes. */
-.hub-team-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin: 0.75rem 0;
-}
-
-.hub-team-tabs button[aria-selected="true"] {
+.merge-side-name {
   font-weight: 600;
-  text-decoration: underline;
 }
 
-.hub-command-details dl {
-  margin: 0.25rem 0;
+.digest {
+  overflow-wrap: anywhere;
 }

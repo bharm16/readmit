@@ -277,7 +277,7 @@ type App struct {
 	operationRestoreRefusal string
 	chooser                 FolderChooser
 
-	// documents is the shell document store: the folder the shell's seven
+	// documents is the shell document store: the folder the shell's eleven
 	// local documents live in, the names they are kept under, and the one
 	// rule they are read and replaced by.
 	documents ShellDocuments
@@ -285,6 +285,10 @@ type App struct {
 	// selections remembered in the store for the next window. New wires none;
 	// NewWithOperationSelection restores all three.
 	selections *rememberedSelections
+	// hubTeam is the name the person gave the selected team, for the
+	// configuration it was given for.
+	hubTeamMu sync.Mutex
+	hubTeam   hubTeamDocument
 
 	// licenseRoot is where this computer's license lives, the folder the
 	// command line reads it from too; empty when the shell was given none.
@@ -442,7 +446,7 @@ type App struct {
 }
 
 // New binds the facade to a host folder dialog and the shell document store
-// over the folder given, where the shell keeps its ten local documents.
+// over the folder given, where the shell keeps its eleven local documents.
 // NewWithOperationSelection restores the three remembered selections from the
 // same store. None holds evidence.
 func New(chooser FolderChooser, documents ShellDocuments) *App {

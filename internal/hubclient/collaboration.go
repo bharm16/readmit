@@ -20,6 +20,10 @@ import (
 // lifecycle tip conflict. Callers must fetch current state and renew the action.
 var ErrConflict = errors.New("hub head or revision conflict; fetch current state and renew the action")
 
+// ErrCommandRefused is an authoritative rejection before a command is
+// recorded. Transport and malformed-success responses remain unresolved.
+var ErrCommandRefused = errors.New("hub command refused")
+
 // LifecycleWriteResult carries either a recorded event or an audit export body.
 type LifecycleWriteResult struct {
 	Event  *hubprotocol.LifecycleEvent `json:"event,omitzero"`
@@ -74,26 +78,25 @@ func (c *Client) PostReview(ctx context.Context, project string, command hubprot
 		return zero, false, err
 	}
 	switch resp.StatusCode {
-	case http.StatusCreated:
+	case http.StatusCreated, http.StatusOK:
 		var event hubprotocol.ReviewEvent
-		if err := json.Unmarshal(data, &event); err != nil {
+		if err := json.Unmarshal(data, &event, json.RejectUnknownMembers(true)); err != nil {
 			return zero, false, errors.New("invalid review event response")
 		}
-		return event, false, nil
-	case http.StatusOK:
-		var event hubprotocol.ReviewEvent
-		if err := json.Unmarshal(data, &event); err != nil {
+		_, timeErr := time.Parse(time.RFC3339Nano, event.At)
+		if event.Schema != hubprotocol.EventSchema(command) || event.Project != project || event.Sequence != command.Expected+1 ||
+			event.Actor != c.session.Subject || event.Issuer != c.session.Issuer || event.Command != command || timeErr != nil {
 			return zero, false, errors.New("invalid review event response")
 		}
-		return event, true, nil
+		return event, resp.StatusCode == http.StatusOK, nil
 	case http.StatusForbidden, http.StatusUnauthorized:
 		return zero, false, ErrAccessDenied
 	case http.StatusConflict:
 		return zero, false, ErrConflict
 	case http.StatusNotFound:
-		return zero, false, errors.New("review refused; evidence or parent missing")
+		return zero, false, fmt.Errorf("%w; evidence or parent missing", ErrCommandRefused)
 	case http.StatusBadRequest:
-		return zero, false, errors.New("review refused; command shape rejected by the hub")
+		return zero, false, fmt.Errorf("%w; command shape rejected by the hub", ErrCommandRefused)
 	default:
 		return zero, false, fmt.Errorf("review refused with status %d", resp.StatusCode)
 	}
@@ -181,7 +184,14 @@ func (c *Client) PostLifecycle(ctx context.Context, project string, command hubp
 			return LifecycleWriteResult{Audit: &audit, Replay: replay}, nil
 		}
 		var event hubprotocol.LifecycleEvent
-		if err := json.Unmarshal(data, &event); err != nil {
+		if err := json.Unmarshal(data, &event, json.RejectUnknownMembers(true)); err != nil {
+			return zero, errors.New("invalid lifecycle event response")
+		}
+		_, timeErr := time.Parse(time.RFC3339Nano, event.At)
+		actual, _ := json.Marshal(event.Command, json.Deterministic(true))
+		wanted, _ := json.Marshal(command, json.Deterministic(true))
+		if event.Schema != hubprotocol.LifecycleEventSchema || event.Project != project || event.Sequence != command.Expected+1 ||
+			event.Actor != c.session.Subject || event.Issuer != c.session.Issuer || !bytes.Equal(actual, wanted) || timeErr != nil {
 			return zero, errors.New("invalid lifecycle event response")
 		}
 		return LifecycleWriteResult{Event: &event, Replay: replay}, nil
@@ -189,6 +199,8 @@ func (c *Client) PostLifecycle(ctx context.Context, project string, command hubp
 		return zero, ErrAccessDenied
 	case http.StatusConflict:
 		return zero, ErrConflict
+	case http.StatusBadRequest, http.StatusNotFound:
+		return zero, fmt.Errorf("%w with status %d", ErrCommandRefused, resp.StatusCode)
 	default:
 		return zero, fmt.Errorf("lifecycle command refused with status %d", resp.StatusCode)
 	}
@@ -209,37 +221,12 @@ func (c *Client) DownloadExport(ctx context.Context, project, digest, destinatio
 	if err != nil {
 		return TransferResult{State: "failed"}, fmt.Errorf("invalid destination path: %w", err)
 	}
-	resp, err := c.doJSON(ctx, http.MethodGet, "/v2/projects/"+project+"/exports/"+digest, nil)
+	body, custodyWarning, err := c.ReadExport(ctx, project, digest)
 	if err != nil {
+		if errors.Is(err, ErrAccessDenied) {
+			return TransferResult{State: "permission_denied"}, err
+		}
 		return TransferResult{State: "failed"}, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized {
-		return TransferResult{State: "permission_denied"}, ErrAccessDenied
-	}
-	if resp.StatusCode == http.StatusNotFound {
-		return TransferResult{State: "failed"}, errors.New("export not found in project")
-	}
-	if resp.StatusCode == http.StatusGone {
-		return TransferResult{State: "failed"}, errors.New("export has been retired")
-	}
-	if resp.StatusCode != http.StatusOK {
-		return TransferResult{State: "failed"}, fmt.Errorf("export download failed with status %d", resp.StatusCode)
-	}
-	custodyWarning := resp.Header.Get(hubprotocol.CustodyHeader)
-	if custodyWarning == "" {
-		custodyWarning = hubprotocol.CustodyWarning
-	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, MaxArtifactBytes+1))
-	if err != nil {
-		return TransferResult{State: "failed"}, fmt.Errorf("error reading response body: %w", err)
-	}
-	if len(body) > MaxArtifactBytes {
-		return TransferResult{State: "failed"}, errors.New("downloaded export exceeds size limit")
-	}
-	sum := sha256.Sum256(body)
-	if hex.EncodeToString(sum[:]) != digest {
-		return TransferResult{State: "failed"}, ErrIntegrity
 	}
 	if err := writeAtomic(dest, body); err != nil {
 		return TransferResult{State: "failed"}, fmt.Errorf("cannot write export to destination: %w", err)
@@ -251,6 +238,50 @@ func (c *Client) DownloadExport(ctx context.Context, project, digest, destinatio
 		Path:    dest,
 		Warning: custodyWarning,
 	}, nil
+}
+
+// ReadExport reads an approved support export's bytes and verifies them
+// against its digest, writing nothing. The warning is the hub's custody
+// sentence.
+func (c *Client) ReadExport(ctx context.Context, project, digest string) ([]byte, string, error) {
+	if !hubprotocol.ValidProject(project) || !hubprotocol.ValidDigest(digest) {
+		return nil, "", errors.New("invalid project export")
+	}
+	if err := c.requireSession(); err != nil {
+		return nil, "", err
+	}
+	resp, err := c.doJSON(ctx, http.MethodGet, "/v2/projects/"+project+"/exports/"+digest, nil)
+	if err != nil {
+		return nil, "", err
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case http.StatusOK:
+	case http.StatusForbidden, http.StatusUnauthorized:
+		return nil, "", ErrAccessDenied
+	case http.StatusNotFound:
+		return nil, "", errors.New("export not found in project")
+	case http.StatusGone:
+		return nil, "", errors.New("export has been retired")
+	default:
+		return nil, "", fmt.Errorf("export download failed with status %d", resp.StatusCode)
+	}
+	custodyWarning := resp.Header.Get(hubprotocol.CustodyHeader)
+	if custodyWarning == "" {
+		custodyWarning = hubprotocol.CustodyWarning
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, MaxArtifactBytes+1))
+	if err != nil {
+		return nil, "", fmt.Errorf("error reading response body: %w", err)
+	}
+	if len(body) > MaxArtifactBytes {
+		return nil, "", errors.New("downloaded export exceeds size limit")
+	}
+	sum := sha256.Sum256(body)
+	if hex.EncodeToString(sum[:]) != digest {
+		return nil, "", ErrIntegrity
+	}
+	return body, custodyWarning, nil
 }
 
 func (c *Client) readReviewRoute(ctx context.Context, project, route string, query *hubprotocol.ReviewQuery) (hubprotocol.ReviewHistory, error) {

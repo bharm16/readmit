@@ -4014,28 +4014,35 @@ The journey after checkout is handled truthfully: completing a payment is not pr
 
 ## Customer artifact hub
 
-The Customer artifact hub panel in Settings › Team connects the
-desktop client to an organization-controlled artifact hub. It supports discovery
-and verified transfer of authorized projects and artifacts without background
-synchronization, telemetry, or cloud dependencies.
+Settings › Team is the one named team this window works with, an
+organization-controlled artifact hub. Without a configuration it shows **No
+team configured** and **Connect team**; configured, the team's name, **Not
+connected** and **Sign in**; signed in, the team and project in its header, the
+signed-in person's account menu (**Session details**, **Edit team**,
+**Administrator setup**, **Sign out**) and the project's **Activity**, **Files**
+and **Reviews**. There is no background synchronization, telemetry or cloud
+dependency, and startup contacts nothing.
 
-### Hub host administration handoffs
+### Host tasks
 
-The **Host administration handoffs** block is closed until opened and prepares each `readmit-hub`
-maintenance step: `migrate`, `check`, `backup`, `verify-backup`, `restore`,
-`schedule-init` and `schedule-pin`. It is separate from the desktop's hub
-client connection. Enter a local copy of the host's `readmit-hub-config/v1`
-file and the clean absolute Linux path where that configuration is installed
-on the hub host. The preview reads the local copy through the hub's strict
-configuration reader, validates the operation's other paths, and shows the
-exact quoted command with its prerequisites, effects and exclusions. It does
-not connect to the hub, open its database, invoke a subprocess, save a draft or
-run the command. The operator reviews and runs the step under the dedicated
-service identity on the customer host.
+Administrator setup › **Host tasks** prepares each `readmit-hub` maintenance
+step: **Migrate metadata** (`migrate`), **Check readiness** (`check`),
+**Create backup** (`backup`), **Verify backup** (`verify-backup`), **Restore
+backup** (`restore`), **Initialize schedules** (`schedule-init`) and **Pin
+inputs** (`schedule-pin`). Each task's sheet asks only for the local copies it
+reads, chosen in the host's dialog, and the host paths its command names,
+prefilled with the installed defaults. **Preview command** reads the local
+copies through the hub's strict readers, validates the operation's other paths,
+and shows the exact quoted command with its prerequisites, effects and
+exclusions; **Copy command** and **Export setup** (a new file the person names)
+are the only things done with it. It does not connect to the hub, open its
+database, invoke a subprocess or run the command, and it never claims to have
+run anything on the host. The operator reviews and runs the step under the
+dedicated service identity on the customer host.
 
 For backup and restore, the host directory is an absolute Linux path. Backup
 refuses a destination inside the configured artifact root. `verify-backup` and
-`restore` also take an absolute path to a copied backup on this computer and call the
+`restore` also read a copied backup folder on this computer and call the
 same offline verifier as the hub binary, accepting historical backup versions
 the binary still accepts and refusing damage. That local result establishes
 hash consistency, not source authenticity. `schedule-init` needs local copies
@@ -4046,9 +4053,9 @@ comes from `hub.ScheduleInputIdentity`, the same function the binary prints.
 Referenced case, target and spec bytes on the host must match those local
 copies before the operator approves a pin. A local preview does not establish
 host availability, permissions, lease admission, author entitlement, backup
-authenticity or a successful restore. Cancel requests the local verification
-to stop; the panel waits for any bounded reader in progress and then discards
-its command. Editing an input also discards an earlier preview.
+authenticity or a successful restore. **Stop** asks the local verification to
+stop; the sheet waits for any bounded reader in progress and then shows no
+command. Editing an input also discards an earlier preview.
 See [administrator operations](administration.md) for stopped-service and
 recovery boundaries.
 
@@ -4063,16 +4070,21 @@ selected via native file dialog. The configuration file specifies:
 - `idp`: The customer's OpenID Connect / OAuth 2.0 Identity Provider configuration, including `issuer`, `authorization_endpoint`, `token_endpoint`, `client_id`, `audience`, and required scopes.
 - `authorized_projects`: List of declared project identifiers expected to be available to the client.
 
-The panel chooses the configuration through the host's folder dialog: the
-chosen folder's `hub-client.json`, or its `hub.json` where the operator named
-the file that way. There is no typed-path field. `SelectHubConfig` makes the
-same selection for a caller that already holds the path; no component calls
-it, and the capability ledger records it as superseded by the dialog.
+**Connect team** is one sheet: a **Name** and the configuration the
+organization provided, chosen in the host's file dialog, which carries the
+team's address, certificate and key-locator references and identity provider.
+The sheet shows the address and projects the file names. **Save** selects the
+configuration and remembers the name; it never connects. There is no typed-path
+field. `ChooseHubConfig` and `SelectHubConfig` make the same selection without
+a name; no component calls them, and the capability ledger records them as
+superseded by `SaveHubTeam`.
 
 The application remembers the selected configuration file path in local desktop
 state across sessions as `readmit-desktop-hub-selection/v1`, retained beside the
-operation selection. The configuration file itself is never copied into
-application state or modified by the shell.
+operation selection, and the team's name as `readmit-desktop-hub-team/v1`
+(`schema`, `config`, `name`): a name is shown only for the configuration it was
+given for. The configuration file itself is never copied into application state
+or modified by the shell.
 
 Reopening the window restores that selection by reading two local files, the
 selection and the configuration it names, and nothing else: it connects to no
@@ -4096,8 +4108,8 @@ choice leaves the panel as it was.
 
 ### Prerequisite diagnostics
 
-Before connecting or upon selecting a configuration, the **Run diagnostics** action
-verifies prerequisites locally:
+**Sign in** is one flow the person starts. Its first step, while the window is
+not connected, verifies prerequisites locally:
 1. `ca_certificate`: Verifies the CA file exists, parses as valid PEM, and contains valid x509 certificates.
 2. `client_certificate`: Verifies the client certificate file exists and contains a valid certificate.
 3. `client_key_reference`: Resolves the client key reference via the credential resolver.
@@ -4108,22 +4120,23 @@ verifies prerequisites locally:
 8. `hub_readiness`: Queries the hub's `/health/ready` endpoint.
 9. `idp_configuration`: Validates IdP endpoint URLs and configuration schema.
 
-Diagnostics report actionable status (`passed`, `failed`, `warning`) for each
-item so administrators and users can isolate certificate, network, or policy issues
-before attempting sign-in.
+A failed check is listed in the flow with its reason and **Edit**, which opens
+the team's configuration; nothing connects. Once the checks pass the flow
+connects, then signs in.
 
 ### Offline and local mode vs deliberate connection
 
 The application starts unconditionally in **offline / local mode**. It performs
 no network probes, startup calls, or background heartbeats. Connecting to the
-hub requires an explicit user action (**Connect**). Disconnecting or closing the
-application immediately returns the client to local mode.
+hub requires an explicit user action (**Sign in**). **Sign out**, the account
+menu's one route to the existing disconnect, or closing the application
+immediately returns the client to local mode.
 
 ### Customer IdP sign-in and session security
 
 User authentication uses standard authorization code flow with PKCE (RFC 7636, S256):
-1. Selecting **Sign in with IdP** starts a local loopback callback server on `127.0.0.1:0`.
-2. The authorization URL with code challenge and state is generated and launched in the user's default system browser.
+1. The sign-in step starts a local loopback callback server on `127.0.0.1:0`.
+2. The authorization URL with code challenge and state is generated and the application opens it in the person's default browser; where the host cannot open it, the flow shows **Open sign-in page**.
 3. Upon completion, the loopback receiver captures the authorization code and exchanges it at the IdP's token endpoint.
 4. The received access token is validated strictly under RFC 9068:
    - Header `typ` must be `at+jwt`.
@@ -4132,15 +4145,16 @@ User authentication uses standard authorization code flow with PKCE (RFC 7636, S
    - Token must be cryptographically signed by the IdP and not expired.
 
 While the sign-in waits for the browser it holds the application's one
-operation slot, so the hub panel offers only **Cancel sign-in** beside the
-login link; the window's own cancel command stops it as well, and the wait
+operation slot, and **Stop** in the flow or the sidebar's operation indicator
+stops it, and the wait
 ends on its own after three minutes. However a sign-in ends without a session —
 the IdP refuses it, the browser returns a state the flow did not issue, the
 person cancels because the browser was closed, the wait times out, the IdP
 refuses the code, or another operation held the slot when the window asked to
 wait — the loopback listener is closed at once, the attempt is forgotten and
-the slot is free for the next action. The panel keeps the connection as it was
-and shows why the sign-in did not complete. Nothing is retried and nothing is
+the slot is free for the next action. The team stays configured and not signed
+in, and the flow shows why the sign-in did not complete with **Try again** and
+**Edit**. Nothing is retried and nothing is
 sent to the hub; signing in again starts a new flow with a new listener,
 verifier and state.
 
@@ -4150,35 +4164,44 @@ from the configuration selected to the sign-out). No token, secret, or session c
 written to disk, saved in browser storage (localStorage, sessionStorage, IndexedDB),
 or logged.
 
-### Authorized projects and effective capabilities
+### Projects, files and transfers
 
-Once authenticated, the hub reports accessible projects and effective capabilities
-for the user's identity:
-- Projects configured or probed through the hub are listed with their status (`authorized` or `denied`).
-- Effective capabilities (`evidence.read`, `evidence.write`, etc.) are displayed for each authorized project.
-- Denied projects display the refusal reason (e.g. role not granted).
-- Missing permissions cannot fall back to operator-only certificates or unscoped access.
+After a deliberate sign-in the selected project's metadata is read through
+that session (`ReadHubTeam`): its review and lifecycle logs and the files it
+links. This is the one exception to local-navigation-only reads, and it reads
+metadata only: opening a list never transfers a file's bytes. The header's
+project picker lists the projects the session may open. Changing the team, the
+signed-in person or the project clears what was shown before reading again, and
+a reply asked for another one is dropped; nothing is written under a previous
+project's session.
 
-### Artifact discovery, verified transfer, and custody
+**Files** lists Name, Type, Added by and Date. Name and Type come from what the
+project's own records say of a file — a revision is named by its resource, a
+suite release by the suite version of the open project that released it —
+otherwise the file is `Artifact` with a short disambiguator. Added by and Date
+are the hub's own record of who linked the file to the project and when
+(`readmit-hub-project-files/v1`); a file linked before the hub recorded that
+shows `—`, never a date inferred from storage time or the logs. The full
+SHA-256 is in the file's Details only.
 
-Users can list and transfer authorized project artifacts:
-- Artifact metadata includes name, artifact type, content length, SHA-256 digest, and modification time.
-- **Downloading** an artifact streams bytes through the mTLS transport, verifies the SHA-256 digest against the hub's declared metadata, and writes atomically with secure permissions (`0600`).
-- Every download displays and enforces the permanent custody warning:
+- **Download** asks for a new file in the host's save dialog first, then reads
+  the bytes, verifies them against the digest and writes them owner-only and
+  exclusively, with the custody notice. A name already taken is refused before
+  anything is read; bytes that do not match are never written. A failed
+  transfer says why and is not repeated on its own.
+- **Upload** opens the host's file dialog, then the reviewed `team.upload`
+  action shows Name, Type, Size, Team and Project with one line, *Uploads
+  {name} to {team}/{project}.* The final **Upload** sends exactly those bytes
+  once under the click's intent; a file changed since the review is a stale
+  review. Author admission and the session's `evidence.write` are checked
+  first, and the hub admits the write again.
+- Every download carries the permanent custody warning:
   `"Downloaded copies remain under local custody and cannot be revoked."`
-- **Uploading** an artifact requires local author admission (`run(..., writes: true)`) before transmitting to the hub, verifies the computed SHA-256 hash, and checks write capability.
-  The checks run in order and each refusal is shown with its reason: with no
-  activated license the window's own admission refuses, then an expired or
-  missing session and a token without `evidence.write` are refused by the
-  window, all before anything is sent. A role the hub refuses is permission
-  denied and bytes the hub finds do not match their digest fail; each is asked
-  once and never retried. The hub stores exactly the chosen file's bytes under
-  their SHA-256 digest.
 
 ### Session revocation and recovery
 
-- Expired sessions, certificate mismatch, denied roles, changed grants, or unavailable hub endpoints are surfaced visibly in the hub panel.
-- Logging out clears the in-memory session and active client credentials immediately.
+- An expired session shows **Sign in** again; consent is never restored silently. Denied roles, changed grants and unavailable hub endpoints are shown with the hub's reason.
+- Signing out clears the in-memory session and active client credentials immediately.
 - Re-authenticating never automatically replays pending transfers or writes; any operation interrupted by session loss must be re-initiated deliberately by the user.
 
 ### Operator-only hub (`readmit-hub-operator-client/v1`)
@@ -4195,7 +4218,9 @@ the key its reference reads, no keep-alives and no redirects. It adds no
 route, protocol or background transfer: nothing is read or stored until the
 person asks. Every client of the hub's certificate authority can read and store
 every artifact in it, which is why the hub's guide says not to issue
-operator-only certificates to ordinary users.
+operator-only certificates to ordinary users; the page says so in one line once
+connected. It lives in Settings › Team › Administrator setup › **Operator hub**,
+configured and connected on its own, apart from Team.
 
 The mode's configuration is its own strict contract, because an operator-only
 hub has none of the identity-provider and project members a
@@ -4212,7 +4237,7 @@ key and its arguments ([ADR-0006](adr/0006-credentials-are-referenced-never-stor
 A team hub's configuration, and any document with an unknown, duplicated or
 missing member, is refused.
 
-- **Choose operator-only hub configuration…** opens the host's file dialog
+- **Choose configuration…** (**Edit** once chosen) opens the host's file dialog
   (*Choose the operator-only hub configuration*) and reads that one file. It
   reaches no hub. A dismissed dialog changes nothing. A refused file, or more
   than one file, is refused with the reason and keeps what was chosen. The
@@ -4220,11 +4245,11 @@ missing member, is refused.
   document is added and the team mode's selection
   (`readmit-desktop-hub-selection/v1`) is untouched. Choosing again ends the
   previous connection.
-- **Connect to operator-only hub** resolves the client key through its
+- **Connect** resolves the client key through its
   reference and checks the hub's two health probes. Both of the hub's modes
   answer them, so connecting reads and stores nothing. The custody notice is
   shown from then on.
-- **Store a file…** is authoring. This computer's license admits the author
+- **Upload file** is authoring. This computer's license admits the author
   first, the same admission publishing to a team hub takes, and without it the
   store is refused before any dialog opens. The person then chooses one file
   in the file dialog (*Choose the file to store in the operator-only hub*),
@@ -4235,8 +4260,8 @@ missing member, is refused.
   and size. The hub keeps one immutable
   object per digest, so storing the same file again is safe and never replaces
   anything.
-- **Read and save…** reads the artifact named by the digest the person types
-  into a new file they name in the host's save dialog (*Name the file to save
+- **Download by hash** reads the artifact named by the digest the person types
+  in its sheet into a new file they name in the host's save dialog (*Name the file to save
   the artifact as*). The following are refused before anything is asked of the
   hub:
   - a digest that is not 64 lowercase hexadecimal characters, before any
@@ -4248,7 +4273,7 @@ missing member, is refused.
   The bytes are written only after they hash to the digest asked for. They
   are written whole, owner-only and exclusively, with the custody notice.
   Reading is not authoring and needs no license.
-- **Disconnect from operator-only hub** ends the connection and keeps the
+- **Disconnect** ends the connection and keeps the
   custody notice: copies already saved stay under local custody.
 
 Each read or store is asked once and never retried. What the hub answers is
@@ -4269,88 +4294,75 @@ reports the hub row active while a request reaches the hub. While the window
 is connected in this mode and not to a team hub, the row reads *connected* to
 the operator-only hub, which has no sign-in.
 
-### Team reviews, conflicts and project administration
+### Activity, reviews, revisions and administration
 
-Once signed in, the customer-hub panel exposes the hub's collaboration and
-lifecycle routes through typed facade methods. Operators navigate assignments,
-evidence-linked comments, review requests and approvals that bind the
-authenticated OIDC actor — never a local reviewer text field. Shared working
-documents use explicit revision/head checks: unresolved tips are listed, and
-resolve names every current tip. Offline draft branches are retained in the
-local editor draft store as `readmit-hub-revision-draft/v1` and reconcile only
-after an explicit reconnect posts a lifecycle revision with the expected head.
-Retried writes reuse the same command id; a stale head or changed grant fails
-and requires renewed user action.
+**Activity** lists the project's recorded events newest first: action, item,
+person and time. **Filter** narrows it by action or person, or to what is
+addressed to the signed-in person (a request that asks them, or an answer to a
+request they made); **Search** asks the hub's v2 history search
+(`readmit-hub-review-query/v1`) only when the person searches. People are named
+by the subject the hub authenticated; no other name is invented.
 
-Role-appropriate administration covers remove-user, retention, retire and
-audit-export through the reviewed lifecycle commands. Membership and IdP
-assignment remain customer-admin access-policy operations; the application does
-not accept raw policy JSON as the ordinary path and does not invent an implicit
-administrator. Deleting a server grant or removing a user refuses new authorized
-requests; already-downloaded files and local authorized exports remain under
-local custody and cannot be revoked. Support-export download serves only a
-digest the recorded approval chain names, as the sharing journey below
-describes.
+**Reviews** lists each review request with Item, Requested by, Updated and
+Status: *Requested*, *Approved*, *Changes requested*, or *Stale* once a later
+request for the same evidence replaced it (for a support summary, once another
+sharing policy was published). Opening one shows the request and its
+discussion and what it asks about: a suite version of the open project shows
+the version's changes through the Suites comparison, and a support summary
+shows the value-free summary the review names, read as that one document.
+**Approve** of a suite version is the reviewed `suite.approve-release` action,
+with its reason; **Request changes** needs a reason and **Comment** is written
+in its own sheet. Each records one command under the signed-in identity:
+`comment` rides `readmit-hub-review-command/v1` and `change-request` its own
+`readmit-hub-review-command/v3`, each naming the request, and the hub accepts a request's answer — an approval or a request for
+changes — once, from the person it asked. The command's identity is allocated on
+the click and sent again with the same command while it is retried; a history
+that moved on is refused, read again and needs a fresh decision, and the
+identity is never regenerated to get past a refusal. **Request review** asks one
+of the project's reviewers (`ListHubReviewers`, the active members who may
+approve) about a suite version, through `suite.request-review`, or about a
+published support summary. **Approve summary**, **Download summary** (the
+approved value-free summary only, to a new file) and **Publish policy** (the
+exact sharing policy, as the project's next version; it approves no summary)
+keep their own scopes. The privacy screens' local approval inputs stay
+deliberate acts over local identities: a team approval never fills them.
 
-**Load notifications** lists the events the hub recorded as addressed to the
-signed-in subject by the issuer that authenticated them; an empty list says
-nothing in the project is addressed to you, and a refusal shows its reason in
-place of the list. The search form below it asks the hub's v2 routes with one
-`readmit-hub-review-query/v1` document: text the recorded text contains
-(case-insensitive, at most 256 bytes), evidence named by its whole SHA-256
-digest, and the sequence to search after. **Search history** searches the
-project's whole review history (`POST /v2/projects/P/history`) and **Search
-notifications** only what is addressed to you (`POST /v2/projects/P/notifications`);
-each result says how many events matched and the history's head. Nothing is
-searched until the person searches. A sequence that is not a whole number is
-refused in the panel, and a query the contract cannot carry — a negative
-sequence, longer text, text holding a NUL or evidence that is not a whole
-digest — is refused by the hub client before anything is sent; the hub remains
-the authority for the query and for what it finds. The v1 addresses of these reads stay served for
-v1 clients and answer 409 once the project carries a support command; the
-application reads only through v2.
+Administrator setup lists the team's own tasks to its administrators and the
+host's to anyone: **Members**, **Retention**, **Audit log**, **Revisions**,
+**Operator hub** and **Host tasks**. The hub decides every one; a missing
+entry is not the authorization.
 
-The same `PostHubReview` facade method carries both review command families the
-hub defines. `comment`, `assignment`, `review-request` and `approval` ride
-`readmit-hub-review-command/v1`; a review-request or approval names a released
-expectation by the digest of its uploaded project artifact, and the hub verifies
-the release document, its baseline chain and its profile seals before recording
-an approval. The sharing kinds `support-policy`, `support-request` and
-`support-approval` ride `readmit-hub-review-command/v2` and gate support-export
-download. The facade refuses a kind outside the hub's closed set before any
-network call; the hub remains the authority for command shape, roles and
-permission.
-
-A suite version's team review runs through the same commands, from its
-Versions (`suite.request-review` and `suite.approve-release`, reviewed actions
-of their own). A request uploads the exact bytes of each release the version's
-latest baseline recorded and posts the hub's review-request for its digest,
-naming the reviewer asked; an approval answers, for each release, the
-outstanding request naming the same digest that was addressed to the signed-in
-subject by someone else. The digests are derived from the recorded bytes,
-never typed, and a changed grant or stale head requires a renewed action.
-Identity is the signed-in session's: a baseline's local reviewer records a
-local decision and never substitutes for the team's authenticated approval.
-
-The sharing journey with #260's screens runs from the hub panel directly above
-them. `PostHubSupportReview` carries the three v2 support kinds: announcing the
-project's sharing policy uploads the policy entry's exact bytes and posts
-`support-policy`; requesting approval uploads a published bundle's `support.json`
-and posts `support-request` bound to the policy in force, which the hub client
-derives from the project's own history exactly as the hub does; and `support-approval` approves the
-outstanding request naming the same summary bytes, under the asked reviewer's
-signed-in identity. The hub's export route then serves those exact bytes to an
-authorized download, which the same block reaches with `DownloadHubExport` —
-server-side gated on the recorded approval chain and the sharing policy's
-`customer-hub-download` destination, with the custody notice on every result.
-The approved summary digest is filled by the request or approval the panel
-recorded, and can be named for a teammate's approval. A digest no approval
-names is refused as permission denied, bytes that do not match the digest are
-never written, and the approved bytes are written whole, owner-only, at the
-destination the person named.
-The privacy screens' local approval inputs stay deliberate acts over local
-identities: a team approval never fills them, and a local approval never stands
-in for the team's.
+- **Members** lists Name, Role and Status from the hub's administrator-only
+  members route (`readmit-hub-project-members/v1`). **Add member** and
+  **Change role** are host setups: the person chooses a local copy of the
+  access policy, the change is applied and read back with the hub's own policy
+  reader, and the sheet shows the exact role change and the command that
+  installs the new policy on the host by one rename; **Export setup** writes
+  the policy to a new file. Nobody's access changes until the operator installs
+  it: the member reads *Setup ready* until the hub reports the change. **Remove
+  member** records the hub's `remove-user` with a reason, naming the person and
+  project.
+- **Retention** lists each current file's keep-until date. **Edit retention**
+  asks Keep for and which files — all current files, the files of one type, or
+  the selected files — and its review shows each file's current and proposed
+  date. A date is never shortened; such a file is shown unchanged. **Save**
+  records one retention command per file under the click's intent, so a retry
+  records nothing twice, and a file that did not change is shown as such.
+  Files added later are not covered, nothing is deleted or retired, and copies
+  already downloaded are not affected.
+- **Audit log** lists the project's history with person, action, item and time
+  filters. **Export audit** records the hub's `audit-export` with a reason and
+  saves the exact history it answered to a new file.
+- **Revisions** lists each resource with its history and unresolved revisions.
+  **Create revision** chooses a file and the revision it continues; **Save
+  draft** keeps it on this computer only (`readmit-hub-revision-draft/v1`), and
+  **Submit revision** is the reviewed `team.revision` action against the
+  resource's current head. **Resolve** reads the conflicting revisions'
+  bytes — a deliberate read — and where both are text shows each part both
+  changed as Base, Yours and Current with an explicit choice; otherwise one
+  complete revision is chosen. **Save resolution** is the reviewed
+  `team.resolve` action: one new revision naming every tip, never overwriting
+  another person's. Case and report evidence bytes are never changed.
 
 ## Customer runners, recurring schedules and CI handoffs
 

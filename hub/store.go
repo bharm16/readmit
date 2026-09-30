@@ -19,7 +19,7 @@ import (
 )
 
 const MaxArtifactBytes int64 = 64 << 20
-const schemaVersion = 6
+const schemaVersion = 7
 const lockID int64 = 0x726561646d6974
 
 var ErrConflict = errors.New("another hub or maintenance operation owns this database")
@@ -143,6 +143,14 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if version < 5 {
 		if _, err = tx.ExecContext(ctx, `CREATE TABLE readmit_hub_lifecycle(project text NOT NULL, sequence integer NOT NULL, id text NOT NULL, document text NOT NULL, PRIMARY KEY(project,sequence), UNIQUE(project,id))`); err != nil {
 			return err
+		}
+	}
+	if version < 7 {
+		// Who linked a project to an artifact, and when, is recorded for new
+		// links only. A link made before this migration keeps no origin: it is
+		// never inferred from storage time or the project's logs.
+		if _, err = tx.ExecContext(ctx, `ALTER TABLE readmit_hub_project_artifacts ADD COLUMN linked_issuer text, ADD COLUMN linked_actor text, ADD COLUMN linked_at timestamptz, ADD CONSTRAINT readmit_hub_project_artifacts_origin CHECK((linked_issuer IS NULL) = (linked_actor IS NULL) AND (linked_actor IS NULL) = (linked_at IS NULL))`); err != nil {
+			return errors.New("project link metadata migration failed")
 		}
 	}
 	if _, err = tx.ExecContext(ctx, "UPDATE readmit_hub_schema SET version=$1", schemaVersion); err != nil {
@@ -361,8 +369,52 @@ func (s *Store) countProjectLinks(ctx context.Context) (int, error) {
 	return count, err
 }
 
-// linkProjectArtifact links one project to one artifact digest.
-func (s *Store) linkProjectArtifact(ctx context.Context, project, digest string) error {
-	_, err := s.db.ExecContext(ctx, "INSERT INTO readmit_hub_project_artifacts(project,digest) VALUES($1,$2)", project, digest)
+// linkProjectArtifact links one project to one artifact digest, recording
+// the authenticated principal that linked it and when.
+// A principal whose issuer is wider than a backup can carry, or with no
+// subject, is linked with no origin rather than a truncated one.
+func (s *Store) linkProjectArtifact(ctx context.Context, project, digest string, by Principal) error {
+	var issuer, actor, at any
+	if by.Subject != "" && len(by.Subject) <= 256 && by.Issuer != "" && len(by.Issuer) <= maxLinkIssuer {
+		issuer, actor, at = by.Issuer, by.Subject, time.Now().UTC()
+	}
+	_, err := s.db.ExecContext(ctx, "INSERT INTO readmit_hub_project_artifacts(project,digest,linked_issuer,linked_actor,linked_at) VALUES($1,$2,$3,$4,$5)", project, digest, issuer, actor, at)
 	return err
+}
+
+// maxLinkIssuer bounds the issuer a link records, the width the review log
+// already admits.
+const maxLinkIssuer = 2048
+
+// projectFile is one artifact a project links, with who linked it and when
+// when the link recorded that; empty for a link made before it did.
+type projectFile struct {
+	Digest   string
+	Size     int64
+	Issuer   string
+	Actor    string
+	LinkedAt string
+}
+
+// projectFiles lists every artifact one project links, by digest: metadata
+// only, never an artifact's bytes.
+func (s *Store) projectFiles(ctx context.Context, project string) ([]projectFile, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT l.digest,a.size,COALESCE(l.linked_issuer,''),COALESCE(l.linked_actor,''),l.linked_at FROM readmit_hub_project_artifacts l JOIN readmit_hub_artifacts a ON a.digest=l.digest WHERE l.project=$1 ORDER BY l.digest COLLATE "C"`, project)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	files := []projectFile{}
+	for rows.Next() {
+		var file projectFile
+		var at sql.NullTime
+		if err = rows.Scan(&file.Digest, &file.Size, &file.Issuer, &file.Actor, &at); err != nil {
+			return nil, err
+		}
+		if at.Valid {
+			file.LinkedAt = at.Time.UTC().Format(time.RFC3339Nano)
+		}
+		files = append(files, file)
+	}
+	return files, rows.Err()
 }

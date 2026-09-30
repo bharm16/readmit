@@ -39,6 +39,8 @@ export function ReviewSheet({
   rationale,
   prepareKey,
   canPrepare = true,
+  onPrepared,
+  onStale,
 }: {
   open: boolean;
   title: string;
@@ -72,6 +74,8 @@ export function ReviewSheet({
   prepareKey?: string;
   /** Whether the fields name enough to review. */
   canPrepare?: boolean;
+  onPrepared?: (review: ActionReview) => void;
+  onStale?: () => void;
 }) {
   const [review, setReview] = useState<ActionReview | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -86,9 +90,12 @@ export function ReviewSheet({
     setFailure(null);
     if (!canPrepare) return;
     const answer = await prepareAction({ context: context(), action, items, ...(destination ? { destination } : {}), ...options });
-    if (answer.state === "completed" && answer.review) setReview(answer.review);
+    if (answer.state === "completed" && answer.review) {
+      setReview(answer.review);
+      onPrepared?.(answer.review);
+    }
     else setFailure(answer.reason ?? "This could not be reviewed.");
-  }, [action, canPrepare, context, destination, items, options]);
+  }, [action, canPrepare, context, destination, items, options, onPrepared]);
   useEffect(() => {
     if (open) {
       scoped.current = prepareKey;
@@ -162,6 +169,7 @@ export function ReviewSheet({
           onRunning?.(false);
         });
         if (answer.outcome === "stale") {
+          onStale?.();
           await prepare();
           return { reason: "What this review covered changed. Review it again." };
         }

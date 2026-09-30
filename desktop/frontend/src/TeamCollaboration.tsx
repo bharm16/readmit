@@ -1,1018 +1,1203 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  listHubReviews,
+  chooseHubLocalCopy,
+  downloadHubFile,
+  downloadHubSummary,
+  listHubReviewers,
+  listWholeCatalog,
   postHubReview,
   postHubSupportReview,
-  listHubNotifications,
+  prepareAction,
+  readHubSupportSummary,
+  reconcileTeamTransfer,
   searchHubReviews,
-  searchHubNotifications,
-  listHubLifecycle,
-  postHubLifecycle,
-  downloadHubExport,
-  explainHubCustody,
+  withdrawReview,
   saveHubOfflineDraft,
-  saveHubAudit,
-  type HubReviewsResult,
-  type HubLifecycleResult,
-  type HubLifecycleCommandRequest,
-  type HubLifecycleEventView,
-  type HubResult,
+  type ActionReview,
+  type HubActivity,
+  type HubReviewCommandRequest,
+  type HubReviewItem,
+  type HubRevision,
+  type HubSupportReviewRequest,
+  type HubSupportSummaryResult,
+  type HubTeamFile,
+  type HubTeamResult,
   type HubTransferResult,
-  type EditorDraftsResult,
-  type Artifact,
+  type RequestContext,
+  type ReviewedActionResult,
+  type SuiteComparison,
 } from "./bindings";
-import { useLifecycle } from "./lifecycle";
+import { DataTable, type Column } from "./DataTable";
+import { DisplayTerm, TEAM_ACTIVITY, TEAM_FILE_TYPES, TEAM_REVIEW_STATUSES } from "./display";
+import { EmptyState, FormDialog, Menu, Modal, ValueRows, BackLink, type SubmitFailure } from "./layout";
+import { ReviewSheet } from "./ReviewSheet";
 import { TaskTabs } from "./TaskTabs";
+import { listDate } from "./Projects";
+import { sizeText } from "./Storage";
+import { ChangeTables } from "./Suites";
 import { useViewState } from "./viewstate";
 
-type Props = {
-  project: string;
-  workspace?: string;
-  entries?: Artifact[];
-  capabilities?: string[] | undefined;
-  /** Told the project, resource and revision state an offline draft needs,
-   * so the hub panel can keep offering local retention after sign-out. */
-  onRevisionContext?: (context: RevisionContext) => void;
-};
+type Tab = "activity" | "files" | "reviews";
 
-/** What an offline revision draft records about where it branched from. */
-export interface RevisionContext {
-  project: string;
-  resource: string;
-  tips: string[];
-  head: number;
+/** The window's request context for a team transfer: the open project, which
+ * a team transfer does not read, and no generation of its own. */
+export function teamContext(workspace: string): () => RequestContext {
+  return () => ({ project: workspace, generation: 0 });
 }
 
-type Task = "reviews" | "notifications" | "revisions" | "support" | "administration";
-
-/** A new command ID in the hub's grammar: lowercase letters, digits and
- * hyphens, at most 64 characters. Each deliberate new command gets its own. */
-function newCommandId(prefix: string): string {
+/** A new hub command's identity: the hub's grammar of lowercase letters,
+ * digits and hyphens. */
+function commandId(prefix: string): string {
   const bytes = new Uint8Array(8);
   crypto.getRandomValues(bytes);
   return `${prefix}-${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
 }
 
-/** One task's command intent. The ID is allocated when a command is first
- * submitted and kept while the same command is retried — the same ID with the
- * same payload, which the hub answers as a replay. Any change to what the
- * command says, or a completed command followed by a new one, allocates a new
- * ID; nothing reuses another task's ID. */
-function useIntent(prefix: string) {
-  const [intent, setIntent] = useState<{ id: string; payload: string } | null>(null);
-  const [recorded, setRecorded] = useState<string | null>(null);
+/** Whether the hub settled a command: recorded it, or refused it for a
+ * reason that does not change on a retry. Anything else — no answer, a
+ * transport failure — leaves the command pending. */
+function settled(answer: { state: string; resolved?: boolean | undefined }): boolean {
+  return answer.state === "completed" || answer.resolved === true;
+}
+
+/** One deliberate decision's commands: built once, on the first click, under
+ * a new identity, and sent again exactly as they were while the hub has not
+ * settled them, so a retry never records the decision twice. Once the hub
+ * settles them the next click is a new decision; nothing here allocates a new
+ * identity on its own to get past a refusal. The pending commands outlive the
+ * sheet, as unsent work does. */
+export function useCommandIntent<C>(key: string, prefix: string) {
+  const [held, setHeld] = useViewState<{ decision: string; commands: C[] } | null>(`CommandIntent.${key}`, null);
+  const current = useRef(held);
+  current.current = held;
   return {
-    pending: intent?.id ?? null,
-    recorded,
-    /** The ID for this payload: the pending one when it is a retry. */
-    idFor(payload: unknown): string {
-      const key = JSON.stringify(payload);
-      if (intent && intent.payload === key) return intent.id;
-      const id = newCommandId(prefix);
-      setIntent({ id, payload: key });
-      return id;
-    },
-    /** A completed command is done: the next one is new. */
-    completed(id: string) {
-      setIntent(null);
-      setRecorded(id);
-    },
-  };
-}
-
-/** The command ID of one task, where a person can read it without it being
- * a field to fill in. */
-function CommandDetails({ intent }: { intent: { pending: string | null; recorded: string | null } }) {
-  return (
-    <details className="hub-command-details">
-      <summary>Details</summary>
-      <dl>
-        <dt>Command ID</dt>
-        <dd>
-          {intent.pending ? (
-            <>
-              <code>{intent.pending}</code> (not yet recorded; a retry sends it again)
-            </>
-          ) : intent.recorded ? (
-            <>
-              <code>{intent.recorded}</code> (recorded; the next action gets a new ID)
-            </>
-          ) : (
-            "A new ID is assigned when you submit."
-          )}
-        </dd>
-      </dl>
-    </details>
-  );
-}
-
-function recordedLine(event: HubLifecycleEventView): string {
-  const target = event.resource ?? event.subject ?? event.artifact ?? "";
-  return `Recorded ${event.kind} by ${event.actor}@${event.issuer}${target ? ` for ${target}` : ""} · event #${event.sequence} · command ${event.command_id}`;
-}
-
-/** The event head a history read reported. The facade leaves a head of 0 out,
- * so a completed read of an empty history is event 0; any other read without
- * a head reported none, and a missing or refused head never reads as a
- * complete history. */
-function eventHead(result: HubLifecycleResult): number | undefined {
-  if (result.head !== undefined) return result.head;
-  return result.state === "completed" && (result.events ?? []).length === 0 ? 0 : undefined;
-}
-
-export function TeamCollaboration({ project, workspace = "", entries = [], capabilities = [], onRevisionContext }: Props) {
-  const [task, setTask] = useViewState<Task>("TeamCollaboration.task", "reviews");
-  const [reviews, setReviews] = useViewState<HubReviewsResult | null>("TeamCollaboration.reviews", null);
-  const [notifications, setNotifications] = useViewState<HubReviewsResult | null>("TeamCollaboration.notifications", null);
-  const [lifecycle, setLifecycle] = useViewState<HubLifecycleResult | null>("TeamCollaboration.lifecycle", null);
-  const [custody, setCustody] = useViewState<HubResult | null>("TeamCollaboration.custody", null);
-  const actions = useLifecycle<"working">();
-  const busy = actions.running !== null;
-  const [message, setMessage] = useViewState<string | null>("TeamCollaboration.message", null);
-
-  // A search of the history or of this person's notifications: what to look
-  // for, as the hub's query contract carries it, and what the hub found.
-  const [queryText, setQueryText] = useViewState("TeamCollaboration.queryText", "");
-  const [queryEvidence, setQueryEvidence] = useViewState("TeamCollaboration.queryEvidence", "");
-  const [queryAfter, setQueryAfter] = useViewState("TeamCollaboration.queryAfter", "");
-  const [queryProblem, setQueryProblem] = useViewState<string | null>("TeamCollaboration.queryProblem", null);
-  const [found, setFound] = useViewState<{ scope: "history" | "notifications"; result: HubReviewsResult } | null>("TeamCollaboration.found", null);
-
-  // The review decision: each kind shows and sends only its own members.
-  const [reviewKind, setReviewKind] = useViewState("TeamCollaboration.reviewKind", "comment");
-  const [evidence, setEvidence] = useViewState("TeamCollaboration.evidence", "");
-  const [recipient, setRecipient] = useViewState("TeamCollaboration.recipient", "");
-  const [release, setRelease] = useViewState("TeamCollaboration.release", "");
-  const [parent, setParent] = useViewState("TeamCollaboration.parent", "");
-  const [texts, setTexts] = useViewState<Record<string, string>>("TeamCollaboration.texts", { comment: "Evidence-linked comment" });
-  const reviewIntent = useIntent("review");
-
-  // Revisions: a new revision or a resolve of every current tip.
-  const [revisionKind, setRevisionKind] = useViewState<"revision" | "resolve">("TeamCollaboration.revisionKind", "revision");
-  const [resource, setResource] = useViewState("TeamCollaboration.resource", "");
-  const [revisionArtifact, setRevisionArtifact] = useViewState("TeamCollaboration.revisionArtifact", "");
-  const [parents, setParents] = useViewState("TeamCollaboration.parents", "");
-  const [revisionReason, setRevisionReason] = useViewState("TeamCollaboration.revisionReason", "");
-  const revisionIntent = useIntent("revision");
-  const [revisionWrite, setRevisionWrite] = useViewState<HubLifecycleResult | null>("TeamCollaboration.revisionWrite", null);
-
-  // Administration: access, retention and audit export, each its own command.
-  const [removeSubject, setRemoveSubject] = useViewState("TeamCollaboration.removeSubject", "");
-  const [removeReason, setRemoveReason] = useViewState("TeamCollaboration.removeReason", "");
-  const [confirmingRemoval, setConfirmingRemoval] = useViewState("TeamCollaboration.confirmingRemoval", false);
-  const accessIntent = useIntent("access");
-  const [accessWrite, setAccessWrite] = useViewState<HubLifecycleResult | null>("TeamCollaboration.accessWrite", null);
-  const [retentionKind, setRetentionKind] = useViewState<"retention" | "retire">("TeamCollaboration.retentionKind", "retention");
-  const [retentionArtifact, setRetentionArtifact] = useViewState("TeamCollaboration.retentionArtifact", "");
-  const [until, setUntil] = useViewState("TeamCollaboration.until", "");
-  const [retentionReason, setRetentionReason] = useViewState("TeamCollaboration.retentionReason", "");
-  const [confirmingRetire, setConfirmingRetire] = useViewState("TeamCollaboration.confirmingRetire", false);
-  const retentionIntent = useIntent("retention");
-  const [retentionWrite, setRetentionWrite] = useViewState<HubLifecycleResult | null>("TeamCollaboration.retentionWrite", null);
-  const [auditReason, setAuditReason] = useViewState("TeamCollaboration.auditReason", "");
-  const auditIntent = useIntent("audit");
-  const [audit, setAudit] = useViewState<HubLifecycleResult | null>("TeamCollaboration.audit", null);
-  const [auditSaved, setAuditSaved] = useViewState<HubTransferResult | null>("TeamCollaboration.auditSaved", null);
-  // A history read after a recorded write that failed: the write stands.
-  const [refreshProblem, setRefreshProblem] = useViewState<string | null>("TeamCollaboration.refreshProblem", null);
-
-  // The sharing journey: the policy and bundle entries of the open workspace,
-  // the reviewer asked to approve, and the summary digest a request or an
-  // approval named — the digest the hub's export route serves under that
-  // chain. The privacy panel's local approval inputs are separate deliberate
-  // acts and are never filled from here.
-  const sharingPolicies = entries.filter((entry) => entry.kind === "sharing-policy").map((entry) => entry.name);
-  const supportBundles = entries.filter((entry) => entry.kind === "support").map((entry) => entry.name);
-  const [policyEntry, setPolicyEntry] = useViewState("TeamCollaboration.policyEntry", "");
-  const [bundleEntry, setBundleEntry] = useViewState("TeamCollaboration.bundleEntry", "");
-  const [supportRecipient, setSupportRecipient] = useViewState("TeamCollaboration.supportRecipient", "");
-  const supportIntent = useIntent("support");
-  const [supportReview, setSupportReview] = useViewState<HubReviewsResult | null>("TeamCollaboration.supportReview", null);
-  const [exportDigest, setExportDigest] = useViewState("TeamCollaboration.exportDigest", "");
-  const [exportDestination, setExportDestination] = useViewState("TeamCollaboration.exportDestination", "");
-  const [exportResult, setExportResult] = useViewState<HubTransferResult | null>("TeamCollaboration.exportResult", null);
-
-  // The hub panel keeps the last known project, resource and revision state
-  // for an offline draft after sign-out; telling it asks nothing of the hub.
-  const knownTips = lifecycle?.tips?.[resource];
-  const knownHead = lifecycle?.head ?? 0;
-  useEffect(() => {
-    onRevisionContext?.({ project, resource, tips: knownTips ?? [], head: knownHead });
-  }, [onRevisionContext, project, resource, knownTips, knownHead]);
-
-  async function run<T>(work: () => Promise<T>, apply: (value: T) => void) {
-    await actions.run("working", async () => {
-      setMessage(null);
-      apply(await work());
-    });
-  }
-
-  function supportAct(kind: "support-policy" | "support-request" | "support-approval") {
-    const request = {
-      project,
-      workspace,
-      entry: kind === "support-policy" ? policyEntry : bundleEntry,
-      kind,
-      recipient: kind === "support-request" ? supportRecipient.trim() : "",
-    };
-    const id = supportIntent.idFor(request);
-    return run(() => postHubSupportReview({ ...request, id }), (res) => {
-      setSupportReview(res);
-      if (res.state === "completed") {
-        supportIntent.completed(id);
-        if (kind !== "support-policy") setExportDigest(res.events?.[0]?.evidence ?? "");
+    async send<A extends { state: string; reason?: string | undefined; resolved?: boolean | undefined }>(decision: unknown, build: (id: string) => C[], post: (command: C) => Promise<A>): Promise<A | null> {
+      const text = JSON.stringify(decision);
+      if (current.current && current.current.decision !== text) {
+        throw new Error("The previous request is unresolved. Retry that decision before changing it.");
       }
-    });
-  }
-
-  // Searches are asked of the hub only when the person searches. A sequence
-  // that is not a whole number is refused here; every other part of the
-  // query is the application's and the hub's to judge.
-  function search(scope: "history" | "notifications") {
-    const after = queryAfter.trim();
-    if (after !== "" && !/^\d{1,9}$/.test(after)) {
-      setQueryProblem("Search after a sequence number: a whole number, 0 or more.");
-      setFound(null);
-      return;
-    }
-    setQueryProblem(null);
-    const request = { project, after: after === "" ? 0 : Number(after), text: queryText, evidence: queryEvidence.trim() };
-    void run(
-      () => (scope === "history" ? searchHubReviews(request) : searchHubNotifications(request)),
-      (result) => setFound({ scope, result }),
-    );
-  }
-
-  function readLifecycle() {
-    void run(
-      () => listHubLifecycle(project),
-      (result) => {
-        setLifecycle(result);
-        if (result.state === "completed") setRefreshProblem(null);
-      },
-    );
-  }
-
-  /** Records one lifecycle command, then reads the history again. The write
-   * is shown as the hub answered it; a history read that fails afterwards is
-   * reported separately and never recasts the recorded write as refused. */
-  function postLifecycle(
-    request: Omit<HubLifecycleCommandRequest, "id" | "project" | "expected">,
-    intent: ReturnType<typeof useIntent>,
-    settle: (result: HubLifecycleResult) => void,
-  ) {
-    const command = { project, expected: lifecycle?.head ?? 0, ...request };
-    const id = intent.idFor(command);
-    void run(
-      async () => {
-        const written = await postHubLifecycle({ ...command, id });
-        if (written.state !== "completed" || request.kind === "audit-export") return { written, history: null };
-        return { written, history: await listHubLifecycle(project) };
-      },
-      ({ written, history }) => {
-        settle(written);
-        if (written.state !== "completed") {
-          setMessage(written.reason ?? "lifecycle refused");
-          return;
-        }
-        intent.completed(id);
-        if (history?.state === "completed") {
-          setLifecycle(history);
-          setRefreshProblem(null);
-        } else if (history) {
-          setRefreshProblem(history.reason ?? "The revision history could not be read again.");
-        }
-      },
-    );
-  }
-
-  const reviewActions: Record<string, string> = {
-    comment: "Post comment",
-    assignment: "Assign",
-    "review-request": "Request review",
-    approval: "Approve review",
+      const entry = current.current?.decision === text ? current.current : { decision: text, commands: build(commandId(prefix)) };
+      current.current = entry;
+      setHeld(entry);
+      let answer: A | null = null;
+      for (const command of entry.commands) {
+        answer = await post(command);
+        if (answer.state !== "completed") break;
+      }
+      if (answer && settled(answer)) {
+        current.current = null;
+        setHeld(null);
+      }
+      return answer;
+    },
   };
-  const textLabel: Record<string, string> = {
-    comment: "Comment",
-    assignment: "Assignment note",
-    "review-request": "Rationale",
-    approval: "Rationale",
-  };
-  const usesRecipient = reviewKind === "comment" || reviewKind === "assignment" || reviewKind === "review-request";
-  const usesRelease = reviewKind === "review-request" || reviewKind === "approval";
-  const usesParent = reviewKind === "comment" || reviewKind === "approval";
-  const reviewText = texts[reviewKind] ?? "";
-  const tipsOf = lifecycle?.tips ?? {};
-  const supportKind = supportReview?.state === "completed" ? supportReview.events?.[0]?.kind : undefined;
+}
 
-  const searchForm = (scope: "history" | "notifications") => (
-    <form
-      className="hub-collab-form"
-      aria-label="Search team activity"
-      onSubmit={(e) => {
-        e.preventDefault();
-        search(scope);
-      }}
-    >
-      <h4>Search team activity</h4>
-      <p className="hub-team-note">
-        {scope === "history"
-          ? "The hub searches what it recorded for this project. Nothing is asked until you search."
-          : "The hub searches only what is addressed to you. Nothing is asked until you search."}{" "}
-        The text is matched literally, not ranked.
-      </p>
-      <label>
-        Search text
-        <input value={queryText} onChange={(e) => setQueryText(e.target.value)} disabled={busy} />
-      </label>
-      <label>
-        Evidence SHA-256
-        <input value={queryEvidence} onChange={(e) => setQueryEvidence(e.target.value)} disabled={busy} aria-describedby="hub-search-evidence-help" />
-      </label>
-      <span className="hub-team-note" id="hub-search-evidence-help">
-        The whole 64-character digest.
-      </span>
-      <label>
-        After event number
-        <input value={queryAfter} inputMode="numeric" onChange={(e) => setQueryAfter(e.target.value)} disabled={busy} aria-describedby="hub-search-after-help" />
-      </label>
-      <span className="hub-team-note" id="hub-search-after-help">
-        Only events after this number are searched.
-      </span>
-      <div className="hub-actions">
-        <button type="submit" disabled={busy}>
-          {scope === "history" ? "Search history" : "Search notifications"}
-        </button>
-      </div>
-      {queryProblem ? <p role="alert">{queryProblem}</p> : null}
-      {found && found.scope === scope ? (
-        <div className="hub-collab-block">
-          <h5>
-            {found.result.state === "completed"
-              ? `${found.scope === "history" ? "History" : "Notifications"} matching: ${(found.result.events ?? []).length} (head ${found.result.head ?? 0})`
-              : `${found.scope === "history" ? "History" : "Notification"} search did not complete`}
-          </h5>
-          {found.result.state !== "completed" ? (
-            <p role="status">{found.result.reason ?? "The search could not be completed."}</p>
-          ) : (found.result.events ?? []).length === 0 ? (
-            <p>Nothing recorded matches this search.</p>
-          ) : null}
-          <ul>
-            {(found.result.events ?? []).map((event) => (
-              <li key={`s-${event.command_id}-${event.sequence}`}>
-                #{event.sequence} <strong>{event.kind}</strong> by {event.actor}@{event.issuer} · evidence{" "}
-                {event.evidence.slice(0, 12)}… — {event.text}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-    </form>
-  );
+/** A file's name, or the fallback the project's records allow: never a name
+ * invented from its bytes. */
+export function fileName(file: HubTeamFile): string {
+  return file.name || `Artifact · ${file.digest.slice(0, 7)}`;
+}
 
+/** A team project's Activity, Files and Reviews, read through the signed-in
+ * session. `team` is the project's metadata the Team page read; `onRead`
+ * asks for it again after a change. */
+export function TeamCollaboration({
+  project,
+  teamName,
+  team,
+  workspace = "",
+  entries = [],
+  onRead,
+  onCreateRevision,
+}: {
+  project: string;
+  teamName: string;
+  team: HubTeamResult;
+  workspace?: string;
+  entries?: { name: string; kind: string }[];
+  onRead: () => Promise<void>;
+  onCreateRevision: (resource: string, base: string) => void;
+}) {
+  const [tab, setTab] = useViewState<Tab>("TeamCollaboration.tab", "activity");
   return (
-    <section className="hub-team-section" aria-label="Team collaboration">
-      <h3>Team reviews</h3>
-      <p className="hub-team-note">
-        Project {project}. Decisions use the authenticated hub identity. A local reviewer name cannot approve.
-        Stale heads and changed grants require a renewed action. Membership and IdP assignment
-        stay under customer-admin access policy — this panel does not edit raw policy JSON.
-      </p>
-      <div className="hub-actions">
-        <button type="button" disabled={busy} onClick={() => void run(() => explainHubCustody(), setCustody)}>
-          Download limits
-        </button>
-      </div>
-      {custody && (
-        <aside className="hub-custody-warning" role="note">
-          <strong>Custody:</strong> {custody.custody_warning}
-          {custody.reason ? <p>{custody.reason}</p> : null}
-        </aside>
-      )}
-
-      <TaskTabs<Task>
-        label="Team tasks"
-        id={`hub-team-${project}`}
-        selected={task}
-        onSelect={setTask}
-        tablistClass="hub-team-tabs"
-        panelClass="hub-team-task"
+    <section className="team-project" aria-label={`${project} activity`}>
+      <TaskTabs<Tab>
+        label="Team views"
+        id={`team-${project}`}
+        selected={tab}
+        onSelect={setTab}
         tabs={[
+          { key: "activity", label: "Activity" },
+          { key: "files", label: "Files" },
           { key: "reviews", label: "Reviews" },
-          { key: "notifications", label: "Notifications" },
-          { key: "revisions", label: "Revisions" },
-          { key: "support", label: "Support approvals" },
-          { key: "administration", label: "Administration" },
         ]}
       >
-        {task === "reviews" ? (
-          <>
-            <div className="hub-actions">
-              <button type="button" disabled={busy} onClick={() => void run(() => listHubReviews(project), setReviews)}>
-                Review history
-              </button>
-            </div>
-            {reviews && (
-              <div className="hub-collab-block">
-                <h4>Review history (head {reviews.head ?? 0})</h4>
-                {reviews.state !== "completed" && <p role="status">{reviews.reason}</p>}
-                <ul>
-                  {(reviews.events ?? []).map((event) => (
-                    <li key={`${event.command_id}-${event.sequence}`}>
-                      <strong>{event.kind}</strong> by {event.actor}@{event.issuer} · evidence {event.evidence.slice(0, 12)}…
-                      {event.release ? ` · release ${event.release.slice(0, 12)}…` : ""} — {event.text}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {searchForm("history")}
-            <div className="hub-collab-form" role="group" aria-labelledby="hub-review-actions">
-              <h4 id="hub-review-actions">Review actions</h4>
-              <label>
-                Decision type
-                <select value={reviewKind} onChange={(e) => setReviewKind(e.target.value)} disabled={busy}>
-                  <option value="comment">comment</option>
-                  <option value="assignment">assignment</option>
-                  <option value="review-request">review-request</option>
-                  <option value="approval">approval</option>
-                </select>
-              </label>
-              <label>
-                Evidence SHA-256
-                <input value={evidence} onChange={(e) => setEvidence(e.target.value)} disabled={busy} />
-              </label>
-              {usesRelease ? (
-                <label>
-                  Release SHA-256
-                  <input value={release} onChange={(e) => setRelease(e.target.value)} disabled={busy} />
-                </label>
-              ) : null}
-              {usesRecipient ? (
-                <label>
-                  Recipient subject ID
-                  <input value={recipient} onChange={(e) => setRecipient(e.target.value)} disabled={busy} />
-                </label>
-              ) : null}
-              {usesParent ? (
-                <label>
-                  Parent command ID
-                  <input value={parent} onChange={(e) => setParent(e.target.value)} disabled={busy} aria-describedby="hub-review-parent-help" />
-                </label>
-              ) : null}
-              {usesParent ? (
-                <span className="hub-team-note" id="hub-review-parent-help">
-                  {reviewKind === "approval" ? "The command ID of the exact review request this approves." : "Optional: the command ID of the exact decision this replies to."}
-                </span>
-              ) : null}
-              <label>
-                {textLabel[reviewKind] ?? "Comment"}
-                <textarea value={reviewText} onChange={(e) => setTexts({ ...texts, [reviewKind]: e.target.value })} disabled={busy} />
-              </label>
-              <CommandDetails intent={reviewIntent} />
-              <button
-                type="button"
-                disabled={busy || !evidence}
-                onClick={() => {
-                  const command = {
-                    project,
-                    expected: reviews?.head ?? 0,
-                    kind: reviewKind,
-                    evidence,
-                    parent: usesParent ? parent : "",
-                    recipient: usesRecipient ? recipient : "",
-                    text: reviewText,
-                    release: usesRelease ? release : "",
-                  };
-                  const id = reviewIntent.idFor(command);
-                  void run(
-                    async () => {
-                      const posted = await postHubReview({ ...command, id });
-                      // The hub answers a recorded decision with that one event;
-                      // the history shown is read again whole, so it never lists
-                      // less than the hub holds. A decision already recorded is
-                      // never shown as refused because that read failed.
-                      if (posted.state !== "completed") return posted;
-                      reviewIntent.completed(id);
-                      const current = await listHubReviews(project);
-                      return current.state === "completed" ? current : posted;
-                    },
-                    (res) => {
-                      setReviews(res);
-                      if (res.state !== "completed") setMessage(res.reason ?? "review refused");
-                    },
-                  );
-                }}
-              >
-                {reviewActions[reviewKind] ?? "Post comment"}
-              </button>
-            </div>
-          </>
+        {tab === "activity" ? <ActivityView project={project} team={team} /> : null}
+        {tab === "files" ? (
+          <FilesView project={project} teamName={teamName} team={team} workspace={workspace} onRead={onRead} onCreateRevision={onCreateRevision} />
         ) : null}
-
-        {task === "notifications" ? (
-          <>
-            <div className="hub-actions">
-              <button type="button" disabled={busy} onClick={() => void run(() => listHubNotifications(project), setNotifications)}>
-                Load notifications
-              </button>
-            </div>
-            {notifications && (
-              <div className="hub-collab-block">
-                <h4>Notifications</h4>
-                {notifications.state !== "completed" ? (
-                  <p role="status">{notifications.reason ?? "The notifications could not be read."}</p>
-                ) : (notifications.events ?? []).length === 0 ? (
-                  <p>Nothing in this project is addressed to you.</p>
-                ) : null}
-                <ul>
-                  {(notifications.events ?? []).map((event) => (
-                    <li key={`n-${event.command_id}-${event.sequence}`}>
-                      {event.kind} · {event.text} (from {event.actor})
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {searchForm("notifications")}
-          </>
-        ) : null}
-
-        {task === "revisions" ? (
-          <>
-            <div className="hub-actions">
-              <button type="button" disabled={busy} onClick={readLifecycle}>
-                Version history
-              </button>
-            </div>
-            {lifecycle && (
-              <div className="hub-collab-block">
-                <h4>Revision history</h4>
-                <p className="hub-team-note">Event head: {eventHead(lifecycle) ?? "not reported"}</p>
-                {lifecycle.state !== "completed" && <p role="status">{lifecycle.reason}</p>}
-                {lifecycle.warning ? <p className="hub-custody-warning">{lifecycle.warning}</p> : null}
-                <ul>
-                  {(lifecycle.events ?? []).map((event) => (
-                    <li key={`l-${event.command_id}-${event.sequence}`}>
-                      #{event.sequence} <strong>{event.kind}</strong> by {event.actor}@{event.issuer}
-                      {event.resource ? ` · ${event.resource}` : ""} — {event.reason}
-                    </li>
-                  ))}
-                </ul>
-                <h5>Current revision tips</h5>
-                <ul>
-                  {Object.entries(tipsOf).map(([name, tipIds]) => (
-                    <li key={name}>
-                      {name}: {tipIds.join(", ") || "(none)"}
-                      {tipIds.length > 1
-                        ? " — compare, keep-both as a new revision, or resolve with every tip. Do not overwrite silently."
-                        : ""}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {refreshProblem ? (
-              <p role="status" className="hub-message">
-                The recorded action stands; the revision history could not be read again: {refreshProblem}
-              </p>
-            ) : null}
-            <div className="hub-collab-form" role="group" aria-labelledby="hub-revisions">
-              <h4 id="hub-revisions">Revisions</h4>
-              <label>
-                Action
-                <select value={revisionKind} onChange={(e) => setRevisionKind(e.target.value as "revision" | "resolve")} disabled={busy}>
-                  <option value="revision">revision</option>
-                  <option value="resolve">resolve</option>
-                </select>
-              </label>
-              <label>
-                Resource ID
-                <input value={resource} onChange={(e) => setResource(e.target.value)} disabled={busy} />
-              </label>
-              <label>
-                Artifact SHA-256
-                <input value={revisionArtifact} onChange={(e) => setRevisionArtifact(e.target.value)} disabled={busy} />
-              </label>
-              <label>
-                Parent revision IDs
-                <input value={parents} onChange={(e) => setParents(e.target.value)} disabled={busy} aria-describedby="hub-revision-parents-help" />
-              </label>
-              <span className="hub-team-note" id="hub-revision-parents-help">
-                {revisionKind === "resolve"
-                  ? "Comma-separated: every current tip of this resource."
-                  : "Comma-separated: the one tip this revision follows, or empty for the first."}
-              </span>
-              <label>
-                Reason
-                <input value={revisionReason} onChange={(e) => setRevisionReason(e.target.value)} disabled={busy} />
-              </label>
-              <CommandDetails intent={revisionIntent} />
-              <button
-                type="button"
-                disabled={busy || !resource.trim() || !revisionReason.trim()}
-                onClick={() =>
-                  postLifecycle(
-                    {
-                      kind: revisionKind,
-                      resource,
-                      artifact: revisionArtifact,
-                      parents: parents
-                        .split(",")
-                        .map((p) => p.trim())
-                        .filter(Boolean),
-                      subject: "",
-                      until: "",
-                      reason: revisionReason,
-                    },
-                    revisionIntent,
-                    setRevisionWrite,
-                  )
-                }
-              >
-                {revisionKind === "resolve" ? "Resolve conflict" : "Record revision"}
-              </button>
-              <LifecycleWrite result={revisionWrite} />
-            </div>
-            <OfflineRevisionDraft
-              workspace={workspace}
-              context={{ project, resource, tips: tipsOf[resource] ?? [], head: lifecycle?.head ?? 0 }}
-            />
-          </>
-        ) : null}
-
-        {task === "support" ? (
-          <div className="hub-collab-form" role="group" aria-labelledby="hub-support-approvals">
-            <h4 id="hub-support-approvals">Support approvals</h4>
-            <p>
-              Announce the project&rsquo;s sharing policy by its exact bytes, ask a reviewer to approve a
-              published value-free summary, and approve the request naming those same bytes — under the
-              signed-in identity. The hub&rsquo;s export route serves the summary only under that chain. The
-              privacy panel&rsquo;s local approval inputs are separate deliberate acts and are never filled
-              from here.
-            </p>
-            <label>
-              Sharing policy file
-              <select value={policyEntry} onChange={(e) => setPolicyEntry(e.target.value)} disabled={busy || !workspace}>
-                <option value="">(select)</option>
-                {sharingPolicies.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Support bundle
-              <select value={bundleEntry} onChange={(e) => setBundleEntry(e.target.value)} disabled={busy || !workspace}>
-                <option value="">(select)</option>
-                {supportBundles.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Reviewer subject ID
-              <input value={supportRecipient} onChange={(e) => setSupportRecipient(e.target.value)} disabled={busy} />
-            </label>
-            <CommandDetails intent={supportIntent} />
-            <div className="hub-actions">
-              <button type="button" disabled={busy || !workspace || !policyEntry} onClick={() => void supportAct("support-policy")}>
-                Announce policy
-              </button>
-              <button
-                type="button"
-                disabled={busy || !workspace || !bundleEntry || !supportRecipient.trim()}
-                onClick={() => void supportAct("support-request")}
-              >
-                Request approval
-              </button>
-              <button type="button" disabled={busy || !workspace || !bundleEntry} onClick={() => void supportAct("support-approval")}>
-                Approve summary
-              </button>
-            </div>
-            {supportReview && supportReview.state !== "completed" ? <p role="alert">{supportReview.reason}</p> : null}
-            {supportReview?.events?.length ? (
-              <p role="status">
-                Recorded: {supportReview.events[0]?.kind} by {supportReview.events[0]?.actor}@
-                {supportReview.events[0]?.issuer}
-                {supportReview.replay ? " (replayed, same command id)" : ""}
-              </p>
-            ) : null}
-            <p className="hub-team-note">
-              Approval status:{" "}
-              {supportKind === "support-approval"
-                ? "approved in this window."
-                : supportKind === "support-request"
-                  ? "requested; not yet approved."
-                  : "no request or approval recorded in this window."}
-            </p>
-            <label htmlFor="hub-export-digest">Summary SHA-256</label>
-            <input
-              id="hub-export-digest"
-              value={exportDigest}
-              onChange={(e) => setExportDigest(e.target.value.trim())}
-              disabled={busy}
-              placeholder="Filled by the request or approval above; the hub refuses any digest its approval chain does not name"
-            />
-            <label htmlFor="hub-export-destination">Summary download file</label>
-            <input
-              id="hub-export-destination"
-              value={exportDestination}
-              onChange={(e) => setExportDestination(e.target.value)}
-              disabled={busy}
-            />
-            <button
-              type="button"
-              disabled={busy || !exportDigest || !exportDestination.trim()}
-              onClick={() =>
-                void run(() => downloadHubExport({ project, digest: exportDigest, destination_path: exportDestination.trim() }), setExportResult)
-              }
-            >
-              Download summary
-            </button>
-            {exportResult ? (
-              <p role="status" className={exportResult.state === "completed" ? undefined : "hub-message"}>
-                Export {exportResult.transfer_state || exportResult.state}
-                {exportResult.path ? ` — ${exportResult.path}` : ""}
-                {exportResult.reason ? ` — ${exportResult.reason}` : ""}
-                {exportResult.warning ? ` — ${exportResult.warning}` : ""}
-              </p>
-            ) : null}
-          </div>
-        ) : null}
-
-        {task === "administration" ? (
-          <>
-            <p className="hub-team-note">
-              {capabilities.includes("admin")
-                ? "The service grants you admin on this project."
-                : "The service has not granted you admin on this project; it will refuse these actions and say why."}{" "}
-              The hub decides every action; this window only asks.
-            </p>
-            <div className="hub-collab-form" role="group" aria-labelledby="hub-access">
-              <h4 id="hub-access">Access</h4>
-              <label>
-                User subject ID
-                <input
-                  value={removeSubject}
-                  onChange={(e) => {
-                    setRemoveSubject(e.target.value);
-                    setConfirmingRemoval(false);
-                  }}
-                  disabled={busy}
-                />
-              </label>
-              <label>
-                Reason
-                <input value={removeReason} onChange={(e) => setRemoveReason(e.target.value)} disabled={busy} />
-              </label>
-              <CommandDetails intent={accessIntent} />
-              {confirmingRemoval ? (
-                <div role="group" aria-label="Confirm user removal">
-                  <p role="alert">
-                    Remove {removeSubject} from {project}? The hub refuses their new requests; copies they already
-                    downloaded stay with them and cannot be revoked.
-                  </p>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => {
-                      setConfirmingRemoval(false);
-                      postLifecycle(
-                        { kind: "remove-user", resource: "", artifact: "", parents: [], subject: removeSubject, until: "", reason: removeReason },
-                        accessIntent,
-                        setAccessWrite,
-                      );
-                    }}
-                  >
-                    Confirm removal
-                  </button>
-                  <button type="button" disabled={busy} onClick={() => setConfirmingRemoval(false)}>
-                    Cancel
-                  </button>
-                </div>
-              ) : (
-                <button type="button" disabled={busy || !removeSubject.trim() || !removeReason.trim()} onClick={() => setConfirmingRemoval(true)}>
-                  Remove user
-                </button>
-              )}
-              <LifecycleWrite result={accessWrite} />
-            </div>
-
-            <div className="hub-collab-form" role="group" aria-labelledby="hub-retention">
-              <h4 id="hub-retention">Retention</h4>
-              <label>
-                Action
-                <select
-                  value={retentionKind}
-                  onChange={(e) => {
-                    setRetentionKind(e.target.value as "retention" | "retire");
-                    setConfirmingRetire(false);
-                  }}
-                  disabled={busy}
-                >
-                  <option value="retention">retention</option>
-                  <option value="retire">retire</option>
-                </select>
-              </label>
-              <label>
-                Artifact SHA-256
-                <input value={retentionArtifact} onChange={(e) => setRetentionArtifact(e.target.value)} disabled={busy} />
-              </label>
-              {retentionKind === "retention" ? (
-                <>
-                  <label>
-                    Retain until
-                    <input value={until} onChange={(e) => setUntil(e.target.value)} disabled={busy} aria-describedby="hub-retain-until-help" />
-                  </label>
-                  <span className="hub-team-note" id="hub-retain-until-help">
-                    A full RFC 3339 timestamp with its offset, such as 2027-01-31T00:00:00Z; never read as local time.
-                  </span>
-                </>
-              ) : null}
-              <label>
-                Reason
-                <input value={retentionReason} onChange={(e) => setRetentionReason(e.target.value)} disabled={busy} />
-              </label>
-              <CommandDetails intent={retentionIntent} />
-              {retentionKind === "retire" && confirmingRetire ? (
-                <div role="group" aria-label="Confirm retirement">
-                  <p role="alert">Retire artifact {retentionArtifact}? Copies already downloaded stay under local custody.</p>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => {
-                      setConfirmingRetire(false);
-                      postLifecycle(
-                        { kind: "retire", resource: "", artifact: retentionArtifact, parents: [], subject: "", until: "", reason: retentionReason },
-                        retentionIntent,
-                        setRetentionWrite,
-                      );
-                    }}
-                  >
-                    Confirm retirement
-                  </button>
-                  <button type="button" disabled={busy} onClick={() => setConfirmingRetire(false)}>
-                    Cancel
-                  </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  disabled={busy || !retentionArtifact.trim() || !retentionReason.trim() || (retentionKind === "retention" && !until.trim())}
-                  onClick={() =>
-                    retentionKind === "retire"
-                      ? setConfirmingRetire(true)
-                      : postLifecycle(
-                          { kind: "retention", resource: "", artifact: retentionArtifact, parents: [], subject: "", until, reason: retentionReason },
-                          retentionIntent,
-                          setRetentionWrite,
-                        )
-                  }
-                >
-                  {retentionKind === "retire" ? "Retire artifact" : "Set retention"}
-                </button>
-              )}
-              <LifecycleWrite result={retentionWrite} />
-            </div>
-
-            <div className="hub-collab-form" role="group" aria-labelledby="hub-audit-export">
-              <h4 id="hub-audit-export">Audit export</h4>
-              <p className="hub-team-note">An explicit read of the project&rsquo;s recorded decisions. Nothing is saved until you choose to.</p>
-              <label>
-                Reason
-                <input value={auditReason} onChange={(e) => setAuditReason(e.target.value)} disabled={busy} />
-              </label>
-              <CommandDetails intent={auditIntent} />
-              <button
-                type="button"
-                disabled={busy || !auditReason.trim()}
-                onClick={() => {
-                  setAuditSaved(null);
-                  postLifecycle(
-                    { kind: "audit-export", resource: "", artifact: "", parents: [], subject: "", until: "", reason: auditReason },
-                    auditIntent,
-                    setAudit,
-                  );
-                }}
-              >
-                Submit audit export
-              </button>
-              {audit && audit.state !== "completed" ? <p role="alert">{audit.reason}</p> : null}
-              {audit?.audit ? (
-                <div className="hub-collab-block">
-                  <h5>Audit export</h5>
-                  <p className="hub-custody-warning">{audit.audit.warning}</p>
-                  <h6>Review events</h6>
-                  {audit.audit.reviews.length === 0 ? <p>No review events.</p> : null}
-                  <ul>
-                    {audit.audit.reviews.map((event) => (
-                      <li key={`ar-${event.command_id}-${event.sequence}`}>
-                        #{event.sequence} {event.kind} by {event.actor}@{event.issuer} — {event.text}
-                      </li>
-                    ))}
-                  </ul>
-                  <h6>Lifecycle events</h6>
-                  {audit.audit.lifecycle.length === 0 ? <p>No lifecycle events.</p> : null}
-                  <ul>
-                    {audit.audit.lifecycle.map((event) => (
-                      <li key={`al-${event.command_id}-${event.sequence}`}>
-                        #{event.sequence} {event.kind} by {event.actor}@{event.issuer} — {event.reason}
-                      </li>
-                    ))}
-                  </ul>
-                  <button type="button" disabled={busy} onClick={() => void run(() => saveHubAudit(project), (saved) => { if (saved.state !== "cancelled") setAuditSaved(saved); })}>
-                    Save audit file…
-                  </button>
-                  {auditSaved ? (
-                    <p role="status" className={auditSaved.state === "completed" ? undefined : "hub-message"}>
-                      {auditSaved.state === "completed" ? `Saved the audit export to ${auditSaved.path}. ${auditSaved.warning ?? ""}` : auditSaved.reason}
-                    </p>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-          </>
-        ) : null}
+        {tab === "reviews" ? <ReviewsView project={project} team={team} workspace={workspace} entries={entries} onRead={onRead} /> : null}
       </TaskTabs>
-
-      {capabilities.length > 0 && (
-        <p className="hub-team-note">Effective capabilities from the service: {capabilities.join(", ")}</p>
-      )}
-      {message && (
-        <p role="status" className="hub-message">
-          {message}
-        </p>
-      )}
     </section>
   );
 }
 
-/** A lifecycle write as the hub answered it: the recorded event's kind,
- * actor, subject or resource and event number, or its refusal. */
-function LifecycleWrite({ result }: { result: HubLifecycleResult | null }) {
-  if (!result) return null;
-  if (result.state !== "completed") return <p role="alert">{result.reason}</p>;
-  if (!result.event) return null;
+// ---------- Activity ----------
+
+type ActivityFilter = { toMe: boolean; action: string; actor: string };
+
+function ActivityView({ project, team }: { project: string; team: HubTeamResult }) {
+  const [sheet, setSheet] = useState<null | "filter" | "search">(null);
+  const [filter, setFilter] = useViewState<ActivityFilter>(`TeamCollaboration.filter.${project}`, { toMe: false, action: "", actor: "" });
+  const [found, setFound] = useState<{ text: string; rows: HubActivity[] } | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
+  const shown = (found?.rows ?? team.activity).filter(
+    (row) => (!filter.toMe || row.to_me) && (!filter.action || row.action === filter.action) && (!filter.actor || row.actor === filter.actor),
+  );
+  const actors = [...new Set(team.activity.map((row) => row.actor))].sort();
   return (
-    <p role="status">
-      {recordedLine(result.event)}
-      {result.replay ? " (replayed, same command id)" : ""}
-    </p>
+    <>
+      <div className="section-toolbar">
+        <button type="button" onClick={() => setSheet("filter")}>
+          Filter
+        </button>
+        <button type="button" onClick={() => setSheet("search")}>
+          Search
+        </button>
+        {found ? (
+          <button type="button" className="quiet" onClick={() => setFound(null)}>
+            Clear search
+          </button>
+        ) : null}
+      </div>
+      {shown.length === 0 ? (
+        <EmptyState title={found ? "Nothing matches" : filter.toMe ? "Nothing addressed to you" : "No activity"} />
+      ) : (
+        <ActivityTable rows={shown} selected={selected} onSelect={setSelected} />
+      )}
+      <ActivityFilterSheet open={sheet === "filter"} filter={filter} actors={actors} onClose={() => setSheet(null)} onApply={(next) => { setFilter(next); setSheet(null); }} />
+      <SearchSheet
+        open={sheet === "search"}
+        onClose={() => setSheet(null)}
+        onSearch={async (text) => {
+          const answer = await searchHubReviews({ project, after: 0, text, evidence: "" });
+          if (answer.state !== "completed") return { reason: answer.reason ?? "The search did not complete." };
+          setFound({
+            text,
+            rows: (answer.events ?? [])
+              .map((event) => ({
+                key: `found-${event.sequence}`,
+                actor: event.actor,
+                action: event.kind as HubActivity["action"],
+                at: event.at,
+                text: event.kind.startsWith("support") ? "" : event.text,
+                to_me: event.recipient === team.me,
+              }))
+              .reverse(),
+          });
+          setSheet(null);
+          return null;
+        }}
+      />
+    </>
   );
 }
 
-/** Local retention of an edited file as an offline revision branch. It stays
- * available after sign-out for the project and resource it was last shown
- * with; reconnecting uploads nothing, and no grant, token or approval is kept
- * in the draft. */
-export function OfflineRevisionDraft({ workspace, context }: { workspace: string; context: RevisionContext }) {
-  const [localPath, setLocalPath] = useViewState("OfflineRevisionDraft.localPath", "");
-  const [drafts, setDrafts] = useViewState<EditorDraftsResult | null>("OfflineRevisionDraft.drafts", null);
-  const { running, run } = useLifecycle<"working">();
-  const busy = running !== null;
+export function ActivityTable({ rows, selected, onSelect, label = "Activity" }: { rows: HubActivity[]; selected: string | null; onSelect: (key: string) => void; label?: string }) {
+  const columns: Column<HubActivity>[] = [
+    { key: "action", header: "Action", priority: 1, minWidth: 10, flex: true, render: (row) => <DisplayTerm map={TEAM_ACTIVITY} code={row.action} /> },
+    { key: "object", header: "Item", priority: 2, minWidth: 8, flex: true, render: (row) => row.object || "—" },
+    { key: "actor", header: "Person", priority: 3, minWidth: 8, render: (row) => row.actor },
+    { key: "at", header: "Time", priority: 4, minWidth: 7, render: (row) => listDate(row.at) },
+  ];
   return (
-    <div className="hub-collab-form" role="group" aria-labelledby="hub-offline-draft">
-      <h4 id="hub-offline-draft">Offline revision draft</h4>
-      <p>
-        Retain a local edit of {context.resource || "a resource"} in {context.project} as an offline revision branch.
-        It is local work only: reconnecting uploads nothing, and a revision is posted only by your explicit action
-        against fresh service state. Approvals are never stored in drafts.
-      </p>
-      <label>
-        Edited file
-        <input value={localPath} onChange={(e) => setLocalPath(e.target.value)} disabled={busy} />
-      </label>
-      <button
-        type="button"
-        disabled={busy || !localPath || !workspace || !context.resource}
-        onClick={() =>
-          void run("working", async () => {
-            setDrafts(
-              await saveHubOfflineDraft({
-                workspace,
-                project: context.project,
-                resource: context.resource,
-                parent_tips: context.tips,
-                local_path: localPath,
-                expected_head: context.head,
-                note: "Retained offline hub revision branch",
-              }),
-            );
-          })
-        }
-      >
-        Save offline draft
-      </button>
-      {drafts && (
-        <p role="status">
-          Drafts retained: {(drafts.drafts ?? []).filter((d) => d.kind === "hub-revision").length} ({drafts.state}
-          {drafts.reason ? ` — ${drafts.reason}` : ""})
+    <DataTable
+      label={label}
+      className="page-table"
+      rows={rows}
+      rowId={(row) => row.key}
+      rowLabel={(row) => `${TEAM_ACTIVITY[row.action] ?? row.action} ${row.object ?? ""}`}
+      columns={columns}
+      selected={selected}
+      onSelect={onSelect}
+      onOpen={onSelect}
+    />
+  );
+}
+
+function ActivityFilterSheet({ open, filter, actors, onClose, onApply }: { open: boolean; filter: ActivityFilter; actors: string[]; onClose: () => void; onApply: (filter: ActivityFilter) => void }) {
+  const [draft, setDraft] = useState(filter);
+  useEffect(() => {
+    if (open) setDraft(filter);
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <FormDialog open={open} title="Filter activity" submitLabel="Apply" onClose={onClose} onSubmit={() => onApply(draft)}>
+      <label htmlFor="activity-show">Show</label>
+      <select id="activity-show" value={draft.toMe ? "me" : "all"} onChange={(event) => setDraft({ ...draft, toMe: event.target.value === "me" })}>
+        <option value="all">All activity</option>
+        <option value="me">Addressed to me</option>
+      </select>
+      <label htmlFor="activity-action">Action</label>
+      <select id="activity-action" value={draft.action} onChange={(event) => setDraft({ ...draft, action: event.target.value })}>
+        <option value="">Any action</option>
+        {Object.entries(TEAM_ACTIVITY).map(([code, label]) => (
+          <option key={code} value={code}>
+            {label}
+          </option>
+        ))}
+      </select>
+      <label htmlFor="activity-actor">Person</label>
+      <select id="activity-actor" value={draft.actor} onChange={(event) => setDraft({ ...draft, actor: event.target.value })}>
+        <option value="">Anyone</option>
+        {actors.map((actor) => (
+          <option key={actor} value={actor}>
+            {actor}
+          </option>
+        ))}
+      </select>
+    </FormDialog>
+  );
+}
+
+function SearchSheet({ open, onClose, onSearch }: { open: boolean; onClose: () => void; onSearch: (text: string) => Promise<SubmitFailure | null> }) {
+  const [text, setText] = useState("");
+  return (
+    <FormDialog open={open} title="Search activity" submitLabel="Search" submitDisabled={text.trim() === ""} onClose={onClose} onSubmit={() => onSearch(text.trim())}>
+      <label htmlFor="activity-search">Text</label>
+      <input id="activity-search" type="search" maxLength={256} value={text} onChange={(event) => setText(event.target.value)} />
+    </FormDialog>
+  );
+}
+
+// ---------- Files ----------
+
+function FilesView({
+  project,
+  teamName,
+  team,
+  workspace,
+  onRead,
+  onCreateRevision,
+}: {
+  project: string;
+  teamName: string;
+  team: HubTeamResult;
+  workspace: string;
+  onRead: () => Promise<void>;
+  onCreateRevision: (resource: string, base: string) => void;
+}) {
+  const [selected, setSelected] = useViewState<string | null>(`TeamCollaboration.file.${project}`, null);
+  const [source, setSource] = useState<string | null>(null);
+  const [details, setDetails] = useState(false);
+  const [transfer, setTransfer] = useState<HubTransferResult | null>(null);
+  const [choosing, setChoosing] = useState(false);
+  const file = team.files.find((entry) => entry.digest === selected) ?? null;
+  const writes = team.capabilities.includes("evidence.write");
+  const context = useMemo(() => teamContext(workspace), [workspace]);
+  const options = useMemo(() => ({ team: { project, source: source ?? "" } }), [project, source]);
+  const columns: Column<HubTeamFile>[] = [
+    { key: "name", header: "Name", priority: 1, minWidth: 12, flex: true, render: (row) => fileName(row) },
+    { key: "type", header: "Type", priority: 2, minWidth: 8, render: (row) => <DisplayTerm map={TEAM_FILE_TYPES} code={row.type} /> },
+    { key: "added_by", header: "Added by", priority: 3, minWidth: 8, render: (row) => row.added_by || "—" },
+    { key: "added_at", header: "Date", priority: 4, minWidth: 7, render: (row) => listDate(row.added_at) },
+  ];
+  const upload = async () => {
+    setChoosing(true);
+    const chosen = await chooseHubLocalCopy("file").finally(() => setChoosing(false));
+    if (chosen.state === "completed" && chosen.paths?.[0]) setSource(chosen.paths[0]);
+  };
+  const download = async () => {
+    if (!file) return;
+    setTransfer(null);
+    const answer = await downloadHubFile({ project, digest: file.digest, name: file.name ? file.name : "" });
+    if (answer.state !== "cancelled") setTransfer(answer);
+  };
+  return (
+    <>
+      <div className="section-toolbar">
+        <button type="button" disabled={!writes || choosing} onClick={() => void upload()}>
+          Upload
+        </button>
+        <button type="button" disabled={!file || file.retired} onClick={() => void download()}>
+          Download
+        </button>
+        {file ? (
+          <Menu
+            label="More file actions"
+            items={[
+              { label: "Details", onSelect: () => setDetails(true) },
+              ...(file.resource && writes
+                ? [{ label: "Create revision", onSelect: () => onCreateRevision(file.resource!, team.resources.find((entry) => entry.resource === file.resource)?.tips[0] ?? "") }]
+                : []),
+            ]}
+          />
+        ) : null}
+      </div>
+      {transfer ? (
+        <p role={transfer.state === "completed" ? "status" : "alert"} className="transfer-line">
+          {transfer.state === "completed" ? `Saved ${transfer.path ?? ""}` : (transfer.reason ?? "The download did not complete.")}
         </p>
+      ) : null}
+      {team.files.length === 0 ? (
+        <EmptyState title="No files" />
+      ) : (
+        <DataTable
+          label="Files"
+          className="page-table"
+          rows={team.files}
+          rowId={(row) => row.digest}
+          rowLabel={(row) => fileName(row)}
+          columns={columns}
+          selected={selected}
+          onSelect={setSelected}
+          onOpen={(id) => {
+            setSelected(id);
+            setDetails(true);
+          }}
+        />
       )}
+      <Modal open={details && file !== null} title={file ? fileName(file) : "File"} onClose={() => setDetails(false)}>
+        {file ? (
+          <ValueRows
+            label="File details"
+            rows={[
+              { label: "Type", value: <DisplayTerm map={TEAM_FILE_TYPES} code={file.type} /> },
+              { label: "Size", value: sizeText(file.size) },
+              { label: "Added by", value: file.added_by || "—" },
+              { label: "Added", value: file.added_at ? new Date(file.added_at).toLocaleString() : "—" },
+              { label: "Keep until", value: file.keep_until ? new Date(file.keep_until).toLocaleDateString() : "—" },
+              ...(file.retired ? [{ label: "Status", value: "Retired" }] : []),
+              { label: "SHA-256", value: <code className="digest">{file.digest}</code> },
+            ]}
+          />
+        ) : null}
+        {file?.resource ? <ResourceHistory resource={team.resources.find((entry) => entry.resource === file.resource)} /> : null}
+      </Modal>
+      <ReviewSheet
+        open={source !== null}
+        title="Upload"
+        action="team.upload"
+        finalLabel="Upload"
+        context={context}
+        items={noItems}
+        options={options}
+        prepareKey={source ?? ""}
+        onClose={() => setSource(null)}
+        onDone={() => void onRead()}
+        render={(review) => <TransferReview review={review} teamName={teamName} />}
+        consequence={`Uploads ${source ? baseName(source) : "the file"} to ${teamName}/${project}.`}
+        outcome={(result) => <TeamTransferOutcome result={result} />}
+      />
+    </>
+  );
+}
+
+const noItems: never[] = [];
+
+/** A resource's published revisions, newest first, with its current ones
+ * marked. */
+export function ResourceHistory({ resource }: { resource: { revisions: HubRevision[]; tips: string[] } | undefined }) {
+  if (!resource) return null;
+  return (
+    <>
+      <h3 className="section-heading">History</h3>
+      <ul className="plain-list revision-history" aria-label="History">
+        {resource.revisions
+          .slice()
+          .reverse()
+          .map((revision) => (
+            <li key={revision.id}>
+              {revisionLine(revision)}
+              {resource.tips.includes(revision.id) ? <span className="row-reason"> · Current</span> : null}
+            </li>
+          ))}
+      </ul>
+    </>
+  );
+}
+
+function baseName(path: string): string {
+  const parts = path.split(/[\\/]/);
+  return parts[parts.length - 1] || path;
+}
+
+/** What a transfer will send, as its review shows it. */
+export function TransferReview({ review, teamName }: { review: ActionReview; teamName: string }) {
+  const [status, setStatus] = useState("");
+  const shown = review.team;
+  if (!shown) return null;
+  const tips = shown.tips ?? [];
+  return (
+    <>
+    {shown.pending_operation ? <button type="button" onClick={async () => {
+      const answer = await reconcileTeamTransfer(shown.pending_operation!);
+      setStatus(answer.outcome === "completed" ? "Revision confirmed. Close and review again." : answer.reason ?? "The revision is still unconfirmed.");
+    }}>Check status</button> : null}
+    {status ? <p role="status">{status}</p> : null}
+    <ValueRows
+      label="Transfer"
+      rows={[
+        ...(shown.name ? [{ label: "Name", value: shown.name }] : []),
+        ...(shown.name ? [{ label: "Type", value: fileType(shown.name) }] : []),
+        { label: "Size", value: sizeText(shown.size) },
+        { label: "Team", value: shown.team || teamName },
+        { label: "Project", value: shown.project },
+        ...(shown.resource ? [{ label: "Resource", value: shown.resource }] : []),
+        ...(shown.base ? [{ label: "Base", value: revisionLine(shown.base) }] : []),
+        ...(tips.length > 0 ? [{ label: tips.length > 1 ? "Current revisions" : "Current revision", value: tips.map(revisionLine).join("; ") }] : []),
+      ]}
+    />
+    </>
+  );
+}
+
+/** Reads only metadata to resolve a lost transfer reply. It never uploads
+ * bytes or repeats a lifecycle command. */
+export function TeamTransferOutcome({ result, onConfirmed }: { result: ReviewedActionResult; onConfirmed?: (result: ReviewedActionResult) => void }) {
+  const [status, setStatus] = useState("");
+  const [checking, setChecking] = useState(false);
+  const alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  const transfer = result.team;
+  if (!transfer) return null;
+  if (result.outcome === "completed") return <p role="status">{transfer.revision ? "Revision recorded" : "Uploaded"}</p>;
+  return <div>
+    {transfer.uploaded ? <p>File uploaded</p> : null}
+    {result.outcome === "uncertain" ? <button type="button" disabled={checking} onClick={async () => {
+      setChecking(true);
+      const answer = await reconcileTeamTransfer(result.operation ?? "").finally(() => { if (alive.current) setChecking(false); });
+      if (!alive.current) return;
+      if (answer.outcome === "completed" && answer.state === "completed") {
+        setStatus(answer.team?.revision ? "Revision recorded" : "Uploaded");
+        onConfirmed?.(answer);
+      } else setStatus(answer.reason ?? "The transfer is still unconfirmed.");
+    }}>{checking ? "Checking…" : "Check status"}</button> : null}
+    {status ? <p role="status">{status}</p> : null}
+  </div>;
+}
+
+export function revisionLine(revision: HubRevision): string {
+  return `${revision.actor} · ${listDate(revision.at)}${revision.reason ? ` · ${revision.reason}` : ""}`;
+}
+
+function fileType(name: string): string {
+  const dot = name.lastIndexOf(".");
+  return dot > 0 ? name.slice(dot + 1).toUpperCase() : "File";
+}
+
+// ---------- Reviews ----------
+
+function ReviewsView({
+  project,
+  team,
+  workspace,
+  entries,
+  onRead,
+}: {
+  project: string;
+  team: HubTeamResult;
+  workspace: string;
+  entries: { name: string; kind: string }[];
+  onRead: () => Promise<void>;
+}) {
+  const [selected, setSelected] = useViewState<string | null>(`TeamCollaboration.review.${project}`, null);
+  const [open, setOpen] = useViewState<string | null>(`TeamCollaboration.openReview.${project}`, null);
+  const [sheet, setSheet] = useState<null | "request" | "policy">(null);
+  const item = team.reviews.find((entry) => entry.id === open) ?? null;
+  if (item) {
+    return <ReviewDetail project={project} team={team} item={item} workspace={workspace} onBack={() => setOpen(null)} onRead={onRead} />;
+  }
+  const columns: Column<HubReviewItem>[] = [
+    { key: "item", header: "Item", priority: 1, minWidth: 12, flex: true, render: (row) => reviewTitle(row) },
+    { key: "requested_by", header: "Requested by", priority: 2, minWidth: 8, render: (row) => row.requested_by },
+    { key: "updated", header: "Updated", priority: 3, minWidth: 7, render: (row) => listDate(row.updated) },
+    { key: "status", header: "Status", priority: 2, minWidth: 8, render: (row) => <DisplayTerm map={TEAM_REVIEW_STATUSES} code={row.status} /> },
+  ];
+  const writes = team.capabilities.includes("evidence.write");
+  const bundles = entries.filter((entry) => entry.kind === "support").map((entry) => entry.name);
+  const policies = entries.filter((entry) => entry.kind === "sharing-policy").map((entry) => entry.name);
+  return (
+    <>
+      <div className="section-toolbar">
+        <button type="button" disabled={!writes || (!workspace && bundles.length === 0)} onClick={() => setSheet("request")}>
+          Request review
+        </button>
+        {team.capabilities.includes("admin") ? (
+          <button type="button" className="quiet" disabled={policies.length === 0} onClick={() => setSheet("policy")}>
+            Publish policy
+          </button>
+        ) : null}
+      </div>
+      {team.reviews.length === 0 ? (
+        <EmptyState title="No reviews" />
+      ) : (
+        <DataTable
+          label="Reviews"
+          className="page-table"
+          rows={team.reviews}
+          rowId={(row) => row.id}
+          rowLabel={reviewTitle}
+          columns={columns}
+          selected={selected}
+          onSelect={setSelected}
+          onOpen={(id) => {
+            setSelected(id);
+            setOpen(id);
+          }}
+        />
+      )}
+      <RequestReviewSheet
+        open={sheet === "request"}
+        project={project}
+        workspace={workspace}
+        bundles={bundles}
+        onClose={() => setSheet(null)}
+        onDone={async () => {
+          setSheet(null);
+          await onRead();
+        }}
+      />
+      <PublishPolicySheet
+        open={sheet === "policy"}
+        project={project}
+        workspace={workspace}
+        policies={policies}
+        version={team.activity.filter((row) => row.action === "support-policy").length + 1}
+        onClose={() => setSheet(null)}
+        onDone={async () => {
+          setSheet(null);
+          await onRead();
+        }}
+      />
+    </>
+  );
+}
+
+export function reviewTitle(item: HubReviewItem): string {
+  if (item.support) return "Support summary";
+  if (item.item) return item.version ? `${item.item} · Version ${item.version}` : item.item;
+  return "Test release";
+}
+
+/** One review: the changed version or summary it asks about, who asked, the
+ * discussion, and the decisions the signed-in person may make. */
+function ReviewDetail({
+  project,
+  team,
+  item,
+  workspace,
+  onBack,
+  onRead,
+}: {
+  project: string;
+  team: HubTeamResult;
+  item: HubReviewItem;
+  workspace: string;
+  onBack: () => void;
+  onRead: () => Promise<void>;
+}) {
+  const [sheet, setSheet] = useState<null | "approve" | "changes" | "comment">(null);
+  const [changes, setChanges] = useState<SuiteComparison | null | "unavailable">(null);
+  const [summary, setSummary] = useState<HubSupportSummaryResult | null>(null);
+  const [saved, setSaved] = useState<HubTransferResult | null>(null);
+  const [reason, setReason] = useState("");
+  const context = useMemo(() => teamContext(workspace), [workspace]);
+  const suite = item.suite;
+  const items = useMemo(() => (suite ? [suite] : []), [suite]);
+  const open = item.status === "requested" && item.to_me;
+  // The version the review asks about is read from the open project, and a
+  // support summary from the one document the review names; neither is a
+  // download of anything else.
+  useEffect(() => {
+    let current = true;
+    if (item.support) {
+      void readHubSupportSummary({ project, digest: item.evidence }).then((answer) => current && setSummary(answer));
+    } else if (suite) {
+      void prepareAction({ context: context(), action: "suite.approve-release", items: [suite] }).then((answer) => {
+        if (answer.review?.token) void withdrawReview(answer.review.token);
+        if (current) setChanges(answer.review?.suite_approval?.comparison ?? "unavailable");
+      });
+    } else {
+      setChanges("unavailable");
+    }
+    return () => {
+      current = false;
+    };
+  }, [item.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const approvable = open && (item.support ? summary?.state === "completed" : suite !== undefined && changes !== "unavailable");
+  return (
+    <div className="object-page team-review">
+      <div className="object-header">
+        <BackLink label="Reviews" onBack={onBack} />
+        <h2>Review</h2>
+        <div className="page-actions">
+          {open && !item.support ? (
+            <button type="button" onClick={() => setSheet("changes")}>
+              Request changes
+            </button>
+          ) : null}
+          <button type="button" onClick={() => setSheet("comment")}>
+            Comment
+          </button>
+          {open ? (
+            <button type="button" className="primary" disabled={!approvable} onClick={() => setSheet("approve")}>
+              {item.support ? "Approve summary" : "Approve"}
+            </button>
+          ) : null}
+          {item.support && item.status === "approved" ? (
+            <button
+              type="button"
+              onClick={() =>
+                void downloadHubSummary({ project, digest: item.evidence }).then((answer) => {
+                  if (answer.state !== "cancelled") setSaved(answer);
+                })
+              }
+            >
+              Download summary
+            </button>
+          ) : null}
+        </div>
+      </div>
+      <p className="object-subtitle">
+        {reviewTitle(item)} · <DisplayTerm map={TEAM_REVIEW_STATUSES} code={item.status} />
+      </p>
+      <ValueRows
+        label="Request"
+        rows={[
+          { label: "Requested by", value: item.requested_by },
+          { label: "Reviewer", value: item.recipient },
+          { label: "Requested", value: new Date(item.requested).toLocaleString() },
+          ...(item.reason ? [{ label: "Reason", value: item.reason }] : []),
+        ]}
+      />
+      {saved ? (
+        <p role={saved.state === "completed" ? "status" : "alert"}>{saved.state === "completed" ? `Saved ${saved.path ?? ""}` : (saved.reason ?? "The summary was not saved.")}</p>
+      ) : null}
+      <h3 className="section-heading">{item.support ? "Summary" : "Changes"}</h3>
+      {item.support ? (
+        summary === null ? (
+          <p aria-live="polite">Reading…</p>
+        ) : summary.state !== "completed" ? (
+          <p role="alert">{summary.reason ?? "The summary cannot be read."}</p>
+        ) : (
+          <ValueRows
+            label="Summary"
+            rows={[
+              { label: "Source", value: SUMMARY_SOURCES[summary.source_kind ?? ""] ?? summary.source_kind ?? "—" },
+              { label: "Outcome", value: SUMMARY_OUTCOMES[summary.outcome ?? ""] ?? summary.outcome ?? "—" },
+              {
+                label: "Sharing policy",
+                value: item.policy_version ? `Version ${item.policy_version}${item.policy_current ? "" : " · Replaced"}` : "—",
+              },
+            ]}
+          />
+        )
+      ) : changes === null ? (
+        <p aria-live="polite">Reading…</p>
+      ) : changes === "unavailable" ? (
+        <p>Not in the open project</p>
+      ) : changes.state === "completed" && (changes.tests.length > 0 || changes.changes.length > 0) ? (
+        <ChangeTables comparison={changes} />
+      ) : (
+        <p>No changes</p>
+      )}
+      {item.discussion.length > 0 ? (
+        <>
+          <h3 className="section-heading">Discussion</h3>
+          <ul className="plain-list discussion">
+            {item.discussion.map((entry, index) => (
+              <li key={index}>
+                <span className="discussion-meta">
+                  {entry.actor} · <DisplayTerm map={TEAM_ACTIVITY} code={entry.kind} /> · {listDate(entry.at)}
+                </span>
+                <span>{entry.text}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+      {suite && !item.support ? (
+        <ReviewSheet
+          open={sheet === "approve"}
+          title="Approve"
+          action="suite.approve-release"
+          finalLabel="Approve"
+          context={context}
+          items={items}
+          rationale={reason.trim()}
+          blocked={() => reason.trim() === ""}
+          onClose={() => setSheet(null)}
+          onDone={() => void onRead()}
+          consequence="Records your approval of this exact version."
+          fields={
+            <>
+              <label htmlFor="team-approve-reason">Reason</label>
+              <textarea id="team-approve-reason" rows={2} maxLength={1024} value={reason} onChange={(event) => setReason(event.target.value)} />
+            </>
+          }
+          render={(review) => (review.suite_approval?.comparison ? <ChangeTables comparison={review.suite_approval.comparison} /> : null)}
+        />
+      ) : null}
+      {item.support ? (
+        <DecisionSheet
+          open={sheet === "approve"}
+          title="Approve summary"
+          submitLabel="Approve summary"
+          project={project}
+          team={team}
+          kind="support-approval"
+          item={item}
+          requireText={false}
+          consequence="Allows this summary to be downloaded under the current sharing policy."
+          onClose={() => setSheet(null)}
+          onRead={onRead}
+        />
+      ) : null}
+      <DecisionSheet
+        open={sheet === "changes"}
+        title="Request changes"
+        submitLabel="Request changes"
+        project={project}
+        team={team}
+        kind="change-request"
+        item={item}
+        requireText
+        textLabel="Reason"
+        onClose={() => setSheet(null)}
+        onRead={onRead}
+      />
+      <DecisionSheet
+        open={sheet === "comment"}
+        title="Comment"
+        submitLabel="Comment"
+        project={project}
+        team={team}
+        kind="comment"
+        item={item}
+        requireText
+        textLabel="Comment"
+        onClose={() => setSheet(null)}
+        onRead={onRead}
+      />
     </div>
+  );
+}
+
+const SUMMARY_SOURCES: Record<string, string> = { "retained-packet": "Retained packet", "portable-review": "Portable review", "derived-review": "Derived review" };
+const SUMMARY_OUTCOMES: Record<string, string> = { pass: "Passed", assertion_failure: "Check failed", execution_error: "Run error", "reviewed-extract-only": "Reviewed extract" };
+
+/** One decision on a review, recorded once under the signed-in identity: the
+ * command's identity is allocated on the first click and kept while it is
+ * retried, and a history that moved on is reported, read again, and needs a
+ * fresh decision. */
+function DecisionSheet({
+  open,
+  title,
+  submitLabel,
+  project,
+  team,
+  kind,
+  item,
+  requireText,
+  textLabel,
+  consequence,
+  onClose,
+  onRead,
+}: {
+  open: boolean;
+  title: string;
+  submitLabel: string;
+  project: string;
+  team: HubTeamResult;
+  kind: "comment" | "change-request" | "support-approval";
+  item: HubReviewItem;
+  requireText: boolean;
+  textLabel?: string;
+  consequence?: string;
+  onClose: () => void;
+  onRead: () => Promise<void>;
+}) {
+  const [text, setText] = useState("");
+  const intent = useCommandIntent<HubReviewCommandRequest>(`${project}.${item.id}.${kind}`, kind === "comment" ? "comment" : kind === "change-request" ? "changes" : "approve");
+  useEffect(() => {
+    if (open) setText("");
+  }, [open]);
+  return (
+    <FormDialog
+      open={open}
+      title={title}
+      submitLabel={submitLabel}
+      submitDisabled={requireText && text.trim() === ""}
+      dirty={text.trim() !== ""}
+      onClose={onClose}
+      status={consequence ? <p className="consequence">{consequence}</p> : undefined}
+      onSubmit={async () => {
+        // A comment is one remark on the review; a decision answers every
+        // request the review is, each as its own command, in order.
+        const requests = kind === "comment" ? item.requests.slice(0, 1) : item.requests;
+        const words = kind === "support-approval" ? "support" : text.trim();
+        const answer = await intent.send(
+          { kind, words, requests: requests.map((request) => request.id) },
+          (id) =>
+            requests.map((request, index) => ({
+              project,
+              id: requests.length > 1 ? `${id}-${index + 1}` : id,
+              expected: team.review_head + index,
+              kind,
+              evidence: request.evidence,
+              parent: request.id,
+              recipient: "",
+              text: words,
+              release: kind === "comment" ? "" : request.release,
+            })),
+          postHubReview,
+        );
+        if (!answer) return { reason: "This was not recorded." };
+        if (answer.state !== "completed") {
+          if (/conflict/i.test(answer.reason ?? "")) {
+            await onRead();
+            return { reason: "Someone else changed this project meanwhile. Look at it again before deciding." };
+          }
+          return { reason: answer.reason ?? "This was not recorded." };
+        }
+        onClose();
+        await onRead();
+        return null;
+      }}
+    >
+      {textLabel ? (
+        <>
+          <label htmlFor={`team-${kind}-text`}>{textLabel}</label>
+          <textarea id={`team-${kind}-text`} rows={3} maxLength={2048} value={text} onChange={(event) => setText(event.target.value)} />
+        </>
+      ) : (
+        <ValueRows label="Decision" rows={[{ label: "Item", value: reviewTitle(item) }, { label: "Requested by", value: item.requested_by }]} />
+      )}
+    </FormDialog>
+  );
+}
+
+/** Request review: a suite version of the open project through its reviewed
+ * request, or a published support summary; either asks one of the
+ * project's reviewers. */
+function RequestReviewSheet({
+  open,
+  project,
+  workspace,
+  bundles,
+  onClose,
+  onDone,
+}: {
+  open: boolean;
+  project: string;
+  workspace: string;
+  bundles: string[];
+  onClose: () => void;
+  onDone: () => Promise<void>;
+}) {
+  const [what, setWhat] = useState<"suite" | "support">("suite");
+  const [suite, setSuite] = useState("");
+  const [bundle, setBundle] = useState("");
+  const [reviewer, setReviewer] = useState("");
+  const [reason, setReason] = useState("");
+  const [suites, setSuites] = useState<{ id: string; name: string; revision?: string }[]>([]);
+  const [reviewers, setReviewers] = useState<string[] | null>(null);
+  const intent = useCommandIntent<HubSupportReviewRequest>(`${project}.request`, "request");
+  const context = useMemo(() => teamContext(workspace), [workspace]);
+  useEffect(() => {
+    if (!open) return;
+    setWhat(workspace ? "suite" : "support");
+    setReason("");
+    setBundle(bundles[0] ?? "");
+    let current = true;
+    void (async () => {
+      const [people, catalog] = await Promise.all([
+        listHubReviewers(project),
+        workspace ? listWholeCatalog({ context: context(), kind: "suite", filter: {} }) : Promise.resolve(null),
+      ]);
+      if (!current) return;
+      const names = people.state === "completed" ? people.members.map((member) => member.subject) : [];
+      setReviewers(names);
+      setReviewer(names[0] ?? "");
+      const listed = catalog?.state === "completed" ? (catalog.page?.items ?? []).map((entry) => ({ id: entry.ref.id, name: entry.name, ...(entry.ref.revision ? { revision: entry.ref.revision } : {}) })) : [];
+      setSuites(listed);
+      setSuite(listed[0]?.id ?? "");
+    })();
+    return () => {
+      current = false;
+    };
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  const chosen = suites.find((entry) => entry.id === suite);
+  const items = useMemo(() => (chosen ? [{ kind: "suite" as const, id: chosen.id, ...(chosen.revision ? { revision: chosen.revision } : {}) }] : []), [chosen]);
+  const options = useMemo(() => ({ suite_approval: { reviewer } }), [reviewer]);
+  const recipient = (
+    <>
+      <label htmlFor="team-request-what">Item</label>
+      <select id="team-request-what" value={what} onChange={(event) => setWhat(event.target.value as "suite" | "support")}>
+        {workspace ? <option value="suite">Suite version</option> : null}
+        {bundles.length > 0 ? <option value="support">Support summary</option> : null}
+      </select>
+      {what === "suite" ? (
+        <>
+          <label htmlFor="team-request-suite">Suite</label>
+          <select id="team-request-suite" value={suite} onChange={(event) => setSuite(event.target.value)}>
+            {suites.length === 0 ? <option value="">No suites</option> : null}
+            {suites.map((entry) => (
+              <option key={entry.id} value={entry.id}>
+                {entry.name}
+              </option>
+            ))}
+          </select>
+        </>
+      ) : (
+        <>
+          <label htmlFor="team-request-bundle">Summary</label>
+          <select id="team-request-bundle" value={bundle} onChange={(event) => setBundle(event.target.value)}>
+            {bundles.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </>
+      )}
+      <label htmlFor="team-request-reviewer">Reviewer</label>
+      <select id="team-request-reviewer" value={reviewer} onChange={(event) => setReviewer(event.target.value)}>
+        {reviewers === null ? <option value="">Reading…</option> : reviewers.length === 0 ? <option value="">No reviewers</option> : null}
+        {(reviewers ?? []).map((subject) => (
+          <option key={subject} value={subject}>
+            {subject}
+          </option>
+        ))}
+      </select>
+    </>
+  );
+  if (what === "suite") {
+    return (
+      <ReviewSheet
+        open={open}
+        title="Request review"
+        action="suite.request-review"
+        finalLabel="Request review"
+        context={context}
+        items={items}
+        options={options}
+        prepareKey={`${suite}|${reviewer}`}
+        canPrepare={reviewer !== "" && items.length > 0}
+        rationale={reason.trim()}
+        blocked={() => reason.trim() === ""}
+        onClose={onClose}
+        onDone={() => void onDone()}
+        consequence="Asks the reviewer through the team."
+        fields={
+          <>
+            {recipient}
+            <label htmlFor="team-request-reason">Reason</label>
+            <textarea id="team-request-reason" rows={2} maxLength={1024} value={reason} onChange={(event) => setReason(event.target.value)} />
+          </>
+        }
+        render={(review) => (review.suite_approval?.comparison ? <ChangeTables comparison={review.suite_approval.comparison} /> : null)}
+      />
+    );
+  }
+  return (
+    <FormDialog
+      open={open}
+      title="Request approval"
+      submitLabel="Request approval"
+      submitDisabled={!bundle || !reviewer}
+      onClose={onClose}
+      status={<p className="consequence">Uploads this summary to {project} and asks the reviewer.</p>}
+      onSubmit={async () => {
+        const request = { project, workspace, entry: bundle, kind: "support-request", recipient: reviewer };
+        const answer = await intent.send(request, (id) => [{ ...request, id }], postHubSupportReview);
+        if (answer?.state !== "completed") return { reason: answer?.reason ?? "The request was not recorded." };
+        await onDone();
+        return null;
+      }}
+    >
+      {recipient}
+    </FormDialog>
+  );
+}
+
+/** Publish policy: the exact sharing policy this project's summaries are
+ * judged under from now on. It approves no summary. */
+function PublishPolicySheet({
+  open,
+  project,
+  workspace,
+  policies,
+  version,
+  onClose,
+  onDone,
+}: {
+  open: boolean;
+  project: string;
+  workspace: string;
+  policies: string[];
+  version: number;
+  onClose: () => void;
+  onDone: () => Promise<void>;
+}) {
+  const [policy, setPolicy] = useState("");
+  const intent = useCommandIntent<HubSupportReviewRequest>(`${project}.policy`, "policy");
+  useEffect(() => {
+    if (open) setPolicy(policies[0] ?? "");
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <FormDialog
+      open={open}
+      title="Publish policy"
+      submitLabel="Publish policy"
+      submitDisabled={!policy}
+      onClose={onClose}
+      status={<p className="consequence">Earlier summary approvals stop applying; no summary is approved.</p>}
+      onSubmit={async () => {
+        const request = { project, workspace, entry: policy, kind: "support-policy", recipient: "" };
+        const answer = await intent.send(request, (id) => [{ ...request, id }], postHubSupportReview);
+        if (answer?.state !== "completed") return { reason: answer?.reason ?? "The policy was not published." };
+        await onDone();
+        return null;
+      }}
+    >
+      <label htmlFor="team-policy">Sharing policy</label>
+      <select id="team-policy" value={policy} onChange={(event) => setPolicy(event.target.value)}>
+        {policies.map((name) => (
+          <option key={name} value={name}>
+            {name}
+          </option>
+        ))}
+      </select>
+      <ValueRows label="Publication" rows={[{ label: "Project", value: project }, { label: "Version", value: String(version) }]} />
+    </FormDialog>
+  );
+}
+
+// ---------- Revisions ----------
+
+/** Create revision or Submit revision: a chosen file as the next revision of
+ * a resource, continuing the base it names, reviewed against the resource as
+ * it stands now. Save draft keeps it on this computer only. */
+export function RevisionSheet({
+  open,
+  project,
+  teamName,
+  workspace,
+  resource: startResource,
+  base: startBase,
+  source: startSource = "",
+  resources,
+  onClose,
+  onDone,
+}: {
+  open: boolean;
+  project: string;
+  teamName: string;
+  workspace: string;
+  resource: string;
+  base: string;
+  source?: string;
+  resources: { resource: string; tips: string[]; revisions: HubRevision[] }[];
+  onClose: () => void;
+  onDone: (result: ReviewedActionResult) => void;
+}) {
+  const [resource, setResource] = useState(startResource);
+  const [base, setBase] = useState(startBase);
+  const [source, setSource] = useState(startSource);
+  const [reason, setReason] = useState("");
+  const [draft, setDraft] = useState<string | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    setResource(startResource);
+    setBase(startBase);
+    setSource(startSource);
+    setReason("");
+    setDraft(null);
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  const known = resources.find((entry) => entry.resource === resource);
+  const context = useMemo(() => teamContext(workspace), [workspace]);
+  const options = useMemo(() => ({ team: { project, source, resource, base } }), [project, source, resource, base]);
+  const choose = useCallback(async () => {
+    const chosen = await chooseHubLocalCopy("file");
+    if (chosen.state === "completed" && chosen.paths?.[0]) setSource(chosen.paths[0]);
+  }, []);
+  return (
+    <ReviewSheet
+      open={open}
+      title={startSource ? "Submit revision" : "Create revision"}
+      action="team.revision"
+      finalLabel="Submit revision"
+      context={context}
+      items={noItems}
+      options={options}
+      prepareKey={`${source}|${resource}|${base}`}
+      canPrepare={source !== "" && resource !== ""}
+      rationale={reason.trim()}
+      blocked={() => reason.trim() === ""}
+      onClose={onClose}
+      onDone={onDone}
+      outcome={(result) => <TeamTransferOutcome result={result} onConfirmed={onDone} />}
+      consequence={`Uploads the file to ${teamName}/${project} as the next revision of ${resource || "the resource"}.`}
+      fields={
+        <>
+          <label htmlFor="team-revision-file">File</label>
+          <div className="field-with-action">
+            <span id="team-revision-file">{source ? baseName(source) : "—"}</span>
+            <button type="button" onClick={() => void choose()}>
+              Choose…
+            </button>
+          </div>
+          <label htmlFor="team-revision-resource">Resource</label>
+          <input
+            id="team-revision-resource"
+            value={resource}
+            readOnly={startResource !== ""}
+            maxLength={64}
+            onChange={(event) => setResource(event.target.value.trim())}
+          />
+          {known ? (
+            <>
+              <label htmlFor="team-revision-base">Base</label>
+              <select id="team-revision-base" value={base} onChange={(event) => setBase(event.target.value)}>
+                {known.revisions
+                  .slice()
+                  .reverse()
+                  .map((revision) => (
+                    <option key={revision.id} value={revision.id}>
+                      {revisionLine(revision)}
+                    </option>
+                  ))}
+              </select>
+            </>
+          ) : null}
+          <label htmlFor="team-revision-reason">Change</label>
+          <textarea id="team-revision-reason" rows={2} maxLength={2048} value={reason} onChange={(event) => setReason(event.target.value)} />
+          <div className="field-with-action">
+            <button
+              type="button"
+              className="quiet"
+              disabled={!source || !resource || !workspace}
+              onClick={() =>
+                void saveHubOfflineDraft({
+                  workspace,
+                  project,
+                  resource,
+                  parent_tips: base ? [base] : [],
+                  local_path: source,
+                  expected_head: 0,
+                  note: reason.trim() || "Revision draft",
+                }).then((answer) => setDraft(answer.state === "completed" ? "Draft saved on this computer" : (answer.reason ?? "The draft was not saved.")))
+              }
+            >
+              Save draft
+            </button>
+            {draft ? <span role="status">{draft}</span> : null}
+          </div>
+        </>
+      }
+      render={(review) => <TransferReview review={review} teamName={teamName} />}
+    />
   );
 }

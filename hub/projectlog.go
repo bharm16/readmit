@@ -28,7 +28,7 @@ import (
 var (
 	errLogUnavailable    = errors.New("project log unavailable")
 	errCommitUnavailable = errors.New("project log commit unavailable")
-	errSupportNeedsV2    = errors.New("history carrying support commands requires v2")
+	errSupportNeedsV2    = errors.New("history carrying support commands or requests for changes requires v2")
 	errPolicyChanged     = errors.New("sharing policy changed")
 	errPolicyUnavailable = errors.New("access policy unavailable")
 	errRecipient         = errors.New("recipient refused")
@@ -106,7 +106,7 @@ func (l projectLog) reviews(ctx context.Context, p projectView, v2 bool) (review
 		return reviews{}, errLogUnavailable
 	}
 	r := reviews{events: events, state: hubprotocol.DeriveReviews(events)}
-	if !v2 && r.state.HasSupport() {
+	if !v2 && r.state.RequiresV2() {
 		return r, errSupportNeedsV2
 	}
 	return r, nil
@@ -164,11 +164,7 @@ func (l projectLog) recordReview(ctx context.Context, p projectView, r reviews, 
 	if e = r.state.Validate(c, principal.Subject, principal.Issuer, load); e != nil {
 		return ReviewEvent{}, false, errors.Join(errReviewRefused, hubSentinel(e))
 	}
-	schema := hubprotocol.ReviewEventV1
-	if hubprotocol.IsSupport(c) {
-		schema = hubprotocol.ReviewEventV2
-	}
-	event := ReviewEvent{Schema: schema, Project: p.name, Sequence: len(r.events) + 1, Issuer: principal.Issuer, Actor: principal.Subject, At: l.now().UTC().Format(time.RFC3339Nano), Command: c}
+	event := ReviewEvent{Schema: hubprotocol.EventSchema(c), Project: p.name, Sequence: len(r.events) + 1, Issuer: principal.Issuer, Actor: principal.Subject, At: l.now().UTC().Format(time.RFC3339Nano), Command: c}
 	if e = l.storage.appendReview(ctx, event); e != nil {
 		return ReviewEvent{}, false, errCommitUnavailable
 	}

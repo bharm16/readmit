@@ -58,6 +58,9 @@ func Routes() []Route {
 		{Service: "team", Method: "POST", Path: "/v2/projects/{project}/notifications", Purpose: "search notifications"},
 		{Service: "team", Method: "GET", Path: "/v2/projects/{project}/lifecycle", Purpose: "read the project lifecycle log"},
 		{Service: "team", Method: "POST", Path: "/v2/projects/{project}/lifecycle", Purpose: "record a lifecycle command"},
+		{Service: "team", Method: "GET", Path: "/v2/projects/{project}/files", Purpose: "list the project's files"},
+		{Service: "team", Method: "GET", Path: "/v2/projects/{project}/members", Purpose: "list the project's members"},
+		{Service: "team", Method: "GET", Path: "/v2/projects/{project}/reviewers", Purpose: "list the members a review may be requested of"},
 
 		// The runner service: short-lived execution leases for enrolled
 		// customer runners.

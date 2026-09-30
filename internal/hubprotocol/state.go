@@ -29,18 +29,24 @@ type Reviews struct {
 	// can match.
 	policy ReviewCommand
 	// support says whether any support command is recorded, which decides
-	// which audit and history versions the project's history reads back as.
+	// which audit version the project's history reads back as.
 	support bool
+	// v2only says whether any command only the v2 routes carry is recorded:
+	// a support command or a request for changes.
+	v2only bool
 }
 
 // DeriveReviews reads a project's review log once.
 func DeriveReviews(events []ReviewEvent) Reviews {
 	state := Reviews{events: events}
 	for _, event := range events {
+		if IsChangeRequest(event.Command) {
+			state.v2only = true
+		}
 		if !IsSupport(event.Command) {
 			continue
 		}
-		state.support = true
+		state.support, state.v2only = true, true
 		if event.Command.Kind == "support-policy" {
 			state.policy = event.Command
 		}
@@ -58,6 +64,10 @@ func (s Reviews) PolicyInForce() (ReviewCommand, bool) {
 // HasSupport reports whether any support command is recorded.
 func (s Reviews) HasSupport() bool { return s.support }
 
+// RequiresV2 reports whether the log records a command only the v2 routes
+// carry, so a v1 read of it is refused.
+func (s Reviews) RequiresV2() bool { return s.v2only }
+
 // HistorySchema is the history version a read on the v1 or v2 route answers with.
 func (s Reviews) HistorySchema(v2 bool) string {
 	if v2 {
@@ -67,9 +77,9 @@ func (s Reviews) HistorySchema(v2 bool) string {
 }
 
 // AuditSchema is the audit export version this log reads back as: a project
-// that never carried a support command reads as v1.
+// that never carried a command only the v2 routes carry reads as v1.
 func (s Reviews) AuditSchema() string {
-	if s.support {
+	if s.v2only {
 		return AuditV2
 	}
 	return AuditV1
@@ -141,7 +151,7 @@ func (s Reviews) Validate(c ReviewCommand, actor, issuer string, load func(strin
 	if c.Parent != "" && (parent == nil || parent.Command.Evidence != c.Evidence) {
 		return ErrMissing
 	}
-	if c.Kind != "review-request" && c.Kind != "approval" {
+	if c.Kind != "review-request" && c.Kind != "approval" && c.Kind != "change-request" {
 		return nil
 	}
 	release, e := loadRelease(load, c.Release)
@@ -154,13 +164,31 @@ func (s Reviews) Validate(c ReviewCommand, actor, issuer string, load func(strin
 	if parent.Command.Kind != "review-request" || parent.Command.Release != c.Release || parent.Command.Recipient != actor || parent.Issuer != issuer || parent.Actor == actor {
 		return ErrRefused
 	}
+	// Only the latest request for these exact bytes is live. A current head
+	// cannot revive an older request that another request superseded.
+	for i := len(events) - 1; i >= 0; i-- {
+		request := events[i].Command
+		if request.Kind == "review-request" && request.Evidence == c.Evidence {
+			if request.ID != c.Parent {
+				return ErrConflict
+			}
+			break
+		}
+	}
+	// A request is answered once: by an approval or by a request for
+	// changes, never both and never twice.
+	for _, event := range events {
+		if (event.Command.Kind == "approval" || event.Command.Kind == "change-request") && event.Command.Parent == c.Parent {
+			return ErrConflict
+		}
+	}
+	if c.Kind == "change-request" {
+		return nil
+	}
 	var previous *expectation.Release
 	for _, event := range events {
 		if event.Command.Kind != "approval" {
 			continue
-		}
-		if event.Command.Parent == c.Parent {
-			return ErrConflict
 		}
 		prior, e := loadRelease(load, event.Command.Release)
 		if e != nil {

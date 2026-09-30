@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/bharm16/readmit/hub"
 	"github.com/bharm16/readmit/internal/expectation"
+	"github.com/bharm16/readmit/internal/hubprotocol"
 	"github.com/bharm16/readmit/internal/profileversion"
 	"net/http/httptest"
 	"os"
@@ -66,6 +67,9 @@ func TestPostgresApprovedReleaseHistoryAndRecovery(t *testing.T) {
 		r := request(signed(t, key, claims(subject), accessHeader))
 		r.Method = method
 		r.URL.Path = "/v1/projects/alpha/" + path
+		if strings.Contains(body, hubprotocol.ReviewCommandV3) {
+			r.URL.Path = "/v2/projects/alpha/" + path
+		}
 		r.Body = httpBody([]byte(body))
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, r)
@@ -114,15 +118,19 @@ func TestPostgresApprovedReleaseHistoryAndRecovery(t *testing.T) {
 	check(command("viewer-write", "comment", "", "", "", "refused", 3), "viewer", 403)
 	check(command("missing-parent", "comment", "absent", "", "", "refused", 3), "analyst", 404)
 	check(command("request", "review-request", "", "reviewer", digest, "Review exact release", 3), "analyst", 201)
-	approval := command("approve", "approval", "request", "", digest, "Accepted exact expectations", 4)
+	check(command("request-current", "review-request", "", "reviewer", digest, "Review exact release again", 4), "analyst", 201)
+	check(command("stale-parent-approve", "approval", "request", "", digest, "Old request at current head", 5), "reviewer", 409)
+	staleChanges := strings.Replace(command("stale-parent-changes", "change-request", "request", "", digest, "Old request at current head", 5), hubprotocol.ReviewCommandV1, hubprotocol.ReviewCommandV3, 1)
+	check(staleChanges, "reviewer", 409)
+	approval := command("approve", "approval", "request-current", "", digest, "Accepted exact expectations", 5)
 	check(approval, "analyst", 403)
 	check(approval, "owner", 403)
 	check(approval, "reviewer", 201)
 	check(approval, "reviewer", 200)
-	check(command("repeat", "approval", "request", "", digest, "Second approval", 5), "reviewer", 409)
+	check(command("repeat", "approval", "request-current", "", digest, "Second approval", 6), "reviewer", 409)
 	// Same test identity cannot restart the chain after its first team approval.
-	check(command("fork-request", "review-request", "", "reviewer", digest, "Old version", 5), "analyst", 201)
-	check(command("fork-approve", "approval", "fork-request", "", digest, "Old version", 6), "reviewer", 409)
+	check(command("fork-request", "review-request", "", "reviewer", digest, "Old version", 6), "analyst", 201)
+	check(command("fork-approve", "approval", "fork-request", "", digest, "Old version", 7), "reviewer", 409)
 	changed := []byte(strings.Replace(string(spec), `"AA"`, `"AE"`, 1))
 	nextReview, e := expectation.Review("booking", changed, []profileversion.Version{}, &release, false)
 	if e != nil {
@@ -137,9 +145,9 @@ func TestPostgresApprovedReleaseHistoryAndRecovery(t *testing.T) {
 		t.Fatal(e)
 	}
 	nextDigest := put(nextRaw)
-	check(command("second-request", "review-request", "", "reviewer", nextDigest, "Changed exact release", 6), "analyst", 201)
-	check(command("wrong-release", "approval", "second-request", "", digest, "Changed after request", 7), "reviewer", 403)
-	check(command("second-approval", "approval", "second-request", "", nextDigest, "Accepted changed expectations", 7), "reviewer", 201)
+	check(command("second-request", "review-request", "", "reviewer", nextDigest, "Changed exact release", 7), "analyst", 201)
+	check(command("wrong-release", "approval", "second-request", "", digest, "Changed after request", 8), "reviewer", 403)
+	check(command("second-approval", "approval", "second-request", "", nextDigest, "Accepted changed expectations", 8), "reviewer", 201)
 	history := call("GET", "history", "viewer", "")
 	if history.Code != 200 || !strings.Contains(history.Body.String(), `"actor":"reviewer"`) || strings.Contains(history.Body.String(), "Untrusted local label") {
 		t.Fatalf("identity %d %s", history.Code, history.Body)
@@ -150,11 +158,11 @@ func TestPostgresApprovedReleaseHistoryAndRecovery(t *testing.T) {
 		Head   int               `json:"head"`
 		Events []hub.ReviewEvent `json:"events"`
 	}
-	if e = json.Unmarshal(w.Body.Bytes(), &result); e != nil || w.Code != 200 || len(result.Events) != 2 || result.Head != 8 {
+	if e = json.Unmarshal(w.Body.Bytes(), &result); e != nil || w.Code != 200 || len(result.Events) != 2 || result.Head != 9 {
 		t.Fatalf("search %d %s %v", w.Code, w.Body, e)
 	}
 	// Nested contract omissions and forged actor fields never reach storage.
-	for _, body := range []string{strings.Replace(approval, `"expected":4,`, "", 1), strings.Replace(approval, `"schema":`, `"actor":"forged","schema":`, 1), strings.Replace(approval, `"expected":4`, `"expected":null`, 1)} {
+	for _, body := range []string{strings.Replace(approval, `"expected":5,`, "", 1), strings.Replace(approval, `"schema":`, `"actor":"forged","schema":`, 1), strings.Replace(approval, `"expected":5`, `"expected":null`, 1)} {
 		check(body, "reviewer", 400)
 	}
 	backup := filepath.Join(t.TempDir(), "backup")
@@ -248,7 +256,7 @@ func TestPostgresApprovedReleaseHistoryAndRecovery(t *testing.T) {
 	r := request(signed(t, key, claims("analyst"), accessHeader))
 	r.Method = "POST"
 	r.URL.Path = "/v1/projects/alpha/reviews"
-	r.Body = httpBody([]byte(command("cancelled", "comment", "", "", "", "Cancelled", 8)))
+	r.Body = httpBody([]byte(command("cancelled", "comment", "", "", "", "Cancelled", 9)))
 	cancelctx, cancel := context.WithCancel(ctx)
 	cancel()
 	r = r.WithContext(cancelctx)

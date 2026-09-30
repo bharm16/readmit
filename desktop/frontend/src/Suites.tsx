@@ -1524,7 +1524,7 @@ function EnvironmentApprovalSheet({
 }
 
 /** What an approval binds, as its review shows it. */
-function ApprovalPreview({ review }: { review: ActionReview }) {
+export function ApprovalPreview({ review }: { review: ActionReview }) {
   const approval = review.suite_approval;
   if (!approval) return null;
   return (
@@ -1548,7 +1548,7 @@ function ApprovalPreview({ review }: { review: ActionReview }) {
 
 // ---------- Two versions ----------
 
-function ChangeTables({ comparison }: { comparison: SuiteComparison }) {
+export function ChangeTables({ comparison }: { comparison: SuiteComparison }) {
   return (
     <>
       {comparison.tests.map((test) => (

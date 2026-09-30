@@ -56,6 +56,7 @@ import type {
   TestResult,
   TestResolution,
   HubResult,
+  HubTeamResult,
   HubDiagnosisResult,
   HubArtifactsResult,
   BuildIndexResult,
@@ -1897,6 +1898,49 @@ export function recoveryCopyFixture(
     state: "completed",
     copy: { document: "project.json", digest: "a".repeat(64), size: 553, state: "readable", kept_at: "2026-01-02T09:00:00Z", reason: "saved" },
     contents: { schema: "readmit-project/v2", title: "Scheduling investigation", cases: 2, interface_versions: ["v1"] },
+    ...overrides,
+  };
+}
+
+/** A signed-in team project as the Team page reads it: synthetic people,
+ * files named from the project's own records, and reviews in every status. */
+export function teamResult(overrides: Partial<HubTeamResult> = {}): HubTeamResult {
+  const at = "2026-09-20T10:00:00Z";
+  return {
+    state: "completed",
+    project: "cardio-study",
+    me: "rui",
+    capabilities: ["evidence.read", "evidence.write", "approval", "export", "admin"],
+    review_head: 2,
+    lifecycle_head: 1,
+    activity: [
+      { key: "review-2", actor: "ana", action: "review-request", object: "Scheduling smoke · Version 4", at, text: "Reschedule keeps one appointment", to_me: true },
+      { key: "history-1", actor: "ana", action: "revision", object: "booking-rules", at: "2026-09-19T10:00:00Z", text: "first" },
+    ],
+    reviews: [
+      {
+        id: "ask-1",
+        item: "Scheduling smoke",
+        version: "4",
+        suite: { kind: "suite", id: "suite-1", revision: "4" },
+        requested_by: "ana",
+        recipient: "rui",
+        requested: at,
+        updated: at,
+        status: "requested",
+        reason: "Reschedule keeps one appointment",
+        evidence: "a".repeat(64),
+        release: "a".repeat(64),
+        to_me: true,
+        discussion: [],
+        requests: [{ id: "ask-1", evidence: "a".repeat(64), release: "a".repeat(64) }],
+      },
+    ],
+    files: [
+      { digest: "b".repeat(64), size: 2048, name: "booking-rules", type: "revision", added_by: "ana", added_at: "2026-09-19T10:00:00Z", resource: "booking-rules" },
+      { digest: "c".repeat(64), size: 12, type: "file" },
+    ],
+    resources: [{ resource: "booking-rules", revisions: [{ id: "rev-1", artifact: "b".repeat(64), actor: "ana", at: "2026-09-19T10:00:00Z", reason: "first", parents: [] }], tips: ["rev-1"] }],
     ...overrides,
   };
 }

@@ -231,7 +231,9 @@ const RawHL7 = "hl7"
 //     action reaches a configured destination to collect an observation or
 //     reset an environment, which admits the author as well; author-if-derive
 //     is the desktop's reviewed-action form where the final action derives an
-//     export review into the project; hub-operation is the
+//     export review into the project; author-if-upload is the desktop's
+//     reviewed-action form where the final action sends a file, a revision or
+//     a resolution to a team project; hub-operation is the
 //     guard's hub admission a licensed hub service takes for runner leases
 //     and local schedule authoring.
 //   - hub-certificate: the customer hub's verified mutual-TLS client
@@ -242,7 +244,7 @@ const RawHL7 = "hl7"
 //   - vendor: the vendor's issuing authority; portal-account the customer's
 //     account in the merchant of record's hosted portal.
 var prerequisites = []string{
-	"author", "execute", "execute-if-send", "author-if-quota-change", "author-if-approve", "execute-if-reach", "author-if-reach", "author-if-derive", "hub-operation",
+	"author", "execute", "execute-if-send", "author-if-quota-change", "author-if-approve", "execute-if-reach", "author-if-reach", "author-if-derive", "author-if-upload", "hub-operation",
 	"hub-certificate",
 	"hub:evidence.read", "hub:evidence.write", "hub:execution", "hub:approval",
 	"hub:export", "hub:enrollment", "hub:admin", "hub:ownership",

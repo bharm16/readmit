@@ -55,6 +55,11 @@ const STARTS = [
   "ConnectOperatorHub",
   "ReadOperatorHubArtifact",
   "StoreOperatorHubArtifact",
+  "ReadHubTeam",
+  "DownloadHubFile",
+  "DownloadHubSummary",
+  "ApplyHubRetention",
+  "OpenHubConflict",
 ] as const;
 
 test("a capture started from a saved listener stops when Cancel capture is pressed, and reopening after a kill starts nothing", async () => {

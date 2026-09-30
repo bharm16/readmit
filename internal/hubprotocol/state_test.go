@@ -327,3 +327,63 @@ func TestAReleaseApprovalContinuesTheChainItsRequestNamed(t *testing.T) {
 		t.Fatalf("a comment on unstored evidence: %v", err)
 	}
 }
+
+// A request for changes answers a request the way an approval does — only
+// the person it asked, once — and a request answered either way takes no
+// second answer of the other kind.
+func TestARequestForChangesAnswersItsRequestOnce(t *testing.T) {
+	spec := `{"schema":"readmit-test/v1","name":"synthetic","input":{"case":"case","messages":["s0001-e000001"]},"target":"target.json","setup":{"initial_state":"operator-declared","reset_instructions":"Reset fixture"},"observation":{"boundary":"ack-contract"},"assertions":[{"id":"ack","operator":"ack_field_equals","message":"s0001-e000001","selector":"MSA-1","expected":{"field":{"state":"present","text":"AA"}}}]}`
+	_, raw := releaseBytes(t, "booking", nil, spec)
+	d := sharing.Digest(raw)
+	files := stored{d: raw}
+	v1 := func(id, kind, parent, recipient string) hubprotocol.ReviewCommand {
+		schema, _ := hubprotocol.CommandSchema(kind)
+		return hubprotocol.ReviewCommand{Schema: schema, ID: id, Kind: kind, Evidence: d, Parent: parent, Recipient: recipient, Release: d, Text: "the timeout is too short"}
+	}
+	events := []hubprotocol.ReviewEvent{recorded("ana", v1("ask", "review-request", "", "rui"))}
+	decide := func(c hubprotocol.ReviewCommand, actor string) error {
+		return hubprotocol.DeriveReviews(events).Validate(c, actor, "issuer", files.load)
+	}
+	if err := decide(v1("changes-self", "change-request", "ask", ""), "ana"); !errors.Is(err, hubprotocol.ErrRefused) {
+		t.Fatalf("changes requested by someone the request did not ask: %v", err)
+	}
+	events = append(events, recorded("ana", v1("ask-new", "review-request", "", "rui")))
+	for _, kind := range []string{"approval", "change-request"} {
+		if err := decide(v1("stale-"+kind, kind, "ask", ""), "rui"); !errors.Is(err, hubprotocol.ErrConflict) {
+			t.Fatalf("a current-head %s revived a superseded request: %v", kind, err)
+		}
+	}
+	if err := decide(v1("current-changes", "change-request", "ask-new", ""), "rui"); err != nil {
+		t.Fatalf("the current request was refused: %v", err)
+	}
+	events = events[:1]
+	changes := v1("changes", "change-request", "ask", "")
+	if err := decide(changes, "rui"); err != nil {
+		t.Fatal(err)
+	}
+	events = append(events, recorded("rui", changes))
+	if err := decide(v1("approve-after", "approval", "ask", ""), "rui"); !errors.Is(err, hubprotocol.ErrConflict) {
+		t.Fatalf("a request approved after changes were requested: %v", err)
+	}
+	if err := decide(v1("changes-again", "change-request", "ask", ""), "rui"); !errors.Is(err, hubprotocol.ErrConflict) {
+		t.Fatalf("changes requested twice: %v", err)
+	}
+	data, _ := json.Marshal(changes)
+	if _, err := hubprotocol.DecodeReviewCommand(data); err != nil {
+		t.Fatalf("a request for changes does not decode: %v", err)
+	}
+	changes.Recipient = "ana"
+	data, _ = json.Marshal(changes)
+	if _, err := hubprotocol.DecodeReviewCommand(data); err == nil {
+		t.Fatal("a request for changes naming a recipient decoded")
+	}
+	// A request for changes is its own command version: v1 does not carry it.
+	changes.Recipient, changes.Schema = "", hubprotocol.ReviewCommandV1
+	data, _ = json.Marshal(changes)
+	if _, err := hubprotocol.DecodeReviewCommand(data); err == nil {
+		t.Fatal("a v1 command carried a request for changes")
+	}
+	if hubprotocol.ValidEventVersion(hubprotocol.ReviewEvent{Schema: hubprotocol.ReviewEventV3, Command: v1("c", "change-request", "ask", "")}, true, false) {
+		t.Fatal("a record that predates requests for changes held one")
+	}
+}

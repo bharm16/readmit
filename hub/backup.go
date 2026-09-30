@@ -3,6 +3,7 @@ package hub
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
@@ -24,6 +25,28 @@ type backupEntry struct {
 type projectLink struct {
 	Project string `json:"project"`
 	Digest  string `json:"sha256"`
+	// origin is who linked the project to the artifact and when, as
+	// backup/v6 carries it; zero for a link that recorded none and for every
+	// link an older backup restores.
+	origin linkOrigin
+}
+
+// linkOrigin is the authenticated principal that made a project link and
+// when. All three members are empty together.
+type linkOrigin struct {
+	Issuer   string
+	Actor    string
+	LinkedAt string
+}
+
+// backupLink is one project link as backup/v6 writes it: every member
+// present, the origin members all empty for a link that recorded none.
+type backupLink struct {
+	Project  string `json:"project"`
+	Digest   string `json:"sha256"`
+	Issuer   string `json:"issuer"`
+	Actor    string `json:"actor"`
+	LinkedAt string `json:"linked_at"`
 }
 type backupManifest struct {
 	Schema          string           `json:"schema"`
@@ -63,7 +86,7 @@ func (s *Store) Backup(ctx context.Context, destination string) error {
 		return err
 	}
 	defer out.Close()
-	m := backupManifest{Schema: "readmit-hub-backup/v5", MetadataVersion: schemaVersion, Artifacts: []backupEntry{}}
+	m := backupManifest{Schema: "readmit-hub-backup/v6", MetadataVersion: schemaVersion, Artifacts: []backupEntry{}}
 	rows, err := s.db.QueryContext(ctx, "SELECT digest,size,retained_at FROM readmit_hub_artifacts ORDER BY digest")
 	if err != nil {
 		return errors.New("metadata unavailable")
@@ -97,15 +120,19 @@ func (s *Store) Backup(ctx context.Context, destination string) error {
 	}
 	m.Team = &team
 	m.Projects = []projectLink{}
-	links, err := s.db.QueryContext(ctx, `SELECT project,digest FROM readmit_hub_project_artifacts ORDER BY project COLLATE "C",digest COLLATE "C"`)
+	links, err := s.db.QueryContext(ctx, `SELECT project,digest,COALESCE(linked_issuer,''),COALESCE(linked_actor,''),linked_at FROM readmit_hub_project_artifacts ORDER BY project COLLATE "C",digest COLLATE "C"`)
 	if err != nil {
 		return err
 	}
 	for links.Next() {
 		var link projectLink
-		if err = links.Scan(&link.Project, &link.Digest); err != nil {
+		var at sql.NullTime
+		if err = links.Scan(&link.Project, &link.Digest, &link.origin.Issuer, &link.origin.Actor, &at); err != nil {
 			links.Close()
 			return err
+		}
+		if at.Valid {
+			link.origin.LinkedAt = at.Time.UTC().Format(time.RFC3339Nano)
 		}
 		m.Projects = append(m.Projects, link)
 		if len(m.Projects) > 65536 {
@@ -146,12 +173,32 @@ func encodeBackupManifest(m backupManifest) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	if m.Schema == "readmit-hub-backup/v6" {
+		// v6 writes each link with its origin members.
+		links := make([]backupLink, 0, len(m.Projects))
+		for _, link := range m.Projects {
+			links = append(links, backupLink{Project: link.Project, Digest: link.Digest, Issuer: link.origin.Issuer, Actor: link.origin.Actor, LinkedAt: link.origin.LinkedAt})
+		}
+		var envelope map[string]jsontext.Value
+		if err = json.Unmarshal(data, &envelope); err != nil {
+			return nil, err
+		}
+		if envelope["projects"], err = json.Marshal(links, json.Deterministic(true)); err != nil {
+			return nil, err
+		}
+		if data, err = json.Marshal(envelope, json.Deterministic(true)); err != nil {
+			return nil, err
+		}
+	}
 	limit := 32 << 20
 	if m.Schema == "readmit-hub-backup/v3" {
 		limit = 64 << 20
 	}
 	if m.Schema == "readmit-hub-backup/v4" || m.Schema == "readmit-hub-backup/v5" {
 		limit = 128 << 20
+	}
+	if m.Schema == "readmit-hub-backup/v6" {
+		limit = maxBackupManifest
 	}
 	if len(data) > limit {
 		return nil, ErrLimit
@@ -169,10 +216,14 @@ func syncRoot(root *os.Root) error {
 	return artifactdir.SyncDirectory(root, ".")
 }
 
+// maxBackupManifest bounds a backup/v6 manifest: the v5 catalogues plus each
+// link's origin at its widest. Every earlier version keeps its own bound.
+const maxBackupManifest = 256 << 20
+
 // backupManifestFile is how a backup's manifest is read: never through a
-// link, and never past 128 MiB.
+// link, and never past the largest version's bound.
 var backupManifestFile = artifactdir.Document{
-	MaxBytes: 128 << 20,
+	MaxBytes: maxBackupManifest,
 	Refusals: artifactdir.DocumentRefusals{
 		Irregular: errors.New("backup incomplete"),
 		Open:      artifactdir.FilesystemReport,
@@ -195,8 +246,50 @@ func readBackup(root *os.Root) (backupManifest, error) {
 	if err = json.Unmarshal(envelope["schema"], &schema); err != nil {
 		return m, err
 	}
-	if (schema == "readmit-hub-backup/v1" && len(data) > 16<<20) || (schema == "readmit-hub-backup/v2" && len(data) > 32<<20) || (schema == "readmit-hub-backup/v3" && len(data) > 64<<20) {
+	if (schema == "readmit-hub-backup/v1" && len(data) > 16<<20) || (schema == "readmit-hub-backup/v2" && len(data) > 32<<20) || (schema == "readmit-hub-backup/v3" && len(data) > 64<<20) ||
+		((schema == "readmit-hub-backup/v4" || schema == "readmit-hub-backup/v5") && len(data) > 128<<20) {
 		return m, ErrLimit
+	}
+	// v6 is v5 whose links carry their origin: the origins are read and set
+	// aside here, and the rest is read exactly as v5 is.
+	isV6 := schema == "readmit-hub-backup/v6"
+	origins := map[[2]string]linkOrigin{}
+	if isV6 {
+		if requireExactMembers(data, "schema", "metadata_version", "artifacts", "projects", "team_enabled", "reviews", "lifecycle") != nil {
+			return m, ErrIntegrity
+		}
+		var version int
+		if json.Unmarshal(envelope["metadata_version"], &version) != nil || version != 7 {
+			return m, ErrIntegrity
+		}
+		var raw []jsontext.Value
+		if json.Unmarshal(envelope["projects"], &raw) != nil || len(raw) > 65536 {
+			return m, ErrIntegrity
+		}
+		plain := make([]projectLink, 0, len(raw))
+		for _, entry := range raw {
+			var link backupLink
+			if requireExactMembers(entry, "project", "sha256", "issuer", "actor", "linked_at") != nil || json.Unmarshal(entry, &link, json.RejectUnknownMembers(true)) != nil {
+				return m, ErrIntegrity
+			}
+			origin := linkOrigin{Issuer: link.Issuer, Actor: link.Actor, LinkedAt: link.LinkedAt}
+			if origin != (linkOrigin{}) {
+				if _, e := time.Parse(time.RFC3339Nano, origin.LinkedAt); e != nil || origin.Issuer == "" || len(origin.Issuer) > maxLinkIssuer || origin.Actor == "" || !hubprotocol.ValidText(origin.Actor, 256) || !hubprotocol.ValidText(origin.Issuer, maxLinkIssuer) {
+					return m, ErrIntegrity
+				}
+			}
+			origins[[2]string{link.Project, link.Digest}] = origin
+			plain = append(plain, projectLink{Project: link.Project, Digest: link.Digest})
+		}
+		if envelope["projects"], err = json.Marshal(plain); err != nil {
+			return m, err
+		}
+		envelope["schema"] = jsontext.Value(`"readmit-hub-backup/v5"`)
+		envelope["metadata_version"] = jsontext.Value(`6`)
+		if data, err = json.Marshal(envelope); err != nil {
+			return m, err
+		}
+		schema = "readmit-hub-backup/v5"
 	}
 	isV5 := schema == "readmit-hub-backup/v5"
 	if isV5 {
@@ -415,7 +508,7 @@ func readBackup(root *os.Root) (backupManifest, error) {
 	ctx := context.Background()
 	lastProject := ""
 	for _, event := range reviews {
-		if !hubprotocol.ValidEventVersion(event, isV5) || !validProject(event.Project) || event.Project < lastProject {
+		if !hubprotocol.ValidEventVersion(event, isV5, isV6) || !validProject(event.Project) || event.Project < lastProject {
 			return m, ErrIntegrity
 		}
 		if e := replay.replayReview(ctx, event); e != nil {
@@ -444,6 +537,13 @@ func readBackup(root *os.Root) (backupManifest, error) {
 	if isV5 {
 		m.Schema = "readmit-hub-backup/v5"
 		m.MetadataVersion = 6
+	}
+	if isV6 {
+		m.Schema = "readmit-hub-backup/v6"
+		m.MetadataVersion = 7
+		for i := range m.Projects {
+			m.Projects[i].origin = origins[[2]string{m.Projects[i].Project, m.Projects[i].Digest}]
+		}
 	}
 	return m, nil
 }
@@ -517,7 +617,13 @@ func (s *Store) Restore(ctx context.Context, source string) error {
 		}
 	}
 	for _, link := range m.Projects {
-		if _, err = tx.ExecContext(ctx, "INSERT INTO readmit_hub_project_artifacts(project,digest) VALUES($1,$2)", link.Project, link.Digest); err != nil {
+		// A link an older backup restores, or one that recorded no origin,
+		// keeps none: its origin is never filled in from anything else.
+		var issuer, actor, at any
+		if link.origin != (linkOrigin{}) {
+			issuer, actor, at = link.origin.Issuer, link.origin.Actor, link.origin.LinkedAt
+		}
+		if _, err = tx.ExecContext(ctx, "INSERT INTO readmit_hub_project_artifacts(project,digest,linked_issuer,linked_actor,linked_at) VALUES($1,$2,$3,$4,$5)", link.Project, link.Digest, issuer, actor, at); err != nil {
 			return errors.New("project metadata restore failed")
 		}
 	}

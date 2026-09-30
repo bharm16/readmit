@@ -102,7 +102,7 @@
     "line": 99
   },
   {
-    "name": "HubAdministration",
+    "name": "TeamAdministratorSetup",
     "source": "desktop/frontend/src/HubAdministration.tsx",
     "exported": true,
     "line": 34
