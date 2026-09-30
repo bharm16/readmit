@@ -71,13 +71,17 @@ const (
 	// source (#552).
 	MappingItem ItemKind = "mapping"
 	SourceItem  ItemKind = "source"
+	// NormalizationPolicyItem is a named normalization policy
+	// (readmit-normalization-policy/v1) a case comparison can be read under
+	// (#558).
+	NormalizationPolicyItem ItemKind = "normalization-policy"
 )
 
 var itemKinds = []ItemKind{ProjectItem, CaseItem, TestItem, SuiteItem, RunItem, EnvironmentItem, ObservationItem,
 	ReportItem, CheckGroupItem, ProfileItem, ScenarioItem, AnalysisItem, VariantItem, BackupItem, RunnerItem, ScheduleItem,
 	AnalysisSettingsItem, FindingReviewItem,
 	LinkRulesItem, CoverageItem, LinkReviewItem,
-	MappingItem, SourceItem, SuiteApprovalItem, ReportReviewItem}
+	MappingItem, SourceItem, SuiteApprovalItem, ReportReviewItem, NormalizationPolicyItem}
 
 // Availability is whether an object's backing can be read now. Readability
 // grants nothing: whether an action is permitted is Capabilities.
@@ -188,6 +192,8 @@ type ItemSummary struct {
 	LinkReview       *LinkReviewSummary       `json:"link_review,omitzero"`
 	Mapping          *MappingSummary          `json:"mapping,omitzero"`
 	Source           *SourceSummary           `json:"source,omitzero"`
+	// NormalizationPolicy is how many rules a normalization policy holds.
+	NormalizationPolicy *NormalizationPolicySummary `json:"normalization_policy,omitzero"`
 }
 
 // ProjectSummary is a project as the project document declares it. Folder is

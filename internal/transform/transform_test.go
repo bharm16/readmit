@@ -606,3 +606,58 @@ func fixturePack(t *testing.T) profilepack.Pack {
 	}
 	return pack
 }
+
+// A written transformation is the sequence its preview read back, kept as
+// derived evidence: every entry in sequence order, a copy as its own
+// occurrence, the rewritten bytes and not the originals, and the case it
+// came from left exactly as it was.
+func TestCreateWritesTheSequenceThePreviewReadBack(t *testing.T) {
+	path := writeCase(t, framed(booking, reschedule))
+	before, err := bundle.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rules := declaredRules(t, controlInSource)
+	plan := authored(t, path, rules,
+		transform.Step{Operator: transform.DuplicateOccurrence, Entry: "t000002"},
+		transform.Step{Operator: transform.ReorderOccurrence, Entry: "t000002", Position: 1},
+		transform.Step{Operator: transform.ShiftDates, Shift: "24h"})
+	output := filepath.Join(t.TempDir(), "derived")
+	preview, written, err := transform.Create(path, plan, rules, nil, output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if written.Manifest.Provenance.Mode != bundle.Derived || written.Manifest.Provenance.Derivation != transform.Derivation {
+		t.Fatalf("the written case does not declare the transformation that wrote it: %+v", written.Manifest.Provenance)
+	}
+	if len(written.Events) != len(preview.Sequence) || len(written.Events) != 3 {
+		t.Fatalf("the written case does not hold the sequence: %d events for %d entries", len(written.Events), len(preview.Sequence))
+	}
+	for i, entry := range preview.Sequence {
+		raw, err := written.Raw(written.Events[i].ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		original, err := before.Raw(entry.Parent)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(raw), "20260101120") || string(raw) == string(original) {
+			t.Fatalf("entry %d kept its original bytes rather than the shifted ones", i+1)
+		}
+		wantControl := "MSG-002"
+		if entry.Parent == before.Events[0].ID {
+			wantControl = "MSG-001"
+		}
+		if !strings.Contains(string(raw), wantControl) {
+			t.Fatalf("entry %d holds another occurrence's bytes", i+1)
+		}
+	}
+	after, err := bundle.Open(path)
+	if err != nil || after.Identity != before.Identity {
+		t.Fatalf("writing a transformation changed the case it read: %v", err)
+	}
+	if _, _, err := transform.Create(path, plan, rules, nil, output); err == nil {
+		t.Fatal("a transformation was written over an existing case")
+	}
+}

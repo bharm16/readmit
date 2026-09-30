@@ -39,31 +39,42 @@ const (
 // [correlate.Run]: which occurrences are related is that package's answer, and
 // this one only preserves it.
 func Run(path string, plan Plan, rules correlate.Rules, pack *profilepack.Pack) (Preview, error) {
-	if err := validatePlan(plan); err != nil {
+	e, declared, err := start(path, plan, rules, pack)
+	if err != nil {
 		return Preview{}, err
+	}
+	preview, _, err := e.finish(plan, declared)
+	return preview, err
+}
+
+// start verifies the case, the rules and the pack one plan is applied with and
+// applies every step of it to the sequence, writing nothing.
+func start(path string, plan Plan, rules correlate.Rules, pack *profilepack.Pack) (*engine, profilepack.Pack, error) {
+	if err := validatePlan(plan); err != nil {
+		return nil, profilepack.Pack{}, err
 	}
 	source, err := bundle.Open(path)
 	if err != nil {
-		return Preview{}, errors.New("the case could not be verified as complete, unmodified evidence")
+		return nil, profilepack.Pack{}, errors.New("the case could not be verified as complete, unmodified evidence")
 	}
 	if source.Identity != plan.Case {
-		return Preview{}, errors.New("this plan was authored against different evidence than the case it was applied to")
+		return nil, profilepack.Pack{}, errors.New("this plan was authored against different evidence than the case it was applied to")
 	}
 	if len(source.Events) == 0 {
-		return Preview{}, errors.New("a transformation needs a case holding at least one occurrence")
+		return nil, profilepack.Pack{}, errors.New("a transformation needs a case holding at least one occurrence")
 	}
 	if len(source.Events) > MaxEntries {
-		return Preview{}, errors.New("a transformation sequence holds at most 1024 entries")
+		return nil, profilepack.Pack{}, errors.New("a transformation sequence holds at most 1024 entries")
 	}
 	report, err := correlate.Run(path, rules)
 	if err != nil {
-		return Preview{}, err
+		return nil, profilepack.Pack{}, err
 	}
 	if report.CaseIdentity != source.Identity {
-		return Preview{}, errors.New("the correlation report describes different evidence than the case it was read from")
+		return nil, profilepack.Pack{}, errors.New("the correlation report describes different evidence than the case it was read from")
 	}
 	if report.RulesSHA256 != plan.Rules {
-		return Preview{}, errors.New("this plan was authored against different correlation rules than the ones it was applied with")
+		return nil, profilepack.Pack{}, errors.New("this plan was authored against different correlation rules than the ones it was applied with")
 	}
 	declared := profilepack.Pack{}
 	if pack != nil {
@@ -71,20 +82,20 @@ func Run(path string, plan Plan, rules correlate.Rules, pack *profilepack.Pack) 
 	}
 	if plan.Profile == (profilepack.Identity{}) {
 		if pack != nil {
-			return Preview{}, errors.New("this plan pins no profile pack; a preview validates against the pack a plan named or against none")
+			return nil, profilepack.Pack{}, errors.New("this plan pins no profile pack; a preview validates against the pack a plan named or against none")
 		}
 	} else if pack == nil {
-		return Preview{}, errors.New("this plan pins a profile pack that was not supplied")
+		return nil, profilepack.Pack{}, errors.New("this plan pins a profile pack that was not supplied")
 	} else if err := declared.Satisfies(plan.Profile); err != nil {
-		return Preview{}, err
+		return nil, profilepack.Pack{}, err
 	}
 	e := newEngine(source, report, rules)
 	for _, step := range plan.Steps {
 		if err := e.apply(step); err != nil {
-			return Preview{}, err
+			return nil, profilepack.Pack{}, err
 		}
 	}
-	return e.finish(plan, declared)
+	return e, declared, nil
 }
 
 type engine struct {

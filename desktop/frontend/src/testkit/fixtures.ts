@@ -10,9 +10,6 @@ import type {
   Artifact,
   CaseResult,
   EditorDraft,
-  Comparison,
-  CompareResult,
-  ComparisonRow,
   CanonicalTestResult,
   DurableRunResult,
   FiltersResult,
@@ -43,9 +40,6 @@ import type {
   ProtectionDocument,
   ProtectionPackageResult,
   ProtectionDiscardResult,
-  ReproducerPlan,
-  ReproducerResolution,
-  ReproducerResult,
   RunState,
   TestRunnerStatus,
   TestDraftDocument,
@@ -78,10 +72,6 @@ import type {
   DiagnosisResult,
   FindingPromotion,
   FindingStatus,
-  Normalization,
-  NormalizationDifference,
-  NormalizationRuleReport,
-  NormalizeResult,
   RunPreflightResult,
   RunProgressResult,
   RunEvidenceResult,
@@ -773,77 +763,6 @@ export function testResult(
 
 export const NO_STAGES_MISSING: TestResolution["missing"] = [];
 
-/** A reproducer resolution: what a plan retains and edits, as positions. */
-export function reproducerResult(
-  plan: ReproducerPlan,
-  resolution: ReproducerResolution,
-  built?: { output: string; identity: string },
-): ReproducerResult {
-  return {
-    state: "completed",
-    reproducer: built
-      ? { plan, resolution, output: built.output, identity: built.identity }
-      : { plan, resolution },
-  };
-}
-
-/** One row both panes of a comparison draw. */
-export function comparisonRow(
-  position: number,
-  kind: ComparisonRow["kind"],
-  overrides: Partial<ComparisonRow> = {},
-): ComparisonRow {
-  return { position, kind, ...overrides };
-}
-
-/** One comparison of two collections: rows, counts and scope, positions only. */
-export function compareResult(rows: ComparisonRow[], overrides: Partial<Comparison> = {}): CompareResult {
-  return {
-    state: "completed",
-    comparison: {
-      left: CASE_ENTRY,
-      right: "other-case",
-      report: "readmit-diff/v1",
-      boundary: "messages",
-      left_summary: {
-        kind: "case",
-        identity: CASE_IDENTITY,
-        payloads: "2",
-        occurrences: 2,
-        excluded: 0,
-      },
-      right_summary: {
-        kind: "case",
-        identity: "other-case-identity-fixed-for-tests",
-        payloads: "2",
-        occurrences: 2,
-        excluded: 0,
-      },
-      alignment: "by declared key",
-      scope: "A comparison of stored messages is not a comparison of everything.",
-      keys: [],
-      fields: [],
-      summary: {
-        paired: rows.length,
-        changed: 0,
-        unchanged: 0,
-        uncompared: 0,
-        field_changes: 0,
-        inserted: 0,
-        missing: 0,
-        ambiguous: 0,
-        unaligned: 0,
-      },
-      offset: 0,
-      limit: 200,
-      total: rows.length,
-      rows,
-      unsupported: [],
-      ...overrides,
-    },
-  };
-}
-
 /** What comparing two retained executions reports, values hidden. */
 export function runComparisonResult(overrides: Partial<NonNullable<RunComparisonResult["comparison"]>> = {}): RunComparisonResult {
   return {
@@ -1518,103 +1437,6 @@ export function findingStatus(
     basis: verdict === "not_reviewed" ? "unreviewed" : "decision",
     next_evidence: "Capture the acknowledgement the case does not hold.",
     ...overrides,
-  };
-}
-
-/** One authored normalization rule as it was applied: counts only. */
-export function normalizationRuleReport(
-  id: string,
-  selector: string,
-  overrides: Partial<NormalizationRuleReport> = {},
-): NormalizationRuleReport {
-  return {
-    id,
-    selector,
-    operator: "ignore",
-    compared: 1,
-    suppressed: 1,
-    retained: 0,
-    undecided: 0,
-    ...overrides,
-  };
-}
-
-/** One field the comparison reported and what the policy did about it. */
-export function normalizationDifference(
-  selector: string,
-  outcome: string,
-  overrides: Partial<NormalizationDifference> = {},
-): NormalizationDifference {
-  return {
-    left_occurrence: GRID_OCCURRENCE,
-    right_occurrence: "occ-000001",
-    selector,
-    status: "changed",
-    left_state: "present",
-    right_state: "present",
-    outcome,
-    ...overrides,
-  };
-}
-
-/** One policy-scoped reading of one comparison, windowed: outcomes and counts,
- * never a value. The raw comparison stays its own unchanged report. */
-export function normalizeResult(
-  differences: NormalizationDifference[],
-  rules: NormalizationRuleReport[] = [],
-  overrides: Partial<Normalization> = {},
-): NormalizeResult {
-  const outcomes = (wanted: string) =>
-    differences.filter((entry) => entry.outcome === wanted).length;
-  return {
-    state: "completed",
-    normalization: {
-      left: CASE_ENTRY,
-      right: OTHER_CASE_ENTRY,
-      policy: "normalization-policy.json",
-      policy_sha256: "policy-sha256-fixed-for-tests",
-      report: "readmit-normalization/v1",
-      policy_schema: "readmit-normalization-policy/v1",
-      scope: "A policy-scoped reading of one comparison; the raw comparison is unchanged.",
-      boundary: "messages",
-      left_summary: {
-        kind: "case",
-        identity: CASE_IDENTITY,
-        payloads: "2",
-        occurrences: 2,
-        excluded: 0,
-      },
-      right_summary: {
-        kind: "case",
-        identity: "other-case-identity-fixed-for-tests",
-        payloads: "2",
-        occurrences: 2,
-        excluded: 0,
-      },
-      alignment: "by declared key",
-      keys: [],
-      fields: [],
-      rules,
-      summary: {
-        paired: differences.length,
-        differences: differences.length,
-        uncompared: 0,
-        suppressed: outcomes("suppressed"),
-        retained: outcomes("retained"),
-        undecided: outcomes("undecided"),
-        unaddressed: outcomes("unaddressed"),
-        inserted: 0,
-        missing: 0,
-        ambiguous: 0,
-        unaligned: 0,
-      },
-      offset: 0,
-      limit: 200,
-      total: differences.length,
-      differences,
-      unsupported: [],
-      ...overrides,
-    },
   };
 }
 

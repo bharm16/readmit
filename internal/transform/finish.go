@@ -14,23 +14,26 @@ import (
 // position is placed, every placed occurrence is rewritten and read back, and
 // only then is the preview assembled: what a person is shown is what the plan
 // actually does, or the reason it does not do it.
-func (e *engine) finish(plan Plan, pack profilepack.Pack) (Preview, error) {
+//
+// It also answers the transformed bytes of every parent occurrence the
+// sequence still holds, which only a written derived case keeps.
+func (e *engine) finish(plan Plan, pack profilepack.Pack) (Preview, map[string][]byte, error) {
 	retained := e.retained()
 	if len(retained) == 0 {
-		return Preview{}, errors.New("this transformation drops every occurrence of the case; a sequence holds at least one")
+		return Preview{}, nil, errors.New("this transformation drops every occurrence of the case; a sequence holds at least one")
 	}
 	if err := e.prepare(retained); err != nil {
-		return Preview{}, err
+		return Preview{}, nil, err
 	}
 	placements, err := e.placed(retained)
 	if err != nil {
-		return Preview{}, err
+		return Preview{}, nil, err
 	}
 	derived := make(map[string][]byte, len(retained))
 	for _, id := range retained {
 		rewritten, landed, err := e.rewrite(id, placements[id])
 		if err != nil {
-			return Preview{}, err
+			return Preview{}, nil, err
 		}
 		derived[id], placements[id] = rewritten, landed
 	}
@@ -75,7 +78,7 @@ func (e *engine) finish(plan Plan, pack profilepack.Pack) (Preview, error) {
 			preview.Summary.Preserved++
 		}
 	}
-	return preview, nil
+	return preview, derived, nil
 }
 
 // placed resolves every position the plan rewrites, per parent occurrence. A

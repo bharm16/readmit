@@ -24,11 +24,6 @@ function p(
 }
 export const privateExamples: Example[] = [
   p("App", "SuiteHandoffNotice", privateData.suiteHandoff),
-  p("Comparison", "NormalizationView", {
-    normalization: f.normalizeResult([], []).normalization,
-    busy: false,
-    onNormalize: noop,
-  }),
   p("ProjectPanel", "EditableDocument", {
     result: f.revisionsResult(),
     indicators: f.indicatorTable(),
@@ -53,7 +48,6 @@ export const privateExamples: Example[] = [
     view: f.protectionPackageResult().package,
     limitations: f.protectionPackageResult().limitations ?? [],
   }),
-  p("Review", "Preview", privateData.transformPreview),
   p("Review", "Inventory", {
     ...privateData.reviewInventory,
     busy: false,

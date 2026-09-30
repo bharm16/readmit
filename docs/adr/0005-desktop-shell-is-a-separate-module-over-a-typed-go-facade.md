@@ -276,3 +276,11 @@ and results are not kept here: they live in the open project's own area
 (`readmit-benchmarks/v1`), so they are backed up and removed with the
 project. The alternative, a tenth shell document of benchmarks, would have
 kept measurements of a project's inputs apart from the project.
+
+#558 (2026-09-29) adds `MinimizeProgress`, which answers what the running
+minimization has done — its trials, the one running and its budget — without
+waiting for the operation slot, which the minimization itself holds for the
+whole series. It reads only that in-memory progress under its own lock, writes
+nothing and reaches nothing, so it cannot race the series it reports; the
+alternative, answering busy until the series ends, would leave the window
+unable to show the trials or offer Stop beside them.

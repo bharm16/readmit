@@ -13,8 +13,9 @@ editor does it without touching a byte of the original: it produces **new**
 derived evidence beside the case, under a manifest that says exactly what was
 retained, why it was retained, and where every edit landed.
 
-It is part of [the desktop shell](desktop.md) in this release. There is no
-`readmit reproduce` command, and no command-line flag reads a plan.
+It is part of [the desktop shell](desktop.md) in this release, as the included
+messages and field edits of a [case variant](desktop.md#case-variants). There is
+no `readmit reproduce` command, and no command-line flag reads a plan.
 
 > A reproducer is not a redaction. Replacing a value here is a testing
 > transformation, and nothing about it is a de-identification claim, a coverage
@@ -203,11 +204,10 @@ where the new evidence came from:
 A project names a revision by **one directory entry of the project**, so the
 derived case is copied there first, exactly as a redacted one is:
 
-The desktop Reproducer panel places the derived case and registers lineage
-through the same operation after a build. When the project refuses the
-registration, the panel removes the copy it placed for it and reports the
-refusal in the project's own sentence, so the workspace is exactly as it was.
-On the command line the same two steps look like:
+The desktop's Save variant builds the derived case and registers its lineage
+through the same operation in one save, and never lists a variant whose
+registration did not complete. On the command line the same two steps look
+like:
 
 ```sh
 cp -R incident-reproducer/case scheduling-investigation/incident-4821-reproducer
@@ -395,17 +395,19 @@ A reproducer is derived testing data and is treated as the data it came from.
 - Any retained history of what a plan said before a step was undone. Two
   reproducers that were **built** are compared above; a plan that was not built
   is unstored work, and nothing is kept about a step that was undone.
-- Profile support. The editor reads no [profile pack](profile-packs.md) and
-  claims no parse, label, structural or workflow support for anything it edits.
-  A position is addressed by the shared selector grammar over the original
-  bytes; no v1 pack may claim structural or workflow support in any case.
+- Profile support. The reproducer reads no [profile pack](profile-packs.md) and
+  claims no parse, label, structural or workflow support for anything it edits;
+  a variant's preview reports what a chosen pack declares through the
+  [transformation](transform.md) engine. A position is addressed by the shared
+  selector grammar over the original bytes; no v1 pack may claim structural or
+  workflow support in any case.
 - A `readmit reproduce` command, and reading or writing a plan as a file. The
   plan reaches the manifest of a reproducer that was built and nowhere else.
-- Surviving an interruption. A plan that has not been built is retained while
-  it is being edited: the shell's editor draft store
-  ([the shell](desktop.md#recovering-after-an-interruption)) keeps the steps
-  under an internal identity until the reproducer is built, so an interruption
-  returns the plan instead of the selection. A reproducer that **was** built is
+- Surviving an interruption. A variant that has not been saved is retained
+  while it is being edited: the shell's editor draft store
+  ([the shell](desktop.md#recovering-after-an-interruption)) keeps it until the
+  variant is saved, so an interruption returns the plan instead of the
+  selection. A reproducer that **was** built is
   on disk and is read back by its manifest; a build interrupted partway leaves
   a directory with no manifest, which is refused rather than read as a finished
   reproducer.

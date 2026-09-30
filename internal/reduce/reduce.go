@@ -68,6 +68,11 @@ type Request struct {
 	Rules    correlate.Rules
 	Messages []string
 	Required []string
+	// Progress, when set, is told of each trial as it starts (finished
+	// false, with its candidate) and as it ends (finished true, with its
+	// verdict), so a person watching sees the actual series. It decides
+	// nothing and cannot change the trial.
+	Progress func(trial Trial, finished bool)
 }
 
 // Run reduces one sequence against one chosen failure signature and reports
@@ -427,6 +432,10 @@ func (s *session) trial(ctx context.Context, purpose Purpose, removed string, ca
 	}
 	s.budget--
 	trial := Trial{Index: len(s.trials) + 1, Purpose: purpose, Candidate: slices.Clone(candidate), Removed: removed, Failed: []string{}}
+	if s.request.Progress != nil {
+		s.request.Progress(trial, false)
+		defer func() { s.request.Progress(s.trials[len(s.trials)-1], true) }()
+	}
 	outcome, reason := s.oracle.Reset(ctx)
 	trial.Reset, trial.ResetReason = outcome, reason
 	if outcome != fixturereset.Confirmed {

@@ -131,7 +131,7 @@ test("Reports lists named reports newest first with their case and review, and f
     ["Scheduling release comparison", CASE_ENTRY, "Reviewed"],
   ]);
   expect(page().queryByRole("textbox")).toBeNull();
-  for (const gone of ["Share", "Transform and export", "Packets", "Verify packet"]) expect(page().queryByRole("button", { name: gone })).toBeNull();
+  for (const gone of ["Share", "Export review", "Packets", "Verify packet"]) expect(page().queryByRole("button", { name: gone })).toBeNull();
   await user.click(page().getByRole("button", { name: "Filter reports" }));
   const sheet = await screen.findByRole("dialog", { name: "Filter reports" });
   await user.click(within(sheet).getByRole("checkbox", { name: "Reviewed" }));

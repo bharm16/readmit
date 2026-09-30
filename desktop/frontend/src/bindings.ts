@@ -355,6 +355,12 @@ import type {
   RunAnalysisRequest,
   RunAnalysisResult,
   RunComparisonItemsRequest,
+  VariantRequest,
+  VariantResult,
+  CaseComparisonRequest,
+  CaseComparisonResult,
+  MinimizeSetupResult,
+  MinimizeProgressResult,
   RunComparisonItemsResult,
   ReportRequest,
   ReportResult,
@@ -2112,4 +2118,28 @@ export function compareRunItems(request: RunComparisonItemsRequest): Promise<Run
 /** Reads operator-selected local fixture adapter metadata; never resolves a credential. */
 export function getIsolationEditor(request: IsolationEditorRequest): Promise<IsolationEditorResult> {
   return retryingRead(() => facade().GetIsolationEditor(request), { state: "failed", context: request.context, adapters: [], modes: [], resource_kinds: [], ownership: [] });
+}
+
+// Variants, case comparison and failure minimization (#558).
+
+/** One variant draft resolved over its source exactly as Save builds it;
+ * nothing is written. */
+export function resolveVariant(request: VariantRequest): Promise<VariantResult> {
+  return retryingRead(() => facade().ResolveVariant(request), { state: "failed", context: request.context, problems: [] });
+}
+
+/** Two cases compared in their roles, under the keys, fields and policy
+ * named; nothing is written. */
+export function compareCases(request: CaseComparisonRequest): Promise<CaseComparisonResult> {
+  return retryingRead(() => facade().CompareCases(request), { state: "failed", context: request.context });
+}
+
+/** What minimizing one run starts from, read from the run. */
+export function minimizeSetup(request: RunRequest): Promise<MinimizeSetupResult> {
+  return retryingRead(() => facade().MinimizeSetup(request), { state: "failed", context: request.context });
+}
+
+/** The minimization running now; read while it runs, taking no slot. */
+export function minimizeProgress(): Promise<MinimizeProgressResult> {
+  return guard(() => facade().MinimizeProgress(), { state: "failed" });
 }

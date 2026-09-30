@@ -5,9 +5,11 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/catalog"
+	"github.com/bharm16/readmit/internal/correlate"
 	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/project"
 	"github.com/bharm16/readmit/internal/reproducer"
@@ -23,10 +25,12 @@ import (
 // never touched.
 
 // VariantDraft is a variant as its editor holds it: the registered case or
-// revision it is derived from, and the reproducer plan applied to it.
+// revision it is derived from, the reproducer plan applied to it, and the
+// sequence stage applied to what that plan retains (#558).
 type VariantDraft struct {
-	Source ItemRef         `json:"source"`
-	Plan   reproducer.Plan `json:"plan"`
+	Source    ItemRef           `json:"source"`
+	Plan      reproducer.Plan   `json:"plan"`
+	Transform *VariantTransform `json:"transform,omitzero"`
 }
 
 // variantPrefix names the entries variants are published as.
@@ -72,7 +76,8 @@ func readVariant(c *loadedCatalog, item catalog.Item, paths map[string]string) (
 }
 
 // validateVariantDraft validates a variant's whole plan against its source and
-// answers the plan document it is saved with.
+// answers the documents it is saved with: the reproducer plan and, with a
+// sequence stage, the transformation plan and the rules it keeps.
 func validateVariantDraft(scope draftScope, draft ItemDraft) ([]catalog.Staged, ItemDraft, []FieldProblem) {
 	normalized := ItemDraft{Name: draft.Name}
 	if draft.Variant == nil {
@@ -81,21 +86,14 @@ func validateVariantDraft(scope draftScope, draft ItemDraft) ([]catalog.Staged, 
 	if scope.item != "" {
 		return nil, normalized, []FieldProblem{{Field: "item", Problem: "a variant is saved as a new case; derived evidence is never changed"}}
 	}
-	source, problem := resolveVariantSource(scope, draft.Variant.Source)
-	if problem != nil {
-		return nil, normalized, []FieldProblem{*problem}
+	resolved, problems := resolveVariant(scope, *draft.Variant, false)
+	if problems != nil {
+		return nil, normalized, problems
 	}
-	plan := draft.Variant.Plan
-	if plan.Case != source.bundle.Identity {
-		return nil, normalized, []FieldProblem{{Field: "variant.plan", Problem: "the plan was made for different evidence than the source it names"}}
+	if blocking := resolved.blocking(); len(blocking) > 0 {
+		return nil, normalized, []FieldProblem{{Field: "variant.plan", Problem: blocking[0].Detail}}
 	}
-	resolution, err := reproducer.Resolve(source.bundle, plan)
-	if err == nil && len(resolution.Occurrences) == 0 {
-		err = errors.New("a variant retains at least one occurrence")
-	}
-	if err != nil {
-		return nil, normalized, []FieldProblem{{Field: "variant.plan", Problem: err.Error()}}
-	}
+	plan := resolved.plan
 	data, err := json.Marshal(plan, json.Deterministic(true))
 	if err == nil {
 		_, err = reproducer.DecodePlan(data)
@@ -103,8 +101,25 @@ func validateVariantDraft(scope draftScope, draft ItemDraft) ([]catalog.Staged, 
 	if err != nil {
 		return nil, normalized, []FieldProblem{{Field: "variant.plan", Problem: "the plan cannot be saved as a reproducer plan document"}}
 	}
-	normalized.Variant = &VariantDraft{Source: ItemRef{Kind: draft.Variant.Source.Kind, ID: draft.Variant.Source.ID}, Plan: plan}
-	return []catalog.Staged{{Role: "plan", File: "plan.json", Data: append(data, '\n')}}, normalized, nil
+	staged := []catalog.Staged{{Role: "plan", File: "plan.json", Data: append(data, '\n')}}
+	variant := &VariantDraft{Source: ItemRef{Kind: draft.Variant.Source.Kind, ID: draft.Variant.Source.ID}, Plan: plan}
+	if sequence := resolved.sequence; sequence != nil {
+		planned, err := json.Marshal(sequence.plan, json.Deterministic(true))
+		if err != nil {
+			return nil, normalized, []FieldProblem{{Field: "variant.transform", Problem: "the changes cannot be saved as a transformation plan document"}}
+		}
+		rules, err := json.Marshal(sequence.rules, json.Deterministic(true))
+		if err != nil {
+			return nil, normalized, []FieldProblem{{Field: "variant.transform.rules", Problem: "the link rules cannot be saved with the variant"}}
+		}
+		staged = append(staged, catalog.Staged{Role: "transform", File: "transform.json", Data: append(planned, '\n')},
+			catalog.Staged{Role: "rules", File: "rules.json", Data: append(rules, '\n')})
+		stage := *draft.Variant.Transform
+		stage.Steps = slices.Clone(stage.Steps)
+		variant.Transform = &stage
+	}
+	normalized.Variant = variant
+	return staged, normalized, nil
 }
 
 // resolveVariantSource reads the source a variant names: a case or revision
@@ -133,9 +148,12 @@ func resolveVariantSource(scope draftScope, ref ItemRef) (variantSource, *FieldP
 }
 
 // variantEntry is how a variant's derived case is built and what it owes:
-// built from its source by the reproducer the command line runs, placed as
-// the derived case alone, and registered as a revision of its source.
-func variantEntry(source variantSource, plan reproducer.Plan) *catalog.Entry {
+// built from its source by the reproducer the command line runs, then, with a
+// sequence stage, by the transformation over what the reproducer retained,
+// placed as the derived case alone, and registered as a revision of its
+// source.
+func variantEntry(resolved *variantResolved) *catalog.Entry {
+	source, plan, sequence := resolved.source, resolved.plan, resolved.sequence
 	return &catalog.Entry{Prefix: variantPrefix, Owes: source.entry, Build: func(path string) error {
 		built := path + ".build"
 		if err := os.RemoveAll(built); err != nil {
@@ -145,7 +163,12 @@ func variantEntry(source variantSource, plan reproducer.Plan) *catalog.Entry {
 		if _, err := reproducer.Create(source.bundle, source.path, plan, built); err != nil {
 			return err
 		}
-		return os.Rename(filepath.Join(built, reproducer.CaseName), path)
+		retained := filepath.Join(built, reproducer.CaseName)
+		if sequence == nil {
+			return os.Rename(retained, path)
+		}
+		_, _, err := transform.Create(retained, sequence.plan, sequence.rules, sequence.pack, path)
+		return err
 	}}
 }
 
@@ -166,7 +189,29 @@ func verifyVariant(files map[string]string) error {
 	if err != nil {
 		return err
 	}
-	if derived.Manifest.Provenance.Mode != bundle.Derived || derived.Manifest.Provenance.Derivation != reproducer.Derivation || derived.Identity == plan.Case {
+	derivation := reproducer.Derivation
+	if files["transform"] != "" {
+		data, err := boundedFile(files["transform"], transform.MaxPlanBytes)
+		if err != nil {
+			return err
+		}
+		sequence, err := transform.DecodePlan(data)
+		if err != nil {
+			return err
+		}
+		rules, err := boundedFile(files["rules"], correlate.MaxRulesBytes)
+		if err != nil {
+			return err
+		}
+		if _, err := correlate.ParseRules(rules); err != nil {
+			return err
+		}
+		if derived.Identity == sequence.Case {
+			return errors.New("the saved variant is not evidence derived by its plan")
+		}
+		derivation = transform.Derivation
+	}
+	if derived.Manifest.Provenance.Mode != bundle.Derived || derived.Manifest.Provenance.Derivation != derivation || derived.Identity == plan.Case {
 		return errors.New("the saved variant is not evidence derived by its plan")
 	}
 	return nil

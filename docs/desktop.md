@@ -947,7 +947,7 @@ Every successful write returns the project re-read from disk, so what the
 window shows is what is stored, and a refused write leaves the project
 exactly as it was. A revision is registered from the reproducer panel after a
 build, through the operation `readmit project revise` runs (see
-[building a reproducer](#building-a-reproducer)), and a revision registered on
+[case variants](#case-variants)), and a revision registered on
 the command line is navigable here as well.
 
 ## Named objects, whole saves and reviewed actions
@@ -1736,102 +1736,74 @@ or a report, and Settings › Security names it. This is the one thing the grid
 keeps that came from a person reading evidence; nothing read out of a case is
 kept anywhere.
 
-## Building a reproducer
+## Case variants
 
-An incident holds everything that happened; what a vendor or a regression test
-needs is much smaller. **Reproducer** is the panel beside the grid that extracts
-it: retain the occurrences that matter, keep the setup dependencies they need,
-edit supported fields, and write the result as a separate revision.
+**Create variant** makes a smaller or edited case from the open one without
+changing it. It is reached from the case's **More case actions** menu, or from
+**Create variant** beside the messages chosen in the list; a case listed in
+Cases offers it on its row. The editor opens on the case and exact version it
+was started from. Messages chosen before it opened are the variant's included
+messages; with none chosen it opens the included-message picker instead of
+choosing every message.
 
-This is the one place the window writes evidence, and it writes only **new**
-evidence. The case being read is never changed: a build creates a new folder of
-the open workspace holding a derived `readmit-case/v3` bundle and the
-transformation manifest beside it. A folder that already exists, a name that is
-not one entry of the workspace, and a destination inside any retained artifact
-are each refused by the same output policy that refuses every other write into
-retained evidence.
+The editor is one page: **Included messages** on the left, the ordered
+**Changes** on the right, **Preview** and **Save variant** in its header. The
+name starts as the case's name followed by *variant* and is changed with
+**Rename** in the page's menu.
 
-Nothing about what a step means is decided here. The interface sends the plan
-and the step; the engine resolves both against the verified case and sends back
-what it retained, why, and everything it could not settle — so the panel shows
-what a build would write rather than a second opinion about it. A step the
-evidence does not support leaves the plan exactly as it was and reports the
-refusal, and **Undo the last step** removes the step added last and resolves
-what remains, which is why dropping an occurrence and undoing that drop returns
-its edits as well.
+- **Choose messages** lists every message of the case in its order, each
+  included or excluded. **Dependencies** includes the linked ACK of each
+  included message and earlier messages that declare the same identity in the
+  fields chosen with the field picker. A message a dependency reached shows
+  why, and what a dependency could not settle — an ACK matching more than one
+  message, a message declaring none of the identity fields — stays listed
+  with its reason; nothing is excluded silently.
+- **Add change** takes one transformation and only the fields its type takes:
+  *Replace value* (message, field, value), *Clear field* (message, field; the
+  result is Empty, the one state the operation writes), *Rebase identifiers*
+  (named link rules and one of their rules, with its scope), *Shift dates*
+  (amount, unit and direction), *Move entry* (message and position from 1),
+  *Duplicate entry* and *Exclude entry* (message). A value is read only after
+  **Show values**. Changes are listed in the order they apply, each with
+  **Move up**, **Move down** and **Remove change**; the value a change writes is
+  hidden until **Show values**. **Undo** takes back the last accepted edit.
+- **Link rules and profile** chooses the relations the variant keeps — the ACK
+  relation alone when none is chosen — and the profile its message types are
+  checked against.
 
-The panel shows positions, not content: an occurrence ID, its kind, the reason
-it is retained and what required it, and for an edit the position it addresses
-and where the new bytes landed. Reading a value is still
-[the inspector](#inspecting-original-values), deliberately. The plan lives in
-the window while it is being edited, is never placed in browser storage, and is
-written nowhere except into the manifest of a reproducer that was built.
+Every edit is resolved by the engines a save builds with,
+[`internal/reproducer`](reproducer.md) for the included messages and field
+edits and [`internal/transform`](transform.md) for the sequence, through
+`ResolveVariant`. An edit either engine refuses leaves the variant exactly as
+it was and answers the refusal at the change; nothing about what an edit means
+is decided in the window. A change of the sequence names the engine's entry
+and the message that entry holds, so a change that no longer holds that
+message after the included messages change is refused rather than moved onto
+another message.
 
-**Discard this plan** abandons a plan that is not wanted. It drops the plan and
-the unstored draft kept for it, so an interruption does not bring it back,
-writes nothing, and returns focus to the occurrences, where a new plan starts; a
-reproducer already written stays where it is. A step and a build cannot be
-cancelled once they start: each runs to completion under the case reader's own
-bounds. An edit names the retained occurrence the list shows as chosen, and
-once that occurrence is dropped or undone out of the plan the list chooses none
-and the edit controls wait for one, so no edit is sent for an occurrence that
-is not on screen.
+**Preview** is the actual difference, read locally: every message included or
+excluded and why, each changed field before and after (values after **Show
+values**), each relation kept or broken, and what the profile declares about
+each message type. A relation an excluded entry breaks, and an identifier the
+rules could not stand behind, blocks Save at the row it is about. Preview never
+sends, resets or runs anything, and an edit withdraws it.
 
-After a build, **Register this revision** places the derived case in a new entry
-of the project and records its lineage to the open case through the operation
-`readmit project revise` runs: the documented copy and `project revise` in one
-act. The panel says the build is registered only once the project has recorded
-it. A refusal is shown beside the build. A name already in the workspace is
-refused before anything is copied; a registration the project refuses, such as
-one naming a parent it does not register or derived evidence it already holds,
-is refused in the sentence `readmit project revise` prints for it. The name
-typed stays, and the copy placed for the attempt is removed again, so the
-workspace is exactly as it was and the name can be used once the refusal is
-dealt with. A registration belongs to the build it registered, and a later
-build is offered for registration itself. Once the project records it, focus
-moves to **Open the registered revision**; that and **Create a test from this
-revision** open the revision as a case, and a test draft for the original case
-is never retargeted.
+**Save variant** validates the whole plan and publishes the variant as one
+save ([ADR-0004](adr/0004-derived-evidence-and-generated-export.md)): the
+derived case is built where the project cannot see it, read back, published as
+a new entry, registered as a revision of the case it came from and named, and
+only then listed; the saved variant then opens on its messages. A variant with
+sequence changes is written under the `readmit-transform/v1` derivation and one
+without under `readmit-reproducer/v1`. The case it came from is never touched.
+A failed save keeps the editor as it was; an interrupted one is recovered or
+withdrawn by the catalog and never listed incomplete. Work not yet saved is
+kept as an editor draft and offered again when the variant editor opens on the
+same case.
 
-**Compare this build with another revision** hands the build to **Reproducer
-revisions** as the later revision, clears the run named for whatever was there
-before, withdraws the comparison on screen and moves focus to the earlier
-revision, which only the person can name. A comparison reads two builds; the
-copy a registration places holds no manifest to compare.
-
-A reproducer is derived testing data, not a redaction and not an approval to
-share. See [extracting and editing a reproducer](reproducer.md) for both
-contracts, the two dependency relations, every refusal, the bounds, and how to
-register the result as a project revision.
-
-### Comparing two revisions
-
-**Reproducer revisions** is the panel beside it. Name two reproducers this
-workspace holds and it reports how they are related, what the second plan does
-differently, and every occurrence they retain differently — telling a selection
-a person stopped making apart from a setup dependency that stopped being
-retained, because a reschedule without the booking it refers to may no longer
-reproduce anything.
-
-Name the run you retained for each revision and it also reports what those runs
-decided, expectation by expectation: failed on both sides, passed on both sides,
-a verdict that moved, or one no execution reached. A run counts as proof of a
-revision only when it was executed against that revision's derived case, and a
-revision nobody has run yet claims nothing rather than reading as one that
-passed. There is no overall verdict here: which expectation carries the incident
-is a person's judgement. Every run that was named is shown as its reader read it,
-including the one run of a pair that claims nothing because the other revision
-has none. A run is named by one entry of the workspace: either the result
-directory `readmit test --send --output` writes or a durable job the window
-made with a finalized, verified result inside it. The job's result is read
-without changing the job or the command line's input rules.
-
-This compares plans and manifests, never messages. The two derived cases are not
-compared byte for byte, because where one revision edits a position the other
-left alone, the other's bytes there are the original evidence's own value, and
-the bytes an edit replaced are recorded nowhere. Comparing two collections field
-by field is the [comparison panel](#comparing-two-collections) over the same
-engine `readmit diff` runs. Nothing is written, and neither revision is changed.
+A variant's case menu adds **Original case**, which opens the case it was made
+from, and **Changes**, which opens Compare on its plan. **Create test** on a
+variant creates a test of the variant, never retargeting a draft of the
+original case.
 
 ## Authoring a regression test
 
@@ -1914,137 +1886,44 @@ names is not changed. See
 [authoring a regression test](test-authoring.md) for the draft contract, every
 stage, every refusal, the bounds, how a suggestion is reviewed and approved, and
 what this release does not author.
-## Comparing two collections
+## Comparing two cases
 
-**Compare** is the panel that answers what changed between two collections of
-the open workspace. It is the engine [`readmit diff`](diff.md) runs, called
-directly: the window sends two entry names, the fields that identify a record
-and the fields to compare, and renders the report it gets back as rows. Nothing
-about what is the same record is decided here.
+**Compare** in a case's menu compares the open case with another case or
+variant of the project, chosen by name in **Compare with**. The two keep their
+roles: the open case is **Earlier** and the other **Later**, and the page names
+both with their versions and message counts. It is the engine
+[`readmit diff`](diff.md) runs, called through `CompareCases`; neither case is
+changed and nothing is written.
 
-Both collections are verified case bundles named by one entry of the open
-folder, and the left one is the case the window has already verified. Every
-comparison re-reads both and is bound to the identity the window displayed, so
-a comparison beside stale counts is refused rather than shown. Neither collection
-is changed, and a comparison writes nothing at all: there is no output to name.
+Records are matched only by the **Record keys** chosen in **Comparison
+options** — a composite of fields picked with the field picker — or by the
+occurrence identity two copies of one case share. Two cases that are not
+copies and have no keys are refused with the keys to choose; nothing is
+guessed. **Compared fields** is all fields unless chosen.
 
-### How records are paired
+The **Differences** table has one row per differing field of each matched pair
+(Field, Earlier, Later, Change), and a row of its own for every message only
+one case holds, every candidate of an ambiguous key and every message no key
+placed, so an unmatched record never shifts the rows after it. Field states —
+Present, Empty, Null, Not present — are always shown; values only after **Show
+values**.
 
-| What holds | How records pair |
-| --- | --- |
-| The two collections are copies of one verified case | By the occurrence identity the evidence already carries |
-| Anything else | By the field selectors named as keys, together as one ordered composite key |
+A named **Normalization policy** (`readmit-normalization-policy/v1`, read by
+the engine [`readmit normalize`](normalize.md) runs) decides which differences
+are presented: each rule is one field, compared by *Ignore difference*,
+*Timestamp* at a precision or *Number* within a tolerance. **New policy** and
+**Edit policy** open the policy's sheet, and one Save publishes it as a named
+object of the project. A difference the policy ignores is counted and left
+out of the table; **Original differences** shows every raw difference again
+beside what the policy did about it. The raw comparison is never edited by a
+rule.
 
-A control ID a system regenerated is an ordinary field change and never becomes
-a pairing, so two collections whose identifiers were all rewritten still pair on
-whatever identifies the record itself. Two collections with no known mapping and
-no declared key are refused with what to declare, because pairing them by
-position would be a guess presented as a result. The keys are echoed back in
-their canonical form, so what a row was paired on is visible rather than
-remembered.
-
-### What a row is
-
-Both panes are columns of **one** row list, so a row is the same record on both
-sides and the two cannot drift apart. Every row states what it is:
-
-| Row | What it holds |
-| --- | --- |
-| `paired` | A record on both sides, with the positions that differ |
-| `missing` | A record the left collection holds and the right one does not |
-| `inserted` | A record only the right collection holds |
-| `ambiguous` | One candidate of a key that names more than one record |
-| `unaligned` | One record no key could place, with the reason |
-
-A record only one side holds keeps a row of its own with the other side stated
-as empty, rather than shifting every row after it — an insertion that quietly
-re-pairs everything below it is the hidden alignment assumption a comparison
-exists to avoid. A duplicated key produces one row per candidate, on the side
-that candidate is on: none of them is paired with another, because the evidence
-does not say which pairing it would be. The rows are ordered by what the
-comparison found — paired, then missing, then inserted, then every ambiguous
-candidate, then everything unaligned. That order is not the order either
-collection recorded and it is not evidence of chronology.
-
-A row is a window of a comparison, not the whole of it. Every window states
-where it begins and how many rows the comparison holds, beside the counts of
-everything paired, changed, unchanged, inserted, missing, unaligned and not
-compared — and, separately, how many **keys** were ambiguous, which is a count
-of duplicated keys rather than of the candidate records they left unpaired.
-Every window also names the versioned engine contract the rows were laid out
-from and the boundary that was compared, so a comparison of stored messages
-never reads as a comparison of everything the two collections hold; the counts
-of what each side left outside that boundary are beside it. Asking for the next
-window verifies and aligns both collections again, for the same reason the grid
-re-checks its case and index.
-
-An ambiguous key is resolved where it was declared: name another field beside
-it, and the keys together form one ordered composite key. The window says so on
-the rows it refused to pair, because a group that only reports itself leaves a
-person with nothing to do about it.
-
-### Positions, not values
-
-A paired row names the positions that differ, each as a canonical
-[field selector](selectors.md) with the bundled dictionary's label where both
-messages declare the version it covers, and the decoded state each side held
-there: `present`, `empty`, explicit `null` and `omitted` stay separate. **No
-value crosses this boundary.** Reading what is at a position is
-[the inspector](#inspecting-original-values), deliberately, exactly as it is for
-a reproducer; the selector a row names is the position the inspector addresses.
-Alignment-key values are never shown either, and no comparison is written
-anywhere: nothing about this panel reaches a case, a run, a result, a report,
-the saved filters or the working session.
-
-**The raw comparison applies no ignore or normalization rule.** Every
-difference it found is shown, including the timestamps and control IDs a person
-may not care about, because a view that suppressed some of them without saying
-so could conceal the change being looked for. Narrowing a comparison is done by
-naming the fields to compare, which the window states beside the result. A
-separate policy-scoped preview under a declared `readmit-normalization-policy/v1`
-document lists every difference again beside what the policy did about it —
-suppressed, retained, undecided or unaddressed — and never edits the raw
-comparison or any source byte.
-
-Evidence the comparison could not read is listed rather than compared around: an
-occurrence nothing decoded, a position whose escapes this release does not
-resolve, a value that decoded to bytes that are not UTF-8, and a message
-declaring an HL7 version the bundled labels do not cover. Equal fields are not
-proof of delivery or of correct behaviour, and the window renders the engine's
-own statement of that rather than a summary of it.
-
-### Reading a comparison under a normalization policy
-
-**Preview under this policy** reads the comparison shown above it — the same
-collection, paired on the same keys and narrowed to the same fields, as the
-engine echoed them — under one `readmit-normalization-policy/v1` entry of the
-workspace, through the engine [`readmit normalize`](normalize.md) runs. Typing
-another collection or key into the comparison form changes nothing until that
-comparison is asked for, and there is nothing to preview until one is shown.
-The reading names the policy entry and the SHA-256 of its exact bytes, every
-rule with what it compared, suppressed, retained and left undecided, and pages
-its differences as the comparison pages its rows. A reading stays below the
-comparison only while it reads that comparison: paging the rows keeps it, and a
-comparison of another pair, or one that is refused, withdraws it. A policy the
-reader refuses is refused in the command line's own sentence, and no earlier
-reading is left beside the refusal.
-
-**Author a normalization policy** composes rules from typed controls and saves
-the policy as a new entry, never over an existing one. **Open this document**
-reads a retained policy through the same strict reader: once it is accepted, its
-rules become the editor's rules, so a rule added or removed edits that policy,
-and the window names the entry beside the SHA-256 of the bytes it read — the
-identity a preview under it names. A policy the reader refuses leaves the
-editor as it was, and while an open or a save runs the editor says so and its
-controls wait. Opening a policy while the editor holds rules that were changed
-since they were last opened or saved asks first: **Replace them with** the
-chosen entry reads it, and **Keep these rules** or `Escape` reads nothing and
-returns to the open control. Saving the rules withdraws the question.
-
-A comparison and a reading under a policy each read two verified collections
-within their readers' bounds and write nothing, so each runs to completion once
-it starts. The window's `Escape` does not interrupt one; what it answers is
-what is shown.
+When either case is a variant, **Lineage** names what it was made from and
+which messages it includes and why, and **Plan changes** lists every step of
+its saved plan by the message it names. **Run evidence** lists the actual runs
+of either case; two chosen open [Compare runs](#compare-runs). A variant's
+messages alone prove nothing about its runs, and equal messages can still run
+differently.
 
 ## Diagnosis and finding review
 
@@ -2217,75 +2096,13 @@ a position is the inspector, deliberately, exactly as it is for a comparison.
 Nothing about this panel is written anywhere: not into the case, not into the
 saved filters, and not into the working session.
 
-## Reviewing and transforming the whole case
+## Reading an export review
 
 An incident that is going to leave this machine has to be looked at first, and
-looking at one field at a time is how a surface gets missed. **Review and
-transform** is the panel that answers both halves of that: what a declared
-transformation would do to the sequence a replay sends, and what a declared
-disclosure policy did to every surface that can enter an export.
-
-Neither half is this window's own answer. The preview is the engine
-[`readmit transform`](transform.md) runs and the review is read back through the
-same verified offline reader the export gate uses, so what the panel draws is
-exactly what the command line reports over the same bytes.
-
-### Authoring, saving and reopening a transformation plan
-
-A plan is composed in the panel from the five typed operators
-[`readmit transform`](transform.md#the-five-operators) reads: each **Add this
-step** appends one, and each step's **Remove** control takes it out again, so a
-step the decoder refused is corrected rather than retyped. Nothing about what a
-step means is decided here.
-
-**Save this transformation plan** writes the steps as one new
-`readmit-transform-plan/v1` entry of the open workspace, bound to the identity of
-the case the window verified and to the SHA-256 of the correlation rules chosen
-below it — the `rules_sha256` `readmit correlate` reports for the same document —
-and, where a profile pack is chosen, pinned to that pack. The plan is decoded by
-the reader `readmit transform` uses before anything is written, so a step that
-reader refuses, such as a shift that is not a whole-second duration, is refused
-in its words, nothing is written, and the steps and the name typed stay. Saving
-admits the author, as every write of an authored document does, and never
-replaces an entry. Once saved, the listing is read again and the new plan is the
-one selected for preview.
-
-**Open this plan** reads a plan entry back through the same decoder and puts its
-steps in the panel to preview or to extend and save as a new entry; it writes
-nothing. A plan the decoder refuses — an unknown member, a step carrying a member
-another operator uses, a contract version this release does not read — is
-refused in the sentence `readmit transform` prints for the same file, and the
-steps on screen are left as they were. An open that would replace steps nobody
-saved is asked first; **Keep these steps**, or Escape, reads nothing. Steps are
-authored over the case on screen, so opening another case starts the plan again.
-
-### Previewing a transformation
-
-The window names the case it verified and two documents of the open workspace —
-the [`readmit-correlation-rules/v1`](correlate.md) document whose relations are
-preserved and the `readmit-transform-plan/v1` document to preview — and, where
-the plan pinned one, the [profile pack](profile-packs.md) it pinned. Each is one
-entry of the folder the person opened, never a path, and each is read again on
-every preview.
-
-**This writes nothing at all.** No case, no run, no derived bundle and no
-revision: the derivation names [ADR-0004](adr/0004-derived-evidence-and-generated-export.md)
-admits are untouched, there is nothing to cancel and nothing to recover, and the
-[reproducer editor](#building-a-reproducer) gains no operator from it. The only
-document this panel writes is a plan, as a new entry, when a person saves one.
-
-The panel shows every position the plan would rewrite, what happened to every
-declared relation, what the pinned pack declares about the transformed sequence
-at all four levels, and everything the transformation left exactly as it found
-it, and names the plan and rules it previewed, so choosing another plan
-afterwards never relabels it. The preview is the document `readmit transform
---format json` prints for the same case, rules and plan. A plan that declares no
-step is reported as such rather than as a transformation, because a plan nobody
-has added a step to yet is a state a person is on the way out of. A preview and a
-plan answer are about the case they were made over, and leave with it when
-another case is opened.
-
-### Reading an export review
+looking at one field at a time is how a surface gets missed. **Export review**
+in Reports answers what a declared disclosure policy did to every surface that
+can enter an export, read back through the same verified offline reader the
+export gate uses. Transformations of a case are its [variants](#case-variants).
 
 A review directory is what [`readmit redact`](redact.md) wrote: the located
 findings, the eighteen-category checklist, the known-value residual scan, and
@@ -2364,7 +2181,7 @@ says nothing about what the value is. A finding is a location, a checklist class
 the engine's own word for what it is and the named policy that handled it.
 
 Reading a transformed value is [the inspector](#inspecting-original-values),
-deliberately, exactly as it is for [a comparison](#comparing-two-collections)
+deliberately, exactly as it is for [a comparison](#comparing-two-cases)
 and for a reproducer: a review's derived case is an ordinary verified
 `readmit-case/v3` bundle, so opening the review folder as a workspace and
 opening the `case` entry in it reveals those bytes through the same verification
@@ -2377,56 +2194,44 @@ review, not into the saved filters, and not into the working session. Both
 operations read again from disk every time, including for the next window of an
 inventory, so a decision is never shown beside counts from bytes that changed.
 
-## Running a controlled reduction
+## Minimize failure
 
-The controlled reduction panel runs [`internal/reduce`](reduction.md) over the
-verified case: the saved regression test whose failure is held, the failed
-assertion identifiers that are that failure, a grouping — per occurrence, or by
-the correlation rules chosen for it — a trial budget and a number of
-confirmations, the approved environment and the reviewed
-[reset plan](#fixture-reset-plans-readmit-reset-planv1-and-deliberate-execution)
-every trial runs first, a send policy where the reset opens a connection, the
-reset actions the person confirms, and a new working folder for the trials. Each
-document is one entry of the open workspace. A reset plan saved in the
-environment panel is offered here as soon as it is written.
+**Minimize failure** in a failed test run's **More run actions** menu reduces
+the run to the fewest messages that still fail the chosen checks, by the engine
+[`internal/reduce`](reduction.md) runs. It starts from the run itself: the
+exact test version that failed, its failed checks, the case it sent from and
+the environment it reached. A run that is not eligible — not a test run, not
+failed, with an uncertain delivery, or whose test version is gone — shows *No
+eligible failure* with **Open failed run**.
 
-**Preview planned side effects** reports how the sequence would be taken apart,
-which groups the signature pins, and the boundary a report carries. It is
-`reduce.PreviewPlan` over the same documents: it resets nothing, sends nothing,
-needs no activation and writes nothing into the workspace — the oracle it builds
-to read the sequence works in a private folder outside the workspace, removed
-before the preview answers.
+The page asks for **Checks to preserve** (the failed checks, all chosen at
+first), **Grouping** — *Per message*, or *Linked groups* of named link rules —
+a **Trial limit** and a **Confirmation count**, and the **Environment**, the
+run's own unless changed. No bound and no grouping is chosen for a person.
 
-**Run this reduction** is `reduce.Run` with a durable oracle over the same
-documents. It runs under the execution admission `readmit test --send` takes,
-reserved once for the whole reduction, and every trial under the reset plan's
-own authorization: only a `confirmed` reset lets a trial send, so a
-confirmation withheld leaves the first reset `unconfirmed` and one naming an
-action the plan does not ask a person to perform is `refused`, and either stops
-the reduction before anything is sent. Rules chosen for a correlation grouping
-are sent only while that grouping is selected. A reduction the engine or the
-license refuses sends nothing and leaves no working folder; one whose resets let
-no trial run leaves none either, so the same name is free for the next attempt.
-Every trial that ran is a durable run in the working folder, which the command
-line's `readmit run status` reads.
+**Start** opens the one review of the whole series (`run.minimize`): the test
+and version, the failure, the environment and its address, its reset actions,
+the grouping and how many groups it makes and pins, and both bounds, with the
+consequence *Resets {environment} and sends test messages for up to {limit}
+trials.* Each manual reset step is marked complete in the review. The review's
+**Start** is the consent to the whole bounded series, bound to exactly what it
+showed; anything changed since is refused as stale. An environment with no
+reset, or one a run may not reach, is refused with **Change**.
 
-While it runs, focus moves to **Stop reduction**, the one control the running
-reduction offers. Stopping answers `cancelled` whichever way the trial it
-interrupted then ended: a send stopped while it waited on an acknowledgement is
-recorded as an uncertain delivery, nothing is resent, and `readmit run status
---recovery` reads that trial as uncertain and never safe to repeat. Once the
-answer arrives, focus returns to **Run this reduction**.
+While it runs the page shows the trials spent, the trial running now and its
+purpose, and **Stop**; the series keeps running when the person goes elsewhere,
+and the sidebar keeps a **Minimizing** indicator with its Stop. Every trial
+resets first and runs a durable run of the narrowed test in a folder the
+application names; a reset that is not confirmed or a delivery that is
+uncertain ends the series there, and nothing is retried or resent.
 
-The report is shown in the engine's own closed words — outcome, minimality,
-reason, and every trial's purpose, reset, verdict and run state — beside a
-sentence saying what the outcome establishes. Only `reduced` claims
-`group-1-minimal`, and only over the declared grouping. A `bounded` result is
-marked incomplete: the retained sequence reproduced the failure the last time it
-was asked and nothing is claimed minimal. `not_attempted` and `undecided` claim
-nothing, and the sequence an undecided reduction was holding is shown as what it
-held when it stopped, never as an answer. A preview or report names the test, the
-case and the plan the engine applied, so a form changed afterwards never
-relabels it, and it leaves with the case it was made over.
+The result is the engine's own: *Reduced*, *Search limit reached*, *Nothing
+removable*, *Undecided*, *Interrupted* when stopped, or *Error*. The trial
+history is a list whose rows open each trial's removed messages, reset, failed
+checks and verdict. Only a reduced result claims a minimum, over the chosen
+grouping, and only it is published — as a variant of the case the run sent
+from, holding the retained messages — which **Open variant** opens. A search
+that ran out of trials or was stopped claims nothing and publishes nothing.
 
 ## Recovering after an interruption
 
@@ -2602,11 +2407,11 @@ project…*, *New project…* and *Project settings*.
 | Destination | What it holds |
 | --- | --- |
 | Projects | The projects this viewer opened, New project, Open, the demo and drafts to restore. |
-| Cases | The open project's cases, with their notes and attachments; an open case's Messages, Timeline and Findings, with Compare, Reproduce, Create test, Reduce and Replay as its actions; Import and Capture. |
+| Cases | The open project's cases, with their notes and attachments; an open case's Messages, Timeline and Findings, with Create test, Create variant and Compare as its actions (and Original case and Changes on a variant); Import and Capture. |
 | Tests | Tests and Suites. **Library** opens Checks, Profiles and Scenarios. |
-| Runs | Run details; **Run test** and **Compare** open those flows. |
+| Runs | Run details; **Run test** and **Compare** open those flows, and a failed run's More menu opens **Minimize failure**. |
 | Environments | Targets, credential references, send policies and reset plans. |
-| Reports | Packets; **Share** opens the disclosure review, and *Transform and export* and *Notes* are in its More menu. |
+| Reports | Packets; **Share** opens the disclosure review, and *Export review* and *Notes* are in its More menu. |
 | Tools | Inspect file, Sample data and Benchmarks, each opened from the list. |
 | Settings | General, License, Team, Runners, Security and Storage, as categories beside the selected one. |
 | Help | Help topics, the privacy statement and what this build supports. |
@@ -3363,17 +3168,13 @@ named operation with the admissions it takes, and no path, project or value.
   collections were being compared is lost with the window; comparing them again
   reads both from disk and verifies both.
 - Reordering, duplicating or reducing occurrences **inside the reproducer
-  editor**. The editor retains what a person selected and what their declared
-  dependencies require, and makes no claim of minimality; see
-  [the reproducer contract](reproducer.md). [Review and transform](#reviewing-and-transforming-the-whole-case)
-  authors and previews relationship-preserving operators over the replay
-  sequence, and the controlled reduction panel runs a bounded search against a
-  chosen failure signature. `readmit-reproducer-plan/v1` gains no operator from
+  plan**. A [case variant](#case-variants) applies those as its sequence
+  changes, through the transformation engine over what its reproducer plan
+  includes, and [Minimize failure](#minimize-failure) runs a bounded search
+  against a chosen failure. `readmit-reproducer-plan/v1` gains no operator from
   either.
-- Retaining which two revisions were being compared across an interruption, and
-  any history of what a plan said before a step was undone. A comparison reads
-  two reproducers that were built, so it is produced again from disk rather than
-  held anywhere.
+- Any history of what a variant's plan said before an edit was undone, beyond
+  the Undo of the open editor.
 - Modifying an existing index in place. An index is disposable and derived; modifying
   or updating an index builds a new derived artifact and preserves existing ones.
   The in-app builder supports up to 16 canonical selectors and explicit retention choices,

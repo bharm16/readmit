@@ -82,11 +82,10 @@ version. A different version of the same pack is a different pack.
 
 The command line never **writes** a plan: it is a document somebody authors, the
 way a correlation rules document is, and `readmit transform` only reads one. The
-[desktop shell](desktop.md#authoring-saving-and-reopening-a-transformation-plan)
-composes one from these operators, decodes it with this command's reader before
-writing it as a new entry, and pins the rules digest `readmit correlate` reports
-for the rules it names; the document it writes is one this command previews
-unchanged.
+desktop shell's [variant editor](desktop.md#case-variants) composes one from
+these operators over what a variant's reproducer plan includes, decodes it with
+this command's reader, and saves it with the variant, pinned to the rules
+digest `readmit correlate` reports for the rules it keeps.
 
 ### The five operators
 
@@ -225,12 +224,25 @@ terminal rendering prints no value either; reading one is
 
 Nothing is uploaded and no network call is made.
 
-The [desktop shell](desktop.md#previewing-a-transformation) previews the same
-plan over the same evidence, with the rules, the plan and the pinned pack each
-named as one entry of the open workspace. It runs this engine rather than a
-second one, its preview is the document `--format json` prints, it writes
-nothing into evidence either, and it shows no value: reading one there is the
-inspector, exactly as it is here.
+The desktop shell's [variant editor](desktop.md#case-variants) runs this engine
+rather than a second one over what a variant includes, and shows what it
+changes as positions and states; a value is shown only when a person asks for
+it.
+
+## Writing a variant's sequence
+
+The one place a plan is written as evidence is a saved variant (#558). The
+variant's reproducer plan is built first, as the [reproducer editor](reproducer.md)
+builds it, and this plan is applied to that derived case with the engine a
+preview runs; the resulting sequence is written as a new derived
+`readmit-case/v3` bundle under the `readmit-transform/v1` derivation
+([ADR-0004](adr/0004-derived-evidence-and-generated-export.md)). Every entry is
+written in sequence order holding exactly the bytes the preview read back, a
+duplicated entry as its own occurrence, and consecutive entries of one case
+source as one source of the derived case. The variant keeps this plan and the
+rules it names beside its reproducer plan, and its lineage names the case it
+was made from. No source-to-surrogate mapping and no date offset is written
+into the derived case.
 
 ## Bounds
 
@@ -246,11 +258,10 @@ inspector, exactly as it is here.
 
 ## Not supported in this release
 
-- **Writing anything.** A preview is a preview. It creates no derived case, no
-  run and no revision, and there is no `--send`, no `--output CASE` and no
-  derivation name for it. Producing derived evidence from a transformation is
-  the [reproducer editor](reproducer.md)'s build, which performs none of these
-  operators.
+- **Writing anything from the command line.** A preview is a preview. It
+  creates no derived case, no run and no revision, and there is no `--send` and
+  no `--output CASE`. The one writer is a saved
+  [variant](#writing-a-variants-sequence).
 - Applying these operators inside the reproducer editor. `readmit-reproducer-plan/v1`
   gains no operator and `readmit-reproducer/v1` gains no member; the editor's
   `set-field/v1` still changes one position of one occurrence and knows nothing

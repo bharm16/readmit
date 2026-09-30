@@ -69,6 +69,8 @@ type RunPageProps = {
   onStop: () => void;
   onRun: (request: SendRequest) => void;
   onCreateReport: (source: RunReportSource) => void;
+  /** Opens Minimize failure for a failed run of a test (#558). */
+  onMinimize?: (run: ItemRef) => void;
   onViewMessages: (caseRef: ItemRef, occurrences: string[]) => void;
   /** Opens an observation whose collection an analysis is missing. */
   onOpenObservation: (observation: ItemRef) => void;
@@ -77,7 +79,7 @@ type RunPageProps = {
 };
 
 /** A run's page: its title, actions and body. */
-export function useRunPage({ root, place, activity, busy, go, onStop, onRun, onCreateReport, onViewMessages, onOpenObservation, onRead }: RunPageProps) {
+export function useRunPage({ root, place, activity, busy, go, onStop, onRun, onCreateReport, onMinimize, onViewMessages, onOpenObservation, onRead }: RunPageProps) {
   const scope = useRef(new RequestScope());
   const context = useCallback(() => scope.current.enter(root ?? ""), [root]);
   const [detail, setDetail] = useState<RunDetailResult | null>(null);
@@ -139,6 +141,7 @@ export function useRunPage({ root, place, activity, busy, go, onStop, onRun, onC
   const menu: MenuItem[] = [];
   if (again) menu.push({ label: "Run again", onSelect: () => onRun(again), disabled: busy });
   if (!suiteRun && summary?.kind === "test") menu.push({ label: "Analyze with checks", onSelect: () => setSheet("analyze"), disabled: busy });
+  if (onMinimize && !run.job && summary?.kind === "test" && summary.result === "failed") menu.push({ label: "Minimize failure", onSelect: () => onMinimize(run.item.ref), disabled: busy });
   const hidden = run.checks.some((check) => check.hidden);
 
   const checksBody = (

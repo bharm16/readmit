@@ -160,64 +160,6 @@ export const privateData = {
 
   decision,
   replayRun,
-  transformPreview: {
-    transformation: {
-      case: "sample-case",
-      rules: "synthetic.rules.json",
-      plan: "synthetic.plan.json",
-      boundary: "Synthetic preview of the sequence a replay would send.",
-      preview: {
-        schema: "readmit-transform-preview/v1",
-        case: { schema: "readmit-case/v3", identity: HASH },
-        plan: {
-          schema: "readmit-transform-plan/v1",
-          case: HASH,
-          rules: HASH,
-          steps: [{ operator: "rebase-identifiers/v1", rule: "patient" }],
-        },
-        summary: {
-          occurrences: 2,
-          entries: 2,
-          copies: 0,
-          changes: 2,
-          relations: 1,
-          preserved: 1,
-          unsupported: 1,
-        },
-        sequence: [],
-        changes: [
-          {
-            entry: "t000001",
-            parent: "s0001-e000001",
-            operator: "rebase-identifiers/v1",
-            rule: "patient",
-            selector: "PID-3.1",
-            state: "present",
-            group: 1,
-            length: 12,
-          },
-        ],
-        relations: [
-          {
-            rule: "patient",
-            operator: "identifier",
-            linkage: "observed",
-            occurrences: ["s0001-e000001", "s0002-e000001"],
-            entries: ["t000001", "t000002"],
-            preserved: true,
-          },
-        ],
-        profile: [],
-        unsupported: [
-          {
-            code: "unshifted-positions",
-            detail: "Every other date field remains unchanged.",
-          },
-        ],
-        scope: "A preview writes nothing into evidence.",
-      },
-    },
-  },
   reviewInventory: {
     review: {
       name: "synthetic-review",

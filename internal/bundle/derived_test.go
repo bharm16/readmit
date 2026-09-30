@@ -101,7 +101,7 @@ func TestLegacyVersionsStillRejectDerivedMemberEvenNull(t *testing.T) {
 // closed, so a case cannot declare a transformation no code here performs, and
 // each accepted name still produces evidence carrying no source metadata.
 func TestDerivedEvidenceAcceptsOnlyTheNamedTransformations(t *testing.T) {
-	for _, derivation := range []string{"readmit-redact/v1", "readmit-reproducer/v1"} {
+	for _, derivation := range []string{"readmit-redact/v1", "readmit-reproducer/v1", "readmit-transform/v1"} {
 		t.Run(derivation, func(t *testing.T) {
 			path, created := write(t, []bundle.Input{{Data: fixture(t, "listen-s12.hl7")}}, bundle.Provenance{Mode: bundle.Derived, Derivation: derivation})
 			opened, err := bundle.Open(path)

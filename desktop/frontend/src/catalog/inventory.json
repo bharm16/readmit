@@ -180,24 +180,6 @@
     "line": 41
   },
   {
-    "name": "Side",
-    "source": "desktop/frontend/src/Comparison.tsx",
-    "exported": false,
-    "line": 86
-  },
-  {
-    "name": "Comparison",
-    "source": "desktop/frontend/src/Comparison.tsx",
-    "exported": true,
-    "line": 109
-  },
-  {
-    "name": "NormalizationView",
-    "source": "desktop/frontend/src/Comparison.tsx",
-    "exported": false,
-    "line": 483
-  },
-  {
     "name": "ComputerLicense",
     "source": "desktop/frontend/src/ComputerLicense.tsx",
     "exported": true,
@@ -822,12 +804,6 @@
     "line": 356
   },
   {
-    "name": "Reduction",
-    "source": "desktop/frontend/src/Reduction.tsx",
-    "exported": true,
-    "line": 46
-  },
-  {
     "name": "Reexecution",
     "source": "desktop/frontend/src/Reexecution.tsx",
     "exported": true,
@@ -882,22 +858,10 @@
     "line": 1072
   },
   {
-    "name": "Reproducer",
-    "source": "desktop/frontend/src/Reproducer.tsx",
-    "exported": true,
-    "line": 49
-  },
-  {
     "name": "Review",
     "source": "desktop/frontend/src/Review.tsx",
     "exported": true,
     "line": 39
-  },
-  {
-    "name": "Preview",
-    "source": "desktop/frontend/src/Review.tsx",
-    "exported": false,
-    "line": 485
   },
   {
     "name": "Inventory",
@@ -910,42 +874,6 @@
     "source": "desktop/frontend/src/ReviewSheet.tsx",
     "exported": true,
     "line": 20
-  },
-  {
-    "name": "RevisionComparison",
-    "source": "desktop/frontend/src/RevisionComparison.tsx",
-    "exported": true,
-    "line": 63
-  },
-  {
-    "name": "SaveForm",
-    "source": "desktop/frontend/src/RulesEditor.tsx",
-    "exported": false,
-    "line": 38
-  },
-  {
-    "name": "OpenForm",
-    "source": "desktop/frontend/src/RulesEditor.tsx",
-    "exported": false,
-    "line": 76
-  },
-  {
-    "name": "RawDocument",
-    "source": "desktop/frontend/src/RulesEditor.tsx",
-    "exported": false,
-    "line": 126
-  },
-  {
-    "name": "NormalizationPolicyEditor",
-    "source": "desktop/frontend/src/RulesEditor.tsx",
-    "exported": true,
-    "line": 192
-  },
-  {
-    "name": "RunChoice",
-    "source": "desktop/frontend/src/RunComparison.tsx",
-    "exported": false,
-    "line": 249
   },
   {
     "name": "CheckDetail",

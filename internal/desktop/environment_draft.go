@@ -12,6 +12,7 @@ import (
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/catalog"
 	"github.com/bharm16/readmit/internal/diagnose"
+	"github.com/bharm16/readmit/internal/diff"
 	"github.com/bharm16/readmit/internal/fixturereset"
 	"github.com/bharm16/readmit/internal/importer"
 	"github.com/bharm16/readmit/internal/observesource"
@@ -573,7 +574,7 @@ type ItemDraftResult struct {
 func (r *ItemDraftResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
 
 // draftKinds are the kinds whose editor starts from OpenItemDraft.
-var draftKinds = []ItemKind{EnvironmentItem, ObservationItem, AnalysisSettingsItem, FindingReviewItem, CheckGroupItem, ProfileItem, ScenarioItem, LinkRulesItem, CoverageItem, MappingItem, SourceItem, SuiteItem}
+var draftKinds = []ItemKind{EnvironmentItem, ObservationItem, AnalysisSettingsItem, FindingReviewItem, CheckGroupItem, ProfileItem, ScenarioItem, LinkRulesItem, CoverageItem, MappingItem, SourceItem, SuiteItem, NormalizationPolicyItem}
 
 // OpenItemDraft answers the draft an editor starts from. A reference with no
 // identity is a new object: a new environment starts unclassified with its
@@ -603,7 +604,7 @@ func (a *App) OpenItemDraft(request ItemRequest) ItemDraftResult {
 			return a.openSuiteDraft(ctx, request)
 		}
 		if !slices.Contains(draftKinds, request.Ref.Kind) {
-			result.refuse(Failed, "this release opens environment, observation, test, analysis settings, finding review, check group, profile, scenario, link rule, coverage, mapping, capture source and suite drafts")
+			result.refuse(Failed, "this release opens environment, observation, test, analysis settings, finding review, check group, profile, scenario, link rule, coverage, mapping, capture source, suite and normalization policy drafts")
 			return result
 		}
 		if request.Ref.ID == "" && request.Ref.Kind == FindingReviewItem {
@@ -626,6 +627,8 @@ func (a *App) OpenItemDraft(request ItemRequest) ItemDraftResult {
 				draft = a.newLibraryDraft(request.Ref.Kind)
 			case LinkRulesItem, CoverageItem:
 				draft = *newTimelineDraft(request.Ref.Kind)
+			case NormalizationPolicyItem:
+				draft.NormalizationPolicy = &diff.Policy{Schema: diff.PolicySchema, Rules: []diff.Rule{}}
 			case MappingItem:
 				result.refuse(Failed, "a mapping preset is saved from an import's mapping")
 				return result
@@ -689,6 +692,18 @@ func (a *App) OpenItemDraft(request ItemRequest) ItemDraftResult {
 		}
 		draft := ItemDraft{Name: item.Name}
 		switch request.Ref.Kind {
+		case NormalizationPolicyItem:
+			paths, availability, reason := loaded.backing(record)
+			if availability != ItemAvailable {
+				result.refuse(Failed, reason)
+				return result
+			}
+			policy, err := readPolicyFile(paths[string(NormalizationPolicyItem)])
+			if err != nil {
+				result.refuse(Failed, err.Error())
+				return result
+			}
+			draft.NormalizationPolicy = &policy
 		case LinkRulesItem, CoverageItem:
 			opened, err := loaded.timelineDraft(request.Ref.Kind, record)
 			if err != nil {

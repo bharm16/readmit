@@ -1,7 +1,7 @@
 ---
 status: accepted
 date: 2026-09-18
-amended: 2026-09-19
+amended: 2026-09-29
 ---
 
 # Derived evidence has distinct provenance and exports are generated
@@ -26,6 +26,18 @@ relabelled as another — so a second transformation is a new name here, not a n
 case version. The cost is accepted explicitly: a release that predates a name
 refuses a v3 bundle carrying it, which is the same refusal it already gives an
 unknown contract version.
+
+**Amended 2026-09-29.** The set also admits `readmit-transform/v1`, written
+when a desktop variant with sequence changes is saved (#558): the variant's
+reproducer plan is built as before, and the [transformation plan](../transform.md)
+it carries — renaming related identifiers, shifting dates, moving, duplicating
+and excluding entries — is applied to that derived case by the engine
+`readmit transform` previews with. The written case holds the transformed
+sequence in its own order, so a variant that moves or duplicates an entry
+changes source ordering deliberately; consecutive entries of one source stay
+one source. As for every derivation, no source-to-surrogate mapping and no date
+offset is written into the derived case; the plans and the lineage stay beside
+it in the project. No member of any existing contract changes.
 
 A derived case the desktop saves (#547) is one publication with its lineage
 and its project association: the reproducer builds it where the project

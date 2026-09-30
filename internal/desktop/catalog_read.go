@@ -292,25 +292,26 @@ func inWindow(name, lower, upper string) bool {
 // a file declaring a version this release does not read is still listed as
 // that kind of object — unsupported — rather than dropped.
 var familyKinds = map[string]ItemKind{
-	"readmit-fhir-connection/":    EnvironmentItem,
-	"readmit-target/":             EnvironmentItem,
-	"readmit-test/":               TestItem,
-	"readmit-test-release/":       TestItem,
-	"readmit-suite/":              SuiteItem,
-	"readmit-observation-source/": ObservationItem,
-	"readmit-assertion-set/":      CheckGroupItem,
-	"readmit-local-profile/":      ProfileItem,
-	"readmit-profile-pack/":       ProfileItem,
-	"readmit-profile-package/":    ProfileItem,
-	"readmit-scenario/":           ScenarioItem,
-	"readmit-order-scenario/":     ScenarioItem,
-	"readmit-scenario-generator/": ScenarioItem,
-	"readmit-sequence-analysis/":  AnalysisItem,
-	"readmit-correlation-rules/":  LinkRulesItem,
-	"readmit-transform-plan/":     VariantItem,
-	"readmit-runner/":             RunnerItem,
-	"readmit-hub-schedules/":      ScheduleItem,
-	"readmit-diagnose-config/":    AnalysisSettingsItem,
+	"readmit-fhir-connection/":      EnvironmentItem,
+	"readmit-target/":               EnvironmentItem,
+	"readmit-test/":                 TestItem,
+	"readmit-test-release/":         TestItem,
+	"readmit-suite/":                SuiteItem,
+	"readmit-observation-source/":   ObservationItem,
+	"readmit-assertion-set/":        CheckGroupItem,
+	"readmit-local-profile/":        ProfileItem,
+	"readmit-profile-pack/":         ProfileItem,
+	"readmit-profile-package/":      ProfileItem,
+	"readmit-scenario/":             ScenarioItem,
+	"readmit-order-scenario/":       ScenarioItem,
+	"readmit-scenario-generator/":   ScenarioItem,
+	"readmit-sequence-analysis/":    AnalysisItem,
+	"readmit-correlation-rules/":    LinkRulesItem,
+	"readmit-transform-plan/":       VariantItem,
+	"readmit-runner/":               RunnerItem,
+	"readmit-hub-schedules/":        ScheduleItem,
+	"readmit-diagnose-config/":      AnalysisSettingsItem,
+	"readmit-normalization-policy/": NormalizationPolicyItem,
 }
 
 // entryKind names the kind of object one entry declares. The project's own
@@ -363,6 +364,8 @@ func entryKind(root string, entry fs.DirEntry) (ItemKind, bool) {
 		return AnalysisItem, true
 	case RulesArtifact:
 		return LinkRulesItem, true
+	case NormalizationArtifact:
+		return NormalizationPolicyItem, true
 	case ProfileArtifact, PackArtifact, PackageArtifact:
 		return ProfileItem, true
 	case PlanArtifact:
@@ -917,15 +920,16 @@ var readers = map[ItemKind]func(*loadedCatalog, catalog.Item, map[string]string)
 	RunnerItem:      readRunner,
 	ScheduleItem:    readSchedule,
 
-	AnalysisSettingsItem: readAnalysisSettings,
-	FindingReviewItem:    readFindingReview,
-	LinkRulesItem:        readLinkRules,
-	CoverageItem:         readCoverage,
-	LinkReviewItem:       readLinkReview,
-	MappingItem:          readMappingItem,
-	SourceItem:           readSourceItem,
-	SuiteApprovalItem:    readSuiteApprovalItem,
-	ReportReviewItem:     readReportApprovalItem,
+	AnalysisSettingsItem:    readAnalysisSettings,
+	FindingReviewItem:       readFindingReview,
+	LinkRulesItem:           readLinkRules,
+	CoverageItem:            readCoverage,
+	LinkReviewItem:          readLinkReview,
+	MappingItem:             readMappingItem,
+	SourceItem:              readSourceItem,
+	SuiteApprovalItem:       readSuiteApprovalItem,
+	ReportReviewItem:        readReportApprovalItem,
+	NormalizationPolicyItem: readNormalizationPolicyItem,
 }
 
 // privateState is one private local-state folder of the project: its entry

@@ -120,6 +120,9 @@ type PrepareActionRequest struct {
 	Team *TeamActionOptions `json:"team,omitzero"`
 	// ReportExport names the format one report is exported as (#559).
 	ReportExport *ReportExportOptions `json:"report_export,omitzero"`
+	// Minimize names the checks, grouping and bounds a minimization of one
+	// failed run is asked for (#558).
+	Minimize *MinimizeOptions `json:"minimize,omitzero"`
 }
 
 // ReviewDestination is where an action's effect lands: a named target and
@@ -162,6 +165,7 @@ type ActionReview struct {
 	Team          *TeamActionReview       `json:"team,omitzero"`
 	ReportExport  *ReportExportReview     `json:"report_export,omitzero"`
 	ReportReview  *ReportReviewView       `json:"report_review,omitzero"`
+	Minimize      *MinimizeReview         `json:"minimize,omitzero"`
 }
 
 // ExportReviewView is the export review a derived packet is exported from:
@@ -259,6 +263,8 @@ type ReviewedActionResult struct {
 	Team *TeamActionOutcome `json:"team,omitzero"`
 	// ReportExport is what a report export wrote.
 	ReportExport *ReportExportOutcome `json:"report_export,omitzero"`
+	// Minimize is what a minimization reached.
+	Minimize *MinimizeOutcome `json:"minimize,omitzero"`
 }
 
 func (r *ReviewedActionResult) refuse(state State, reason string) {
@@ -299,6 +305,8 @@ type boundAction struct {
 	reportExport *reportExportBinding
 	// reportReview is what a report review records.
 	reportReview *reportApproval
+	// minimize is what a minimization's Start runs (#558).
+	minimize *minimizeBinding
 }
 
 // slot is the operation slot one step of an action holds: a declared,
