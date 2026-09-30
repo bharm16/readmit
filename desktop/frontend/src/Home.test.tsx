@@ -6,7 +6,7 @@ import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderApp } from "./testkit/app";
 import { page, sidebar } from "./testkit/navigation";
-import { CASE_ENTRY, caseCatalogItem, editorDraft, folderChosen, folderWithCase, guideResult, projectOverviewResult, WORKSPACE_ROOT } from "./testkit/fixtures";
+import { CASE_ENTRY, caseCatalogItem, editorDraft, folderChosen, folderWithCase, projectOverviewResult, WORKSPACE_ROOT } from "./testkit/fixtures";
 import type { FacadeHandlers } from "./testkit/wails";
 import type { CatalogItem, CatalogQuery, CatalogResult, EditorDraft } from "./bindings";
 
@@ -37,21 +37,6 @@ test("choosing a real project opens a chosen folder and reaches the project scre
   expect(await page().findByRole("heading", { level: 1, name: "Cases" })).toBeTruthy();
   expect(sidebar().getByRole("button", { name: "Project: workspace-under-test" })).toBeTruthy();
   expect(sidebar().getByRole("button", { name: /^Project: / })).toBeTruthy();
-  expect(sidebar().getByRole("button", { name: "Cases" }).getAttribute("aria-current")).toBe("page");
-});
-
-test("choosing the guided sample creates the real sample workspace", async () => {
-  const user = userEvent.setup();
-  const { facade } = await renderApp({
-    CreateSampleWorkspace: () => ({
-      state: "completed",
-      workspace: { root: WORKSPACE_ROOT, artifacts: [] },
-    }),
-    Guide: () => guideResult("sample", 0),
-  });
-  await user.click(page().getByRole("button", { name: "Try demo" }));
-  expect(facade.oneCall("CreateSampleWorkspace")).toEqual([]);
-  expect(await sidebar().findByRole("button", { name: /^Project: / })).toBeTruthy();
   expect(sidebar().getByRole("button", { name: "Cases" }).getAttribute("aria-current")).toBe("page");
 });
 
@@ -382,7 +367,7 @@ test("after a license refusal the projects list, opening a project and Try demo 
     OpenWorkspace: () => folderWithCase(),
     OpenProjectOverview: () => projectOverviewResult([]),
     OpenNamedProject: () => ({ state: "completed", context: noContext, recorded: true }),
-    CreateSampleWorkspace: () => ({ state: "completed", workspace: { root: WORKSPACE_ROOT, artifacts: [] } }),
+    OpenDemoProject: () => ({ state: "completed", context: { project: WORKSPACE_ROOT, generation: 0 }, recorded: true }),
   });
   await user.click(page().getAllByRole("button", { name: "New project" })[0]!);
   const sheet = within(await screen.findByRole("dialog", { name: "New project" }));
@@ -401,7 +386,7 @@ test("after a license refusal the projects list, opening a project and Try demo 
   // Back on Projects, the demo still opens.
   await user.click(sidebar().getByRole("button", { name: "Projects" }));
   await user.click(await page().findByRole("button", { name: "Try demo" }));
-  await waitFor(() => expect(facade.callsTo("CreateSampleWorkspace")).toHaveLength(1));
+  await waitFor(() => expect(facade.callsTo("OpenDemoProject")).toHaveLength(1));
   expect(await page().findByRole("heading", { level: 1, name: "Cases" })).toBeTruthy();
 }, 15_000);
 

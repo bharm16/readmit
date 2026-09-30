@@ -72,10 +72,12 @@ type RunPageProps = {
   onViewMessages: (caseRef: ItemRef, occurrences: string[]) => void;
   /** Opens an observation whose collection an analysis is missing. */
   onOpenObservation: (observation: ItemRef) => void;
+  /** Hears every run page the facade answered, as it answered it. */
+  onRead?: ((answer: RunDetailResult) => void) | undefined;
 };
 
 /** A run's page: its title, actions and body. */
-export function useRunPage({ root, place, activity, busy, go, onStop, onRun, onCreateReport, onViewMessages, onOpenObservation }: RunPageProps) {
+export function useRunPage({ root, place, activity, busy, go, onStop, onRun, onCreateReport, onViewMessages, onOpenObservation, onRead }: RunPageProps) {
   const scope = useRef(new RequestScope());
   const context = useCallback(() => scope.current.enter(root ?? ""), [root]);
   const [detail, setDetail] = useState<RunDetailResult | null>(null);
@@ -90,7 +92,11 @@ export function useRunPage({ root, place, activity, busy, go, onStop, onRun, onC
   const read = useCallback(async () => {
     if (!root || !id) return;
     const answer = await openRun({ context: context(), run: { kind: "run", id }, ...(job ? { job } : {}), reveal });
-    if (scope.current.current(answer)) setDetail(answer);
+    if (scope.current.current(answer)) {
+      setDetail(answer);
+      onRead?.(answer);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [context, id, job, reveal, root]);
 
   useEffect(() => {

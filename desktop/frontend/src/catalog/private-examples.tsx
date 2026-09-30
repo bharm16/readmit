@@ -37,8 +37,6 @@ export const privateExamples: Example[] = [
   p("PacketPanel", "PacketReviewDetails", {
     view: f.packetReviewResult(false).review,
   }),
-  p("PerformanceCorpus", "ProgressLine", privateData.progressLine),
-  p("PerformanceCorpus", "ScanReport", privateData.scanReport),
   p("ProjectPanel", "EditableDocument", {
     result: f.revisionsResult(),
     indicators: f.indicatorTable(),

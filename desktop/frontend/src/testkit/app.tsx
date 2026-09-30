@@ -13,7 +13,6 @@ import { VocabularyContext } from "../vocabulary";
 import {
   catalogOfListing,
   filtersResult,
-  guideResult,
   messagesResult,
   sessionStored,
   shellResult,
@@ -50,8 +49,8 @@ export async function renderApp(handlers: FacadeHandlers = {}) {
     // Opening a case reads its messages and the project's saved views.
     ReadMessages: () => messagesResult([]),
     ListViews: () => ({ state: "empty", views: [] }),
-    // Opening a folder re-reads the guided sample out of it.
-    Guide: () => guideResult("sample", 0),
+    // Opening a folder reads whether it is the demo; an ordinary project is not.
+    DemoProgress: () => ({ state: "empty", reason: "this project is not the demo" }),
     ...handlers,
   });
   // The catalog lists the cases of the folder the window last opened, the way

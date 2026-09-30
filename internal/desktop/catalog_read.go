@@ -30,6 +30,7 @@ import (
 	"github.com/bharm16/readmit/internal/redact"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/reproducer"
+	"github.com/bharm16/readmit/internal/runresult"
 	"github.com/bharm16/readmit/internal/scenario"
 	"github.com/bharm16/readmit/internal/scenariogen"
 )
@@ -376,6 +377,8 @@ func entryKind(root string, entry fs.DirEntry) (ItemKind, bool) {
 			return VariantItem, true
 		case regular(filepath.Join(path, backup.DocumentName)):
 			return BackupItem, true
+		case practiceRun(path):
+			return RunItem, true
 		}
 		return "", false
 	}
@@ -620,7 +623,23 @@ func (c *loadedCatalog) backing(item catalog.Item) (map[string]string, Availabil
 	case info.Mode()&fs.ModeSymlink != 0:
 		return nil, ItemUnsupported, "symbolic links are not opened as objects of a project"
 	}
+	if ItemKind(item.Kind) == RunItem {
+		// A practice run keeps the test's result beside the receiver it ran
+		// against; the run is that result.
+		path = runFolder(path)
+	}
 	return map[string]string{primaryRole(ItemKind(item.Kind)): path}, ItemAvailable, ""
+}
+
+// practiceResult is where a practice run of the demo keeps the result of the
+// test it executed.
+const practiceResult = "result"
+
+// practiceRun reports whether a folder is one practice run: the executed test
+// beside a retained test result, which is read as the run.
+func practiceRun(path string) bool {
+	return regular(filepath.Join(path, "spec.json")) && regular(filepath.Join(path, "target.json")) &&
+		runresult.ExecutionFamily(filepath.Join(path, practiceResult), runresult.RegularFile) == runresult.ResultFamily
 }
 
 // savedFile reads one file an object was saved as: bounded, regular, never a

@@ -619,11 +619,12 @@ func (s draftScope) lossyEdit() bool {
 	return saved.release || err != nil || len(clauses) > 0
 }
 
-// sampleSave admits the guided sample's own test without a license: the
-// frozen sample case at the exact bundled practice target, as authoring the
-// sample always was. Its case is verified by that identity before anything
-// is written.
-func sampleSave(request SaveItemRequest) bool {
+// demoSave admits the demo's own test without a license: the frozen sample
+// case at the exact bundled practice target, saved in the demo project this
+// application keeps, as authoring the sample always was. Its case is verified
+// by that identity before anything is written. The same test in any other
+// project is authoring, and needs a license.
+func (a *App) demoSave(request SaveItemRequest) bool {
 	draft := request.Draft
 	if request.Kind != TestItem || draft.Test == nil || draft.TestDocument != "" || draft.TestLinks != nil && draft.TestLinks.Environment != "" {
 		return false
@@ -632,7 +633,7 @@ func sampleSave(request SaveItemRequest) bool {
 		return false
 	}
 	root, _ := resolveFolder(request.Context.Project)
-	if root == "" {
+	if root == "" || !a.demoRoot(root) {
 		return false
 	}
 	return sampleAuthoring(TestRequest{Case: draft.Test.Case.Entry, Draft: *draft.Test}, root, &bundle.Bundle{Identity: draft.Test.Case.Identity})

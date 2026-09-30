@@ -1,5 +1,5 @@
 // The remaining panels, pinned as they are before any #244 workflow changes
-// their integrations: the guided sample, the canonical editor's free read and
+// their integrations: the canonical editor's free read and
 // export, the reproducer editor and the comparison panel.
 // Each test proves the routing — which typed call a person's act produces,
 // and what the panel does with the engine's answer — never an HL7 meaning.
@@ -7,7 +7,6 @@ import { expect, test } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Comparison } from "./Comparison";
-import { GuidedSample } from "./GuidedSample";
 import { Reproducer } from "./Reproducer";
 import {
   CASE_ENTRY,
@@ -16,59 +15,12 @@ import {
   comparisonRow,
   compareResult,
   gridRow,
-  guideResult,
   indicatorTable,
   normalizationDifference,
   normalizationRuleReport,
   normalizeResult,
   reproducerResult,
 } from "./testkit/fixtures";
-
-test("the guided sample offers each step out of the folder and runs a new folder", async () => {
-  const user = userEvent.setup();
-  const acts: string[] = [];
-  render(
-    <GuidedSample
-      result={guideResult("test", 1)}
-      practice={null}
-      busy={false}
-      progress={null}
-      indicators={indicatorTable()}
-      onCreateSample={() => acts.push("create")}
-      onOpenCase={(name) => acts.push(`open:${name}`)}
-      onRun={(trial, output) => acts.push(`run:${trial}:${output}`)}
-      onCancel={() => acts.push("cancel")}
-    />,
-  );
-  // The step being performed now is the one marked current.
-  expect(screen.getByText("Create sample test").closest("li")?.getAttribute("aria-current")).toBe(
-    "step",
-  );
-  await user.click(screen.getByRole("button", { name: /^Open case(?: |$)/ }));
-  expect(acts).toEqual([`open:${CASE_ENTRY}`]);
-});
-
-test("the run steps offer a new folder and never an existing one by default", async () => {
-  const user = userEvent.setup();
-  const runs: string[] = [];
-  render(
-    <GuidedSample
-      result={guideResult("baseline", 2)}
-      practice={null}
-      busy={false}
-      progress={null}
-      indicators={indicatorTable()}
-      onCreateSample={() => undefined}
-      onOpenCase={() => undefined}
-      onRun={(trial, output) => runs.push(`${trial}:${output}`)}
-      onCancel={() => undefined}
-    />,
-  );
-  expect(screen.queryByLabelText("Run folder")).toBeNull();
-  await user.click(screen.getByRole("button", { name: "Run failing example" }));
-  // The panel supplies its suggested name; the window delegates actual output naming to the facade.
-  expect(runs).toEqual(["baseline:baseline-run"]);
-});
 
 test("reproducer steps are composed and resolved by the engine", async () => {
   const user = userEvent.setup();

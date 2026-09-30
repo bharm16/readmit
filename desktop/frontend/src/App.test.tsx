@@ -24,9 +24,7 @@ import {
   folderWithCase,
   messagesResult,
   messageRow,
-  guideResult,
   inspectionResult,
-  practiceResult,
   refused,
   sequenceEvent,
   sequenceResult,
@@ -60,8 +58,11 @@ test("the window draws every region the facade declares and its privacy disclosu
   expect(screen.queryByRole("region", { name: "Status" })).toBeNull();
   // With no project open the sidebar offers Projects and the utilities only.
   expect(sidebar().getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual(["Projects", "Tools", "Settings", "Help"]);
-  // The privacy statement and lists are the Help page's, as given.
-  await goTo(userEvent.setup(), "Help");
+  // The privacy statement and lists are Help › Diagnostics', as given.
+  const user = userEvent.setup();
+  await goTo(user, "Help");
+  await user.click(screen.getByRole("button", { name: "More help actions" }));
+  await user.click(screen.getByRole("menuitem", { name: "Diagnostics" }));
   expect(
     screen.getByText("No telemetry, crash reporting or update check."),
   ).toBeTruthy();
@@ -133,7 +134,7 @@ test("opening a workspace lists every entry as it declares itself, evidence or n
   });
   await openFolder(user);
   expect(await sidebar().findByRole("button", { name: /^Project: / })).toBeTruthy();
-  expect(facade.oneCall("Guide")[0]).toBe(WORKSPACE_ROOT);
+  expect(facade.oneCall("DemoProgress")[0].project).toBe(WORKSPACE_ROOT);
   // The case is listed as a case; the index file is not evidence, so it is
   // listed among the project's other files, reached from the project menu.
   expect(await findCaseRow(CASE_ENTRY)).toBeTruthy();
@@ -148,7 +149,7 @@ test("a dismissed folder dialog is reported as cancelled and opens nothing", asy
   const { facade } = await renderApp({ SelectWorkspace: () => dialogDismissed });
   await openFolder(user);
   expect(await screen.findAllByText("cancelled")).toBeTruthy();
-  expect(facade.callsTo("Guide")).toHaveLength(0);
+  expect(facade.callsTo("DemoProgress")).toHaveLength(0);
 });
 
 test("a folder this account cannot open is reported as denied, in words and shape", async () => {
@@ -305,48 +306,6 @@ test("an inspector that never answered is reported and leaves the prior result a
   expect(facade.callsTo("InspectOccurrence").length).toBeGreaterThanOrEqual(1);
 });
 
-test("the guided sample runs the saved spec against the practice receiver and reads the folder back", async () => {
-  const user = userEvent.setup();
-  const { facade } = await renderApp({
-    SelectWorkspace: () => folderWithCase(),
-    Guide: () => guideResult("baseline", 2),
-    RunPractice: () => practiceResult("baseline", "assertion_failure"),
-  });
-  await openFolder(user);
-  await goToView(user, "Tools", "Sample data");
-  const run = await screen.findByRole("button", {
-    name: "Run failing example",
-  });
-  expect(within(screen.getByRole("region", { name: "Main content" })).queryByRole("textbox", { name: "Run folder" })).toBeNull();
-  const before = facade.callsTo("Guide").length;
-  await user.click(run);
-  expect(facade.oneCall("RunPractice")[0]).toEqual({
-    workspace: WORKSPACE_ROOT,
-    spec: "reschedule-test.json",
-    trial: "baseline",
-    output: "baseline-run",
-  });
-  expect((await screen.findAllByText(/assertion_failure/)).length).toBeGreaterThan(0);
-  // What the folder now holds is read back rather than inferred from the call.
-  expect(facade.callsTo("Guide").length).toBeGreaterThan(before);
-});
-
-test("a practice run the person stopped is reported as cancelled, not as a verdict", async () => {
-  const user = userEvent.setup();
-  const { facade } = await renderApp({
-    SelectWorkspace: () => folderWithCase(),
-    Guide: () => guideResult("baseline", 2),
-    RunPractice: () => ({ state: "cancelled" as const }),
-  });
-  await openFolder(user);
-  await goToView(user, "Tools", "Sample data");
-  await user.click(
-    await screen.findByRole("button", { name: "Run failing example" }),
-  );
-  expect(await screen.findAllByText("cancelled")).toBeTruthy();
-  expect(facade.oneCall("RunPractice")[0].trial).toBe("baseline");
-});
-
 test("a cancelled folder dialog leaves the open workspace and its edits exactly as they were", async () => {
   const user = userEvent.setup();
   const { facade } = await renderApp({ SelectWorkspace: () => folderWithCase() });
@@ -499,12 +458,12 @@ test("a navigation read that meets a held slot is asked again, and a write refus
   // Verifying reads; the busy answer read nothing, so it was asked again.
   expect(await readCaseIdentity(user, CASE_IDENTITY)).toBeTruthy();
   expect(facade.callsTo("OpenCase")).toHaveLength(2);
-  // Creating the sample writes: its busy answer is the refusal, asked once.
-  facade.reply({ CreateSampleWorkspace: () => ({ state: "busy" as const, reason: "another operation is running" }) });
+  // Opening the demo can write it: its busy answer is the refusal, asked once.
+  facade.reply({ OpenDemoProject: () => ({ state: "busy" as const, reason: "another operation is running", context: { project: "", generation: 0 }, recorded: false }) });
   await goTo(user, "Projects");
   await user.click(screen.getByRole("button", { name: "Try demo" }));
   expect(await screen.findAllByText("another operation is running")).toBeTruthy();
-  expect(facade.callsTo("CreateSampleWorkspace")).toHaveLength(1);
+  expect(facade.callsTo("OpenDemoProject")).toHaveLength(1);
 });
 
 test("a navigation read whose slot stays held is reported busy after a bounded number of asks", async () => {

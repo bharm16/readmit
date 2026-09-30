@@ -103,6 +103,8 @@ var profiles = map[string]operationguard.Profile{
 	"RetryCaptureFinalization": {Name: importOperation, Interruptible: true, Author: true},
 	"GenerateCorpus":           {Name: corpusOperation, Interruptible: true, Author: true},
 	"ScanCorpus":               {Name: corpusOperation, Interruptible: true},
+	"GenerateInput":            {Name: corpusOperation, Interruptible: true, Author: true},
+	"StartBenchmark":           {Name: corpusOperation, Interruptible: true},
 	"ExplainRun":               {Name: explanationOperation, Interruptible: true},
 	"CompareRuns":              {Name: runComparisonOperation, Interruptible: true},
 	"AssemblePacket":           {Name: packetOperation, Interruptible: true},

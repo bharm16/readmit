@@ -1,7 +1,8 @@
-import { HelpTopics } from "./ContextHelp";
+import { DiagnosticsSheet, HelpTopics, SearchHelpSheet, useHelpArticle } from "./Help";
+import { DemoTask } from "./DemoTask";
+import { useBenchmarks } from "./Benchmarks";
 import { AdministratorSetup } from "./OperationAccess";
 import { ComputerLicense } from "./ComputerLicense";
-import { SupportGuidance } from "./SupportGuidance";
 import { GeneralView, SecurityView, usePreferences, type ConnectionRoute } from "./Settings";
 import { useEncryption } from "./Encryption";
 import { HubPanel } from "./HubPanel";
@@ -27,7 +28,6 @@ import {
   cancel,
   compare,
   type CompareResult,
-  createSampleWorkspace,
   createNamedProject,
   RequestScope,
   openNamedProject,
@@ -59,11 +59,12 @@ import {
   type ReproducerResult,
   type ReproducerStep,
   filters as readFilters,
-  guide as readGuide,
+  demoProgress,
+  openDemoProject,
   runPractice,
-  type GuideResult,
-  type GuideTrialId,
-  type PracticeResult,
+  type DemoProgress,
+  type DemoStepID,
+  type HelpActionID,
   editorDrafts as readEditorDrafts,
   saveEditorDraft,
   openCase,
@@ -100,7 +101,6 @@ import {
   openProjectOverview,
   registerRevision,
   openWorkspace,
-  captureSample,
   recordView,
   type EditorDraft,
   search,
@@ -125,7 +125,6 @@ import {
 } from "./bindings";
 import { Comparison, readsComparison } from "./Comparison";
 import { Review } from "./Review";
-import { GuidedSample } from "./GuidedSample";
 import { useTimeline } from "./Timeline";
 import { MessageReader } from "./Inspector";
 import { MessageList, NO_QUERY, sameQuery, SearchSettingsSheet, type FilterSeed } from "./Messages";
@@ -160,7 +159,6 @@ import { ImportFlow, importDrop } from "./Import";
 import { useCapture } from "./Capture";
 import { DeleteSourceSheet, StorageView } from "./Storage";
 import { useFileReader } from "./RawInspection";
-import { PerformanceCorpus } from "./PerformanceCorpus";
 import type { CaptureObservationBinding } from "./bindings";
 import { TaskPanel, TaskTabs } from "./TaskTabs";
 import { IconButton } from "./IconButton";
@@ -302,7 +300,6 @@ export default function App() {
   });
   // Each counts the palette's requests to open that screen in the inspector.
   const [rawRequest, setRawRequest] = useState(0);
-  const [corpusRequest, setCorpusRequest] = useState(0);
   const [workspace, setWorkspace] = useState<WorkspaceResult | null>(null);
   const [evidence, setEvidence] = useState<CaseResult | null>(null);
   const [investigation, setInvestigation] = useState<ProjectOverviewResult | null>(null);
@@ -343,9 +340,14 @@ export default function App() {
   const [revisionResult, setRevisionResult] = useState<ReproducerComparisonResult | null>(null);
   // The build the reproducer panel last handed to the revision comparison.
   const [comparisonSeed, setComparisonSeed] = useState<ComparisonSeed | null>(null);
-  const [guideResult, setGuideResult] = useState<GuideResult | null>(null);
-  const [practiceResult, setPracticeResult] = useState<PracticeResult | null>(null);
-  const [sampleCapture, setSampleCapture] = useState<CaseResult | null>(null);
+  // The demo task over the open project, read back from what it holds, and
+  // the steps whose read results this window saw.
+  const [demo, setDemo] = useState<DemoProgress | null>(null);
+  const [demoSeen, setDemoSeen] = useState<ReadonlySet<DemoStepID>>(new Set());
+  const [demoShown, setDemoShown] = useState(true);
+  const [demoNotice, setDemoNotice] = useState<string | null>(null);
+  const [seedTest, setSeedTest] = useState<{ case: ItemRef; test: DemoProgress["test"] } | null>(null);
+  const [helpSheet, setHelpSheet] = useState<null | "search" | "diagnostics">(null);
   const [transformResult, setTransformResult] = useState<TransformResult | null>(null);
   const [planResult, setPlanResult] = useState<TransformPlanResult | null>(null);
   const [reductionResult, setReductionResult] = useState<ReductionResult | null>(null);
@@ -516,11 +518,15 @@ export default function App() {
     if (listed.page) setProjects(listed.page.items);
   }, []);
 
-  // The guided sample is read back out of the open folder rather than
-  // remembered, so it is re-read whenever that folder or what it holds may have
-  // changed. Nothing about where somebody is in it lives in this window.
-  const refreshGuide = useCallback(async (folder: string | null) => {
-    setGuideResult(folder ? await readGuide(folder) : null);
+  // The demo task is read back out of the open project rather than
+  // remembered; a project that is not the demo has none.
+  const refreshDemo = useCallback(async (folder: string | null) => {
+    if (!folder) {
+      setDemo(null);
+      return;
+    }
+    const answer = await demoProgress({ project: folder, generation: 0 });
+    setDemo(answer.state === "completed" && answer.demo ? answer.demo : null);
   }, []);
 
   // Projects is read again each time it is shown, so a project moved or
@@ -637,7 +643,13 @@ export default function App() {
   // screen's whose call holds the facade, such as the raw inspection and the
   // performance corpus.
   const busy = useWindowBusy();
-  const fileReader = useFileReader({ busy, request: rawRequest });
+  const fileReader = useFileReader({
+    busy,
+    request: rawRequest,
+    onCancelled: () => {
+      if (currentRoute.current.destination === "inspect-file") routeTo({ type: "back" });
+    },
+  });
   const root = workspace?.workspace?.root ?? null;
   // Another project, or none, starts with nothing any page held for the last.
   const viewRoot = useRef(root);
@@ -731,13 +743,14 @@ export default function App() {
           // revealed in the last one comes with it.
           routeTo({ type: "project", projectId: result.workspace.root, to: { destination: "cases" } });
           setCaseFlow(null);
-          setPracticeResult(null);
-          setSampleCapture(null);
+          setDemoSeen(new Set());
+          setDemoShown(true);
+          setDemoNotice(null);
           setImporting(false);
           setCapturing(false);
           setCaptureBinding(null);
           opened = true;
-          await refreshGuide(result.workspace.root);
+          await refreshDemo(result.workspace.root);
           // A folder that holds a project opens as that project: its cases and
           // settings are read now rather than behind another button.
           if (result.workspace.artifacts.some((artifact) => artifact.kind === "project")) {
@@ -755,7 +768,7 @@ export default function App() {
       }
       return opened;
     },
-    [clearWorkspace, focusRegion, refreshGuide, refreshRecent, run],
+    [clearWorkspace, focusRegion, refreshDemo, refreshRecent, run],
   );
 
   // Forgetting a recent folder writes the list, so it takes its turn like
@@ -896,20 +909,27 @@ export default function App() {
     [evidence, messages, revealed, root, run, selectedOccurrence],
   );
 
-  // One practice run of the guided sample. It is the one operation in this
-  // window that sends, so Cancel is offered while it runs, and what the folder
-  // then holds is read back rather than assumed from the result.
+  // One practice run of the demo against its defective or fixed receiver. It
+  // sends only on loopback; what the project then holds is read back, and the
+  // run opens on its ordinary page.
   const practise = useCallback(
-    async (trial: GuideTrialId, output: string) => {
-      if (!root || !guideResult?.guide?.spec) return;
-      const spec = guideResult.guide.spec;
+    async (trial: "baseline" | "post-fix", output: string) => {
+      if (!root || !demo?.spec) return;
+      const spec = demo.spec;
+      let reason: string | null = null;
       await run("practice", async () => {
-        setPracticeResult(null);
-        setPracticeResult(await runPractice({ workspace: root, spec, trial, output }));
+        const answer = await runPractice({ workspace: root, spec, trial, output });
+        if (answer.state !== "completed") reason = answer.reason ?? "The run did not complete.";
       });
-      await refreshGuide(root);
+      setDemoNotice(reason);
+      const answer = await demoProgress({ project: root, generation: 0 });
+      if (answer.state !== "completed" || !answer.demo) return;
+      setDemo(answer.demo);
+      const ref = answer.demo.steps.find((step) => step.id === (trial === "baseline" ? "run-defective" : "run-fixed"))?.ref;
+      if (ref) openRunPage(ref.id);
     },
-    [guideResult, refreshGuide, root, run],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [demo, root, run],
   );
 
   // Run on a suite opens the reviewed send of that exact saved version at the
@@ -1258,23 +1278,6 @@ export default function App() {
     }
     await refreshCases();
   }, [refreshCases, root]);
-
-  // The guided sample's import of the frozen receiver fixtures writes one new
-  // entry of the open folder, so the listing is read again once it has.
-  const importSample = useCallback(
-    async (output: string) => {
-      if (!root) return;
-      let written = false;
-      await run("sample", async () => {
-        setSampleCapture(null);
-        const result = await captureSample({ workspace: root, output });
-        setSampleCapture(result);
-        written = result.state === "completed";
-      });
-      if (written) await refreshListing();
-    },
-    [refreshListing, root, run],
-  );
 
   // An import can register the case it wrote into the open project, and it
   // writes the case and its receipt as new entries of the open folder.
@@ -1747,6 +1750,11 @@ export default function App() {
     addCheckGroup: pendingCheckGroup,
     onCheckGroupAdded: () => setPendingCheckGroup(null),
     restoreDraft: restoringTest,
+    seedTest,
+    onSeeded: (reason) => {
+      setSeedTest(null);
+      if (reason) setDemoNotice(reason);
+    },
     inspectedField: inspectionResult?.inspection?.selected.path,
     onRestored: (reason) => {
       setRestoringTest(null);
@@ -1887,6 +1895,10 @@ export default function App() {
       });
     },
     onOpenObservation: (observation) => open({ destination: "environments", objectId: `observation:${observation.id}` }),
+    onRead: (answer) => {
+      const defective = demo?.steps.find((step) => step.id === "run-defective")?.ref?.id;
+      if (defective && answer.state === "completed" && answer.run?.item.ref.id === defective && answer.run.checks.some((check) => check.result === "failed")) seeDemo("view-failed-check");
+    },
   });
   const runComparison = useRunComparison({
     root: place === "compare-runs" ? root : null,
@@ -1895,7 +1907,90 @@ export default function App() {
     onView: setView,
     onRuns: (ids) => routeTo({ type: "replace", to: { destination: "compare-runs", objectId: ids.join("..") } }),
     onOpen: openRunPage,
+    onCompared: (runs, answer) => {
+      const pair = ["run-defective", "run-fixed"].map((key) => demo?.steps.find((step) => step.id === key)?.ref?.id);
+      if (answer.state === "completed" && pair.every((id) => id && runs.includes(id))) seeDemo("compare");
+    },
   });
+
+  // Try demo opens the synthetic demo project, creating it the first time in
+  // the application's own storage; a project of the person's is never touched.
+  function tryDemo() {
+    void openFolder(async () => {
+      const opened = await openDemoProject();
+      if (opened.state !== "completed") return { state: opened.state, ...(opened.reason ? { reason: opened.reason } : {}) };
+      return openWorkspace(opened.context.project);
+    });
+  }
+
+  // One step of the demo: each opens its ordinary screen, and a step is done
+  // only from that screen's actual result.
+  const seeDemo = (id: DemoStepID) => setDemoSeen((held) => (held.has(id) ? held : new Set([...held, id])));
+  const demoStep = (id: DemoStepID) => {
+    if (!root || !demo) return;
+    const step = demo.steps.find((entry) => entry.id === id);
+    setDemoNotice(null);
+    switch (id) {
+      case "open-messages":
+        void verifyCase(root, demo.case).then((opened) => {
+          if (opened?.case) seeDemo("open-messages");
+        });
+        return;
+      case "create-test":
+        if (demo.case_ref) setSeedTest({ case: demo.case_ref, test: demo.test });
+        return;
+      case "run-defective":
+      case "run-fixed":
+        if (step?.output) void practise(id === "run-defective" ? "baseline" : "post-fix", step.output);
+        return;
+      case "view-failed-check": {
+        const ref = demo.steps.find((entry) => entry.id === "run-defective")?.ref;
+        if (ref) open({ destination: "runs", objectId: ref.id, view: "checks" });
+        return;
+      }
+      case "compare": {
+        const runs = ["run-defective", "run-fixed"].map((key) => demo.steps.find((entry) => entry.id === key)?.ref?.id);
+        if (runs.every(Boolean)) open({ destination: "compare-runs", objectId: runs.join("..") });
+        return;
+      }
+    }
+  };
+  // The demo's project steps are read again as the person moves, so a test
+  // created in New test is done once the project holds it.
+  useEffect(() => {
+    if (demo && root) void refreshDemo(root);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [place, route.objectId]);
+
+  const benchmarks = useBenchmarks({ root, shown: place === "benchmarks", busy });
+  const helpArticleId = place === "help-article" ? route.objectId : undefined;
+  const openHelpArticle = (id: string) => open({ destination: "help-article", objectId: id });
+  const helpAction = (action: HelpActionID) => {
+    // A task needs a project; without one, Projects is where one is chosen.
+    if (!root) {
+      go("home");
+      return;
+    }
+    switch (action) {
+      case "start-import":
+        go("cases");
+        setImporting(true);
+        return;
+      case "open-cases":
+        go("cases");
+        return;
+      case "new-test":
+        open({ destination: "new-test" });
+        return;
+      case "add-environment":
+        open({ destination: "environments", view: "add" });
+        return;
+      case "open-reports":
+        go("reports");
+        return;
+    }
+  };
+  const helpArticle = useHelpArticle(helpArticleId, helpAction);
 
   /** Create test: the case open now and its chosen messages (all of them
    * when none is chosen) go to the one test editor. */
@@ -2191,7 +2286,7 @@ export default function App() {
       void projectLocation().then((answer) => setNewProjectParent(answer.location ?? null));
     },
     "open-workspace": () => void openFolder(selectWorkspace),
-    "create-sample-workspace": () => void openFolder(createSampleWorkspace),
+    "create-sample-workspace": () => tryDemo(),
     "open-project": () => setEditingProject(true),
     "create-test": () => void createTest(),
     "create-report": () => go("reports"),
@@ -2204,10 +2299,7 @@ export default function App() {
       open({ destination: "inspect-file" });
       setRawRequest((count) => count + 1);
     },
-    "performance-corpus": () => {
-      open({ destination: "benchmarks" });
-      setCorpusRequest((count) => count + 1);
-    },
+    "performance-corpus": () => open({ destination: "benchmarks" }),
     "cancel-operation": () => cancel(),
     "next-region": () => step(1),
     "previous-region": () => step(-1),
@@ -2310,10 +2402,11 @@ export default function App() {
   const shownCase = verified ? { case: verified.name, identity: verified.identity } : { case: "", identity: "" };
   const selectedRow = messages?.rows.find((row) => row.id === selectedOccurrence) ?? null;
   const fileSelection = place === "inspect-file" && fileReader.details !== null;
+  const benchmarkSelection = place === "benchmarks" && benchmarks.details !== null;
   const findingShown = place === "cases" && verified !== null && subpage === null && caseView === "findings" && findings.selected !== null;
   const linkShown = place === "cases" && verified !== null && subpage === null && caseView === "timeline" && timeline.selectedLink !== null;
   const detailsShown =
-    (place === "cases" && verified !== null && subpage === null && caseView !== "findings" && inspecting && !linkShown) || findingShown || linkShown || fileSelection;
+    (place === "cases" && verified !== null && subpage === null && caseView !== "findings" && inspecting && !linkShown) || findingShown || linkShown || fileSelection || benchmarkSelection;
   const inspected =
     selectedOccurrence && inspectionResult?.inspection
       ? { occurrence: selectedOccurrence, path: inspectionResult.inspection.selected.path }
@@ -2321,6 +2414,8 @@ export default function App() {
   const closeDetails = () => {
     if (fileSelection) {
       fileReader.closeDetails();
+    } else if (benchmarkSelection) {
+      benchmarks.closeDetails();
     } else {
       setSelectedOccurrence(null);
       setInspectionResult(null);
@@ -2400,7 +2495,23 @@ export default function App() {
             <NavItem key={item.id} id={item.id} label={item.label} current={destination === item.id} onSelect={go} />
           ))}
         </ul>
-        {busy ? (
+        {root && demo ? (
+          <DemoTask
+            progress={demo}
+            seen={demoSeen}
+            shown={demoShown}
+            busy={busy}
+            notice={demoNotice}
+            onStep={demoStep}
+            onClose={() => setDemoShown(false)}
+            onShow={() => setDemoShown(true)}
+          />
+        ) : null}
+        {benchmarks.activity ? (
+          // A benchmark or generation runs as the named corpus operation; this
+          // returns to it, and its Stop cancels exactly that operation.
+          <OperationIndicator label={benchmarks.activity.label} onOpen={() => open({ destination: "benchmarks" })} onStop={benchmarks.activity.stop} />
+        ) : busy ? (
           <OperationIndicator label={running ? PROGRESS[running] : "Working…"} onStop={interruptible ? () => cancel() : undefined} />
         ) : capture.recording && !(place === "cases" && subpage === "capture") ? (
           // A capture keeps recording while the person is elsewhere; this
@@ -2472,7 +2583,7 @@ export default function App() {
             onNew={() => perform("new-project")}
           />
           <div className="quiet-action">
-            <button type="button" className="quiet" disabled={busy} onClick={() => perform("create-sample-workspace")}>
+            <button type="button" className="quiet" disabled={busy} onClick={tryDemo}>
               Try demo
             </button>
           </div>
@@ -3202,7 +3313,6 @@ export default function App() {
                   onClick={() => {
                     open({ destination: tool.key });
                     if (tool.key === "inspect-file") setRawRequest((count) => count + 1);
-                    if (tool.key === "benchmarks") setCorpusRequest((count) => count + 1);
                   }}
                 >
                   <span>{tool.label}</span>
@@ -3220,33 +3330,10 @@ export default function App() {
         </Page>
 
         <Page id="sample-data" shown={place === "sample-data"} title="Sample data" back={<BackLink label="Tools" onBack={back} />}>
-          {guideResult?.guide ? (
-            <GuidedSample
-              result={guideResult}
-              practice={practiceResult}
-              capture={sampleCapture}
-              busy={busy}
-              progress={
-                running === "practice"
-                  ? "Running the saved test against the practice receiver."
-                  : running === "sample"
-                    ? "Importing the frozen receiver fixtures."
-                    : null
-              }
-              indicators={indicators}
-              onCreateSample={() => perform("create-sample-workspace")}
-              onOpenCase={(name: string) => {
-                if (root) void verifyCase(root, name);
-              }}
-              onRun={(trial, output) => void practise(trial, output)}
-              onCancel={cancelRunning}
-              onCapture={(output) => void importSample(output)}
-            />
-          ) : null}
           <EmptyState
             title="Synthetic demo project"
             action={
-              <button type="button" className="primary" disabled={busy} onClick={() => perform("create-sample-workspace")}>
+              <button type="button" className="primary" disabled={busy} onClick={tryDemo}>
                 Try demo
               </button>
             }
@@ -3272,8 +3359,8 @@ export default function App() {
           </section>
         </Page>
 
-        <Page id="benchmarks" shown={place === "benchmarks"} title="Benchmarks" back={<BackLink label="Tools" onBack={back} />}>
-          <PerformanceCorpus busy={busy} indicators={indicators} request={corpusRequest} />
+        <Page id="benchmarks" shown={place === "benchmarks"} title={benchmarks.title} back={<BackLink label="Tools" onBack={back} />} actions={benchmarks.actions}>
+          {root ? benchmarks.body : noProject("benchmarks")}
         </Page>
 
         <Page id="settings" shown={place === "settings"} title="Settings">
@@ -3374,24 +3461,42 @@ export default function App() {
           </Modal>
         </Page>
 
-        <Page id="help" shown={place === "help"} title="Help">
-          <HelpTopics />
-          <section className="card" aria-labelledby="privacy-help-title" style={{ marginTop: "1rem" }}>
-            <h2 id="privacy-help-title">Privacy</h2>
-            <p className="statement">{described?.privacy.statement}</p>
-            <ul className="absent plain-list">
-              {(described?.privacy.absent ?? []).map((claim) => (
-                <li key={claim}>{claim}</li>
-              ))}
-            </ul>
-            <h3>Kept on this machine</h3>
-            <ul className="kept plain-list">
-              {(described?.privacy.kept ?? []).map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-          </section>
-          {described ? <SupportGuidance support={described.support} /> : null}
+        <Page
+          id="help"
+          shown={place === "help"}
+          title="Help"
+          actions={
+            <>
+              <button type="button" onClick={() => setHelpSheet("search")}>
+                Search help
+              </button>
+              <button type="button" disabled={busy} onClick={tryDemo}>
+                Try demo
+              </button>
+              <Menu label="More help actions" items={[{ label: "Diagnostics", onSelect: () => setHelpSheet("diagnostics") }]} />
+            </>
+          }
+        >
+          <HelpTopics onOpen={openHelpArticle} />
+          <SearchHelpSheet open={helpSheet === "search"} onClose={() => setHelpSheet(null)} onOpen={openHelpArticle} />
+          <DiagnosticsSheet
+            open={helpSheet === "diagnostics"}
+            errors={[windowState === "failed" && windowReason ? windowReason : null, openNotice?.reason ?? null, demoNotice].filter((error): error is string => !!error)}
+            privacy={described?.privacy}
+            onClose={() => setHelpSheet(null)}
+            onExport={
+              root
+                ? () => {
+                    setHelpSheet(null);
+                    go("reports");
+                  }
+                : undefined
+            }
+          />
+        </Page>
+
+        <Page id="help-article" shown={place === "help-article"} title={helpArticle.title} back={<BackLink label="Help" onBack={back} />} actions={helpArticle.actions}>
+          {helpArticle.body(openHelpArticle)}
         </Page>
       </>
     ),
@@ -3403,6 +3508,11 @@ export default function App() {
         {fileSelection ? (
       <>
         {fileReader.details}
+      </>
+    ) : benchmarkSelection ? (
+      <>
+        {detailOnly ? <BackLink label="Benchmarks" onBack={benchmarks.closeDetails} /> : null}
+        {benchmarks.details}
       </>
     ) : findingShown ? (
       <>

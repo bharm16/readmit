@@ -39,6 +39,9 @@ var notPathArguments = []string{
 	// The second argument is a search query, not an entry; a query that
 	// matches nothing is a completed search.
 	"Search",
+	// A Help query is text matched against the bundled articles, never an
+	// entry; one that matches nothing is an empty search.
+	"SearchHelp",
 }
 
 // hostileEntry is one adversarial filesystem entry and whether an operation

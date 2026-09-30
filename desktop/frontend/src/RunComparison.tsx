@@ -40,10 +40,12 @@ type CompareProps = {
   onView: (view: string) => void;
   onRuns: (runs: string[]) => void;
   onOpen: (id: string) => void;
+  /** Hears every comparison the facade answered. */
+  onCompared?: ((runs: string[], answer: RunComparisonItemsResult) => void) | undefined;
 };
 
 /** Compare runs: its title, actions and body. */
-export function useRunComparison({ root, runs, view, onView, onRuns, onOpen }: CompareProps) {
+export function useRunComparison({ root, runs, view, onView, onRuns, onOpen, onCompared }: CompareProps) {
   const scope = useRef(new RequestScope());
   const context = useCallback(() => scope.current.enter(root ?? ""), [root]);
   const [result, setResult] = useState<RunComparisonItemsResult | null>(null);
@@ -56,7 +58,10 @@ export function useRunComparison({ root, runs, view, onView, onRuns, onOpen }: C
     setResult(null);
     const asked = context();
     void compareRunItems({ context: asked, runs: runs.map((id) => ({ kind: "run", id })) }).then((answer) => {
-      if (scope.current.current(answer)) setResult(answer);
+      if (scope.current.current(answer)) {
+        setResult(answer);
+        onCompared?.(runs, answer);
+      }
     });
     void listWholeCatalog({ context: asked, kind: "run", filter: {} }).then((answer) => {
       if (scope.current.current(answer)) setCandidates((answer.page?.items ?? []).filter(comparable));

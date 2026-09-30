@@ -5,10 +5,9 @@ import { VocabularyContext } from "../vocabulary";
 import { IndicatorsContext, Outcome } from "../lifecycle";
 import { Comparison } from "../Comparison";
 import { ComputerLicense } from "../ComputerLicense";
-import { HelpTopics } from "../ContextHelp";
 import { ControlledDetails } from "../ControlledDetails";
 import { EnvironmentBanner } from "../EnvironmentBanner";
-import { GuidedSample } from "../GuidedSample";
+import { HelpTopics } from "../Help";
 import { TeamAdministratorSetup, HostTasks } from "../HubAdministration";
 import { HubPanel } from "../HubPanel";
 import { IconButton } from "../IconButton";
@@ -16,8 +15,6 @@ import { MessageReader } from "../Inspector";
 import { AdministratorSetup } from "../OperationAccess";
 import { OperatorHub } from "../OperatorHub";
 import { PacketPanel } from "../PacketPanel";
-import { PerformanceCorpus } from "../PerformanceCorpus";
-import { SupportGuidance } from "../SupportGuidance";
 import { PrivacyDocuments } from "../PrivacyDocuments";
 import { PrivacyPanel } from "../PrivacyPanel";
 import { ProtectionPanel } from "../ProtectionPanel";
@@ -122,21 +119,11 @@ export const examples: Example[] = [
   e("ComputerLicense", () => (
     <ComputerLicense onAdministratorSetup={noop} />
   )),
-  e("HelpTopics", () => <HelpTopics />),
+  e("HelpTopics", () => <HelpTopics onOpen={noop} />),
   e("ControlledDetails", () => (
     <ControlledDetails summary="Details">{content}</ControlledDetails>
   )),
   e("EnvironmentBanner", () => <EnvironmentBanner />),
-  e("GuidedSample", () => (
-    <GuidedSample
-      {...common}
-      result={f.guideResult("test", 1)}
-      practice={null}
-      onCreateSample={noop}
-      onRun={noop}
-      onCancel={noop}
-    />
-  )),
   e("HostTasks", () => <HostTasks />),
   e("TeamAdministratorSetup", () => (
     <TeamAdministratorSetup status={f.defaultHubResult({ authenticated: true, connected: true })} project="cardio-study" team={f.teamResult()} teamName="Integration team" workspace={f.WORKSPACE_ROOT} onBack={noop} onRead={async () => {}} onCreateRevision={noop} />
@@ -151,10 +138,6 @@ export const examples: Example[] = [
   e("AdministratorSetup", () => <AdministratorSetup />),
   e("OperatorHub", () => <OperatorHub />),
   e("PacketPanel", () => <PacketPanel {...common} />),
-  e("PerformanceCorpus", () => <PerformanceCorpus {...common} request={1} />),
-  e("SupportGuidance", () => (
-    <SupportGuidance support={f.shellResult().shell!.support} />
-  )),
   e("PrivacyDocuments", () => (
     <PrivacyDocuments
       {...common}

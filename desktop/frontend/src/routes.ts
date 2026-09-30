@@ -39,7 +39,8 @@ export type ChildDestination =
   | "license-setup"
   | "new-test"
   | "edit-test"
-  | "similar-findings";
+  | "similar-findings"
+  | "help-article";
 
 export const CHILD_OF: Record<ChildDestination, Destination> = {
   library: "tests",
@@ -61,6 +62,7 @@ export const CHILD_OF: Record<ChildDestination, Destination> = {
   "new-test": "tests",
   "edit-test": "tests",
   "similar-findings": "cases",
+  "help-article": "help",
 };
 
 export type Place = Destination | ChildDestination;

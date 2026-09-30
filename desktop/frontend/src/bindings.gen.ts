@@ -440,6 +440,107 @@ export interface BackupSummary {
   evidence: number;
 }
 
+/** internal/desktop.BenchmarkCompletion */
+export type BenchmarkCompletion = "complete" | "incomplete";
+
+/** internal/desktop.BenchmarkDefaults */
+export interface BenchmarkDefaults {
+  generator_version: string;
+  profile_version: string;
+  max_messages: number;
+  seed: string;
+  base_time: string;
+  framings: ImportFraming[];
+  batch_boundaries: ImportBoundary[];
+  terminators: HL7Terminator[];
+  encodings: ImportEncoding[];
+  directions: BundleDirection[];
+  plan: ImportPlan;
+  batch_records: number;
+  max_batch_records: number;
+  batch_bytes: number;
+  max_batch_bytes: number;
+  window_limit: number;
+  max_window_limit: number;
+}
+
+/** internal/desktop.BenchmarkDefaultsResult */
+export interface BenchmarkDefaultsResult {
+  state: State;
+  reason?: string;
+  defaults: BenchmarkDefaults;
+}
+
+/** internal/desktop.BenchmarkInput */
+export interface BenchmarkInput {
+  id: string;
+  name: string;
+  created_at: string;
+  origin: string;
+  manifest: CorpusManifestView;
+  availability: Availability;
+}
+
+/** internal/desktop.BenchmarkInputKind */
+export type BenchmarkInputKind = "generated" | "file";
+
+/** internal/desktop.BenchmarkInputsResult */
+export interface BenchmarkInputsResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  inputs: BenchmarkInput[];
+}
+
+/** internal/desktop.BenchmarkRecord */
+export interface BenchmarkRecord {
+  id: string;
+  created_at: string;
+  input: BenchmarkSource;
+  completion: BenchmarkCompletion;
+  plan: ImportPlan;
+  bounds: CorpusBounds;
+  records: number;
+  bytes: number;
+  batches: number;
+  elapsed_milliseconds?: number;
+  peak_scan_buffer_bytes?: number;
+  sha256?: string;
+  case_bounds?: string;
+  exceeded?: string[];
+  hardware: CorpusHardware;
+}
+
+/** internal/desktop.BenchmarkRequest */
+export interface BenchmarkRequest {
+  context: RequestContext;
+  id: string;
+}
+
+/** internal/desktop.BenchmarkResult */
+export interface BenchmarkResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  result?: BenchmarkRecord;
+  availability?: Availability;
+}
+
+/** internal/desktop.BenchmarkSource */
+export interface BenchmarkSource {
+  kind: BenchmarkInputKind;
+  id?: string;
+  name: string;
+}
+
+/** internal/desktop.BenchmarksResult */
+export interface BenchmarksResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  results: BenchmarkRecord[];
+}
+
 /** internal/desktop.Build */
 export interface Build {
   version: string;
@@ -1501,6 +1602,14 @@ export interface CorpusGenerateResult {
   manifest?: CorpusManifestView;
 }
 
+/** internal/corpus.Hardware */
+export interface CorpusHardware {
+  os: string;
+  arch: string;
+  cpus: number;
+  go_version: string;
+}
+
 /** internal/desktop.CorpusManifestView */
 export interface CorpusManifestView {
   schema: string;
@@ -1897,6 +2006,48 @@ export interface DatasetValue {
   items?: DatasetValue[];
 }
 
+/** internal/desktop.DemoEvidence */
+export type DemoEvidence = "project" | "session";
+
+/** internal/desktop.DemoProgress */
+export interface DemoProgress {
+  case: string;
+  identity: string;
+  case_ref?: ItemRef;
+  target: string;
+  spec?: string;
+  test: TestDraftDocument;
+  steps: DemoStep[];
+}
+
+/** internal/desktop.DemoProgressResult */
+export interface DemoProgressResult {
+  state: State;
+  reason?: string;
+  demo?: DemoProgress;
+}
+
+/** internal/desktop.DemoStep */
+export interface DemoStep {
+  id: DemoStepID;
+  title: string;
+  evidence: DemoEvidence;
+  done: boolean;
+  entry?: string;
+  status?: string;
+  ref?: ItemRef;
+  output?: string;
+}
+
+/** internal/desktop.DemoStepID */
+export type DemoStepID =
+  | "open-messages"
+  | "create-test"
+  | "run-defective"
+  | "view-failed-check"
+  | "run-fixed"
+  | "compare";
+
 /** internal/desktop.DeriveReviewOptions */
 export interface DeriveReviewOptions {
   spec: string;
@@ -2106,6 +2257,22 @@ export interface DiagnosisWindow {
   observed_end: string | null;
   unknown_observed_times: number;
   sources: DiagnosisSourceWindow[];
+}
+
+/** internal/desktop.Diagnostics */
+export interface Diagnostics {
+  version: string;
+  go_version: string;
+  os: string;
+  arch: string;
+  operations: SupportedOperation[];
+}
+
+/** internal/desktop.DiagnosticsResult */
+export interface DiagnosticsResult {
+  state: State;
+  reason?: string;
+  diagnostics?: Diagnostics;
 }
 
 /** internal/desktop.DisclosureState */
@@ -3056,6 +3223,26 @@ export interface GatePolicyResult {
   rationale?: string;
 }
 
+/** internal/desktop.GenerateInputRequest */
+export interface GenerateInputRequest {
+  context: RequestContext;
+  name: string;
+  seed: string;
+  base_time: string;
+  generator_version: string;
+  profile_version: string;
+  messages: number;
+  plan: ImportPlan;
+}
+
+/** internal/desktop.GenerateInputResult */
+export interface GenerateInputResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  input?: BenchmarkInput;
+}
+
 /** internal/desktop.GeneratedCase */
 export interface GeneratedCase {
   case: ItemRef;
@@ -3213,6 +3400,68 @@ export interface HL7Node {
 
 /** internal/hl7.Terminator */
 export type HL7Terminator = "cr" | "lf" | "crlf";
+
+/** internal/help.Action */
+export interface HelpAction {
+  id: HelpActionID;
+  label: string;
+}
+
+/** internal/help.ActionID */
+export type HelpActionID =
+  | "start-import"
+  | "open-cases"
+  | "new-test"
+  | "add-environment"
+  | "open-reports";
+
+/** internal/help.Article */
+export interface HelpArticle {
+  id: string;
+  title: string;
+  kind: HelpKind;
+  steps: string[];
+  body: string[];
+  action?: HelpAction;
+  related: HelpLink[];
+}
+
+/** internal/desktop.HelpArticleResult */
+export interface HelpArticleResult {
+  state: State;
+  reason?: string;
+  article?: HelpArticle;
+}
+
+/** internal/help.Kind */
+export type HelpKind = "task" | "troubleshooting";
+
+/** internal/help.Link */
+export interface HelpLink {
+  id: string;
+  title: string;
+}
+
+/** internal/desktop.HelpSearchResult */
+export interface HelpSearchResult {
+  state: State;
+  reason?: string;
+  matches: HelpSummary[];
+}
+
+/** internal/help.Summary */
+export interface HelpSummary {
+  id: string;
+  title: string;
+  kind: HelpKind;
+}
+
+/** internal/desktop.HelpTopicsResult */
+export interface HelpTopicsResult {
+  state: State;
+  reason?: string;
+  topics: HelpSummary[];
+}
 
 /** internal/desktop.HexRow */
 export interface HexRow {
@@ -9578,6 +9827,27 @@ export interface SourceSummary {
   transport?: ListenerTransport;
 }
 
+/** internal/desktop.StartBenchmarkRequest */
+export interface StartBenchmarkRequest {
+  context: RequestContext;
+  input_id?: string;
+  file?: string;
+  plan?: ImportPlan;
+  batch_records?: number;
+  batch_bytes?: number;
+  window_offset?: number;
+  window_limit?: number;
+}
+
+/** internal/desktop.StartBenchmarkResult */
+export interface StartBenchmarkResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  result?: BenchmarkRecord;
+  scan?: CorpusScanView;
+}
+
 /** internal/desktop.State */
 export type State = "empty" | "busy" | "cancelled" | "failed" | "permission_denied" | "completed";
 
@@ -10163,6 +10433,14 @@ export interface SupportSummary {
   identity: string;
   max_bytes: number;
   within_policy: boolean;
+}
+
+/** internal/desktop.SupportedOperation */
+export interface SupportedOperation {
+  method: string;
+  name: string;
+  interruptible: boolean;
+  prerequisites: string[];
 }
 
 /** internal/desktop.SynthGenerateRequest */
@@ -11145,6 +11423,7 @@ export interface Facade {
   BackupLocation(): Promise<ProjectLocationResult>;
   BackupProject(request: StorageBackupRequest): Promise<StorageBackupResult>;
   BackupScope(request: StorageBackupRequest): Promise<StorageScopeResult>;
+  BenchmarkDefaults(): Promise<BenchmarkDefaultsResult>;
   BindCaptureObservation(request: ObservationCaptureBindRequest): Promise<ObservationSourceResult>;
   BuildIndex(request: BuildIndexRequest): Promise<BuildIndexResult>;
   BuildReproducer(request: ReproducerRequest): Promise<ReproducerResult>;
@@ -11206,10 +11485,12 @@ export interface Facade {
   CreateScenarioCase(request: ScenarioCaseRequest): Promise<ScenarioCaseResult>;
   DeactivateLicense(): Promise<InstalledLicenseResult>;
   DecideCorrelation(request: CorrelationReviewRequest): Promise<CorrelationReviewResult>;
+  DemoProgress(request: RequestContext): Promise<DemoProgressResult>;
   DeriveExportReview(request: PrivacyReviewRequest): Promise<PrivacyReviewResult>;
   DescribeIndex(workspace: string, caseName: string, indexName: string): Promise<IndexResult>;
   DescribeSearchSettings(workspace: string, caseName: string, identity: string): Promise<SearchSettingsResult>;
   DiagnoseHub(): Promise<HubDiagnosisResult>;
+  Diagnostics(): Promise<DiagnosticsResult>;
   DiscardEditorDraft(id: string): Promise<EditorDraftsResult>;
   DiscardIncompleteSave(request: IncompleteSaveRequest): Promise<CatalogResult>;
   DiscardProtectedPackage(request: ProtectionDiscardRequest): Promise<ProtectionDiscardResult>;
@@ -11249,12 +11530,15 @@ export interface Facade {
   FinishCapture(): Promise<CaptureProgressResult>;
   ForgetProject(id: string): Promise<ProjectForgetResult>;
   GenerateCorpus(request: CorpusGenerateRequest): Promise<CorpusGenerateResult>;
+  GenerateInput(request: GenerateInputRequest): Promise<GenerateInputResult>;
   GenerateScenarioCases(request: ScenarioCasesRequest): Promise<ScenarioCasesResult>;
   GenerateSynth(request: SynthGenerateRequest): Promise<SynthGenerateResult>;
   GenerateSyntheticPacket(request: SyntheticPacketRequest): Promise<SyntheticPacketResult>;
   GetIsolationEditor(request: IsolationEditorRequest): Promise<IsolationEditorResult>;
   GroupDiagnoses(request: GroupDiagnosesRequest): Promise<DiagnosisGroupsResult>;
   Guide(workspace: string): Promise<GuideResult>;
+  HelpArticle(id: string): Promise<HelpArticleResult>;
+  HelpTopics(): Promise<HelpTopicsResult>;
   HubStatus(): Promise<HubResult>;
   ImportAnalysisSettings(request: RequestContext): Promise<ItemDraftResult>;
   ImportCase(request: ImportCaseRequest): Promise<ImportCaseResult>;
@@ -11280,6 +11564,8 @@ export interface Facade {
   ListAnalysisProfiles(request: ItemRequest): Promise<AnalysisProfilesResult>;
   ListAttachments(request: ItemRequest): Promise<AttachmentsResult>;
   ListBackups(): Promise<StorageBackupsResult>;
+  ListBenchmarkInputs(request: RequestContext): Promise<BenchmarkInputsResult>;
+  ListBenchmarks(request: RequestContext): Promise<BenchmarksResult>;
   ListCaptureSessions(request: RequestContext): Promise<CaptureSessionsResult>;
   ListCatalog(query: CatalogQuery): Promise<CatalogResult>;
   ListConnections(request: RequestContext): Promise<ConnectionsResult>;
@@ -11305,9 +11591,11 @@ export interface Facade {
   ObservationFields(request: ObservationFieldsRequest): Promise<ObservationFieldsResult>;
   ObservationHistory(request: ItemRequest): Promise<ObservationHistoryResult>;
   ObservationSupport(): Promise<ObservationSupportResult>;
+  OpenBenchmark(request: BenchmarkRequest): Promise<BenchmarkResult>;
   OpenCase(workspace: string, name: string): Promise<CaseResult>;
   OpenCaseFindings(request: FindingsRequest): Promise<FindingsResult>;
   OpenCorrelationReview(request: CorrelationReviewRequest): Promise<CorrelationReviewResult>;
+  OpenDemoProject(): Promise<ProjectOpenResult>;
   OpenDiagnoseConfig(workspace: string, entry: string): Promise<DiagnoseConfigResult>;
   OpenDiagnosisGroupsReport(workspace: string, entry: string, offset: number): Promise<DiagnosisGroupsResult>;
   OpenDiagnosisReport(workspace: string, entry: string, offset: number): Promise<DiagnosisResult>;
@@ -11455,6 +11743,7 @@ export interface Facade {
   ScanSecrets(request: SecretScanRequest): Promise<SecretScanResult>;
   ScenarioCasesProgress(): Promise<ScenarioCasesProgressResult>;
   Search(path: string, query: string): Promise<SearchResult>;
+  SearchHelp(query: string): Promise<HelpSearchResult>;
   SearchHubNotifications(request: HubReviewQueryRequest): Promise<HubReviewsResult>;
   SearchHubReviews(request: HubReviewQueryRequest): Promise<HubReviewsResult>;
   SelectFilter(name: string): Promise<FiltersResult>;
@@ -11467,6 +11756,7 @@ export interface Facade {
   Shell(): Promise<ShellResult>;
   ShowRunnerAdmissions(): Promise<RunnerStatusResult>;
   StagePastedContent(request: PastedSourceRequest): Promise<PastedSourceResult>;
+  StartBenchmark(request: StartBenchmarkRequest): Promise<StartBenchmarkResult>;
   StartCapture(request: CaptureRequest): Promise<CaptureSessionResult>;
   StartDurableRun(request: DurableRunRequest): Promise<DurableRunResult>;
   StartHubAuth(): Promise<HubAuthUrlResult>;

@@ -53,7 +53,11 @@ const messageType = (row: FileMessage) => typeLabel({ kind: "message", code: row
  * reader as a case's messages, with no project. The file is read, never
  * imported or changed. The page's header, body and details pane are owned by
  * the window; this hook supplies each. */
-export function useFileReader({ busy, request }: { busy: boolean; request: number }) {
+export function useFileReader({ busy, request, onCancelled }: { busy: boolean; request: number; onCancelled?: () => void }) {
+  // A chooser cancelled before any file was open leaves the person where they
+  // chose Inspect file.
+  const cancelled = useRef(onCancelled);
+  cancelled.current = onCancelled;
   const [file, setFile] = useState("");
   const [framing, setFraming] = useState<Framing>("auto");
   const [terminator, setTerminator] = useState<Terminator>("auto");
@@ -130,9 +134,14 @@ export function useFileReader({ busy, request }: { busy: boolean; request: numbe
         setRevealed(false);
       } else if (answer.state !== "cancelled") {
         setChosen(answer.reason ?? "The file could not be opened.");
+      } else if (!openFile.current) {
+        cancelled.current?.();
       }
     });
   }, [run]);
+
+  const openFile = useRef(file);
+  openFile.current = file;
 
   // A file named elsewhere, such as a project's own file, is read without
   // asking the host for one.
