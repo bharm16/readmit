@@ -284,6 +284,7 @@ so a derived case can never declare a transformation no code here performs:
 | --- | --- |
 | `readmit-redact/v1` | [derived testing evidence and export review](redact.md) |
 | `readmit-reproducer/v1` | [a reproducer extracted and edited from a case](reproducer.md) |
+| `readmit-transform/v1` | [a variant's sequence changes written over what its reproducer plan includes](transform.md#writing-a-variants-sequence) |
 
 Sources have no `path`
 member; provenance has no original import/start time, receiver session, generator,

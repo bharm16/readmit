@@ -13,6 +13,7 @@ import (
 	"github.com/bharm16/readmit/internal/catalog"
 	"github.com/bharm16/readmit/internal/correlate"
 	"github.com/bharm16/readmit/internal/diagnose"
+	"github.com/bharm16/readmit/internal/diff"
 	"github.com/bharm16/readmit/internal/fixturereset"
 	"github.com/bharm16/readmit/internal/importer"
 	"github.com/bharm16/readmit/internal/observesource"
@@ -31,10 +32,10 @@ import (
 
 // savedKinds are the kinds this release saves whole. Each one's editor lives
 // with its screen; the guarantees are these.
-var savedKinds = []ItemKind{EnvironmentItem, TestItem, ObservationItem, CaseItem, ProjectItem, AnalysisSettingsItem, FindingReviewItem, VariantItem, ProfileItem, CheckGroupItem, ScenarioItem, LinkRulesItem, CoverageItem, MappingItem, SourceItem, SuiteItem, ReportItem}
+var savedKinds = []ItemKind{EnvironmentItem, TestItem, ObservationItem, CaseItem, ProjectItem, AnalysisSettingsItem, FindingReviewItem, VariantItem, ProfileItem, CheckGroupItem, ScenarioItem, LinkRulesItem, CoverageItem, MappingItem, SourceItem, SuiteItem, ReportItem, NormalizationPolicyItem}
 
 // savedKindsRule is the refusal of a kind this release does not save.
-const savedKindsRule = "this release saves environments, tests, observations, case details, project settings, analysis settings, finding reviews, variants, profiles, check groups, scenarios, link rules, coverage, mapping presets, capture sources, suites and reports whole"
+const savedKindsRule = "this release saves environments, tests, observations, case details, project settings, analysis settings, finding reviews, variants, profiles, check groups, scenarios, link rules, coverage, mapping presets, capture sources, suites, reports and normalization policies whole"
 
 // documentKinds are the saved kinds whose state the project document holds
 // rather than a revision the catalog publishes.
@@ -97,6 +98,9 @@ type ItemDraft struct {
 	Source  *CaptureSourceDraft `json:"source,omitzero"`
 	// Suite is a whole suite, published as one version.
 	Suite *SuiteDraft `json:"suite,omitzero"`
+	// NormalizationPolicy is a named normalization policy, saved as the
+	// readmit-normalization-policy/v1 document `readmit normalize` reads.
+	NormalizationPolicy *diff.Policy `json:"normalization_policy,omitzero"`
 	// Report is a report made from runs: created with its retained packet,
 	// and edited as its title and notes.
 	Report *ReportDraft `json:"report,omitzero"`
@@ -249,87 +253,97 @@ func (r *SaveItemResult) refuse(state State, reason string) {
 // the sample walks through without a license.
 func (a *App) SaveItem(request SaveItemRequest) SaveItemResult {
 	return run(a, false, false, func(ctx context.Context) SaveItemResult {
-		result := SaveItemResult{Context: request.Context, Problems: []FieldProblem{}}
-		if !slices.Contains(savedKinds, request.Kind) {
-			result.refuse(Failed, savedKindsRule)
+		return a.saveItem(ctx, request)
+	})
+}
+
+// saveItem is one save inside a slot its caller already holds.
+func (a *App) saveItem(ctx context.Context, request SaveItemRequest) SaveItemResult {
+	result := SaveItemResult{Context: request.Context, Problems: []FieldProblem{}}
+	if !slices.Contains(savedKinds, request.Kind) {
+		result.refuse(Failed, savedKindsRule)
+		return result
+	}
+	if !a.demoSave(request) {
+		if err := a.admitAuthor(); err != nil {
+			result.refuse(PermissionDenied, err.Error())
 			return result
 		}
-		if !a.demoSave(request) {
-			if err := a.admitAuthor(); err != nil {
-				result.refuse(PermissionDenied, err.Error())
-				return result
-			}
-		}
-		if slices.Contains(documentKinds, request.Kind) {
-			return a.saveDocumentItem(ctx, request)
-		}
-		// Recording the catalog first settles interrupted saves and records
-		// the object this save edits, if it was only discovered so far.
-		loaded, declined := a.loadCatalog(ctx, request.Context, true)
-		if loaded == nil {
-			result.refuse(declined.state, declined.reason)
-			return result
-		}
-		root, store := loaded.root, loaded.store
-		scope := draftScope{root: root, loaded: loaded, item: request.Item, intent: request.IntentID}
-		staged, projection, problems := validateItemDraft(scope, request.Kind, request.Draft)
-		if staged == nil {
+	}
+	if slices.Contains(documentKinds, request.Kind) {
+		return a.saveDocumentItem(ctx, request)
+	}
+	// Recording the catalog first settles interrupted saves and records
+	// the object this save edits, if it was only discovered so far.
+	loaded, declined := a.loadCatalog(ctx, request.Context, true)
+	if loaded == nil {
+		result.refuse(declined.state, declined.reason)
+		return result
+	}
+	root, store := loaded.root, loaded.store
+	scope := draftScope{root: root, loaded: loaded, item: request.Item, intent: request.IntentID}
+	staged, projection, problems := validateItemDraft(scope, request.Kind, request.Draft)
+	if staged == nil {
+		result.State, result.Outcome, result.Problems = Failed, InvalidOutcome, problems
+		result.Reason = "the draft has problems to fix; nothing was saved"
+		return result
+	}
+	var entry *catalog.Entry
+	if request.Kind == VariantItem {
+		// The derived case is published beside the plans it was built by.
+		resolved, problems := resolveVariant(scope, *projection.Variant, false)
+		if problems != nil {
 			result.State, result.Outcome, result.Problems = Failed, InvalidOutcome, problems
 			result.Reason = "the draft has problems to fix; nothing was saved"
 			return result
 		}
-		var entry *catalog.Entry
-		if request.Kind == VariantItem {
-			// The derived case is published beside the plan it was built by.
-			source, _ := resolveVariantSource(scope, projection.Variant.Source)
-			entry = variantEntry(source, projection.Variant.Plan)
-		}
-		if request.Kind == ReportItem && request.Item == "" {
-			// A new report is published with the retained packet of its runs.
-			built, problem := reportEntry(ctx, scope, projection.Report)
-			if problem != nil {
-				result.State, result.Outcome = Failed, InvalidOutcome
-				result.Problems = []FieldProblem{*problem}
-				result.Reason = "the draft has problems to fix; nothing was saved"
-				return result
-			}
-			entry = built
-		}
-		saved, err := store.Save(catalog.Draft{
-			Kind: string(request.Kind), ItemID: request.Item, Name: projection.Name, Base: request.BaseRevision,
-			Intent: request.IntentID, Digest: submissionDigest(request, staged), Author: a.reviewerName(), Members: staged, Entry: entry,
-		}, verifierFor(request.Kind), catalog.Options{Now: a.now, Fault: a.saveFault, Associate: associateEntry(root)})
-		var conflict *catalog.Conflict
-		switch {
-		case errors.As(err, &conflict):
-			result.State, result.Outcome, result.CurrentRevision = Failed, ConflictOutcome, conflict.Current
-			result.Reason = "the object changed since this edit began; nothing was saved and the draft is kept"
-			return result
-		case errors.Is(err, catalog.ErrIntentReused):
-			result.refuse(Failed, "this submission was already used for different content; nothing was saved")
-			return result
-		case errors.Is(err, catalog.ErrTooManyPending):
-			result.refuse(Failed, "this project holds as many interrupted saves as it keeps; retry or discard one first. Nothing was saved")
-			return result
-		case errors.Is(err, catalog.ErrNoItem):
-			result.refuse(Failed, "the project holds no such object")
-			return result
-		case err != nil:
-			result.refuse(Failed, "the save did not complete; the previous revision is still current")
-			if store.Pending(request.IntentID) {
-				result.Operation = request.IntentID
-			}
+		entry = variantEntry(resolved)
+	}
+	if request.Kind == ReportItem && request.Item == "" {
+		// A new report is published with the retained packet of its runs.
+		built, problem := reportEntry(ctx, scope, projection.Report)
+		if problem != nil {
+			result.State, result.Outcome = Failed, InvalidOutcome
+			result.Problems = []FieldProblem{*problem}
+			result.Reason = "the draft has problems to fix; nothing was saved"
 			return result
 		}
-		result.State, result.Outcome, result.Replayed, result.Projection = Completed, SavedOutcome, saved.Replayed, projection
-		result.Saved = &ItemRef{Kind: request.Kind, ID: saved.Item.ID, Revision: revisionLabel(saved.Revision)}
-		if request.Kind == ProfileItem && slices.ContainsFunc(staged, func(member catalog.Staged) bool { return member.Role == packRole }) {
-			// The profile carries its pack: the pin names the profile itself.
-			self := *result.Saved
-			projection.Profile.Pack = &self
+		entry = built
+	}
+	saved, err := store.Save(catalog.Draft{
+		Kind: string(request.Kind), ItemID: request.Item, Name: projection.Name, Base: request.BaseRevision,
+		Intent: request.IntentID, Digest: submissionDigest(request, staged), Author: a.reviewerName(), Members: staged, Entry: entry,
+	}, verifierFor(request.Kind), catalog.Options{Now: a.now, Fault: a.saveFault, Associate: associateEntry(root)})
+	var conflict *catalog.Conflict
+	switch {
+	case errors.As(err, &conflict):
+		result.State, result.Outcome, result.CurrentRevision = Failed, ConflictOutcome, conflict.Current
+		result.Reason = "the object changed since this edit began; nothing was saved and the draft is kept"
+		return result
+	case errors.Is(err, catalog.ErrIntentReused):
+		result.refuse(Failed, "this submission was already used for different content; nothing was saved")
+		return result
+	case errors.Is(err, catalog.ErrTooManyPending):
+		result.refuse(Failed, "this project holds as many interrupted saves as it keeps; retry or discard one first. Nothing was saved")
+		return result
+	case errors.Is(err, catalog.ErrNoItem):
+		result.refuse(Failed, "the project holds no such object")
+		return result
+	case err != nil:
+		result.refuse(Failed, "the save did not complete; the previous revision is still current")
+		if store.Pending(request.IntentID) {
+			result.Operation = request.IntentID
 		}
 		return result
-	})
+	}
+	result.State, result.Outcome, result.Replayed, result.Projection = Completed, SavedOutcome, saved.Replayed, projection
+	result.Saved = &ItemRef{Kind: request.Kind, ID: saved.Item.ID, Revision: revisionLabel(saved.Revision)}
+	if request.Kind == ProfileItem && slices.ContainsFunc(staged, func(member catalog.Staged) bool { return member.Role == packRole }) {
+		// The profile carries its pack: the pin names the profile itself.
+		self := *result.Saved
+		projection.Profile.Pack = &self
+	}
+	return result
 }
 
 // IncompleteSaveRequest names one save an interruption left unpublished.
@@ -535,6 +549,12 @@ func validateItemDraft(scope draftScope, kind ItemKind, draft ItemDraft) ([]cata
 		if len(found) == 0 {
 			staged, normalized.LinkRules = members, rules
 		}
+	case NormalizationPolicyItem:
+		members, policy, found := validateNormalizationPolicyDraft(draft)
+		problems = append(problems, found...)
+		if len(found) == 0 {
+			staged, normalized.NormalizationPolicy = members, policy
+		}
 	case CoverageItem:
 		members, coverage, found := validateCoverageDraft(scope, draft)
 		problems = append(problems, found...)
@@ -665,6 +685,9 @@ func verifierFor(kind ItemKind) catalog.Verifier {
 			return err
 		case CoverageItem:
 			_, err := readCoverageFile(files[string(CoverageItem)])
+			return err
+		case NormalizationPolicyItem:
+			_, err := readPolicyFile(files[string(NormalizationPolicyItem)])
 			return err
 		case LinkReviewItem:
 			_, err := readReviewFile(files[string(LinkReviewItem)])

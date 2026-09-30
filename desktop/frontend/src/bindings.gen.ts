@@ -51,6 +51,7 @@ export type ActionID =
   | "environment.isolation.setup"
   | "environment.isolation.reconcile"
   | "environment.isolation.cleanup"
+  | "run.minimize"
   | "report.export"
   | "report.review"
   | "run.test"
@@ -95,6 +96,7 @@ export interface ActionReview {
   team?: TeamActionReview;
   report_export?: ReportExportReview;
   report_review?: ReportReviewView;
+  minimize?: MinimizeReview;
 }
 
 /** internal/desktop.ActionReviewResult */
@@ -826,6 +828,69 @@ export interface CaptureSourceTypeChoice {
   available: boolean;
 }
 
+/** internal/desktop.CaseComparison */
+export interface CaseComparison {
+  current: ComparisonSide;
+  other: ComparisonSide;
+  keys: string[];
+  fields: string[];
+  alignment: string;
+  policy?: ItemRef;
+  policy_name?: string;
+  rules: NormalizationRuleReport[];
+  summary: ComparisonSummary;
+  suppressed: number;
+  original: boolean;
+  revealed: boolean;
+  rows: CaseComparisonRow[];
+  offset: number;
+  limit: number;
+  total: number;
+  unsupported: NormalizationUnsupported[];
+  lineage: VariantLineage[];
+}
+
+/** internal/desktop.CaseComparisonRequest */
+export interface CaseComparisonRequest {
+  context: RequestContext;
+  current: ItemRef;
+  other: ItemRef;
+  keys: string[];
+  fields: string[];
+  policy?: ItemRef;
+  original: boolean;
+  reveal: boolean;
+  offset: number;
+  limit: number;
+}
+
+/** internal/desktop.CaseComparisonResult */
+export interface CaseComparisonResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  comparison?: CaseComparison;
+}
+
+/** internal/desktop.CaseComparisonRow */
+export interface CaseComparisonRow {
+  position: number;
+  kind: RowKind;
+  earlier?: TestMessage;
+  later?: TestMessage;
+  field?: string;
+  name?: string;
+  change: string;
+  earlier_state?: FieldState;
+  later_state?: FieldState;
+  earlier_value?: string;
+  later_value?: string;
+  outcome?: string;
+  rule?: string;
+  reason?: string;
+  group?: number;
+}
+
 /** internal/desktop.CaseDraft */
 export interface CaseDraft {
   name: string;
@@ -1382,6 +1447,13 @@ export interface ComparisonRow {
   segments?: NormalizationSegmentChange[];
 }
 
+/** internal/desktop.ComparisonSide */
+export interface ComparisonSide {
+  ref: ItemRef;
+  name: string;
+  messages: number;
+}
+
 /** internal/diff.Summary */
 export interface ComparisonSummary {
   paired: number;
@@ -1571,6 +1643,7 @@ export type Consent =
   | "scan"
   | "derive"
   | "upload"
+  | "minimize"
   | "restore"
   | "delete"
   | "copy"
@@ -4640,6 +4713,7 @@ export interface ItemDraft {
   mapping?: MappingRecipe;
   source?: CaptureSourceDraft;
   suite?: SuiteDraft;
+  normalization_policy?: NormalizationPolicy;
   report?: ReportDraft;
 }
 
@@ -4690,6 +4764,7 @@ export type ItemKind =
   | "attachment"
   | "mapping"
   | "source"
+  | "normalization-policy"
   | "report-review"
   | "suite-approval";
 
@@ -4751,6 +4826,7 @@ export interface ItemSummary {
   link_review?: LinkReviewSummary;
   mapping?: MappingSummary;
   source?: SourceSummary;
+  normalization_policy?: NormalizationPolicySummary;
 }
 
 /** internal/desktop.Kind */
@@ -5338,6 +5414,97 @@ export interface MigrationPreviewResult {
   guidance?: string;
 }
 
+/** internal/desktop.MinimizeOptions */
+export interface MinimizeOptions {
+  checks: string[];
+  grouping: string;
+  rules?: ItemRef;
+  trials: number;
+  confirmations: number;
+}
+
+/** internal/desktop.MinimizeOutcome */
+export interface MinimizeOutcome {
+  outcome: ReductionOutcome;
+  reason: ReductionReason;
+  minimality: ReductionMinimality;
+  original: TestMessage[];
+  retained: TestMessage[];
+  groups: ReductionGroup[];
+  trials: ReductionTrial[];
+  budget: number;
+  output?: string;
+  variant?: ItemRef;
+  variant_refusal?: string;
+}
+
+/** internal/desktop.MinimizeProgress */
+export interface MinimizeProgress {
+  operation: string;
+  groups: ReductionGroup[];
+  trials: ReductionTrial[];
+  current?: ReductionTrial;
+  budget: number;
+  messages: number;
+}
+
+/** internal/desktop.MinimizeProgressResult */
+export interface MinimizeProgressResult {
+  state: State;
+  progress?: MinimizeProgress;
+}
+
+/** internal/desktop.MinimizeReview */
+export interface MinimizeReview {
+  run: ItemRef;
+  test?: ItemRef;
+  test_name: string;
+  version?: string;
+  case?: ItemRef;
+  case_name?: string;
+  checks: TestExpectation[];
+  messages: TestMessage[];
+  grouping: string;
+  rules?: ItemRef;
+  rules_name?: string;
+  groups: number;
+  pinned: number;
+  trials: number;
+  confirmations: number;
+  environment?: ItemRef;
+  environment_name?: string;
+  address?: string;
+  resets: ResetReviewAction[];
+  unsupported: ReductionUnsupported[];
+  refusal?: RunRefusal;
+}
+
+/** internal/desktop.MinimizeSetup */
+export interface MinimizeSetup {
+  run: ItemRef;
+  run_name: string;
+  eligible: boolean;
+  refusal?: string;
+  test?: ItemRef;
+  version?: string;
+  case?: ItemRef;
+  failed: TestExpectation[];
+  messages: TestMessage[];
+  environment?: ItemRef;
+  environment_name?: string;
+  max_trials: number;
+  max_confirmations: number;
+  groupings: string[];
+}
+
+/** internal/desktop.MinimizeSetupResult */
+export interface MinimizeSetupResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  setup?: MinimizeSetup;
+}
+
 /** internal/desktop.NewProjectRequest */
 export interface NewProjectRequest {
   name: string;
@@ -5412,6 +5579,11 @@ export interface NormalizationPolicyResult {
   output?: string;
   sha256?: string;
   policy?: NormalizationPolicy;
+}
+
+/** internal/desktop.NormalizationPolicySummary */
+export interface NormalizationPolicySummary {
+  rules: number;
 }
 
 /** internal/diff.Reference */
@@ -6120,6 +6292,7 @@ export interface PrepareActionRequest {
   run?: RunActionOptions;
   team?: TeamActionOptions;
   report_export?: ReportExportOptions;
+  minimize?: MinimizeOptions;
 }
 
 /** internal/desktop.PreparedCandidate */
@@ -8096,6 +8269,7 @@ export interface ReviewedActionResult {
   run?: ItemRef;
   team?: TeamActionOutcome;
   report_export?: ReportExportOutcome;
+  minimize?: MinimizeOutcome;
 }
 
 /** internal/desktop.ReviewedOutcome */
@@ -11337,10 +11511,104 @@ export interface UpgradeStagedPackage {
 /** internal/upgrade.Staging */
 export type UpgradeStaging = "intact" | "altered" | "absent";
 
+/** internal/desktop.VariantChange */
+export interface VariantChange {
+  operator: string;
+  occurrence: string;
+  entry?: string;
+  selector: string;
+  rule?: string;
+  before: FieldState;
+  after: FieldState;
+  before_value?: string;
+  after_value?: string;
+}
+
 /** internal/desktop.VariantDraft */
 export interface VariantDraft {
   source: ItemRef;
   plan: ReproducerPlan;
+  transform?: VariantTransform;
+}
+
+/** internal/desktop.VariantEntry */
+export interface VariantEntry {
+  entry?: string;
+  occurrence: string;
+  position: number;
+  copy: boolean;
+}
+
+/** internal/desktop.VariantLineage */
+export interface VariantLineage {
+  variant: ItemRef;
+  variant_name: string;
+  source?: ItemRef;
+  source_name?: string;
+  operation?: string;
+  included: VariantMessage[];
+  steps: VariantPlanStep[];
+  reason?: string;
+}
+
+/** internal/desktop.VariantMessage */
+export interface VariantMessage {
+  message: TestMessage;
+  position: number;
+  included: boolean;
+  reason?: string;
+  required_by?: string;
+  unresolved: string[];
+}
+
+/** internal/desktop.VariantNote */
+export interface VariantNote {
+  code: string;
+  rule?: string;
+  occurrences: string[];
+  detail: string;
+}
+
+/** internal/desktop.VariantPlanStep */
+export interface VariantPlanStep {
+  operator: string;
+  message?: TestMessage;
+  selector?: string;
+  identity: string[];
+  rule?: string;
+  shift?: string;
+  position?: number;
+}
+
+/** internal/desktop.VariantRelation */
+export interface VariantRelation {
+  rule: string;
+  operator: CorrelationOperator;
+  occurrences: string[];
+  preserved: boolean;
+  reason?: string;
+}
+
+/** internal/desktop.VariantRequest */
+export interface VariantRequest {
+  context: RequestContext;
+  draft: VariantDraft;
+  reveal: boolean;
+}
+
+/** internal/desktop.VariantResult */
+export interface VariantResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  problems: FieldProblem[];
+  variant?: VariantView;
+}
+
+/** internal/desktop.VariantSequenceStep */
+export interface VariantSequenceStep {
+  step: TransformStep;
+  occurrence?: string;
 }
 
 /** internal/desktop.VariantSummary */
@@ -11349,6 +11617,26 @@ export interface VariantSummary {
   parent: ItemRef | null;
   operation?: string;
   entry?: string;
+}
+
+/** internal/desktop.VariantTransform */
+export interface VariantTransform {
+  rules?: ItemRef;
+  profile?: ItemRef;
+  steps: VariantSequenceStep[];
+}
+
+/** internal/desktop.VariantView */
+export interface VariantView {
+  messages: VariantMessage[];
+  sequence: VariantEntry[];
+  changes: VariantChange[];
+  relations: VariantRelation[];
+  profile: TransformCombination[];
+  notes: VariantNote[];
+  blocking: VariantNote[];
+  rules_name?: string;
+  revealed: boolean;
 }
 
 /** internal/desktop.View */
@@ -11473,6 +11761,7 @@ export interface Facade {
   CollectionProgress(): Promise<CollectionProgressResult>;
   CommercialStatus(): Promise<CommercialStatusResult>;
   Compare(request: CompareRequest): Promise<CompareResult>;
+  CompareCases(request: CaseComparisonRequest): Promise<CaseComparisonResult>;
   CompareProfileVersions(request: ProfileVersionsRequest): Promise<ProfileComparisonResult>;
   CompareReproducers(request: ReproducerComparisonRequest): Promise<ReproducerComparisonResult>;
   CompareRunItems(request: RunComparisonItemsRequest): Promise<RunComparisonItemsResult>;
@@ -11590,6 +11879,8 @@ export interface Facade {
   MessageFields(request: MessageFieldsRequest): Promise<MessageFieldsResult>;
   MetadataPacks(request: RequestContext): Promise<MetadataPacksResult>;
   MigrateProjectDocument(path: string): Promise<ProjectOverviewResult>;
+  MinimizeProgress(): Promise<MinimizeProgressResult>;
+  MinimizeSetup(request: RunRequest): Promise<MinimizeSetupResult>;
   NormalizeCompare(request: NormalizeRequest): Promise<NormalizeResult>;
   ObservationFields(request: ObservationFieldsRequest): Promise<ObservationFieldsResult>;
   ObservationHistory(request: ItemRequest): Promise<ObservationHistoryResult>;
@@ -11691,6 +11982,7 @@ export interface Facade {
   ResolveLicenseClock(): Promise<InstalledLicenseResult>;
   ResolveOperationClock(): Promise<OperationResult>;
   ResolveProfileDraft(request: DraftRequest): Promise<ProfileResolutionResult>;
+  ResolveVariant(request: VariantRequest): Promise<VariantResult>;
   RestoreProjectBackup(request: BackupRestoreRequest): Promise<BackupResult>;
   ResumeDurableRun(request: ResumeRunRequest): Promise<ResumeRunResult>;
   RetireProtectionControl(workspace: string, entry: string, name: string): Promise<ProtectionResult>;

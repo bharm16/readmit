@@ -225,8 +225,8 @@ tolerance and is refused whole.
 - It does not produce a verdict, and a comparison with no retained differences
   is not a pass. [`readmit test`](test-runner.md) decides results, and
   [`readmit drift`](drift.md) answers which of the four causes moved.
-- It does not apply a policy to the raw comparison in
-  [the desktop shell](desktop.md). That comparison applies no ignore or
-  normalization rule at all, so nothing it shows is suppressed before it is
-  shown; the window's separate preview reads the comparison under a declared
-  policy through this same engine, and lists what the policy hid beside it.
+- It does not change the raw comparison in
+  [the desktop shell](desktop.md#comparing-two-cases). A case comparison read
+  under a named policy runs this same engine and leaves out only what the
+  policy ignores, counting it; Original differences shows every raw difference
+  again beside what the policy did about it.

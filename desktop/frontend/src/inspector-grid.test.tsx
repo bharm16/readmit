@@ -626,28 +626,28 @@ test("every part of a message is reached from the keyboard, and Raw and Hex stay
   for (const call of facade.callsTo("InspectOccurrence")) expect(call.args[0]).toMatchObject({ occurrence: GRID_OCCURRENCE });
 });
 
-test("Create variant from checked messages opens the reproducer with exactly them selected", async () => {
+test("Create variant from checked messages opens the variant editor with exactly them included", async () => {
   const user = userEvent.setup();
   const { facade } = await renderApp({
-    EditReproducer: (request) => ({
-      state: "completed",
-      reproducer: { plan: { ...request.plan, schema: "readmit-reproducer-plan/v1", case: CASE_ENTRY, steps: [...request.plan.steps, request.step] }, resolution: null, output: "" } as never,
-    }),
+    MessageFields: () => ({ state: "completed", fields: [], complete: true }),
+    ResolveVariant: (request) => ({ state: "completed", context: request.context, problems: [], variant: { messages: [], sequence: [], changes: [], relations: [], profile: [], notes: [], blocking: [], revealed: false } }),
   });
   await openCase(facade, user, [messageRow(GRID_OCCURRENCE), messageRow(NEXT_OCCURRENCE)]);
   for (const id of [GRID_OCCURRENCE, NEXT_OCCURRENCE]) {
     await user.click(within(await findMessageRow(id)).getByRole("checkbox"));
   }
   await user.click(screen.getByRole("button", { name: "Create variant" }));
-  await waitFor(() => expect(facade.callsTo("EditReproducer")).toHaveLength(2));
-  expect(facade.callsTo("EditReproducer").map((call) => (call.args[0] as { step: { occurrence: string } }).step)).toEqual([
+  expect(await screen.findByRole("heading", { name: "Case variant" })).toBeTruthy();
+  await waitFor(() => expect(facade.callsTo("ResolveVariant").length).toBeGreaterThan(0));
+  const resolved = facade.callsTo("ResolveVariant")[0]!.args[0] as { draft: { plan: { steps: unknown[] } } };
+  // A new plan holding exactly the chosen messages, and nothing kept as a
+  // draft until the person edits it.
+  expect(resolved.draft.plan.steps).toEqual([
     { operator: "select-occurrence/v1", occurrence: GRID_OCCURRENCE },
     { operator: "select-occurrence/v1", occurrence: NEXT_OCCURRENCE },
   ]);
-  // A new plan, not the steps of an earlier draft, and nothing kept as a draft yet.
-  expect((facade.callsTo("EditReproducer")[0]!.args[0] as { plan: { steps: unknown[] } }).plan.steps).toEqual([]);
   expect(facade.callsTo("SaveEditorDraft")).toHaveLength(0);
-  expect(await screen.findByRole("region", { name: "Reproducer editor" })).toBeTruthy();
+  expect(facade.callsTo("EditReproducer")).toHaveLength(0);
 });
 
 test("Go to field validates the path against the selected message and keeps it when it is not there", async () => {

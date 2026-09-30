@@ -388,3 +388,80 @@ export const RETENTION_CHANGES: DisplayMap<RetentionChange> = {
   applied: "Applied",
   failed: "Not changed",
 };
+
+/** The changes a variant makes, by the operator that makes each (#558). */
+export const VARIANT_CHANGES: Record<string, string> = {
+  "set-field/v1": "Replace value",
+  "clear-field/v1": "Clear field",
+  "rebase-identifiers/v1": "Rebase identifiers",
+  "shift-dates/v1": "Shift dates",
+  "reorder-occurrence/v1": "Move entry",
+  "duplicate-occurrence/v1": "Duplicate entry",
+  "drop-occurrence/v1": "Exclude entry",
+};
+
+/** Why a variant includes a message, and what it could not settle about one. */
+export const VARIANT_REASONS: Record<string, string> = {
+  selected: "Selected",
+  acknowledgement: "Linked ACK",
+  "prior-identity": "Earlier message, same identity",
+  "ambiguous-acknowledgement": "ACK matches more than one message",
+  "unmatched-acknowledgement": "ACK names no message in this case",
+  "unacknowledged-message": "No ACK in this case",
+  "no-declared-identity": "Declares none of the identity fields",
+  "undecodable-occurrence": "Not decoded",
+  "unqualified-identifier": "Identifier has no assigning authority",
+  "no-declared-value": "Declares no value for the rule",
+  "unverified-combination": "Profile does not verify this message type",
+  "unshifted-positions": "Only MSH-7 and SCH-11 start and end move",
+  "severed-by-drop": "Broken by an excluded entry",
+  "not-retained": "Not included",
+  "no-messages": "No message included",
+};
+
+/** A reduction's outcome, as a minimization result names it. */
+export const MINIMIZE_OUTCOMES: Record<string, string> = {
+  reduced: "Reduced",
+  bounded: "Search limit reached",
+  not_attempted: "Nothing removable",
+  undecided: "Undecided",
+};
+
+/** Why a reduction or one of its trials ended as it did. */
+export const MINIMIZE_REASONS: Record<string, string> = {
+  reset_not_confirmed: "Reset not confirmed",
+  oracle_unavailable: "Trial could not run",
+  run_timed_out: "Timed out",
+  run_cancelled: "Stopped",
+  run_interrupted: "Interrupted",
+  run_execution_error: "Execution error",
+  run_delivery_uncertain: "Delivery uncertain",
+  run_did_not_finish: "Did not finish",
+  unreduced_sequence_did_not_reproduce_the_signature: "The original messages did not fail these checks again",
+  oracle_disagreed_with_itself: "Trials disagreed",
+  trial_budget_spent: "Trial limit reached",
+  trial_budget_spent_before_the_result_was_confirmed: "Trial limit reached before the result was confirmed",
+  every_remaining_group_is_required: "Every remaining message is needed",
+  no_group_of_this_partition_could_be_removed: "No message could be removed",
+  interrupted: "Stopped",
+};
+
+/** What one trial of a minimization was for, and what it established. */
+export const TRIAL_PURPOSES: Record<string, string> = { calibration: "Check original", removal: "Try removal", confirmation: "Confirm result" };
+export const TRIAL_VERDICTS: Record<string, string> = { reproduced: "Failed again", not_reproduced: "Did not fail", undecided: "Undecided" };
+
+/** What a comparison row is. */
+export const COMPARISON_CHANGES: Record<string, string> = {
+  changed: "Changed",
+  uncompared: "Not compared",
+  missing: "Only in earlier",
+  inserted: "Only in later",
+  ambiguous: "Ambiguous match",
+  unaligned: "Not matched",
+};
+
+/** What a normalization policy did about one difference. */
+export const NORMALIZATION_OUTCOMES: Record<string, string> = { suppressed: "Ignored", retained: "Still differs", undecided: "Undecided", unaddressed: "" };
+
+/** How a normalization rule compares. */
+export const NORMALIZATION_OPERATORS: Record<string, string> = { ignore: "Ignore difference", timestamp: "Timestamp", numeric: "Number" };

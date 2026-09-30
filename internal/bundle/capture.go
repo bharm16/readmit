@@ -21,7 +21,7 @@ var versionToken = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.+-]{0,127}$`)
 // The member has always named which one produced a v3 bundle; the set is closed
 // and reviewed, so a derived case can never declare a transformation no code
 // here performs, and a name absent from it is refused rather than recorded.
-var derivations = []string{"readmit-redact/v1", "readmit-reproducer/v1"}
+var derivations = []string{"readmit-redact/v1", "readmit-reproducer/v1", "readmit-transform/v1"}
 
 func build(inputs []Input, provenance Provenance) (*Bundle, error) {
 	if len(inputs) == 0 && provenance.Mode != Recorded && provenance.Mode != Collected || len(inputs) > MaxSources {

@@ -1,9 +1,8 @@
 import { cloneElement, type ReactElement } from "react";
 import * as f from "../testkit/fixtures";
-import { artifacts, catalogRows } from "./fixtures";
+import { artifacts } from "./fixtures";
 import { VocabularyContext } from "../vocabulary";
 import { IndicatorsContext, Outcome } from "../lifecycle";
-import { Comparison } from "../Comparison";
 import { ComputerLicense } from "../ComputerLicense";
 import { ControlledDetails } from "../ControlledDetails";
 import { EnvironmentBanner } from "../EnvironmentBanner";
@@ -17,14 +16,8 @@ import { OperatorHub } from "../OperatorHub";
 import { PrivacyDocuments } from "../PrivacyDocuments";
 import { PrivacyPanel } from "../PrivacyPanel";
 import { ProtectionPanel } from "../ProtectionPanel";
-import { Reduction } from "../Reduction";
 import { Reexecution } from "../Reexecution";
-import { Reproducer } from "../Reproducer";
 import { Review } from "../Review";
-import { RevisionComparison } from "../RevisionComparison";
-import {
-  NormalizationPolicyEditor,
-} from "../RulesEditor";
 import { SendReview } from "../RunPanel";
 import { RunnerPanel } from "../RunnerPanel";
 import { SyntheticPackets } from "../SyntheticPackets";
@@ -82,12 +75,6 @@ const common = {
   onChanged: noop,
 };
 const list = ["synthetic-document.json"];
-const resultProps = {
-  busy: false,
-  progress: null,
-  indicators: f.indicatorTable(),
-  result: null,
-};
 const content = <p>Synthetic example content for visual inspection.</p>;
 export interface Example {
   name: string;
@@ -107,14 +94,6 @@ const e = (
   ...(openButtons ? { openButtons } : {}),
 });
 export const examples: Example[] = [
-  e("Comparison", () => (
-    <Comparison
-      {...resultProps}
-      entries={list}
-      onCompare={noop}
-      result={f.compareResult([f.comparisonRow(1, "paired")])}
-    />
-  )),
   e("ComputerLicense", () => (
     <ComputerLicense onAdministratorSetup={noop} />
   )),
@@ -147,58 +126,15 @@ export const examples: Example[] = [
   )),
   e("PrivacyPanel", () => <PrivacyPanel {...common} />),
   e("ProtectionPanel", () => <ProtectionPanel {...common} />),
-  e("Reduction", () => (
-    <Reduction
-      {...resultProps}
-      ruleEntries={list}
-      specEntries={list}
-      targetEntries={list}
-      resetEntries={list}
-      policyEntries={list}
-      reducing={false}
-      caseOpen={true}
-      onPreview={noop}
-      onStart={noop}
-      onCancel={noop}
-    />
-  )),
   e("Reexecution", () => <Reexecution workspace={f.WORKSPACE_ROOT} onRun={noop} />),
-  e("Reproducer", () => (
-    <Reproducer
-      {...resultProps}
-      rows={catalogRows}
-      inspected={null}
-      onStep={noop}
-      onUndo={noop}
-      onBuild={noop}
-    />
-  )),
   e("Review", () => (
     <Review
       {...common}
-      ruleEntries={list}
-      planEntries={list}
-      packEntries={list}
       reviewEntries={list}
-      transformResult={null}
-      planResult={null}
       reviewResult={null}
-      caseOpen={true}
-      caseIdentity={f.CASE_IDENTITY}
-      transformProgress={null}
-      planProgress={null}
       reviewProgress={null}
-      onPreview={noop}
-      onSavePlan={async () => null}
-      onOpenPlan={async () => null}
       onReview={noop}
     />
-  )),
-  e("RevisionComparison", () => (
-    <RevisionComparison {...resultProps} entries={list} onCompare={noop} />
-  )),
-  e("NormalizationPolicyEditor", () => (
-    <NormalizationPolicyEditor {...common} entries={list} />
   )),
   e("SendReview", () => (
     <SendReview

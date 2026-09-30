@@ -319,6 +319,8 @@ type App struct {
 
 	// analyses remembers the analysis each Analyze press made.
 	analyses analysisIntents
+	// minimizing is the minimization running now (#558).
+	minimizing minimizeState
 
 	mu sync.Mutex
 	// running, operation and runOutput are the identity of the one operation

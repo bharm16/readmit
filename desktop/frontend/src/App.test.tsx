@@ -254,47 +254,6 @@ test("a refused inspection reports the refusal and keeps the grid for recovery",
   ).toBeTruthy();
 });
 
-test("a reproducer step the evidence does not support leaves the plan exactly as it was", async () => {
-  const user = userEvent.setup();
-  const { facade } = await renderApp({
-    EditReproducer: () =>
-      refused("The case does not support dropping the only occurrence."),
-  });
-  await openWorkspaceWithVerifiedCase(facade, user);
-  // One accepted step first, so there is a plan to protect.
-  facade.reply({
-    EditReproducer: (request) => ({
-      state: "completed" as const,
-      reproducer: {
-        plan: request.plan,
-        resolution: {
-          occurrences: [{ parent: GRID_OCCURRENCE, reason: "selected" }],
-          edits: [],
-          unresolved: [],
-        },
-      },
-    }),
-  });
-  await user.click(screen.getByRole("button", { name: "More case actions" }));
-  await user.click(screen.getByRole("menuitem", { name: "Build a reproducer" }));
-  await user.click(screen.getByRole("button", { name: `Retain ${GRID_OCCURRENCE}` }));
-  const first = facade.oneCall("EditReproducer")[0];
-  expect(first.step).toEqual({ operator: "select-occurrence/v1", occurrence: GRID_OCCURRENCE });
-  expect(first.case).toBe(CASE_ENTRY);
-  expect(await screen.findByText(`Drop ${GRID_OCCURRENCE}`)).toBeTruthy();
-  // The refused second step changes nothing about what the panel shows.
-  facade.reply({
-    EditReproducer: () => refused("The case does not support dropping the only occurrence."),
-  });
-  await user.click(screen.getByRole("button", { name: `Drop ${GRID_OCCURRENCE}` }));
-  expect(
-    await screen.findByText("The case does not support dropping the only occurrence."),
-  ).toBeTruthy();
-  expect(screen.getByText("Selected", { selector: ".reason" })).toBeTruthy();
-  expect(screen.getByText(`Drop ${GRID_OCCURRENCE}`)).toBeTruthy();
-  expect(facade.callsTo("EditReproducer")).toHaveLength(2);
-});
-
 test("an inspector that never answered is reported and leaves the prior result absent", async () => {
   const user = userEvent.setup();
   const { facade } = await renderApp();
@@ -705,7 +664,7 @@ test("a page not on screen is not mounted, and going back to it shows what was t
   await openFolder(user);
   await sidebar().findByRole("button", { name: /^Project: / });
   await goTo(user, "Reports");
-  await openView(user, "Transform and export");
+  await openView(user, "Export review");
   await user.type(page().getByLabelText("Review ID"), "tuesday-review");
   await goTo(user, "Cases");
   // The page's form is gone from the window, not hidden in it.
@@ -720,14 +679,14 @@ test("opening another project starts every page afresh: nothing typed, selected 
   await openFolder(user);
   await sidebar().findByRole("button", { name: /^Project: / });
   await goTo(user, "Reports");
-  await openView(user, "Transform and export");
+  await openView(user, "Export review");
   await user.type(page().getByLabelText("Review ID"), "tuesday-review");
   facade.reply({ SelectWorkspace: () => folderChosen("/work/other-project", [{ name: "project.json", kind: "project", schema: "readmit-project/v2" }]) });
   await openFolder(user);
   await waitFor(() => expect(facade.callsTo("SelectWorkspace")).toHaveLength(2));
   await goTo(user, "Reports");
   expect(page().queryByLabelText("Review ID")).toBeNull();
-  await openView(user, "Transform and export");
+  await openView(user, "Export review");
   expect((page().getByLabelText("Review ID") as HTMLInputElement).value).toBe("");
 });
 

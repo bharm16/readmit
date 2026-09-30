@@ -16,18 +16,13 @@ import { PrivacyPanel } from "./PrivacyPanel";
 import { ProtectionPanel } from "./ProtectionPanel";
 import { SUITE_EDITOR_DRAFT, SUITE_VIEWS, useSuites, type SuiteRunHandoff, type SuitesPlace, type SuiteView } from "./Suites";
 import { environmentPlace, useEnvironments } from "./Environments";
-import { Reduction, type ReductionForm } from "./Reduction";
-import { onRetentionResult, savedId } from "./drafting";
+import { onRetentionResult } from "./drafting";
 import { IndicatorsContext, useLifecycle, useWindowBusy } from "./lifecycle";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement } from "react";
 import { useLayoutEffect } from "react";
 import {
-  buildReproducer,
-  compareReproducers,
   cancel,
-  compare,
-  type CompareResult,
   createNamedProject,
   RequestScope,
   openNamedProject,
@@ -52,12 +47,6 @@ import {
   type ProjectFile,
   type CatalogItem,
   discardEditorDraft,
-  editReproducer,
-  undoReproducer,
-  type ReproducerPlan,
-  type ReproducerComparisonResult,
-  type ReproducerResult,
-  type ReproducerStep,
   filters as readFilters,
   demoProgress,
   openDemoProject,
@@ -66,7 +55,6 @@ import {
   type DemoStepID,
   type HelpActionID,
   editorDrafts as readEditorDrafts,
-  saveEditorDraft,
   openCase,
   readMessages,
   listViews,
@@ -83,23 +71,11 @@ import {
   type FieldState,
   type FindingStatus,
   type TestExpectation,
-  normalizeCompare,
-  type NormalizeResult,
   openReview,
-  previewTransformation,
-  saveTransformPlan,
-  openTransformPlan,
-  previewReduction,
-  startReduction,
   type ReviewResult,
-  type TransformResult,
-  type TransformPlanResult,
-  type TransformStep,
-  type ReductionResult,
   inspectOccurrence,
   type InspectionResult,
   openProjectOverview,
-  registerRevision,
   openWorkspace,
   recordView,
   type EditorDraft,
@@ -123,13 +99,13 @@ import {
   type RequestContext,
   onFileDrop,
 } from "./bindings";
-import { Comparison, readsComparison } from "./Comparison";
 import { Review } from "./Review";
+import { useVariantEditor, VARIANT_DRAFT_KIND, type VariantSource } from "./Variant";
+import { useCaseComparison, type ComparedCase, type ComparisonTab } from "./CaseComparison";
+import { useMinimize, useMinimizeActivity } from "./Minimize";
 import { useTimeline } from "./Timeline";
 import { MessageReader } from "./Inspector";
 import { MessageList, NO_QUERY, sameQuery, SearchSettingsSheet, type FilterSeed } from "./Messages";
-import { Reproducer, type ReproducerView } from "./Reproducer";
-import { RevisionComparison, type ComparisonSeed } from "./RevisionComparison";
 import { LibraryList, UseInTestSheet, importDraft, useCheckGroup, useLibraryItems, type LibraryKind } from "./Library";
 import { useProfile } from "./ProfileLibrary";
 import { useScenario } from "./ScenarioLibrary";
@@ -200,17 +176,8 @@ type Running =
   | "project"
   | "search"
   | "inspect"
-  | "reproducer"
-  | "comparison"
-  | "revisions"
   | "practice"
-  | "transformation"
-  | "transform-plan"
-  | "transform-open"
-  | "reduction-preview"
-  | "reduction"
   | "review"
-  | "normalize"
   | "recent"
   | "sample";
 
@@ -218,12 +185,7 @@ type Running =
  * one survives looking at another. */
 type CaseView = "messages" | "timeline" | "findings";
 /** What a person does to a case, each on its own page with a way back. */
-type CaseFlow = "compare" | "reproduce" | "reduce";
-const CASE_FLOW_TITLES: Record<CaseFlow, string> = {
-  compare: "Compare",
-  reproduce: "Reproducer",
-  reduce: "Reduce",
-};
+type CaseFlow = "variant" | "compare";
 type TestsView = "tests" | "suites";
 type LibraryView = "checks" | "profiles" | "scenarios";
 type SettingsView = "general" | "license" | "team" | "runners" | "security" | "storage";
@@ -263,17 +225,8 @@ const PROGRESS: Record<Running, string> = {
   project: "Reading the project…",
   search: "Searching this project…",
   inspect: "Reading the message…",
-  reproducer: "Updating the reproducer…",
-  comparison: "Comparing…",
-  revisions: "Comparing revisions…",
   practice: "Running the demo test…",
-  transformation: "Previewing the transformation…",
-  "transform-plan": "Saving the transformation plan…",
-  "transform-open": "Opening the transformation plan…",
-  "reduction-preview": "Previewing the reduction…",
-  reduction: "Running the reduction…",
   review: "Reading the export review…",
-  normalize: "Comparing under the policy…",
   recent: "Updating recent projects…",
   sample: "Importing the demo fixtures…",
 };
@@ -288,15 +241,14 @@ export default function App() {
 
   // One operation runs at a time here as well as in the facade, and it holds
   // the window's one slot: while it runs, the rest of the window is
-  // unavailable rather than answered busy. The practice run and a reduction
-  // are the operations here a panel's own cancel control stops.
+  // unavailable rather than answered busy.
   // Reading a case's messages is a background read of its own: it never holds
   // the window's one slot, so it never disables what a person is typing in, and
   // it never moves focus.
   const { running: readingMessages, run: readMessagesIn } = useLifecycle<"messages">({ background: true });
-  const { running, run, cancel: cancelRunning } = useLifecycle<Running>({
+  const { running, run } = useLifecycle<Running>({
     window: true,
-    names: { practice: "practice", reduction: "reduction" },
+    names: { practice: "practice" },
   });
   // Each counts the palette's requests to open that screen in the inspector.
   const [rawRequest, setRawRequest] = useState(0);
@@ -323,7 +275,6 @@ export default function App() {
   const [revealed, setRevealed] = useState(false);
   const [filterSeed, setFilterSeed] = useState<FilterSeed | null>(null);
   const [searchSettings, setSearchSettings] = useState<SearchSettings | null | undefined>(undefined);
-  const [reproducerResult, setReproducerResult] = useState<ReproducerView | null>(null);
   // The reviewed send open now (#555): a test, a suite, chosen messages, the
   // rest of an interrupted run or a reviewed test. Its Send is the only thing
   // that sends.
@@ -336,10 +287,6 @@ export default function App() {
   const [reportSeed, setReportSeed] = useState<ReportSeed | null>(null);
   // What Schedule or Set up CI on a suite opens Runners with.
   const [runnerSeed, setRunnerSeed] = useState<{ tab: "schedules" | "ci"; suite: string; environment: string; count: number } | null>(null);
-  const [comparisonResult, setComparisonResult] = useState<CompareResult | null>(null);
-  const [revisionResult, setRevisionResult] = useState<ReproducerComparisonResult | null>(null);
-  // The build the reproducer panel last handed to the revision comparison.
-  const [comparisonSeed, setComparisonSeed] = useState<ComparisonSeed | null>(null);
   // The demo task over the open project, read back from what it holds, and
   // the steps whose read results this window saw.
   const [demo, setDemo] = useState<DemoProgress | null>(null);
@@ -348,11 +295,7 @@ export default function App() {
   const [demoNotice, setDemoNotice] = useState<string | null>(null);
   const [seedTest, setSeedTest] = useState<{ case: ItemRef; test: DemoProgress["test"] } | null>(null);
   const [helpSheet, setHelpSheet] = useState<null | "search" | "diagnostics">(null);
-  const [transformResult, setTransformResult] = useState<TransformResult | null>(null);
-  const [planResult, setPlanResult] = useState<TransformPlanResult | null>(null);
-  const [reductionResult, setReductionResult] = useState<ReductionResult | null>(null);
   const [reviewResult, setReviewResult] = useState<ReviewResult | null>(null);
-  const [normalizeResult, setNormalizeResult] = useState<NormalizeResult | null>(null);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
 
@@ -442,6 +385,13 @@ export default function App() {
     if (body && returned.scrollTop !== undefined) body.scrollTop = returned.scrollTop;
   }, [route]);
   const [caseFlow, setCaseFlow] = useState<CaseFlow | null>(null);
+  // Create variant and Compare (#558): the case each was started for, the
+  // messages or the other case chosen first, and a serial per start.
+  const [variantFlow, setVariantFlow] = useState<{ source: VariantSource; seed: string[]; serial: number } | null>(null);
+  const [compareFlow, setCompareFlow] = useState<{ current: ComparedCase; other: ItemRef | null; tab?: ComparisonTab | undefined; serial: number } | null>(null);
+  // The open case as the project names it and, for a variant, the case it
+  // was made from.
+  const [openObject, setOpenObject] = useState<{ ref: ItemRef; name: string; parent: ItemRef | null } | null>(null);
   const [fileDetails, setFileDetails] = useState(false);
   const [creatingProject, setCreatingProject] = useState(false);
   // The projects this viewer has opened, as the catalog lists them, and the
@@ -703,15 +653,7 @@ export default function App() {
     setRevealed(false);
     setFilterSeed(null);
     setInspectionResult(null);
-    setReproducerResult(null);
-    setComparisonResult(null);
-    setRevisionResult(null);
-    setComparisonSeed(null);
-    setTransformResult(null);
-    setPlanResult(null);
-    setReductionResult(null);
     setReviewResult(null);
-    setNormalizeResult(null);
     setEvidenceFocus(null);
     setSelectedOccurrence(null);
   }, []);
@@ -1023,14 +965,6 @@ export default function App() {
     [openFolder],
   );
 
-  // A refused project write — a license that no longer admits it, a change
-  // the project cannot take — answers with its reason and no overview. The
-  // window keeps the project as it last read it beside that refusal, so a
-  // refusal never takes the project and its controls off the screen.
-  const settleProject = useCallback((answer: ProjectOverviewResult) => {
-    setInvestigation((held) => (answer.overview || !held?.overview ? answer : { ...answer, overview: held.overview }));
-  }, []);
-
   // A search result opens the thing it found, the way the window already
   // opens it: a registered case or a case entry is verified and opened, the
   // project documents open the project. A result that names an entry this
@@ -1096,37 +1030,6 @@ export default function App() {
     [run],
   );
 
-  // A comparison is bound to the identity the window verified for the open
-  // case, so one is never shown beside counts from evidence that has changed.
-  // Asking for the next window is another comparison: both collections are
-  // read and aligned again rather than a row list being held here. A
-  // normalization reading stays below it only while it reads the comparison
-  // shown: a refused comparison, or one of another pair, withdraws it.
-  const compareCollections = useCallback(
-    async (right: string, keys: string[], fields: string[], offset: number) => {
-      const open = evidence?.case;
-      if (!root || !open || !bounds) return;
-      await run("comparison", async () => {
-        setComparisonResult(null);
-        const compared = await compare({
-          workspace: root,
-          left: open.name,
-          identity: open.identity,
-          right,
-          keys,
-          fields,
-          offset,
-          limit: bounds.comparison,
-        });
-        setComparisonResult(compared);
-        setNormalizeResult((reading) =>
-          readsComparison(reading?.normalization, compared.comparison) ? reading : null,
-        );
-      });
-    },
-    [bounds, evidence, root, run],
-  );
-
   // A save that wrote a new workspace entry changes what the folder lists, so
   // the listing is read again and the pickers offer the new revision. The open
   // case and everything derived from it stay exactly as they are.
@@ -1148,13 +1051,53 @@ export default function App() {
     setCasesLoading(false);
   }, [projectContext, root]);
 
+  // The project object one case entry is: a variant, or a case, with its
+  // name and, for a variant, the case it was made from.
+  const objectAt = useCallback(
+    async (entry: string): Promise<{ ref: ItemRef; name: string; parent: ItemRef | null } | null> => {
+      const [variants, listed] = await Promise.all([
+        listWholeCatalog({ context: projectContext(), kind: "variant", filter: {} }),
+        listWholeCatalog({ context: projectContext(), kind: "case", filter: {} }),
+      ]);
+      const variant = variants.page?.items.find((item) => item.summary.variant?.entry === entry);
+      if (variant) return { ref: variant.ref, name: variant.name, parent: variant.summary.variant?.parent ?? null };
+      const held = listed.page?.items.find((item) => item.summary.case?.entry === entry);
+      return held ? { ref: held.ref, name: held.name, parent: null } : null;
+    },
+    [projectContext],
+  );
+  // Create variant starts from the case open now and the messages chosen in
+  // it; Compare from the case open now and, when named, the other case.
+  const startVariant = useCallback(
+    async (entry: string, identity: string, seed: string[]) => {
+      const object = await objectAt(entry);
+      if (!object) return;
+      setVariantFlow((held) => ({ source: { ref: object.ref, name: object.name, entry, identity }, seed, serial: (held?.serial ?? 0) + 1 }));
+      setCaseFlow("variant");
+    },
+    [objectAt],
+  );
+  const startCompare = useCallback(
+    async (entry: string, identity: string, other: ItemRef | null, tab?: ComparisonTab) => {
+      const object = await objectAt(entry);
+      if (!object) return;
+      setCompareFlow((held) => ({ current: { ref: object.ref, name: object.name, entry, identity }, other, tab, serial: (held?.serial ?? 0) + 1 }));
+      setCaseFlow("compare");
+    },
+    [objectAt],
+  );
+
   // A case task from a row's menu. Those that belong to the open case's own
   // pages open it there; the rest open their sheet.
   const caseAction = useCallback(
     (item: CatalogItem, action: CaseAction) => {
       const entry = caseEntry(item);
       if ((action === "variant" || action === "compare") && root && entry) {
-        void verifyCase(root, entry).then(() => setCaseFlow(action === "variant" ? "reproduce" : "compare"));
+        void verifyCase(root, entry).then((opened) => {
+          if (!opened?.case) return;
+          if (action === "variant") void startVariant(entry, opened.case.identity, []);
+          else void startCompare(entry, opened.case.identity, null);
+        });
         return;
       }
       if (action === "details") {
@@ -1171,7 +1114,7 @@ export default function App() {
       }
       setCaseTask({ item, action });
     },
-    [leaving, root, routeTo, verifyCase],
+    [leaving, root, routeTo, startCompare, startVariant, verifyCase],
   );
 
   // The open project as the catalog lists it: its name, settings and the
@@ -1327,217 +1270,6 @@ export default function App() {
     setCaptureSetup((count) => count + 1);
   };
 
-  // A policy-scoped reading of the same comparison. It never edits the raw
-  // comparison, which stays displayed above it, and never changes a source
-  // byte; the policy is read again on every call.
-  const normalizeCollections = useCallback(
-    async (right: string, policy: string, keys: string[], fields: string[], offset: number) => {
-      const open = evidence?.case;
-      if (!root || !open || !bounds) return;
-      await run("normalize", async () => {
-        setNormalizeResult(null);
-        setNormalizeResult(
-          await normalizeCompare({
-            workspace: root,
-            left: open.name,
-            identity: open.identity,
-            right,
-            policy,
-            keys,
-            fields,
-            offset,
-            limit: bounds.comparison,
-          }),
-        );
-      });
-    },
-    [bounds, evidence, root, run],
-  );
-
-  // Comparing two built revisions reads two finished reproducers and the runs
-  // retained for them. It is bound to nothing the window is holding: both are
-  // named entries of the open workspace and are verified again on every call.
-  const compareRevisions = useCallback(
-    async (left: string, right: string, leftResult: string, rightResult: string) => {
-      if (!root) return;
-      await run("revisions", async () => {
-        setRevisionResult(null);
-        setRevisionResult(
-          await compareReproducers({
-            workspace: root,
-            left,
-            right,
-            left_result: leftResult,
-            right_result: rightResult,
-          }),
-        );
-      });
-    },
-    [root, run],
-  );
-
-  // A transformation preview is bound to the identity the window verified for
-  // the open case, so a plan is never previewed against evidence that changed
-  // since. It writes nothing at all: the documents are read again on every call
-  // and no preview is held here.
-  const previewPlan = useCallback(
-    async (rules: string, plan: string, profile: string) => {
-      const open = evidence?.case;
-      if (!root || !open) return;
-      await run("transformation", async () => {
-        setTransformResult(null);
-        setTransformResult(
-          await previewTransformation({
-            workspace: root,
-            case: open.name,
-            identity: open.identity,
-            rules,
-            plan,
-            profile,
-          }),
-        );
-      });
-    },
-    [evidence, root, run],
-  );
-
-  // A saved plan is a new entry of the folder, so the listing is read again
-  // before the panel is answered and its pickers offer the plan at once.
-  const savePlan = useCallback(
-    async (rules: string, profile: string, steps: TransformStep[], output: string) => {
-      const open = evidence?.case;
-      if (!root || !open) return null;
-      const answered: { result: TransformPlanResult | null } = { result: null };
-      await run("transform-plan", async () => {
-        setPlanResult(null);
-        const result = await saveTransformPlan({
-          workspace: root,
-          case: open.name,
-          identity: open.identity,
-          rules,
-          profile,
-          steps,
-          output,
-        });
-        setPlanResult(result);
-        answered.result = result;
-        if (result.plan) {
-          const refreshed = await openWorkspace(root);
-          if (refreshed.workspace) setWorkspace(refreshed);
-        }
-      });
-      return answered.result;
-    },
-    [evidence, root, run],
-  );
-
-  // Reopening a plan reads the entry again through the decoder a preview
-  // uses and writes nothing; the panel takes its steps from the answer.
-  const openPlan = useCallback(
-    async (entry: string) => {
-      if (!root || !evidence?.case) return null;
-      const answered: { result: TransformPlanResult | null } = { result: null };
-      await run("transform-open", async () => {
-        setPlanResult(null);
-        const result = await openTransformPlan(root, entry);
-        setPlanResult(result);
-        answered.result = result;
-      });
-      return answered.result;
-    },
-    [evidence, root, run],
-  );
-
-  const runReductionPreview = useCallback(
-    async (config: ReductionForm) => {
-      const open = evidence?.case;
-      if (!root || !open) return;
-      await run("reduction-preview", async () => {
-        setReductionResult(null);
-        setReductionResult(
-          await previewReduction({
-            workspace: root,
-            case: open.name,
-            identity: open.identity,
-            spec: config.spec,
-            rules: config.rules,
-            grouping: config.grouping,
-            assertions: config.assertions,
-            trials: config.trials,
-            confirmations: config.confirmations,
-            reset_plan: config.resetPlan,
-            target: config.target,
-            policy: config.policy,
-            confirmed: config.confirmed,
-            work: config.work,
-          }),
-        );
-      });
-    },
-    [evidence, root, run],
-  );
-
-  const runReduction = useCallback(
-    async (config: ReductionForm) => {
-      const open = evidence?.case;
-      if (!root || !open) return;
-      await run("reduction", async () => {
-        setReductionResult(null);
-        setReductionResult(
-          await startReduction({
-            workspace: root,
-            case: open.name,
-            identity: open.identity,
-            spec: config.spec,
-            rules: config.rules,
-            grouping: config.grouping,
-            assertions: config.assertions,
-            trials: config.trials,
-            confirmations: config.confirmations,
-            reset_plan: config.resetPlan,
-            target: config.target,
-            policy: config.policy,
-            confirmed: config.confirmed,
-            work: config.work,
-          }),
-        );
-      });
-    },
-    [evidence, root, run],
-  );
-
-  // The project's answer goes back to the reproducer panel as well as to the
-  // overview, so a refused registration is reported beside the build it was
-  // for rather than read there as registered.
-  const registerBuiltRevision = useCallback(
-    async (source: string, name: string, parent: string) => {
-      if (!root) return null;
-      const answered: { result: ProjectOverviewResult | null } = { result: null };
-      await run("project", async () => {
-        const result = await registerRevision({
-          workspace: root,
-          source,
-          name,
-          parent,
-        });
-        answered.result = result;
-        settleProject(result);
-        setWorkspace(await openWorkspace(root));
-      });
-      return answered.result;
-    },
-    [root, run, settleProject],
-  );
-
-  // A build handed to the revision comparison becomes its later revision; the
-  // comparison on screen belonged to other revisions, so it is withdrawn.
-  const compareBuild = useCallback((built: string) => {
-    setCaseFlow("compare");
-    setRevisionResult(null);
-    setComparisonSeed((held) => ({ later: built, serial: (held?.serial ?? 0) + 1 }));
-  }, []);
-
-
   // An export review is read again on every call, including for the next window
   // of its inventory, so the identity an approval names is always the one the
   // bytes on disk have now. The approval a person typed is sent and checked; it
@@ -1561,112 +1293,6 @@ export default function App() {
     [bounds, root, run],
   );
 
-  // A reproducer plan is bound to the case the grid verified, so every step
-  // carries the plan back to the engine, which decides what it means. The
-  // window keeps no second copy of the selection or of what a dependency added.
-  // A plan the engine accepted is retained as an unstored editor draft under an
-  // internal identity, so the editing survives an interruption; a build writes
-  // the real manifest beside the evidence and drops the draft.
-  const reproducerDraftId = useRef("");
-
-  const keepReproducerDraft = useCallback(
-    async (plan: ReproducerPlan, open: { case: string; identity: string }) => {
-      const result = await saveEditorDraft({
-        id: reproducerDraftId.current,
-        kind: "reproducer-plan",
-        workspace: root ?? "",
-        case: open.case,
-        identity: open.identity,
-        content_schema: "readmit-reproducer-plan/v1",
-        content: plan,
-      });
-      if (result.state === "completed" || result.state === "empty") {
-        if (reproducerDraftId.current === "") {
-          reproducerDraftId.current = savedId(result, "reproducer-plan", root ?? "");
-        }
-      }
-    },
-    [root],
-  );
-
-  const dropReproducerDraft = useCallback(async () => {
-    if (reproducerDraftId.current !== "") {
-      await discardEditorDraft(reproducerDraftId.current);
-    }
-    reproducerDraftId.current = "";
-  }, []);
-
-  const reproduce = useCallback(
-    async (work: (plan: ReproducerPlan, open: { case: string; identity: string }) => Promise<ReproducerResult>) => {
-      const open = messages;
-      if (!root || !open) return;
-      const plan = reproducerResult?.reproducer?.plan ?? ({ schema: "", case: "", steps: [] } as ReproducerPlan);
-      await run("reproducer", async () => {
-        const result = await work(plan, open);
-        // A refused step leaves the plan exactly as it was, so the refusal is
-        // shown without replacing the reproducer a person is working on.
-        const kept = reproducerResult?.reproducer;
-        setReproducerResult(
-          result.reproducer || !kept ? result : { ...result, reproducer: kept },
-        );
-        if (result.reproducer) {
-          if (result.reproducer.output) {
-            await dropReproducerDraft();
-          } else {
-            await keepReproducerDraft(result.reproducer.plan, open);
-          }
-        }
-      });
-    },
-    [dropReproducerDraft, messages, keepReproducerDraft, reproducerResult, root, run],
-  );
-
-  // Create variant from checked messages: a new plan that selects exactly
-  // them, opened in the reproducer. Nothing is kept as a draft until the
-  // person edits it there.
-  const seedVariant = useCallback(
-    async (occurrences: string[]) => {
-      const open = messages;
-      if (!root || !open || occurrences.length === 0) return;
-      let plan: ReproducerPlan = { schema: "", case: "", steps: [] };
-      let last: ReproducerResult | null = null;
-      await run("reproducer", async () => {
-        for (const occurrence of occurrences) {
-          last = await editReproducer({ workspace: root, case: open.case, identity: open.identity, plan, step: { operator: "select-occurrence/v1", occurrence } });
-          if (!last.reproducer) break;
-          plan = last.reproducer.plan;
-        }
-      });
-      if (!last) return;
-      setReproducerResult(last);
-      setCaseFlow("reproduce");
-    },
-    [messages, root, run],
-  );
-
-  // The reproducer plan comes back the same way, and under the same rule.
-  useEffect(() => {
-    const grid = messages;
-    if (!grid || !root || reproducerResult !== null) {
-      return;
-    }
-    const held = drafts?.find(
-      (entry) =>
-        entry.kind === "reproducer-plan" &&
-        entry.workspace === root &&
-        entry.case === grid.case &&
-        entry.identity === grid.identity,
-    );
-    if (!held) {
-      return;
-    }
-    reproducerDraftId.current = held.id;
-    setReproducerResult({
-      state: "completed",
-      reproducer: { plan: held.content as ReproducerPlan },
-    });
-  }, [drafts, messages, reproducerResult, root]);
-
   // Drops one retained editor draft and takes it out of the local list at the
   // same moment, so a panel cannot offer the same draft back again while the
   // facade's answer is still in flight.
@@ -1674,14 +1300,6 @@ export default function App() {
     setDrafts((current) => current?.filter((draft) => draft.id !== id) ?? null);
     void discardEditorDraft(id);
   }, []);
-
-  const discardReproducerDraft = useCallback(() => {
-    if (reproducerDraftId.current !== "") {
-      dropDraft(reproducerDraftId.current);
-    }
-    reproducerDraftId.current = "";
-    setReproducerResult(null);
-  }, [dropDraft]);
 
   // Reopening where a person was is their own decision, made by pressing the
   // one button that offers it; nothing restores a workspace by itself. The
@@ -1904,6 +1522,28 @@ export default function App() {
       const defective = demo?.steps.find((step) => step.id === "run-defective")?.ref?.id;
       if (defective && answer.state === "completed" && answer.run?.item.ref.id === defective && answer.run.checks.some((check) => check.result === "failed")) seeDemo("view-failed-check");
     },
+    onMinimize: (run) => open({ destination: "minimize-failure", objectId: run.id }),
+  });
+  // Minimize failure (#558): the series this window runs keeps running while
+  // the person is elsewhere.
+  const minimizeActivity = useMinimizeActivity(root);
+  const minimize = useMinimize({
+    root: place === "minimize-failure" ? root : null,
+    context: runsContext,
+    run: place === "minimize-failure" && route.objectId ? { kind: "run", id: route.objectId } : null,
+    busy,
+    activity: minimizeActivity.activity,
+    onStart: (run, review, intent, execution) => {
+      minimizeActivity.start(run, review, intent, execution);
+      void execution.then(() => setRunsEnded((count) => count + 1));
+    },
+    onStop: minimizeActivity.stop,
+    onOpenRun: (run) => open({ destination: "runs", objectId: run.id }),
+    onOpenVariant: (variant) => {
+      go("cases");
+      void openObjectRef(variant);
+    },
+    onEditEnvironment: (environment) => open({ destination: "environments", objectId: environment.id }),
   });
   const runComparison = useRunComparison({
     root: place === "compare-runs" ? root : null,
@@ -2020,6 +1660,34 @@ export default function App() {
 
   /** Create test: the case open now and its chosen messages (all of them
    * when none is chosen) go to the one test editor. */
+  // The project object the open case is, read again whenever another case
+  // opens.
+  useEffect(() => {
+    setOpenObject(null);
+    if (!root || !verified) return;
+    let live = true;
+    void objectAt(verified.name).then((object) => {
+      if (live) setOpenObject(object);
+    });
+    return () => {
+      live = false;
+    };
+  }, [objectAt, root, verified]);
+  // Opens one case or variant of the project by its reference: a saved
+  // variant opens on its messages, the original case of a variant likewise.
+  const openObjectRef = async (ref: ItemRef) => {
+    if (!root) return;
+    const [variants, listed] = await Promise.all([
+      listWholeCatalog({ context: projectContext(), kind: "variant", filter: {} }),
+      listWholeCatalog({ context: projectContext(), kind: "case", filter: {} }),
+    ]);
+    const item = [...(variants.page?.items ?? []), ...(listed.page?.items ?? [])].find((held) => held.ref.id === ref.id);
+    const entry = item?.summary.variant?.entry ?? item?.summary.case?.entry;
+    if (!entry) return;
+    void refreshCases();
+    await verifyCase(root, entry);
+  };
+
   // The object the open case is: a project case, or a variant of one.
   const openCaseObject = async (): Promise<{ ref: ItemRef; variant: boolean } | null> => {
     if (!verified) return null;
@@ -2411,20 +2079,42 @@ export default function App() {
   const caseTitle = verified ? overview?.cases.find((entry) => entry.name === verified.name)?.title || verified.name : "";
   const subpage = capturing && root ? "capture" : null;
   // The open case's own menu, which the palette also lists while the case is
-  // on screen.
+  // on screen. A variant also links the case it was made from and its
+  // changes.
+  const parentCase = openObject?.parent ?? null;
   const caseMenu: MenuItem[] = [
     { label: "Create test", onSelect: () => void createTest() },
-    { label: "Compare with another case", onSelect: () => setCaseFlow("compare") },
-    { label: "Build a reproducer", onSelect: () => setCaseFlow("reproduce") },
-    { label: "Reduce", onSelect: () => setCaseFlow("reduce") },
-    { label: "File details", onSelect: () => setFileDetails(true) },
+    { label: "Create variant", onSelect: () => verified && void startVariant(verified.name, verified.identity, []) },
+    { label: "Compare", onSelect: () => verified && void startCompare(verified.name, verified.identity, null) },
+    ...(parentCase
+      ? [
+          { label: "Original case", onSelect: () => void openObjectRef(parentCase), separated: true },
+          { label: "Changes", onSelect: () => verified && void startCompare(verified.name, verified.identity, parentCase, "plan") },
+        ]
+      : []),
+    { label: "File details", onSelect: () => setFileDetails(true), separated: true },
     { label: "Close case", onSelect: backToProject },
   ];
+  const variantEditor = useVariantEditor({
+    root,
+    context: projectContext,
+    flow: caseFlow === "variant" ? variantFlow : null,
+    drafts,
+    busy,
+    onSaved: (saved) => void openObjectRef(saved),
+    onOpenMessage: (occurrence) => void inspect(occurrence, "", 0, -1),
+  });
+  const caseComparison = useCaseComparison({
+    root,
+    context: projectContext,
+    flow: caseFlow === "compare" ? compareFlow : null,
+    busy,
+    onCompareRuns: (ids) => open({ destination: "compare-runs", objectId: ids.join("..") }),
+  });
   useOfferedActions(registerActions, place === "cases" && verified !== null && subpage === null && caseFlow === null ? { object: caseTitle, items: caseMenu } : null);
   const inspecting = selectedOccurrence !== null || inspectionResult !== null || running === "inspect";
   // The rows chosen for Create test and Send selected: only message rows, so an
   // ACK or unparsed row is never counted as outbound; none chosen is all rows.
-  const chosenRows = messages ? (checkedMessages.size > 0 ? messages.rows.filter((row) => checkedMessages.has(row.id) && row.kind === "message") : messages.rows) : [];
   const shownCase = verified ? { case: verified.name, identity: verified.identity } : { case: "", identity: "" };
   const selectedRow = messages?.rows.find((row) => row.id === selectedOccurrence) ?? null;
   const fileSelection = place === "inspect-file" && fileReader.details !== null;
@@ -2433,10 +2123,6 @@ export default function App() {
   const linkShown = place === "cases" && verified !== null && subpage === null && caseView === "timeline" && timeline.selectedLink !== null;
   const detailsShown =
     (place === "cases" && verified !== null && subpage === null && caseView !== "findings" && inspecting && !linkShown) || findingShown || linkShown || fileSelection || benchmarkSelection;
-  const inspected =
-    selectedOccurrence && inspectionResult?.inspection
-      ? { occurrence: selectedOccurrence, path: inspectionResult.inspection.selected.path }
-      : null;
   const closeDetails = () => {
     if (fileSelection) {
       fileReader.closeDetails();
@@ -2551,6 +2237,14 @@ export default function App() {
             onOpen={() => open({ destination: "runs", objectId: "active" })}
             onStop={runActivity.stop}
           />
+        ) : minimizeActivity.running && minimizeActivity.activity ? (
+          // A minimization keeps running while the person is elsewhere; this
+          // returns to it, and its Stop stops exactly this series.
+          <OperationIndicator
+            label={`Minimizing ${minimizeActivity.activity.review.minimize?.test_name ?? "failure"}`}
+            onOpen={() => open({ destination: "minimize-failure", objectId: minimizeActivity.activity!.run.id })}
+            onStop={minimizeActivity.stop}
+          />
         ) : null}
       </>
     ),
@@ -2632,9 +2326,11 @@ export default function App() {
             subpage === "capture"
               ? capture.title
               : verified
-                    ? caseFlow !== null
-                      ? CASE_FLOW_TITLES[caseFlow]
-                      : caseTitle
+                    ? caseFlow === "variant"
+                      ? variantEditor.title
+                      : caseFlow === "compare"
+                        ? caseComparison.title
+                        : caseTitle
                     : "Cases"
           }
           actions={
@@ -2656,6 +2352,10 @@ export default function App() {
                   items={caseMenu}
                 />
               </>
+            ) : verified && subpage === null && caseFlow === "variant" ? (
+              variantEditor.actions
+            ) : verified && subpage === null && caseFlow === "compare" ? (
+              caseComparison.actions
             ) : null
           }
         >
@@ -2826,7 +2526,7 @@ export default function App() {
                       const chosen = (messages?.rows ?? []).filter((row) => checkedMessages.has(row.id) && row.kind === "message").map((row) => row.id);
                       if (caseRef && chosen.length > 0) setSendRequest({ kind: "messages", case: { kind: "case", id: caseRef.id }, messages: chosen });
                     }}
-                    onCreateVariant={() => void seedVariant(chosenRows.map((row) => row.id))}
+                    onCreateVariant={() => verified && void startVariant(verified.name, verified.identity, [...checkedMessages])}
                     onLoadMore={() => {
                       if (root && messages) void loadMessages(root, shownCase, messageQuery, messageSort, messages.rows.length);
                     }}
@@ -2868,143 +2568,8 @@ export default function App() {
                 </TaskPanel>
               </TaskTabs>
               </div>
-                {caseFlow === "compare" ? (
-                  <div className="view-panel case-flow">
-                    <Comparison
-                      entries={named("case")}
-                      result={comparisonResult}
-                      busy={busy}
-                      progress={
-                        running === "comparison"
-                          ? "Comparing these collections."
-                          : running === "normalize"
-                            ? "Reading this comparison under the declared policy."
-                            : null
-                      }
-                      indicators={indicators}
-                      onCompare={(right, keys, fields, offset) =>
-                        void compareCollections(right, keys, fields, offset)
-                      }
-                      workspace={root}
-                      policyEntries={named("normalization-policy")}
-                      normalizeResult={normalizeResult}
-                      onNormalize={(right, policy, keys, fields, offset) =>
-                        void normalizeCollections(right, policy, keys, fields, offset)
-                      }
-                      onSaved={() => void refreshListing()}
-                    />
-                    <RevisionComparison
-                      entries={artifacts.map((artifact) => artifact.name)}
-                      seed={comparisonSeed}
-                      result={revisionResult}
-                      busy={busy}
-                      progress={running === "revisions" ? "Comparing these revisions." : null}
-                      indicators={indicators}
-                      onCompare={(left, right, leftResult, rightResult) =>
-                        void compareRevisions(left, right, leftResult, rightResult)
-                      }
-                    />
-                  </div>
-                ) : null}
-                {caseFlow === "reproduce" ? (
-                  <div className="view-panel case-flow">
-                    {messages ? (
-                      <Reproducer
-                        rows={messages.rows}
-                        result={reproducerResult}
-                        restoredDraft={Boolean(reproducerResult?.reproducer && !reproducerResult.reproducer.resolution)}
-                        onDiscardDraft={discardReproducerDraft}
-                        inspected={inspected}
-                        busy={busy}
-                        progress={running === "reproducer" ? "Resolving this reproducer against the case." : null}
-                        indicators={indicators}
-                        onStep={(step: ReproducerStep) =>
-                          void reproduce((plan, open) =>
-                            editReproducer({
-                              workspace: root ?? "",
-                              case: open.case,
-                              identity: open.identity,
-                              plan,
-                              step,
-                            }),
-                          )
-                        }
-                        onUndo={() =>
-                          void reproduce((plan, open) =>
-                            undoReproducer({
-                              workspace: root ?? "",
-                              case: open.case,
-                              identity: open.identity,
-                              plan,
-                            }),
-                          )
-                        }
-                        parentCase={messages.case}
-                        onBuild={(output: string) =>
-                          void reproduce((plan, open) =>
-                            buildReproducer({
-                              workspace: root ?? "",
-                              case: open.case,
-                              identity: open.identity,
-                              plan,
-                              output,
-                            }),
-                          )
-                        }
-                        onRegister={registerBuiltRevision}
-                        onOpenRevision={(name) => {
-                          if (root) void verifyCase(root, name);
-                        }}
-                        onCompareRevision={(built) => {
-                          compareBuild(built);
-                          setCaseFlow("compare");
-                        }}
-                        onCreateTest={(name) => {
-                          // Open the revision as its own case. An existing test draft stays
-                          // bound to the original case identity and is not retargeted.
-                          if (root) void verifyCase(root, name);
-                        }}
-                      />
-                    ) : (
-                      <EmptyState
-                        title="Messages are not loaded yet"
-                        action={
-                          <button type="button" onClick={() => { setCaseFlow(null); setView("messages"); }}>
-                            Open messages
-                          </button>
-                        }
-                      />
-                    )}
-                  </div>
-                ) : null}
-                {caseFlow === "reduce" ? (
-                  <div className="view-panel case-flow">
-                    <Reduction
-                      ruleEntries={named("rules")}
-                      specEntries={named("spec")}
-                      targetEntries={named("target")}
-                      resetEntries={named("reset")}
-                      policyEntries={named("policy")}
-                      result={reductionResult}
-                      busy={busy}
-                      progress={
-                        running === "reduction-preview"
-                          ? "Previewing how this reduction would take the sequence apart. Nothing is reset or sent."
-                          : running === "reduction"
-                            ? "Running this reduction: every trial resets the environment, then sends."
-                            : null
-                      }
-                      reducing={running === "reduction"}
-                      indicators={indicators}
-                      caseOpen={verified !== null}
-                      onPreview={(config) => void runReductionPreview(config)}
-                      onStart={(config) => void runReduction(config)}
-                      onCancel={cancelRunning}
-                    />
-                  </div>
-                ) : null}
-
-
+                {caseFlow === "variant" && variantFlow ? <div className="view-panel case-flow">{variantEditor.body}</div> : null}
+                {caseFlow === "compare" && compareFlow ? <div className="view-panel case-flow">{caseComparison.body}</div> : null}
             </div>
             </ViewKey>
           ) : null}
@@ -3153,6 +2718,10 @@ export default function App() {
           {root ? runComparison.body : noProject("runs")}
         </Page>
 
+        <Page id="minimize-failure" shown={place === "minimize-failure"} title={minimize.title} back={<BackLink label="Run" onBack={back} />} actions={root ? minimize.actions : null}>
+          {root ? minimize.body : noProject("runs")}
+        </Page>
+
         {root ? (
           <SendReview
             request={sendRequest}
@@ -3196,7 +2765,7 @@ export default function App() {
               reportsPlace.kind === "list" ? (
                 <>
                   {reports.actions}
-                  <Menu label="More report actions" items={[{ label: "Transform and export", onSelect: () => open({ destination: "export-report" }) }]} />
+                  <Menu label="More report actions" items={[{ label: "Export review", onSelect: () => open({ destination: "export-report" }) }]} />
                 </>
               ) : (
                 reportPage.actions
@@ -3223,32 +2792,14 @@ export default function App() {
           {root ? <PrivacyPanel workspace={root} entries={artifacts} drafts={drafts} onRefresh={() => void refreshListing()} onRun={setSendRequest} /> : noProject("reports")}
         </Page>
 
-        <Page id="export-report" shown={place === "export-report"} title="Transform and export" back={<BackLink label="Reports" onBack={back} />}>
+        <Page id="export-report" shown={place === "export-report"} title="Export review" back={<BackLink label="Reports" onBack={back} />}>
           {root ? (
                 <Review
-                  ruleEntries={named("rules")}
-                  planEntries={named("plan")}
-                  packEntries={named("pack")}
                   reviewEntries={named("review")}
-                  transformResult={transformResult}
-                  planResult={planResult}
                   reviewResult={reviewResult}
-                  caseOpen={verified !== null}
-                  caseIdentity={verified?.identity ?? ""}
                   busy={busy}
-                  transformProgress={running === "transformation" ? "Previewing this transformation." : null}
-                  planProgress={
-                    running === "transform-plan"
-                      ? "Saving this transformation plan."
-                      : running === "transform-open"
-                        ? "Reading this transformation plan."
-                        : null
-                  }
                   reviewProgress={running === "review" ? "Reading this export review." : null}
                   indicators={indicators}
-                  onPreview={(rules, plan, profile) => void previewPlan(rules, plan, profile)}
-                  onSavePlan={savePlan}
-                  onOpenPlan={openPlan}
                   onReview={(review, approve, offset) => void readReview(review, approve, offset)}
                 />
           ) : (
@@ -4057,7 +3608,7 @@ function caseEntry(item: CatalogItem): string | undefined {
 const DRAFT_PLACES: Record<string, { route?: Route; case?: CaseFlow; import?: true; observe?: true }> = {
   "redact-policy": { route: { destination: "share-report" } },
   "redact-inventory": { route: { destination: "share-report" } },
-  "reproducer-plan": { case: "reproduce" },
+  [VARIANT_DRAFT_KIND]: { case: "variant" },
   import: { import: true },
   "observation-source": { observe: true },
   "observation-window": { observe: true },

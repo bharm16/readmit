@@ -35,6 +35,9 @@ type OracleRequest struct {
 	// Resolve the name resolution its destination decision is allowed.
 	Reset   fixturereset.Request
 	Resolve sendpolicy.Resolver
+	// Target, when set, is the target configuration every trial sends to
+	// instead of the one the spec names: the environment a person chose.
+	Target string
 }
 
 // DurableOracle answers one trial as one durable run of a narrowed copy of one
@@ -78,6 +81,9 @@ func NewDurableOracle(request OracleRequest) (*DurableOracle, error) {
 	directory := filepath.Dir(resolved)
 	spec.Input.Case = artifactpath.JoinReference(directory, spec.Input.Case)
 	spec.Target = artifactpath.JoinReference(directory, spec.Target)
+	if request.Target != "" {
+		spec.Target = request.Target
+	}
 	if spec.Observation.Path != "" {
 		spec.Observation.Path = artifactpath.JoinReference(directory, spec.Observation.Path)
 	}
