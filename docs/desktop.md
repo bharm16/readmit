@@ -2096,104 +2096,6 @@ a position is the inspector, deliberately, exactly as it is for a comparison.
 Nothing about this panel is written anywhere: not into the case, not into the
 saved filters, and not into the working session.
 
-## Reading an export review
-
-An incident that is going to leave this machine has to be looked at first, and
-looking at one field at a time is how a surface gets missed. **Export review**
-in Reports answers what a declared disclosure policy did to every surface that
-can enter an export, read back through the same verified offline reader the
-export gate uses. Transformations of a case are its [variants](#case-variants).
-
-A review directory is what [`readmit redact`](redact.md) wrote: the located
-findings, the eighteen-category checklist, the known-value residual scan, and
-the derived case and specification it committed to. The window opens one by
-name and groups every finding by the export surface it is on. A preview needs
-the case the window verified; a review does not, so a folder holding only a
-review — which is what a recipient has — is read without one.
-
-A surface is **where** the content is and **what kind** of content it is, both
-in the reporting engine's own words: the first element of the location it wrote,
-and its own word for what was found there. So the source filenames of a case
-never collapse into its messages, its notes and free text never collapse into
-its named fields, and the run values of a retained artifact never collapse into
-its report text.
-
-| Where | What was found there, for example |
-| --- | --- |
-| `case` | the named fields, the unmapped positions, the unknown segments, the free text and embedded payloads, the source filenames, the source metadata and observed times |
-| `spec` | the expected literals bound to a source field, the specification's own name, paths and assertion labels, its filename, and the fresh fixture reruns it requires |
-| `original-artifacts` | the retained runs and results, their replay transformations and acknowledgement text, and the original diagnosis text |
-| `proof` | the original fixture proof |
-| `packet` | the regenerated diagnosis |
-
-Neither half of that pair is matched against a list this window keeps, so every
-finding belongs to exactly one surface, the counts always sum to the whole
-inventory, and a surface a later policy locates is inventoried the moment it
-appears instead of being dropped for not being recognized. A class of surface
-no policy of this release locates at all — a local cache or log written beside
-the evidence, say — is `readmit redact`'s to locate; the window inventories
-whatever that review found and nothing else.
-
-**The private state directory is never named, opened or read here.** Source
-linkage, surrogate mappings, date offsets and known residual values stay exactly
-where `readmit redact` put them; this panel sees what a recipient would see.
-
-### The reviewer's decision
-
-An approval names one review identity. That identity is recomputed from the bytes
-that are on disk now, and it covers the input commitment, the private-state
-commitment, the derived case identity and the derived specification digest — so
-changing the input, the policy, the specification or the output changes it.
-
-| Decision | What it means |
-| --- | --- |
-| `not-decided` | Nobody has approved this review. |
-| `incomplete-review` | The review is blocked, so it cannot authorize disclosure — naming its exact identity does not change that. |
-| `stale-approval` | The approval names a different review than the bytes read here; a bound artifact changed, so review the current one again. |
-| `approved` | The approval names exactly the review that was read. |
-
-**The window records no approval.** A decision is a typed answer about the bytes
-that were just read, not a document, so there is no stored approval to go stale
-quietly and nothing here that another artifact can be approved against later.
-Exporting a packet is `readmit redact export`, which requires the same identity
-and re-verifies everything itself; the [privacy panel](#privacy-review-protected-export-and-support-sharing)
-drives that operation with the identity typed in fresh, and derives reviews
-through `readmit redact` itself. An interrupted review is refused rather than
-read as a complete one, because the completion marker is written last.
-
-### What a review is, and what it is not
-
-A ready review establishes a **disclosure-reviewed extract** and says so by name.
-It is not a regression-equivalent packet: equivalence needs evidence from the
-actual external target, and fixture proof never substitutes for it. Nothing here
-is uploaded, no network call is made, and neither a review nor a local hash
-claims certification, Safe Harbor status or authentication of the source
-evidence. The panel renders those statements — the engine's own scope, the scan's
-own limitations, and the window's boundary — rather than a summary of them.
-
-### Positions, not values
-
-**No value crosses this boundary, transformed or original.** A change is an
-entry, a position, the state that position was in, the relation number a rename
-assigned and the size of the new value; two changes carrying one relation number
-receive one value, which is the whole of what preserving a relationship means and
-says nothing about what the value is. A finding is a location, a checklist class,
-the engine's own word for what it is and the named policy that handled it.
-
-Reading a transformed value is [the inspector](#inspecting-original-values),
-deliberately, exactly as it is for [a comparison](#comparing-two-cases)
-and for a reproducer: a review's derived case is an ordinary verified
-`readmit-case/v3` bundle, so opening the review folder as a workspace and
-opening the `case` entry in it reveals those bytes through the same verification
-everything else here gets — the surrogate a policy substituted, the shifted
-date, the emptied position. An original value is never on this panel at all, and
-the panel itself carried none to get there.
-
-Nothing about this panel is written anywhere: not into the case, not into the
-review, not into the saved filters, and not into the working session. Both
-operations read again from disk every time, including for the next window of an
-inventory, so a decision is never shown beside counts from bytes that changed.
-
 ## Minimize failure
 
 **Minimize failure** in a failed test run's **More run actions** menu reduces
@@ -2411,7 +2313,7 @@ project…*, *New project…* and *Project settings*.
 | Tests | Tests and Suites. **Library** opens Checks, Profiles and Scenarios. |
 | Runs | Run details; **Run test** and **Compare** open those flows, and a failed run's More menu opens **Minimize failure**. |
 | Environments | Targets, credential references, send policies and reset plans. |
-| Reports | Packets; **Share** opens the disclosure review, and *Export review* and *Notes* are in its More menu. |
+| Reports | Reports; a report's **Export** and **Share** open the share flow and its More menu has **Support summary**; the landing's More menu has *Support summary*, *Templates* and *Encrypted packages*. |
 | Tools | Inspect file, Sample data and Benchmarks, each opened from the list. |
 | Settings | General, License, Team, Runners, Security and Storage, as categories beside the selected one. |
 | Help | Help topics, the privacy statement and what this build supports. |
@@ -2849,13 +2751,11 @@ through the new locator first and records a rotation, so a generation never
 silently changes key. Check control (`CheckProtectionControl`) reads the key
 once and records nothing; Record rotation, Export control (the reference only,
 never key bytes) and Retire control, which asks once, are in the control's
-menu. Encrypted packages are packed, inspected, opened and discarded under
-Encryption's menu until sharing (#560) owns them. A package is written under
-the key generation its control had when it was chosen
-(`ProtectionPackRequest.generation`): a rotation recorded since is refused
-before any entry or key is read, with "the control's key generation changed
-since it was chosen; nothing was written; choose it again" The command line's
-`readmit protect pack` checks no generation.
+menu. Encryption's menu opens [Encrypted packages](#encrypted-packages); a
+package is written by a share's **Encrypt package** under the key generation
+its control had when it was chosen, and a rotation recorded since withdraws the
+share's preview. The command line's `readmit protect pack` checks no
+generation.
 
 Some operations run a program the operator declared by its absolute path: the
 locator of a credential reference when one is tested, rotated or scanned for,
@@ -3077,8 +2977,8 @@ with this build: five task articles and the troubleshooting articles they link
 to. They take no operation slot, open no file and reach no network, and an
 article this version does not have is refused, never substituted. Help ›
 Diagnostics shows, on demand, the build, its operations, the window's current
-errors and the privacy status; Export support summary opens the support
-summary's review on Reports.
+errors and the privacy status; Export support summary opens the
+[support summary](#support-summaries) sheet for a report of the open project.
 
 `OpenDemoProject` opens the demo, a named project of the frozen synthetic
 sample kept in the application's own storage beside the shell documents,
@@ -3508,142 +3408,115 @@ records a person's review of the version shown
 afterwards is a Draft again, and a review or export prepared for the earlier
 version is stale and does nothing.
 
-**Export** is a reviewed action (`report.export`): the sheet renders the exact
-bytes of the chosen format — PDF (Letter or A4), HTML, Markdown, JSON or JUnit
-— and shows the file name and size before anything is written; **Export**
-writes those bytes, rendered again and unchanged, to a new file named in the
-save dialog. **Original evidence** is a separate choice: the
-portable review of the report's retained packet, byte for byte, with its five
-renderings. A rendered report never carries original message bytes. **Share**
-opens the sharing page. See [reports](report.md#reports-from-actual-runs) for
-the document and its formats.
+**Export** opens the [share flow](#sharing-a-report) at its Preview with the
+report alone and no template, and **Share** opens it at its Contents. A
+rendered report never carries original message bytes. See
+[reports](report.md#reports-from-actual-runs) for the document and its
+formats.
 
-## Privacy review, protected export and support sharing
+## Sharing a report
 
-The **privacy** panels are where an investigation's material actually becomes
-shareable, honestly or not at all: they derive a disclosure review from what
-the workspace really holds, read it through the same verified reader the
-export gate uses, export the reviewed packet under an approval naming the
-exact identity, reexecute an approved review against the target its original
-run recorded, protect a packet in an encrypted transfer package, and prepare
-the value-free support summary. All five are the existing `redact`, `redact
-export`, `redact reexecute`, `protect` and `share` operations; the panels
-decide nothing the reporting engine does not already own, and the command line
-reaches the same verified decisions and the same disclosure refusals over the
-same bytes.
+**Share** on a report opens one started flow over that report version,
+**Contents → Redaction → Preview**, with one footer: Back, the one consequence
+line and the final **Export** (or **Send**). Every choice is prepared again by
+the backend (`PrepareAction`, `report.share` or `report.send`): it enumerates
+what the share holds, derives or leaves every value the report restates, and
+generates the exact output, which the Preview shows. Nothing is written or sent
+until the final click, and closing the flow keeps a draft of the choices
+(`report-share` in the editor-draft store), never a preview.
 
-**Preparation** selects four entries of the open workspace — the case, the
-original specification, the disclosure policy and the complete
-original-artifact inventory — and runs the existing redaction operation into a
-fresh review entry and a separate private local-state entry. The policy and
-inventory can be authored through structured controls in the privacy panel.
-Each save writes a new canonical entry only after the same strict reader used
-by `readmit redact` accepts it; an existing entry can be reopened and saved
-under a new name. The panel lists the two documents by their declared kinds,
-while opening and derivation still verify them. The form starts with no field
-rules, known values or artifact paths, and never decides which values are
-sensitive. Unfinished edits use the bounded local editor-draft store and show
-whether the latest change was retained; saving a canonical document drops its
-working draft. An inventory draft can contain the known residual values the
-operator entered and stays customer-local with the inventory. A blocked review
-is the normal first answer, and its blockers
-are the whole inventory: every surface the export could include — the named
-fields, the free text and embedded payloads, the unknown segments, the source
-filenames and metadata, the specification literals, the retained runs and
-their replay values, the original diagnosis — stays listed with what handled
-it, and nothing is left unresolved quietly. The private entry is named so the
-journey can continue, and is never opened by this window: source linkage,
-surrogate mappings, date offsets and residual values stay exactly where the
-operation put them. Deliberate original-versus-derived inspection is the
-inspector over each case, exactly as everywhere else.
+**Contents** lists the report and what it holds by name and type. Selected
+messages (the messages the report's run sent), Attachments (the attachments of
+the case it sent) and Original evidence (the portable review of its retained
+packet, byte for byte) are each an explicit choice, and any item but the report
+can be removed from this share only. The output is set here: Destination (Local
+file, or a team project of the signed-in customer hub), Format (PDF on Letter
+or A4, HTML, Markdown, JSON or JUnit), the file or folder chosen in the save
+dialog (`ChooseShareDestination`, held by an opaque handle; the window shows
+its name and folder), and **Encrypt package**, off unless chosen. The report
+alone is one file; anything more is one new folder.
 
-**Approval and export** take the ready review, its private entry, and the
-exact review identity typed in fresh. The approval is the command line's own
-byte-level gate: it is checked against the identity the bytes on disk have
-now, so any edit, changed source or stale approval is refused rather than
-warned about, and it is never recorded by the window — there is no stored
-approval for a draft, a restored session or anyone else to reuse. The export
-reruns the derived specification against fresh built-in loopback fixtures and
-writes the freshly generated packet only after every gate passes, registering
-it in the workspace navigation as a `derived-export` entry. It establishes a
-disclosure-reviewed extract, and it declines the other thing by name: no
-external regression-equivalence claim exists in this release, no
-re-execution happens while preparing an export, and no synthetic result
-substitutes for unavailable external proof.
+**Redaction** applies a named template — a
+[`readmit-redact-policy/v1`](redact.md) document of the project — or none. The
+table lists each category and field with its occurrences, treatment and result,
+only where something is there. The report's restated values are derived from
+the same messages the share holds: each field rule applies as it does to a
+case, surrogates and date shifts are drawn from the project's customer-local
+sharing key (`.readmit/sharing.key`, which never enters an output), so the same
+source value derives the same way in the report, in the messages and in a
+preview generated again. Free text (the title and notes), metadata (the test
+name and run times) and values no rule reaches stay original and
+**Unresolved** until a person treats them: a row opens a sheet offering only
+the treatments that apply to it (Remove, Replace, Scoped surrogate, Shift dates,
+Keep allowed values, Regenerate, or Remove from contents). Attachments and
+original evidence are never called redacted. A residual scan of the generated
+output for every original value the share replaced turns a hit back into an
+unresolved item. **Show values** shows examples of the original and shared
+values of each row, and only then. **Save template** asks a name and saves the
+template with this share's field rules; it approves nothing.
+**Manage templates** is the Templates page: each template is edited part by
+part — patient identity and authority, field rules, segments removed,
+regeneration, test literals, the original failures a check reproduces and
+whether derived tests are checked by a run — and saved as a whole, over the
+version that was opened (`SaveShareTemplate`).
 
-**Reexecution** is [`redact reexecute`](redact.md#authorized-reexecution-and-declined-external-equivalence)
-and the one privacy step that sends. It takes an approved review, the private
-entry its derivation wrote, a retained packet whose current run is the actual
-original phase, the specification the person rebound to the approved derived
-case, the target and a new observation, the phase — `failure` or `pass` — and
-the exact review identity typed in fresh. **Preview reexecution** is the
-command's own preparation and sends nothing: it shows the target the original
-execution recorded, with its classification, transport and address, the
-occurrences of the derived case a send would deliver, the reset the
-specification declares for the person to perform first, the identities the
-assessment will bind, the fresh job folder, and whether execution is admitted,
-asked the way the send asks it. An identity that is not the review's, a
-blocked review, another derivation's private entry, a phase the original run
-does not meet, a target other than the one it recorded, a host name nobody
-approved and a production-classified target are each refused in the command's
-own sentence. **Send once** is offered only after the person ticks the
-authorization of that single nonproduction send, and the backend admits it as
-execution and sends only while the inputs still prepare to the preview the
-person reviewed; otherwise it is refused and nothing is written. The send goes
-through the durable runner into a new job entry and is assessed exactly as the
-command assesses it — `matched`, `changed` or `unavailable-or-unstable`, with
-external equivalence always `declined` — beside a read-only recovery of the
-job: acknowledged, uncertain and never-attempted deliveries. Only a matched
-phase completes; a changed or unavailable one is refused with the assessment's
-own reason, as the command refuses it with status 2, and keeps its job. **Cancel
-reexecution** stops further sends; a cancelled, timed-out or delivery-uncertain
-send is never reported as completed, and nothing is ever resent. An attempt
-spends its preview and its authorization, so another send needs a new preview
-and a new decision after the person reconciles any uncertain delivery at the
-target; nothing here resets a target, retries or resumes. New
-acknowledgements, observations and metadata in the job stay customer-local and
-need a fresh disclosure review before they are shared.
+A template that checks derived tests by a run (`rerun-derived-tests/v1`) keeps
+a share holding messages blocked until the check has actually run. **Run check**
+shows the inventory it derives from — the report's retained runs, assembled by
+the backend — with **Contents reviewed**, derives the check's export review
+(`report.prepare-check`, [`readmit redact`](redact.md) under the share's key, so
+its derived case is exactly the messages the share previews) and opens the
+reviewed run (#555) of that derived test at the environment the original run
+reached. The share stays blocked until a retained run of that derived case
+reproduced the original result; the export then also writes the proven derived
+test ([`readmit redact export`](redact.md)).
 
-**Protection** registers a control as a structured reference — the declared
-at-rest storage, the absolute path of the program that prints the key, and
-locator arguments that are counted rather than echoed — and packs, inspects,
-opens and discards transfer packages under it. A document not written yet is
-named under **New protection document**; it reads as empty, and registering the
-first control writes it. Key material is never in the window: the views show
-the one mask, a rotation is recorded only after the declared store answers, and
-a missing key, a wrong key, a rotated-away key and a tampered package are each
-the operation's own refusal. Every registration, rotation and retirement shows
-the document it wrote. **Retire** is `protect retire`, and no command makes a
-retired control active again, so it asks first: **Retire it** retires the
-control, and **Keep it active** or `Escape` changes nothing and returns focus
-to **Retire**. A retired control is shown retired and is no longer offered to
-write a package, and it still opens the packages it wrote. Retirement is not
-revocation, and the panel says so. The package view
-shows the recipient and authority facts the descriptor declares — the control,
-the generation, the retention period — beside what encryption does not
-establish: not source authentication, not revocation, deletion is not erasure,
-and opening a package ends the protection it carried. Packing writes a local
-directory; moving it anywhere is somebody's separate deliberate act.
+**Preview** shows the exact output: a PDF's pages, HTML in a sandbox, and any
+other text whole; several files are tabs. Every unresolved item is listed
+before the final action. The consequence is one line: **Exports the reviewed
+report to a new local file.**, **Exports a file containing patient data.** when
+original values remain, or **Sends the reviewed report to** the team. The
+review's token binds the generated bytes, the report version, the contents, the
+template and its bytes, the treatments, the reviewer, the format, the
+destination and the encryption control's key generation; any change withdraws
+the preview and a fresh one needs a fresh click. A duplicate click returns the
+original result. A local Export writes a new file or folder, verifies a file
+after writing it, never overwrites anything and never uploads; a write that
+stops part-way is renamed as incomplete. **Encrypt package** writes an
+encrypted transfer package ([`protect`](protect.md)) under an active control at
+the generation chosen, from the generated bytes with no plaintext copy. A Send
+reaches a team project only when the share is redacted and the report file
+alone; it uploads the file and records the next revision of its resource, and
+an unconfirmed send is never repeated. A completed share is recorded in the
+report's History (`readmit-report-share/v1`), and **Open file** or **Show in
+folder** (`OpenSharedOutput`) reach only an output this window wrote.
 
-**Support** authors the sharing policy through structured controls, previews
-the value-free summary — the preview is every byte the bundle will hold, and no
-free-form field exists in it to hide anything — and publishes the bundle into a
-new folder named in the host's save dialog, or one fresh workspace entry, only
-under an approval naming the exact preview identity, which the publish
-regenerates and re-checks. A stale approval is a refusal. Selecting a sharing
-policy reads it through the contract's own decoder, and a policy the decoder
-refuses is named as refused. Choosing another source, private state or policy
-withdraws the preview and the approval typed against it. A dismissed save
-dialog names nothing, and the panel says so; a folder that already exists,
-which the save dialog returns once a person confirms replacing it, is refused
-by the writer, and nothing is written into it. The bundle verifies offline,
-independently of its source, through the reader `readmit share verify` runs,
-and **Verify again** reads the selected bundle once more: a bundle missing,
-holding or changing anything since it was published is refused and shows no
-identity. The panel states the exclusions: no evidence payload, no recursive
-collection, no upload — a team transfer is the customer hub's separate
-authenticated workflow, and a local typed approver label is not authenticated
-team approval.
+### Support summaries
+
+A report's More menu (and Help › Diagnostics) opens **Support summary**: the
+value-free summary [`readmit share`](support.md) prepares from the report's
+retained packet under the project's sharing policy, shown whole, with its size
+and the policy's limit. **Sharing policy** is its own sheet — Support
+preparation Allowed or Denied, Destination channels and Maximum size (bytes) —
+and saving it (`SaveProjectSharingPolicy`) approves nothing. **Export support
+summary** writes the summary, once, into a new local folder chosen in the save
+dialog (`report.support`); the export verifies the summary against the
+identity its preview showed. When the policy allows the customer hub and a team
+is signed in, **Request approval** writes the summary into the project and
+opens Team, where the team's authenticated request and approval (#562) take
+it; **Download summary** there retrieves that approved summary only.
+
+### Encrypted packages
+
+Reports' More menu, and Encryption's, open **Encrypted packages**: the
+project's transfer packages by name, created, retention and state, read from
+their descriptors without a key (`ListEncryptedPackages`). **Decrypt**
+(`package.decrypt`) verifies and writes a fresh plaintext copy to a place chosen
+in the save dialog, and opens or runs nothing it holds. **Delete package**
+(`package.delete`) names the package, its declared files and retention;
+declared retention is obeyed unless **Override retention**, off on every new
+selection, is chosen with a reason. Delete unlinks the declared files only; it
+is not secure erasure, and no key is deleted and nothing remote is revoked.
 
 ## Explaining sequence uncertainty
 

@@ -13,8 +13,10 @@ import { SendReview, sendTitle, type SendRequest } from "./RunPanel";
 import { useRunPage } from "./RunExplanation";
 import { useRunActivity, useRuns, type RunsPlace } from "./Runs";
 import { useReportPage, useReports, type ReportSeed, type ReportsPlace } from "./Reports";
-import { PrivacyPanel } from "./PrivacyPanel";
-import { ProtectionPanel } from "./ProtectionPanel";
+import { SHARE_DRAFT_KIND, useShareReport, type ShareStep } from "./ShareReport";
+import { SupportSummarySheet } from "./SupportSummary";
+import { useEncryptedPackages } from "./EncryptedPackages";
+import { useShareTemplates } from "./ShareTemplates";
 import { SUITE_EDITOR_DRAFT, SUITE_VIEWS, useSuites, type SuiteRunHandoff, type SuitesPlace, type SuiteView } from "./Suites";
 import { environmentPlace, useEnvironments } from "./Environments";
 import { onRetentionResult } from "./drafting";
@@ -72,8 +74,6 @@ import {
   type FieldState,
   type FindingStatus,
   type TestExpectation,
-  openReview,
-  type ReviewResult,
   inspectOccurrence,
   type InspectionResult,
   openProjectOverview,
@@ -100,7 +100,6 @@ import {
   type RequestContext,
   onFileDrop,
 } from "./bindings";
-import { Review } from "./Review";
 import { useVariantEditor, VARIANT_DRAFT_KIND, type VariantSource } from "./Variant";
 import { useCaseComparison, type ComparedCase, type ComparisonTab } from "./CaseComparison";
 import { useMinimize, useMinimizeActivity } from "./Minimize";
@@ -178,7 +177,6 @@ type Running =
   | "search"
   | "inspect"
   | "practice"
-  | "review"
   | "recent"
   | "sample";
 
@@ -227,16 +225,12 @@ const PROGRESS: Record<Running, string> = {
   search: "Searching this project…",
   inspect: "Reading the message…",
   practice: "Running the demo test…",
-  review: "Reading the export review…",
   recent: "Updating recent projects…",
   sample: "Importing the demo fixtures…",
 };
 
 export default function App() {
   const [described, setDescribed] = useState<Shell | null>(null);
-  // How many rows one window of each paged view asks for: the facade's own
-  // bounds, as its description publishes them.
-  const bounds = described?.vocabulary.bounds;
   const [windowState, setWindowState] = useState<State>("busy");
   const [windowReason, setWindowReason] = useState<string | undefined>(undefined);
 
@@ -294,7 +288,8 @@ export default function App() {
   const [demoNotice, setDemoNotice] = useState<string | null>(null);
   const [seedTest, setSeedTest] = useState<{ case: ItemRef; test: DemoProgress["test"] } | null>(null);
   const [helpSheet, setHelpSheet] = useState<null | "search" | "diagnostics">(null);
-  const [reviewResult, setReviewResult] = useState<ReviewResult | null>(null);
+  // The Support summary sheet: of one report, or of one chosen in it.
+  const [supportSheet, setSupportSheet] = useState<{ report: ItemRef | null } | null>(null);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
 
@@ -340,7 +335,6 @@ export default function App() {
   const [securityReturn, setSecurityReturn] = useState<string | undefined>(undefined);
   const [setupFromSecurity, setSetupFromSecurity] = useState<null | "team" | "operator" | "portal" | "runner">(null);
   const [setupRequests, setSetupRequests] = useState({ team: 0, operator: 0, portal: 0, runner: 0 });
-  const [packagesOpen, setPackagesOpen] = useState(false);
   // The inspector width each project was last given, in rem. The shown width
   // is clamped to the room there is now without overwriting the wider choice.
   const [inspectorWidths, setInspectorWidths] = useState<Record<string, number>>({});
@@ -651,7 +645,6 @@ export default function App() {
     setRevealed(false);
     setFilterSeed(null);
     setInspectionResult(null);
-    setReviewResult(null);
     setEvidenceFocus(null);
     setSelectedOccurrence(null);
   }, []);
@@ -950,7 +943,11 @@ export default function App() {
         routeTo({ type: "go", to: { destination: "environments", view: "add-observation" } });
         return;
       }
-      if (place.route) routeTo({ type: "go", to: place.route });
+      if (place.route) {
+        // A share draft continues the share of the report it is of.
+        const report = draft.kind === SHARE_DRAFT_KIND ? (draft.item?.ref.id ?? (draft.content as { report?: string }).report) : undefined;
+        routeTo({ type: "go", to: report ? { ...place.route, objectId: report } : place.route });
+      }
     },
     [openFolder, root, routeTo, verifyCase],
   );
@@ -1267,29 +1264,6 @@ export default function App() {
     setCapturing(true);
     setCaptureSetup((count) => count + 1);
   };
-
-  // An export review is read again on every call, including for the next window
-  // of its inventory, so the identity an approval names is always the one the
-  // bytes on disk have now. The approval a person typed is sent and checked; it
-  // is never retained here or anywhere else.
-  const readReview = useCallback(
-    async (review: string, approve: string, offset: number) => {
-      if (!root || !bounds) return;
-      await run("review", async () => {
-        setReviewResult(null);
-        setReviewResult(
-          await openReview({
-            workspace: root,
-            review,
-            approve,
-            offset,
-            limit: bounds.review,
-          }),
-        );
-      });
-    },
-    [bounds, root, run],
-  );
 
   // Drops one retained editor draft and takes it out of the local list at the
   // same moment, so a panel cannot offer the same draft back again while the
@@ -1651,9 +1625,25 @@ export default function App() {
     listed: reports.listed,
     onOpenRun: openRunFrom,
     onViewMessages: viewMessages,
-    onShare: () => open({ destination: "share-report" }),
+    onShare: (start) => (reportsPlace.kind === "report" ? open({ destination: "share-report", objectId: reportsPlace.id, view: start }) : undefined),
+    onSupport: () => (reportsPlace.kind === "report" ? setSupportSheet({ report: { kind: "report", id: reportsPlace.id } }) : undefined),
     onChanged: () => void reports.refresh(),
   });
+  // Share report (#560): one started flow over one report version, from its
+  // Contents or, for Export, straight to its Preview.
+  const share = useShareReport({
+    root,
+    projectId: currentProject?.ref.id ?? "",
+    report: place === "share-report" && route.objectId ? { kind: "report", id: route.objectId } : null,
+    start: (route.view === "preview" ? "preview" : "contents") as ShareStep,
+    drafts,
+    busy,
+    onRun: setSendRequest,
+    onManageTemplates: () => open({ destination: "share-templates" }),
+    onLeave: back,
+  });
+  const packages = useEncryptedPackages({ root: place === "encrypted-packages" ? root : null, projectId: currentProject?.ref.id ?? "", shown: place === "encrypted-packages" });
+  const shareTemplates = useShareTemplates({ root: place === "share-templates" ? root : null, projectId: currentProject?.ref.id ?? "", shown: place === "share-templates" });
 
   /** Create test: the case open now and its chosen messages (all of them
    * when none is chosen) go to the one test editor. */
@@ -2070,7 +2060,6 @@ export default function App() {
   }, []);
 
   const artifacts = opened?.artifacts ?? [];
-  const named = (kind: string) => artifacts.filter((artifact) => artifact.kind === kind).map((artifact) => artifact.name);
   const projectName = overview?.title || (root ? folderName(root) : "");
   const caseTitle = verified ? overview?.cases.find((entry) => entry.name === verified.name)?.title || verified.name : "";
   const subpage = capturing && root ? "capture" : null;
@@ -2745,6 +2734,21 @@ export default function App() {
           />
         ) : null}
 
+        {root ? (
+          <SupportSummarySheet
+            open={supportSheet !== null}
+            root={root}
+            projectId={currentProject?.ref.id ?? ""}
+            report={supportSheet?.report ?? null}
+            onClose={() => setSupportSheet(null)}
+            onRequestApproval={() => {
+              setSupportSheet(null);
+              void refreshListing();
+              open({ destination: "settings", view: "team" });
+            }}
+          />
+        ) : null}
+
         <Page
           id="environments"
           shown={place === "environments"}
@@ -2765,7 +2769,14 @@ export default function App() {
               reportsPlace.kind === "list" ? (
                 <>
                   {reports.actions}
-                  <Menu label="More report actions" items={[{ label: "Export review", onSelect: () => open({ destination: "export-report" }) }]} />
+                  <Menu
+                    label="More report actions"
+                    items={[
+                      { label: "Support summary", onSelect: () => setSupportSheet({ report: null }) },
+                      { label: "Templates", onSelect: () => open({ destination: "share-templates" }) },
+                      { label: "Encrypted packages", onSelect: () => open({ destination: "encrypted-packages" }) },
+                    ]}
+                  />
                 </>
               ) : (
                 reportPage.actions
@@ -2788,23 +2799,16 @@ export default function App() {
           )}
         </Page>
 
-        <Page id="share-report" shown={place === "share-report"} title="Share report" back={<BackLink label="Reports" onBack={back} />}>
-          {root ? <PrivacyPanel workspace={root} entries={artifacts} drafts={drafts} onRefresh={() => void refreshListing()} onRun={setSendRequest} /> : noProject("reports")}
+        <Page id="share-report" shown={place === "share-report"} title={share.title} back={<BackLink label="Report" onBack={back} />}>
+          {root ? share.body : noProject("reports")}
         </Page>
 
-        <Page id="export-report" shown={place === "export-report"} title="Export review" back={<BackLink label="Reports" onBack={back} />}>
-          {root ? (
-                <Review
-                  reviewEntries={named("review")}
-                  reviewResult={reviewResult}
-                  busy={busy}
-                  reviewProgress={running === "review" ? "Reading this export review." : null}
-                  indicators={indicators}
-                  onReview={(review, approve, offset) => void readReview(review, approve, offset)}
-                />
-          ) : (
-            noProject("reports")
-          )}
+        <Page id="share-templates" shown={place === "share-templates"} title={shareTemplates.title} back={<BackLink label="Reports" onBack={back} />} actions={root ? shareTemplates.actions : null}>
+          {root ? shareTemplates.body : noProject("reports")}
+        </Page>
+
+        <Page id="encrypted-packages" shown={place === "encrypted-packages"} title={packages.title} back={<BackLink label="Reports" onBack={back} />}>
+          {root ? packages.body : noProject("reports")}
         </Page>
 
         <Page
@@ -3043,15 +3047,12 @@ export default function App() {
             root ? (
               <>
                 {encryption.actions}
-                <Menu label="More encryption actions" items={[{ label: "Packages", onSelect: () => setPackagesOpen(true) }]} />
+                <Menu label="More encryption actions" items={[{ label: "Encrypted packages", onSelect: () => open({ destination: "encrypted-packages" }) }]} />
               </>
             ) : null
           }
         >
           {root ? encryption.body : noProject("encryption")}
-          <Modal open={packagesOpen && root !== null} title="Packages" size="wide" onClose={() => setPackagesOpen(false)}>
-            <ProtectionPanel workspace={root} entries={artifacts} onRefresh={() => void refreshListing()} />
-          </Modal>
         </Page>
 
         <Page
@@ -3081,7 +3082,7 @@ export default function App() {
               root
                 ? () => {
                     setHelpSheet(null);
-                    go("reports");
+                    setSupportSheet({ report: null });
                   }
                 : undefined
             }
@@ -3612,8 +3613,7 @@ function caseEntry(item: CatalogItem): string | undefined {
 
 /** Where each kind of retained draft is continued. */
 const DRAFT_PLACES: Record<string, { route?: Route; case?: CaseFlow; import?: true; observe?: true }> = {
-  "redact-policy": { route: { destination: "share-report" } },
-  "redact-inventory": { route: { destination: "share-report" } },
+  [SHARE_DRAFT_KIND]: { route: { destination: "share-report" } },
   [VARIANT_DRAFT_KIND]: { case: "variant" },
   import: { import: true },
   "observation-source": { observe: true },

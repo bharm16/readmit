@@ -227,6 +227,13 @@ func (p *Reexecution) Execute(ctx context.Context, output string) (ReexecutionAs
 	return result, nil
 }
 
+// PhaseMatches reports whether one retained result meets a reexecution
+// phase: a full pass, or an assertion failure of exactly the required
+// failing assertions.
+func PhaseMatches(a *testrunner.Artifact, phase string, failures []int) bool {
+	return phaseMatches(a, phase, failures)
+}
+
 func phaseMatches(a *testrunner.Artifact, phase string, failures []int) bool {
 	if phase == "pass" {
 		return a.Result.Status == testrunner.Pass

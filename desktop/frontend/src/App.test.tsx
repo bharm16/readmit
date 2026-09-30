@@ -35,7 +35,7 @@ import {
 import { facadeStub } from "./testkit/wails";
 import { renderApp } from "./testkit/app";
 import { windowWidth } from "./testkit/window";
-import { findCaseRow, goTo, goToView, openView, page, readCaseIdentity, sidebar } from "./testkit/navigation";
+import { findCaseRow, goTo, goToView, page, readCaseIdentity, sidebar } from "./testkit/navigation";
 import type { CatalogItem, CommercialStatusResult, HubResult, RequestContext } from "./bindings";
 
 /** Opens a folder the way a person does from anywhere: the projects page's
@@ -658,36 +658,107 @@ test("on macOS ⌘K opens the palette and Ctrl+K does not; elsewhere Ctrl+K does
   expect(screen.getByRole("dialog", { name: "Commands" })).toBeTruthy();
 });
 
-test("a page not on screen is not mounted, and going back to it shows what was typed", async () => {
+/** A project whose one report can be shared: its listing, its page and a
+ * share preview of whatever format is asked for. */
+function shareHandlers(): Parameters<typeof renderApp>[0] {
+  const report: CatalogItem = {
+    ref: { kind: "report", id: "rep-1" },
+    name: "Reschedule regression",
+    created_at: null,
+    updated_at: null,
+    last_opened_at: null,
+    availability: "available",
+    capabilities: [],
+    summary: { report: { form: "report", related_case: null, status: "draft" } },
+  };
+  const result = { outcome: "failed" as const, status: "assertion_failure", error_class: "", run_state: "", journal_incomplete: false, delivery_uncertain: false };
+  return {
+    SelectWorkspace: () => folderWithCase(),
+    ListCatalog: (query) =>
+      query.kind === "report"
+        ? { state: "completed", context: query.context, page: { items: [report], total: 1, snapshot: "s", recorded: true, incomplete: [] } }
+        : { state: "empty", context: query.context, page: { items: [], total: 0, snapshot: "s", recorded: true, incomplete: [] } },
+    OpenReport: (request) => ({
+      state: "completed",
+      context: request.context,
+      report: { item: report, form: "report", current: true, title: report.name, result, runs: [], checks: [], messages: [], limitations: [], evidence: [], packet: "p", versions: [], review: "draft", revealed: false, shares: [] },
+    }),
+    PrepareAction: (request) => ({
+      state: "completed",
+      context: request.context,
+      review: {
+        action: request.action,
+        consent: "export",
+        items: [report],
+        destination: {},
+        requirements: [],
+        ready: false,
+        report_share: {
+          report: report.name,
+          items: [{ key: "report", name: report.name, type: "report", included: true, removable: false }],
+          rows: [],
+          issues: [],
+          output: { type: "file", format: request.report_share?.format ?? "pdf", name: "Reschedule regression", size: 1, files: [] },
+          destination: { kind: "local" },
+          source_values: true,
+          redacted: false,
+          revealed: false,
+          encrypted: false,
+          templates: [],
+          controls: [],
+          projects: [],
+          attachments: 0,
+        },
+      },
+    }),
+  };
+}
+
+async function shareReport(user: ReturnType<typeof userEvent.setup>) {
+  await goTo(user, "Reports");
+  await user.click(await page().findByRole("row", { name: /Reschedule regression/ }));
+  await user.keyboard("{Enter}");
+  await user.click(await page().findByRole("button", { name: "Share" }));
+  await page().findByRole("list", { name: "Steps" });
+}
+
+test("a page not on screen is not mounted, and going back to it shows what was chosen", async () => {
   const user = userEvent.setup();
-  await renderApp({ SelectWorkspace: () => folderWithCase() });
+  await renderApp(shareHandlers());
   await openFolder(user);
   await sidebar().findByRole("button", { name: /^Project: / });
-  await goTo(user, "Reports");
-  await openView(user, "Export review");
-  await user.type(page().getByLabelText("Review ID"), "tuesday-review");
+  await shareReport(user);
+  await user.click(page().getAllByRole("button", { name: "Change" })[0]!);
+  const format = await screen.findByRole("dialog", { name: "Format" });
+  await user.click(within(format).getByRole("radio", { name: "Markdown" }));
+  await user.click(within(format).getByRole("button", { name: "Apply" }));
+  expect(await page().findByText("Markdown")).toBeTruthy();
   await goTo(user, "Cases");
-  // The page's form is gone from the window, not hidden in it.
-  expect(document.getElementById("review-approval")).toBeNull();
+  // The flow is gone from the window, not hidden in it.
+  expect(screen.queryByRole("list", { name: "Steps" })).toBeNull();
   await goTo(user, "Reports");
-  expect((page().getByLabelText("Review ID") as HTMLInputElement).value).toBe("tuesday-review");
+  expect(await page().findByText("Markdown")).toBeTruthy();
 });
 
-test("opening another project starts every page afresh: nothing typed, selected or revealed for the last one stays", async () => {
+test("opening another project starts every page afresh: nothing chosen, selected or revealed for the last one stays", async () => {
   const user = userEvent.setup();
-  const { facade } = await renderApp({ SelectWorkspace: () => folderWithCase() });
+  const { facade } = await renderApp(shareHandlers());
   await openFolder(user);
   await sidebar().findByRole("button", { name: /^Project: / });
-  await goTo(user, "Reports");
-  await openView(user, "Export review");
-  await user.type(page().getByLabelText("Review ID"), "tuesday-review");
+  await shareReport(user);
+  await user.click(page().getAllByRole("button", { name: "Change" })[0]!);
+  const format = await screen.findByRole("dialog", { name: "Format" });
+  await user.click(within(format).getByRole("radio", { name: "Markdown" }));
+  await user.click(within(format).getByRole("button", { name: "Apply" }));
+  expect(await page().findByText("Markdown")).toBeTruthy();
   facade.reply({ SelectWorkspace: () => folderChosen("/work/other-project", [{ name: "project.json", kind: "project", schema: "readmit-project/v2" }]) });
   await openFolder(user);
   await waitFor(() => expect(facade.callsTo("SelectWorkspace")).toHaveLength(2));
   await goTo(user, "Reports");
-  expect(page().queryByLabelText("Review ID")).toBeNull();
-  await openView(user, "Export review");
-  expect((page().getByLabelText("Review ID") as HTMLInputElement).value).toBe("");
+  expect(page().queryByRole("list", { name: "Steps" })).toBeNull();
+  await shareReport(user);
+  expect(await page().findByText("PDF · Letter")).toBeTruthy();
+  expect(page().queryByText("Markdown")).toBeNull();
 });
 
 test("in a compact window a long case title opens the case's details from the keyboard", async () => {

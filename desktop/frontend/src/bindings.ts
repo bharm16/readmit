@@ -372,6 +372,14 @@ import type {
   RunComparisonItemsResult,
   ReportRequest,
   ReportResult,
+  ShareDestinationRequest,
+  ShareDestinationResult,
+  SharedOutputRequest,
+  ShareTemplateRequest,
+  ShareTemplateResult,
+  ShareTemplatesResult,
+  EncryptedPackagesResult,
+  SharingPolicyRequest,
 } from "./bindings.gen";
 
 export type * from "./bindings.gen";
@@ -2130,6 +2138,42 @@ export function testRunChecks(request: TestRunChecksRequest): Promise<TestRunChe
  * verified and its structured report read; text stays withheld until reveal. */
 export function openReport(request: ReportRequest): Promise<ReportResult> {
   return retryingRead(() => facade().OpenReport(request), { state: "failed", context: request.context });
+}
+
+// Sharing (#560).
+
+/** The host's save dialog for where a share's output is written. Choosing
+ * writes nothing; the window holds the choice by an opaque handle. */
+export function chooseShareDestination(request: ShareDestinationRequest): Promise<ShareDestinationResult> {
+  return guard(() => facade().ChooseShareDestination(request), { state: "failed", context: request.context });
+}
+
+/** Opens an output a share wrote in this window, or shows it in its folder. */
+export function openSharedOutput(request: SharedOutputRequest): Promise<RevealResult> {
+  return guard(() => facade().OpenSharedOutput(request), { state: "failed", context: noContext });
+}
+
+export function listShareTemplates(context: RequestContext): Promise<ShareTemplatesResult> {
+  return retryingRead(() => facade().ListShareTemplates(context), { state: "failed", context, templates: [] });
+}
+
+export function readShareTemplate(request: ItemRequest): Promise<ShareTemplateResult> {
+  return retryingRead(() => facade().ReadShareTemplate(request), { state: "failed", context: request.context });
+}
+
+/** Saves a template as configuration only: a new one by name, or an edit of
+ * the version it was read at. */
+export function saveShareTemplate(request: ShareTemplateRequest): Promise<ShareTemplateResult> {
+  return guard(() => facade().SaveShareTemplate(request), { state: "failed", context: request.context });
+}
+
+export function listEncryptedPackages(context: RequestContext): Promise<EncryptedPackagesResult> {
+  return retryingRead(() => facade().ListEncryptedPackages(context), { state: "failed", context, packages: [] });
+}
+
+/** Sets the project's sharing policy; saving it approves no summary. */
+export function saveProjectSharingPolicy(request: SharingPolicyRequest): Promise<SupportPolicyResult> {
+  return guard(() => facade().SaveProjectSharingPolicy(request), { state: "failed" });
 }
 
 /** One run of the project, or one job of a suite run, as its page shows it. */

@@ -52,7 +52,12 @@ export type ActionID =
   | "environment.isolation.reconcile"
   | "environment.isolation.cleanup"
   | "run.minimize"
-  | "report.export"
+  | "report.share"
+  | "report.send"
+  | "report.prepare-check"
+  | "package.decrypt"
+  | "package.delete"
+  | "report.support"
   | "report.review"
   | "run.test"
   | "run.suite"
@@ -94,9 +99,12 @@ export interface ActionReview {
   transport?: TransportReview;
   run?: RunReview;
   team?: TeamActionReview;
-  report_export?: ReportExportReview;
   report_review?: ReportReviewView;
   minimize?: MinimizeReview;
+  report_share?: ReportShareReview;
+  share_check?: ShareCheckView;
+  package_action?: PackageActionReview;
+  report_support?: ReportSupportReview;
 }
 
 /** internal/desktop.ActionReviewResult */
@@ -2537,6 +2545,26 @@ export interface EditorDraftsResult {
   drafts?: EditorDraft[];
 }
 
+/** internal/desktop.EncryptedPackage */
+export interface EncryptedPackage {
+  entry: string;
+  created_at?: string;
+  retention?: string;
+  retain_until?: string;
+  control?: string;
+  generation?: number;
+  entries?: number;
+  problem?: string;
+}
+
+/** internal/desktop.EncryptedPackagesResult */
+export interface EncryptedPackagesResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  packages: EncryptedPackage[];
+}
+
 /** internal/engineexport.Engine */
 export interface EngineExportEngine {
   engine: string;
@@ -4767,6 +4795,7 @@ export type ItemKind =
   | "mapping"
   | "source"
   | "normalization-policy"
+  | "report-share"
   | "report-review"
   | "suite-approval";
 
@@ -6199,6 +6228,29 @@ export interface OperationResult {
 /** internal/desktop.Ordering */
 export type Ordering = "observed" | "unknown" | "message" | "source";
 
+/** internal/desktop.PackageActionOptions */
+export interface PackageActionOptions {
+  package: string;
+  destination?: string;
+  override?: boolean;
+}
+
+/** internal/desktop.PackageActionOutcome */
+export interface PackageActionOutcome {
+  name?: string;
+  output?: string;
+  removed?: number;
+}
+
+/** internal/desktop.PackageActionReview */
+export interface PackageActionReview {
+  package: EncryptedPackage;
+  destination: ShareDestinationView;
+  files: number;
+  override: boolean;
+  limitations: string[];
+}
+
 /** internal/desktop.PacketPathResult */
 export interface PacketPathResult {
   state: State;
@@ -6293,8 +6345,10 @@ export interface PrepareActionRequest {
   derive_review?: DeriveReviewOptions;
   run?: RunActionOptions;
   team?: TeamActionOptions;
-  report_export?: ReportExportOptions;
   minimize?: MinimizeOptions;
+  report_share?: ReportShareOptions;
+  package?: PackageActionOptions;
+  support?: ReportSupportOptions;
 }
 
 /** internal/desktop.PreparedCandidate */
@@ -7074,6 +7128,12 @@ export interface RecoveryCopyResult {
   contents?: RecoveryCopyContents;
 }
 
+/** internal/redact.Example */
+export interface RedactExample {
+  original: string;
+  derived: string;
+}
+
 /** internal/redact.FieldRule */
 export interface RedactFieldRule {
   selector: string;
@@ -7657,29 +7717,6 @@ export interface ReportDraft {
   comparison_job?: string;
 }
 
-/** internal/desktop.ReportExportOptions */
-export interface ReportExportOptions {
-  format: string;
-  paper?: string;
-}
-
-/** internal/desktop.ReportExportOutcome */
-export interface ReportExportOutcome {
-  file: string;
-}
-
-/** internal/desktop.ReportExportReview */
-export interface ReportExportReview {
-  report: string;
-  version?: string;
-  format: string;
-  paper?: string;
-  file: string;
-  size: number;
-  original: boolean;
-  contains_source_values: boolean;
-}
-
 /** internal/report.Outcome */
 export type ReportOutcome = "passed" | "failed" | "error" | "incomplete";
 
@@ -7722,11 +7759,93 @@ export interface ReportRun {
   case?: ItemRef;
 }
 
+/** internal/desktop.ReportShareEntry */
+export interface ReportShareEntry {
+  version: string;
+  at: string;
+  actor: string;
+  destination: string;
+  output: string;
+  format: string;
+  redacted: boolean;
+  source_values: boolean;
+  encrypted: boolean;
+}
+
+/** internal/desktop.ReportShareOptions */
+export interface ReportShareOptions {
+  contents: ShareContents;
+  template?: string;
+  overrides: ShareOverrides;
+  format: string;
+  paper?: string;
+  destination?: string;
+  project?: string;
+  encrypt?: ShareEncryption;
+  reveal?: boolean;
+}
+
+/** internal/desktop.ReportShareOutcome */
+export interface ReportShareOutcome {
+  name: string;
+  output?: string;
+  project?: string;
+  resource?: string;
+  incomplete?: boolean;
+}
+
+/** internal/desktop.ReportShareReview */
+export interface ReportShareReview {
+  report: string;
+  version?: string;
+  patient?: string;
+  template?: string;
+  items: ShareItem[];
+  rows: ShareRow[];
+  issues: ShareIssue[];
+  output: ShareOutput;
+  destination: ShareDestinationView;
+  encryption?: ShareEncryptionView;
+  run_check?: ShareRunCheck;
+  source_values: boolean;
+  redacted: boolean;
+  revealed: boolean;
+  consequence?: string;
+  encrypted: boolean;
+  templates: ShareTemplate[];
+  controls: ShareControl[];
+  projects: string[];
+  attachments: number;
+}
+
 /** internal/desktop.ReportSummary */
 export interface ReportSummary {
   form: string;
   related_case: ItemRef | null;
   status?: string;
+}
+
+/** internal/desktop.ReportSupportOptions */
+export interface ReportSupportOptions {
+  destination?: string;
+  hub?: boolean;
+}
+
+/** internal/desktop.ReportSupportOutcome */
+export interface ReportSupportOutcome {
+  name: string;
+  output?: string;
+  hub?: boolean;
+}
+
+/** internal/desktop.ReportSupportReview */
+export interface ReportSupportReview {
+  report: string;
+  policy?: SupportPolicy;
+  summary?: SupportSummary;
+  size: number;
+  destination: ShareDestinationView;
+  hub_allowed: boolean;
 }
 
 /** internal/desktop.ReportVersion */
@@ -7760,6 +7879,7 @@ export interface ReportView {
   review: string;
   draft?: ReportDraft;
   revealed: boolean;
+  shares: ReportShareEntry[];
 }
 
 /** internal/desktop.Reproducer */
@@ -8270,8 +8390,11 @@ export interface ReviewedActionResult {
   approved?: ItemRef;
   run?: ItemRef;
   team?: TeamActionOutcome;
-  report_export?: ReportExportOutcome;
   minimize?: MinimizeOutcome;
+  report_share?: ReportShareOutcome;
+  share_check?: ShareCheckOutcome;
+  package_action?: PackageActionOutcome;
+  support?: ReportSupportOutcome;
 }
 
 /** internal/desktop.ReviewedOutcome */
@@ -10119,6 +10242,201 @@ export interface SessionResult {
   session?: Session;
 }
 
+/** internal/desktop.ShareCheckOutcome */
+export interface ShareCheckOutcome {
+  review: ItemRef;
+  packet: ItemRef;
+  phase: string;
+}
+
+/** internal/desktop.ShareCheckView */
+export interface ShareCheckView {
+  report: string;
+  phase: string;
+  inventory: InventoryDeclaration;
+  messages: number;
+}
+
+/** internal/desktop.ShareContents */
+export interface ShareContents {
+  messages?: boolean;
+  attachments?: boolean;
+  original?: boolean;
+  removed?: string[];
+}
+
+/** internal/desktop.ShareControl */
+export interface ShareControl {
+  entry: string;
+  control: string;
+  generation: number;
+  retention?: string;
+}
+
+/** internal/desktop.ShareDestinationRequest */
+export interface ShareDestinationRequest {
+  context: RequestContext;
+  name: string;
+  folder?: boolean;
+}
+
+/** internal/desktop.ShareDestinationResult */
+export interface ShareDestinationResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  destination?: string;
+  name?: string;
+  location?: string;
+}
+
+/** internal/desktop.ShareDestinationView */
+export interface ShareDestinationView {
+  kind: string;
+  name?: string;
+  location?: string;
+  team?: string;
+  project?: string;
+}
+
+/** internal/desktop.ShareEncryption */
+export interface ShareEncryption {
+  entry: string;
+  control: string;
+  generation: number;
+}
+
+/** internal/desktop.ShareEncryptionView */
+export interface ShareEncryptionView {
+  control: string;
+  reference: string;
+  generation: number;
+  retention?: string;
+}
+
+/** internal/desktop.ShareFile */
+export interface ShareFile {
+  name: string;
+  kind: string;
+  size: number;
+  text?: string;
+  data?: string;
+}
+
+/** internal/reportshare.Issue */
+export interface ShareIssue {
+  key: string;
+  text: string;
+  blocking?: boolean;
+}
+
+/** internal/reportshare.Item */
+export interface ShareItem {
+  key: string;
+  name: string;
+  type: string;
+  included: boolean;
+  removable: boolean;
+  problem?: string;
+}
+
+/** internal/desktop.ShareOutput */
+export interface ShareOutput {
+  type: string;
+  format: string;
+  paper?: string;
+  name: string;
+  size: number;
+  files: ShareFile[];
+  original?: number;
+}
+
+/** internal/reportshare.Overrides */
+export interface ShareOverrides {
+  fields?: RedactFieldRule[];
+  packet?: string[];
+  title?: string;
+  notes?: ShareValueTreatment;
+  values?: ShareValueTreatment[];
+}
+
+/** internal/reportshare.Row */
+export interface ShareRow {
+  key: string;
+  kind: string;
+  category: string;
+  field: string;
+  selector?: string;
+  occurrences: number;
+  treatment: string;
+  result: string;
+  rule?: RedactFieldRule;
+  examples?: RedactExample[];
+}
+
+/** internal/desktop.ShareRunCheck */
+export interface ShareRunCheck {
+  satisfied: boolean;
+  reason?: string;
+}
+
+/** internal/desktop.ShareTemplate */
+export interface ShareTemplate {
+  entry: string;
+  name: string;
+}
+
+/** internal/desktop.ShareTemplateRequest */
+export interface ShareTemplateRequest {
+  context: RequestContext;
+  name?: string;
+  report?: ItemRef;
+  base?: string;
+  overrides: ShareOverrides;
+  policy?: RedactPolicy;
+  entry?: string;
+  digest?: string;
+}
+
+/** internal/desktop.ShareTemplateResult */
+export interface ShareTemplateResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  template?: ShareTemplate;
+  policy?: RedactPolicy;
+  digest?: string;
+}
+
+/** internal/desktop.ShareTemplatesResult */
+export interface ShareTemplatesResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  templates: ShareTemplate[];
+}
+
+/** internal/reportshare.ValueTreatment */
+export interface ShareValueTreatment {
+  row: string;
+  remove?: boolean;
+  replace?: string;
+}
+
+/** internal/desktop.SharedOutputRequest */
+export interface SharedOutputRequest {
+  output: string;
+  folder?: boolean;
+}
+
+/** internal/desktop.SharingPolicyRequest */
+export interface SharingPolicyRequest {
+  context: RequestContext;
+  support: boolean;
+  destinations: string[];
+  max_bytes: number;
+}
+
 /** internal/desktop.Shell */
 export interface Shell {
   regions: Region[];
@@ -11947,6 +12265,7 @@ export interface Facade {
   ChooseProjectLocation(): Promise<ProjectLocationResult>;
   ChooseRunSpec(workspace: string): Promise<RunSpecChoiceResult>;
   ChooseRunnerPath(kind: string): Promise<PathChoiceResult>;
+  ChooseShareDestination(request: ShareDestinationRequest): Promise<ShareDestinationResult>;
   ChooseSupportExportPath(): Promise<PacketPathResult>;
   ChooseSyntheticPacketPath(kind: string): Promise<PacketPathResult>;
   ClassifyDroppedSources(paths: string[]): Promise<DroppedSourcesResult>;
@@ -12059,6 +12378,7 @@ export interface Facade {
   ListCatalog(query: CatalogQuery): Promise<CatalogResult>;
   ListConnections(request: RequestContext): Promise<ConnectionsResult>;
   ListCredentials(request: ItemRequest): Promise<CredentialsResult>;
+  ListEncryptedPackages(request: RequestContext): Promise<EncryptedPackagesResult>;
   ListFileMessages(request: FileMessagesRequest): Promise<FileMessagesResult>;
   ListHubLifecycle(project: string): Promise<HubLifecycleResult>;
   ListHubMembers(project: string): Promise<HubMembersResult>;
@@ -12073,6 +12393,7 @@ export interface Facade {
   ListRunners(request: RequestContext): Promise<RunnerListResult>;
   ListSchedules(request: ScheduleListRequest): Promise<ScheduleListResult>;
   ListSearchSettings(workspace: string): Promise<SearchSettingsListResult>;
+  ListShareTemplates(request: RequestContext): Promise<ShareTemplatesResult>;
   ListViews(workspace: string): Promise<ViewsResult>;
   LocateItem(request: LocateRequest): Promise<ItemResult>;
   MessageFields(request: MessageFieldsRequest): Promise<MessageFieldsResult>;
@@ -12112,6 +12433,7 @@ export interface Facade {
   OpenRunEvidence(request: RunEvidenceRequest): Promise<RunEvidenceResult>;
   OpenSchedulePolicy(path: string): Promise<SchedulePreviewResult>;
   OpenSequence(request: SequenceRequest): Promise<SequenceResult>;
+  OpenSharedOutput(request: SharedOutputRequest): Promise<RevealResult>;
   OpenSimilarFindings(request: ItemRequest): Promise<SimilarResult>;
   OpenSyntheticPacket(path: string): Promise<SyntheticPacketResult>;
   OpenTransformPlan(workspace: string, entry: string): Promise<TransformPlanResult>;
@@ -12159,6 +12481,7 @@ export interface Facade {
   ReadRunnerRecovery(configPath: string, jobID: string): Promise<RunnerRecoveryResult>;
   ReadSecrets(workspace: string, secretsFile: string): Promise<SecretsResult>;
   ReadSendPolicy(workspace: string, policyFile: string): Promise<SendPolicyResult>;
+  ReadShareTemplate(request: ItemRequest): Promise<ShareTemplateResult>;
   ReadSharingPolicy(workspace: string, entry: string): Promise<SupportPolicyResult>;
   ReadTarget(workspace: string, targetFile: string): Promise<TargetResult>;
   ReconcileHubOfflineDraft(request: HubLifecycleCommandRequest): Promise<HubLifecycleResult>;
@@ -12217,6 +12540,7 @@ export interface Facade {
   SaveObservationSource(request: ObservationSourceRequest): Promise<ObservationSourceResult>;
   SaveObservationWindow(request: ObservationWindowRequest): Promise<ObservationWindowResult>;
   SavePreferences(p: Preferences): Promise<PreferencesResult>;
+  SaveProjectSharingPolicy(request: SharingPolicyRequest): Promise<SupportPolicyResult>;
   SaveProtectionControl(request: ProtectionControlRequest): Promise<ProtectionResult>;
   SaveRedactInventory(request: RedactInventoryRequest): Promise<RedactInventoryResult>;
   SaveRedactPolicy(request: RedactPolicyRequest): Promise<RedactPolicyResult>;
@@ -12228,6 +12552,7 @@ export interface Facade {
   SaveSearchSettings(request: SearchSettingsRequest): Promise<BuildIndexResult>;
   SaveSecretReference(request: SecretSaveRequest): Promise<SecretsResult>;
   SaveSendPolicy(request: SendPolicySaveRequest): Promise<SendPolicyResult>;
+  SaveShareTemplate(request: ShareTemplateRequest): Promise<ShareTemplateResult>;
   SaveSharingPolicy(request: SupportPolicyRequest): Promise<SupportPolicyResult>;
   SaveTarget(request: TargetSaveRequest): Promise<TargetResult>;
   SaveTest(request: TestRequest): Promise<TestResult>;

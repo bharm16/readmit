@@ -71,6 +71,7 @@ var facadeNames = names{
 		"internal/profilepackage":   "ProfilePackage",
 		"internal/profileversion":   "ProfileVersion",
 		"internal/reduce":           "Reduction",
+		"internal/reportshare":      "Share",
 		"internal/runcompare":       "RunCompare",
 		"internal/runqueue":         "RunQueue",
 		"internal/sendpolicy":       "SendPolicy",

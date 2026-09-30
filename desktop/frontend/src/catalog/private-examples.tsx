@@ -44,15 +44,6 @@ export const privateExamples: Example[] = [
     statusRequired: true,
     onChange: noop,
   }),
-  p("ProtectionPanel", "PackageView", {
-    view: f.protectionPackageResult().package,
-    limitations: f.protectionPackageResult().limitations ?? [],
-  }),
-  p("Review", "Inventory", {
-    ...privateData.reviewInventory,
-    busy: false,
-    onWindow: noop,
-  }),
   p("RunnerPanel", "Refusal", {
     result: { state: "failed", reason: "Synthetic runner unavailable" },
   }),

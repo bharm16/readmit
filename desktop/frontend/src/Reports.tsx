@@ -25,7 +25,7 @@ import {
   type TestRunnerValue,
 } from "./bindings";
 import { DataTable, type Column, type SortState } from "./DataTable";
-import { CHECK_RESULTS, DEFINITION_CHANGES, REPORT_FORMATS, REPORT_OUTCOMES, REPORT_REVIEWS, RUN_DELIVERIES, RUN_RESULTS, TEST_BOUNDARIES, term } from "./display";
+import { CHECK_RESULTS, DEFINITION_CHANGES, REPORT_OUTCOMES, REPORT_REVIEWS, RUN_DELIVERIES, RUN_RESULTS, SHARE_FORMATS, TEST_BOUNDARIES, term } from "./display";
 import { IconButton } from "./IconButton";
 import { EmptyState, FormDialog, Menu, Modal, Reveal, ValueRows, type MenuItem } from "./layout";
 import { listDate } from "./Projects";
@@ -537,18 +537,21 @@ type ReportPageProps = {
   listed: CatalogItem[];
   onOpenRun: (run: ItemRef, job?: string) => void;
   onViewMessages: (caseRef: ItemRef, occurrences: string[]) => void;
-  onShare: () => void;
+  /** Opens the share of this report: at its Contents, or its Preview for
+   * an Export. */
+  onShare: (start: "contents" | "preview") => void;
+  onSupport: () => void;
   onChanged: () => void;
 };
 
 /** One report's page: its title, actions and readable document. */
-export function useReportPage({ root, id, busy, listed, onOpenRun, onViewMessages, onShare, onChanged }: ReportPageProps) {
+export function useReportPage({ root, id, busy, listed, onOpenRun, onViewMessages, onShare, onSupport, onChanged }: ReportPageProps) {
   const scope = useRef(new RequestScope());
   const context = useCallback(() => scope.current.enter(root ?? ""), [root]);
   const [answer, setAnswer] = useState<ReportResult | null>(null);
   const [reveal, setReveal] = useState(false);
   const [selectedCheck, setSelectedCheck] = useState<string | null>(null);
-  const [sheet, setSheet] = useState<null | "title" | "notes" | "history" | "evidence" | "export" | "review">(null);
+  const [sheet, setSheet] = useState<null | "title" | "notes" | "history" | "evidence" | "review">(null);
   const [details, setDetails] = useState(false);
   const detailsRef = useRef<HTMLDetailsElement | null>(null);
 
@@ -618,7 +621,8 @@ export function useReportPage({ root, id, busy, listed, onOpenRun, onViewMessage
     menu.push({ label: "Edit notes", onSelect: () => setSheet("notes"), disabled: busy });
     if (view.review === "draft") menu.push({ label: "Mark reviewed", onSelect: () => setSheet("review"), disabled: busy });
   }
-  if (view.versions.length > 0) menu.push({ label: "History", onSelect: () => setSheet("history") });
+  if (view.versions.length > 0 || view.shares.length > 0) menu.push({ label: "History", onSelect: () => setSheet("history") });
+  menu.push({ label: "Support summary", onSelect: onSupport, disabled: busy });
   menu.push({ label: "Evidence", onSelect: () => setSheet("evidence") });
   menu.push({
     label: "Details",
@@ -700,10 +704,10 @@ export function useReportPage({ root, id, busy, listed, onOpenRun, onViewMessage
     title,
     actions: (
       <>
-        <button type="button" disabled={busy} onClick={() => setSheet("export")}>
+        <button type="button" disabled={busy} onClick={() => onShare("preview")}>
           Export
         </button>
-        <button type="button" disabled={busy} onClick={onShare}>
+        <button type="button" disabled={busy} onClick={() => onShare("contents")}>
           Share
         </button>
         <Menu label="More report actions" items={menu} />
@@ -801,6 +805,24 @@ export function useReportPage({ root, id, busy, listed, onOpenRun, onViewMessage
           onSave={(value) => save({ ...view.draft!, notes: value })}
         />
         <Modal open={sheet === "history"} title="History" onClose={() => setSheet(null)}>
+          {view.shares.length > 0 ? (
+            <DataTable
+              label="Shares"
+              rows={view.shares.map((entry, index) => ({ ...entry, key: String(index) }))}
+              rowId={(entry) => entry.key}
+              rowLabel={(entry) => `${shareDestination(entry.destination)} · ${startedText(entry.at)}`}
+              columns={[
+                { key: "when", header: "Shared", priority: 1, minWidth: 8, render: (entry) => startedText(entry.at) },
+                { key: "version", header: "Version", priority: 2, minWidth: 5, render: (entry) => entry.version },
+                { key: "destination", header: "Destination", priority: 1, minWidth: 8, render: (entry) => shareDestination(entry.destination) },
+                { key: "output", header: "Output", priority: 2, minWidth: 8, render: (entry) => shareOutput(entry) },
+                { key: "redaction", header: "Redaction", priority: 1, minWidth: 8, render: (entry) => (entry.redacted ? "Redacted" : "Patient data") },
+              ]}
+              selected={null}
+              onSelect={() => undefined}
+              onOpen={() => undefined}
+            />
+          ) : null}
           <DataTable
             label="Versions"
             rows={view.versions}
@@ -857,11 +879,6 @@ export function useReportPage({ root, id, busy, listed, onOpenRun, onViewMessage
             }}
           />
         ) : null}
-        {sheet === "export" && root ? <ExportSheet context={context} report={view.item.ref} onClose={() => setSheet(null)} onExported={() => {
-          setSheet(null);
-          onChanged();
-          void read();
-        }} /> : null}
       </div>
     ),
   };
@@ -980,91 +997,16 @@ function EditSheet({ open, kind, value, onClose, onSave }: { open: boolean; kind
   );
 }
 
-/** Export: the format, and for a PDF its paper, then the exact output the
- * export writes. Export writes those bytes to a file the person names. */
-function ExportSheet({ context, report, onClose, onExported }: { context: () => { project: string; generation: number }; report: ItemRef; onClose: () => void; onExported: () => void }) {
-  const [format, setFormat] = useState<keyof typeof REPORT_FORMATS>("pdf");
-  const [paper, setPaper] = useState<"letter" | "a4">("letter");
-  const [review, setReview] = useState<ActionReview | null>(null);
-  const [refusal, setRefusal] = useState<string | null>(null);
-  const intent = useRef<string | null>(null);
-  useEffect(() => {
-    let current = true;
-    setReview(null);
-    setRefusal(null);
-    intent.current = null;
-    void prepareAction({ context: context(), action: "report.export", items: [report], report_export: { format, ...(format === "pdf" ? { paper } : {}) } }).then((answer) => {
-      if (!current) return;
-      if (answer.review) setReview(answer.review);
-      else setRefusal(answer.reason ?? "This report cannot be exported.");
-    });
-    return () => {
-      current = false;
-    };
-  }, [context, report, format, paper]);
-  const output = review?.report_export;
-  return (
-    <FormDialog
-      open
-      title="Export report"
-      submitLabel="Export"
-      submitDisabled={!review?.ready || !review.token}
-      onClose={onClose}
-      onSubmit={async () => {
-        if (!review?.token) return { reason: "This report cannot be exported." };
-        intent.current ??= newIntentId();
-        const answer = await executeReviewedAction({ context: context(), token: review.token, intent_id: intent.current, decisions: {} });
-        if (answer.outcome === "completed") {
-          onExported();
-          return null;
-        }
-        if (answer.refreshed) {
-          setReview(answer.refreshed);
-          intent.current = null;
-        }
-        return { reason: answer.reason ?? "The report was not exported." };
-      }}
-    >
-      <fieldset className="checks">
-        <legend>Format</legend>
-        {(Object.keys(REPORT_FORMATS) as (keyof typeof REPORT_FORMATS)[]).map((key) => (
-          <label key={key} className="check">
-            <input type="radio" name="report-format" checked={format === key} onChange={() => setFormat(key)} />
-            {REPORT_FORMATS[key]}
-          </label>
-        ))}
-      </fieldset>
-      {format === "pdf" ? (
-        <fieldset className="checks">
-          <legend>Paper</legend>
-          <label className="check">
-            <input type="radio" name="report-paper" checked={paper === "letter"} onChange={() => setPaper("letter")} />
-            Letter
-          </label>
-          <label className="check">
-            <input type="radio" name="report-paper" checked={paper === "a4"} onChange={() => setPaper("a4")} />
-            A4
-          </label>
-        </fieldset>
-      ) : null}
-      {refusal ? <p role="alert">{refusal}</p> : null}
-      {output ? (
-        <>
-          <ValueRows
-            label="Output"
-            rows={[
-              { label: output.original ? "Folder" : "File", value: output.file || "Report" },
-              { label: "Size", value: size(output.size) },
-              ...(output.version ? [{ label: "Version", value: output.version }] : []),
-            ]}
-          />
-          <p className="consequence">{output.original ? "Includes the original messages. May contain patient data." : "May contain patient data."}</p>
-        </>
-      ) : refusal ? null : (
-        <p aria-live="polite">Preparing…</p>
-      )}
-    </FormDialog>
-  );
+/** Where a recorded share went, as its history reads it. */
+function shareDestination(destination: string): string {
+  return destination === "customer-hub" ? "Customer hub" : "Local file";
+}
+
+/** What a recorded share wrote. */
+function shareOutput(entry: { output: string; format: string; encrypted: boolean }): string {
+  const format = SHARE_FORMATS[entry.format as keyof typeof SHARE_FORMATS] ?? entry.format;
+  if (entry.encrypted) return `Encrypted package · ${format}`;
+  return entry.output === "folder" ? `Folder · ${format}` : format;
 }
 
 /** Mark reviewed: records that the version shown was reviewed, bound to
@@ -1116,8 +1058,3 @@ function ReviewSheet({ context, report, onClose, onReviewed }: { context: () => 
   );
 }
 
-function size(bytes: number): string {
-  if (bytes < 1024) return `${bytes} bytes`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}

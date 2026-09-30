@@ -112,6 +112,11 @@ type Review struct {
 type Request struct {
 	CasePath, SpecPath, PolicyPath, InventoryPath string
 	Output, LocalState                            string
+	// Key, when set, draws surrogates and date shifts from this
+	// customer-local key as a [Deriver] does, so the derived case is the
+	// one a sharing draft under the same key previews. Empty draws fresh
+	// randomness, as the command line always does.
+	Key []byte
 }
 
 type ExportRequest struct {

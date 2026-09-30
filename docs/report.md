@@ -374,9 +374,13 @@ above into a new project entry, and publishes it with the report's
 optional distinct comparison run, by catalog identity) as one revision. Editing
 the title or notes publishes a new revision of those documents only; the runs
 and the packet never change. Opening a report verifies its packet and reads the
-structured document above from it. Exporting one renders a format, or writes
-the v3 portable review of its original evidence, under a reviewed action bound
-to the exact output and version. A person's review of a version is recorded
+structured document above from it. Exporting or sharing one renders a format,
+optionally derived under a disclosure template, or writes the v3 portable
+review of its original evidence, under a reviewed action bound to the exact
+output and version; each completed share is recorded as a
+`readmit-report-share/v1` document (report, version, who, when, destination,
+output, format and whether it was redacted). See
+[sharing a report](desktop.md#sharing-a-report). A person's review of a version is recorded
 separately, never by producing a file, as a `readmit-report-approval/v1`
 document (report, version, who and when). A new revision is a draft again, and
 makes a prepared export or review stale. See [the desktop shell](desktop.md#reports).

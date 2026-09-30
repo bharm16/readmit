@@ -1,22 +1,18 @@
 package desktop
 
 import (
-	"bytes"
 	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json/v2"
 	"errors"
-	"io/fs"
-	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/catalog"
 	"github.com/bharm16/readmit/internal/operation"
@@ -34,9 +30,8 @@ import (
 // what the person wrote, its title and notes, as one revision. Editing the
 // title or notes publishes a new revision of what was written and never
 // touches the runs or their outcomes. Opening a report verifies its packet
-// and reads the structured report from it; exporting renders the exact
-// bytes a person reviewed, and an export recorded for a revision is what
-// makes that revision reviewed.
+// and reads the structured report from it; exporting and sharing it
+// (report_share.go, #560) write the exact bytes a person reviewed.
 
 // ReportDraft is a report as its sheets hold it: its title and notes, the
 // run it reports and, optionally, a distinct run it is compared with. Job
@@ -519,6 +514,8 @@ type ReportView struct {
 	Review      string                    `json:"review"`
 	Draft       *ReportDraft              `json:"draft,omitzero"`
 	Revealed    bool                      `json:"revealed"`
+	// Shares are the completed shares of this report, newest first.
+	Shares []ReportShareEntry `json:"shares"`
 }
 
 // OpenReport reads one report: it verifies the report's retained packet
@@ -563,6 +560,7 @@ func (c *loadedCatalog) reportView(item CatalogItem, revision string, reveal boo
 	shown := &ReportView{Item: item, Form: backing.form, Revision: backing.revision, Current: backing.revision == "" || backing.revision == record.RevisionLabel(),
 		Title: doc.Title, Result: doc.Result, Runs: []ReportRun{}, Checks: []RunCheck{}, Messages: []RunMessage{}, Limitations: doc.Limitations,
 		Evidence: doc.Evidence, Packet: doc.PacketIdentity, Versions: []ReportVersion{}, Review: "draft", Revealed: reveal}
+	shown.Shares, _ = c.reportShares(record.ID)
 	if doc.Notes != nil {
 		shown.Notes = *doc.Notes
 	}
@@ -672,174 +670,6 @@ func (c *loadedCatalog) reportVersions(record catalog.Item) []ReportVersion {
 		versions = append(versions, version)
 	}
 	return versions
-}
-
-// The export of a report (#559) is a reviewed action: the review renders the
-// exact bytes of the chosen format and binds them with the report version,
-// and Export writes those bytes, rendered again and unchanged, to a file the
-// person names. A new version of the report makes a prepared export stale.
-// Each export is recorded against the version it exported, which is what
-// makes that version reviewed.
-
-// ExportReportAction exports one report.
-const ExportReportAction ActionID = "report.export"
-
-// ReportExportOptions are the format a report is exported as and, for a
-// PDF, its paper. Format is html, pdf, markdown, json, junit, or original:
-// the portable review of the report's retained original evidence.
-type ReportExportOptions struct {
-	Format string `json:"format"`
-	Paper  string `json:"paper,omitzero"`
-}
-
-// ReportExportReview is the exact output an export writes.
-type ReportExportReview struct {
-	Report               string `json:"report"`
-	Version              string `json:"version,omitzero"`
-	Format               string `json:"format"`
-	Paper                string `json:"paper,omitzero"`
-	File                 string `json:"file"`
-	Size                 int    `json:"size"`
-	Original             bool   `json:"original"`
-	ContainsSourceValues bool   `json:"contains_source_values"`
-}
-
-// ReportExportOutcome is what an export wrote: the name of the file or
-// folder the person chose.
-type ReportExportOutcome struct {
-	File string `json:"file"`
-}
-
-var reportExportFormats = map[string]string{"html": ".html", "pdf": ".pdf", "markdown": ".md", "json": ".json", "junit": ".xml", "original": ""}
-
-// reportExportBinding is what an export writes.
-type reportExportBinding struct {
-	item      string
-	revision  string
-	format    string
-	paper     report.Paper
-	data      []byte
-	sum       string
-	packetDir string
-	authored  report.Authored
-}
-
-func bindReportExport(a *App, ctx context.Context, request PrepareActionRequest, _ bool) (*boundAction, refusal) {
-	if len(request.Items) != 1 || request.Items[0].Kind != ReportItem || request.ReportExport == nil {
-		return nil, refusal{Failed, "an export is reviewed for one report and one format"}
-	}
-	options := *request.ReportExport
-	extension, known := reportExportFormats[options.Format]
-	paper := report.Letter
-	switch {
-	case !known:
-		return nil, refusal{Failed, "a report is exported as HTML, PDF, Markdown, JSON, JUnit or its original evidence"}
-	case options.Paper == string(report.A4) && options.Format == "pdf":
-		paper = report.A4
-	case options.Paper != "" && options.Paper != string(report.Letter):
-		return nil, refusal{Failed, "a PDF is exported on Letter or A4 paper"}
-	}
-	loaded, items, records, declined := a.scoped(ctx, request.Context, request.Items)
-	if loaded == nil {
-		return nil, declined
-	}
-	backing, err := loaded.reportBacking(records[0], "")
-	if err != nil {
-		return nil, refusal{Failed, err.Error()}
-	}
-	doc, err := report.BuildDocument(ctx, backing.packetDir, backing.packet, backing.authored)
-	if err != nil {
-		return nil, refusal{Failed, err.Error()}
-	}
-	bound := &reportExportBinding{item: records[0].ID, revision: backing.revision, format: options.Format, paper: paper, packetDir: backing.packetDir,
-		authored: backing.authored}
-	display := &ReportExportReview{Report: doc.Title, Version: backing.revision, Format: options.Format, File: exportName(doc.Title) + extension,
-		Original: options.Format == "original", ContainsSourceValues: doc.ContainsSourceValues}
-	if options.Format == "pdf" {
-		display.Paper = string(paper)
-	}
-	if options.Format == "original" {
-		written, _ := report.EncodeAuthored(backing.authored)
-		sum := sha256.Sum256(written)
-		bound.sum = backing.packet.Identity + ":" + hex.EncodeToString(sum[:])
-		for _, file := range backing.packet.Manifest.Files {
-			display.Size += file.Size
-		}
-	} else {
-		format := options.Format
-		if paper == report.A4 {
-			format = "pdf-a4"
-		}
-		data, err := report.RenderDocument(doc, format)
-		if err != nil {
-			return nil, refusal{Failed, err.Error()}
-		}
-		sum := sha256.Sum256(data)
-		bound.data, bound.sum, display.Size = data, hex.EncodeToString(sum[:]), len(data)
-	}
-	return &boundAction{action: ExportReportAction, origin: request, reportExport: bound,
-		binding: binding(string(ExportReportAction), loaded.root, loaded.document.Project.ID, a.reviewer(), bound.item, bound.revision, bound.format, string(bound.paper), bound.sum),
-		review:  ActionReview{Items: items, Ready: true, ReportExport: display, Destination: ReviewDestination{Output: display.File}}}, noRefusal
-}
-
-// exportName is a report title as a file name offers it.
-func exportName(title string) string {
-	name := strings.Map(func(r rune) rune {
-		if r < 0x20 || strings.ContainsRune(`/\:*?"<>|`, r) {
-			return '-'
-		}
-		return r
-	}, strings.TrimSpace(title))
-	name = strings.Trim(name, ". ")
-	if len(name) > 120 {
-		name = name[:120]
-	}
-	return cmp.Or(name, "Report")
-}
-
-func executeReportExport(a *App, ctx context.Context, bound *boundAction, _ ReviewDecisions) ReviewedActionResult {
-	export := bound.reportExport
-	result := ReviewedActionResult{Outcome: ActionRefused}
-	var written string
-	if export.format == "original" {
-		folder, declined := a.chooseDestination(ctx, "Export original evidence")
-		if folder == "" {
-			result.refuse(declined.state, declined.reason)
-			return result
-		}
-		if _, err := report.ExportDocumentReview(ctx, export.packetDir, folder, export.authored); err != nil {
-			result.refuse(Failed, err.Error())
-			return result
-		}
-		written = folder
-	} else {
-		named, declined := a.chooseNamedDestination(ctx, "Export report", bound.review.ReportExport.File)
-		if named == "" {
-			result.refuse(declined.state, declined.reason)
-			return result
-		}
-		destination, err := artifactpath.Destination(named)
-		if err != nil {
-			result.refuse(Failed, "a report is exported outside retained evidence")
-			return result
-		}
-		if _, err := os.Lstat(destination); !errors.Is(err, fs.ErrNotExist) {
-			result.refuse(Failed, "a file is already there; name a new file for the report")
-			return result
-		}
-		if err := operation.WriteNewFile(destination, export.data, "cannot create the file", "cannot write the file"); err != nil {
-			result.refuse(Failed, "the report must be exported to a new file in a folder this account can write")
-			return result
-		}
-		if back, err := os.ReadFile(destination); err != nil || !bytes.Equal(back, export.data) {
-			result.refuse(Failed, "the exported report could not be verified after writing")
-			return result
-		}
-		written = destination
-	}
-	result.State, result.Outcome = Completed, ActionCompleted
-	result.ReportExport = &ReportExportOutcome{File: filepath.Base(written)}
-	return result
 }
 
 // A report is reviewed by a person, never by producing a file: Mark

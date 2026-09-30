@@ -34,15 +34,13 @@ readmit share RETAINED_PACKET --kind retained-packet --policy sharing.json --app
 readmit share verify NEW_SUPPORT
 ```
 
-The [desktop shell](desktop.md#privacy-review-protected-export-and-support-sharing)
-prepares the same summaries from its privacy panel: the policy is authored
-through structured controls, the preview shows every summary byte before
-anything is written, publication requires the exact preview identity over the
-current sources, and the bundle is written into a new local directory named in
-the host's save dialog, or one new workspace entry; a directory that already
-exists is refused. The window verifies a bundle offline through the reader
-`share verify` runs and refuses the same bundles. It is the same share
-operation, with the same refusals and the same no-upload boundary.
+The [desktop shell](desktop.md#support-summaries) prepares the same summaries
+from a report: the project's sharing policy is its own sheet, the preview shows
+every summary byte before anything is written, and the export requires the
+exact preview identity over the current sources and writes a new local
+directory named in the host's save dialog; a directory that already exists is
+refused. It is the same share operation, with the same refusals and the same
+no-upload boundary.
 
 `portable-review` and `derived-review` inputs follow the same
 [sharing boundary](redact.md#reviewed-support-diagnostics-and-sharing-policy);

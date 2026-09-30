@@ -259,6 +259,10 @@ func prepareReexecution(ctx context.Context, root string, request ReexecutionReq
 		return nil, refusal{Failed, "the original packet must be one entry of the open workspace"}
 	}
 	specPath, err := artifactpath.File(root, request.Spec)
+	if check := shareCheckSpec(root, request.Review); check != "" && request.Spec == check {
+		// A share's check runs the test preparing it wrote for this review.
+		specPath, err = check, nil
+	}
 	if err != nil {
 		return nil, refusal{Failed, "the rebound execution specification must be one regular entry of the open workspace"}
 	}

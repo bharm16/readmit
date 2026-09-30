@@ -33,14 +33,14 @@ export type SendRequest =
   | { kind: "suite"; suite: ItemRef; environment?: string | undefined }
   | { kind: "messages"; case: ItemRef; messages: string[]; environment?: ItemRef | undefined }
   | { kind: "resume"; run: ItemRef }
-  | { kind: "reviewed"; review: ItemRef; packet: ItemRef; test: ItemRef; phase: "failure" | "pass" };
+  | { kind: "reviewed"; review: ItemRef; packet: ItemRef; test?: ItemRef; phase: "failure" | "pass" };
 
 const TITLES: Record<SendRequest["kind"], string> = {
   test: "Run test",
   suite: "Run suite",
   messages: "Send messages",
   resume: "Resume remaining",
-  reviewed: "Run reviewed test",
+  reviewed: "Run check",
 };
 
 export function sendTitle(request: SendRequest): string {
@@ -75,7 +75,7 @@ function preparing(request: SendRequest, chosen: Chosen): Omit<PrepareActionRequ
     case "resume":
       return { action: "run.resume", items: [request.run] };
     case "reviewed":
-      return { action: "run.reviewed-test", items: [request.review, request.packet, request.test], run: { phase: request.phase } };
+      return { action: "run.reviewed-test", items: [request.review, request.packet, ...(request.test ? [request.test] : [])], run: { phase: request.phase } };
   }
 }
 

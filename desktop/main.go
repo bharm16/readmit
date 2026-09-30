@@ -91,6 +91,25 @@ func (d *dialog) Reveal(path string) error {
 	return nil
 }
 
+// OpenFile opens a file a share wrote with the application the host
+// associates with its type, as the person asked.
+func (d *dialog) OpenFile(path string) error {
+	var command *exec.Cmd
+	switch goruntime.GOOS {
+	case "darwin":
+		command = exec.Command("open", path)
+	case "windows":
+		command = exec.Command("rundll32", "url.dll,FileProtocolHandler", path)
+	default:
+		command = exec.Command("xdg-open", path)
+	}
+	if err := command.Start(); err != nil {
+		return err
+	}
+	go command.Wait()
+	return nil
+}
+
 func (d *dialog) ChooseFiles(title, filterName, filterPattern string) ([]string, error) {
 	d.mu.Lock()
 	ctx := d.ctx

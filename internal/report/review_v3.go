@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/runresult"
 )
@@ -148,4 +149,70 @@ func openReviewV3(ctx context.Context, dir string, files map[string][]byte) (*Re
 	manifest := ReviewManifest{Schema: ReviewSchemaV3, State: stored.State, PacketIdentity: packet.Identity, ExportPolicy: packet.Manifest.ExportPolicy,
 		ContainsSourceValues: packet.Manifest.ContainsSourceValues, Files: stored.Files}
 	return &Review{Identity: digest(raw), Manifest: manifest, Document: doc, Authored: &authored, renderings: renders}, nil
+}
+
+// DocumentReviewFiles are the files ExportDocumentReview seals for the
+// packet at source, byte for byte, held in memory rather than written: a
+// share that encrypts original evidence packs them without a plaintext copy.
+// The packet is read, verified in place, rendered and read again; a packet
+// whose bytes changed meanwhile is refused.
+func DocumentReviewFiles(ctx context.Context, source string, authored Authored) (map[string][]byte, error) {
+	source, err := artifactpath.Directory(source)
+	if err != nil {
+		return nil, err
+	}
+	files, err := readTree(source)
+	if err != nil {
+		return nil, err
+	}
+	nested := make(map[string][]byte, len(files)+8)
+	for name, data := range files {
+		nested["packet/"+name] = data
+	}
+	if err := reviewBounds(nested); err != nil {
+		return nil, err
+	}
+	packet, err := OpenRetained(ctx, source)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(authored.Title) == "" {
+		authored.Title = DefaultTitle(source)
+	}
+	renders, err := documentRenderings(ctx, source, packet, authored)
+	if err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	again, err := readTree(source)
+	if err != nil || !sameTree(files, again) {
+		return nil, errors.New("the retained evidence changed while it was read")
+	}
+	for name, data := range renders {
+		nested[name] = data
+	}
+	raw, err := encode(reviewManifestV3(packet, nested))
+	if err != nil {
+		return nil, err
+	}
+	nested["manifest.json"] = raw
+	nested["identity.sha256"] = []byte(digest(raw) + "\n")
+	if err := reviewBounds(nested); err != nil {
+		return nil, err
+	}
+	return nested, nil
+}
+
+func sameTree(a, b map[string][]byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for name, data := range a {
+		if other, ok := b[name]; !ok || !bytes.Equal(data, other) {
+			return false
+		}
+	}
+	return true
 }

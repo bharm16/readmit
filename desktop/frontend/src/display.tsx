@@ -270,15 +270,6 @@ export const REPORT_REVIEWS: DisplayMap<"draft" | "reviewed"> = {
   reviewed: "Reviewed",
 };
 
-/** The formats a report is exported as. */
-export const REPORT_FORMATS: DisplayMap<"html" | "pdf" | "markdown" | "json" | "junit" | "original"> = {
-  html: "HTML",
-  pdf: "PDF",
-  markdown: "Markdown",
-  json: "JSON",
-  junit: "JUnit",
-  original: "Original evidence",
-};
 
 /** What happened to a compared check's definition. */
 export const DEFINITION_CHANGES: DisplayMap<"unchanged" | "changed" | "added" | "removed"> = {
@@ -465,3 +456,79 @@ export const NORMALIZATION_OUTCOMES: Record<string, string> = { suppressed: "Ign
 
 /** How a normalization rule compares. */
 export const NORMALIZATION_OPERATORS: Record<string, string> = { ignore: "Ignore difference", timestamp: "Timestamp", numeric: "Number" };
+
+/** What a share holds, by the type of each item (#560). */
+export const SHARE_ITEM_TYPES: DisplayMap<"report" | "notes" | "message" | "attachment" | "original"> = {
+  report: "Report",
+  notes: "Notes",
+  message: "Message",
+  attachment: "Attachment",
+  original: "Original evidence",
+};
+
+/** The category a redaction row belongs to. */
+export const SHARE_CATEGORIES: DisplayMap<string> = {
+  structural: "Structural",
+  names: "Names",
+  geography: "Geography",
+  "dates-and-ages": "Dates and ages",
+  "telephone-numbers": "Telephone numbers",
+  "fax-numbers": "Fax numbers",
+  "email-addresses": "Email addresses",
+  "social-security-numbers": "Social Security numbers",
+  "medical-record-numbers": "Medical record numbers",
+  "health-plan-numbers": "Health plan numbers",
+  "account-numbers": "Account numbers",
+  "certificate-license-numbers": "Certificate and license numbers",
+  "vehicle-identifiers": "Vehicle identifiers",
+  "device-identifiers": "Device identifiers",
+  urls: "URLs",
+  "ip-addresses": "IP addresses",
+  "biometric-identifiers": "Biometric identifiers",
+  "face-images": "Face images",
+  "other-unique-identifiers": "Other identifiers",
+  "free-text": "Free text",
+  metadata: "Metadata",
+  unassigned: "Unassigned",
+  attachments: "Attachment",
+  "original-evidence": "Original evidence",
+};
+
+/** How a redaction row is treated. */
+export const SHARE_TREATMENTS: DisplayMap<"none" | "remove" | "replace" | "surrogate" | "shift" | "keep" | "regenerate"> = {
+  none: "None",
+  remove: "Remove",
+  replace: "Replace",
+  surrogate: "Scoped surrogate",
+  shift: "Shift dates",
+  keep: "Keep allowed values",
+  regenerate: "Regenerate",
+};
+
+/** What a treatment did. */
+export const SHARE_RESULTS: DisplayMap<"removed" | "replaced" | "surrogate" | "shifted" | "kept" | "regenerated" | "unresolved" | "original"> = {
+  removed: "Removed",
+  replaced: "Replaced",
+  surrogate: "Surrogate",
+  shifted: "Shifted",
+  kept: "Kept",
+  regenerated: "Regenerated",
+  unresolved: "Unresolved",
+  original: "Original",
+};
+
+/** The format a report is shared as. */
+export const SHARE_FORMATS: DisplayMap<"pdf" | "html" | "markdown" | "json" | "junit"> = {
+  pdf: "PDF",
+  html: "HTML",
+  markdown: "Markdown",
+  json: "JSON",
+  junit: "JUnit",
+};
+
+/** A transfer package's declared retention, as it stands now. */
+export const PACKAGE_RETENTIONS: DisplayMap<"within-retention" | "past-retention" | "not-declared"> = {
+  "within-retention": "Retained",
+  "past-retention": "Retention ended",
+  "not-declared": "None declared",
+};

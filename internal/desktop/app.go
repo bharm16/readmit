@@ -417,6 +417,10 @@ type App struct {
 	// preferencesMu serializes the preferences document alone, so saving
 	// them never waits for the operation slot.
 	preferencesMu sync.Mutex
+	// shareMu guards the destinations chosen for shares and the outputs
+	// shares wrote, held under opaque handles in memory alone.
+	shareMu      sync.Mutex
+	shareHandles shareHandles
 
 	// clock is the facade's time, which a test fixes; nil is the system
 	// clock.

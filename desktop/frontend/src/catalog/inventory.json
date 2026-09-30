@@ -696,18 +696,6 @@
     "line": 21
   },
   {
-    "name": "PrivacyDocuments",
-    "source": "desktop/frontend/src/PrivacyDocuments.tsx",
-    "exported": true,
-    "line": 94
-  },
-  {
-    "name": "PrivacyPanel",
-    "source": "desktop/frontend/src/PrivacyPanel.tsx",
-    "exported": true,
-    "line": 67
-  },
-  {
     "name": "FieldDetail",
     "source": "desktop/frontend/src/ProfileLibrary.tsx",
     "exported": false,
@@ -786,28 +774,10 @@
     "line": 260
   },
   {
-    "name": "ProtectionPanel",
-    "source": "desktop/frontend/src/ProtectionPanel.tsx",
-    "exported": true,
-    "line": 20
-  },
-  {
-    "name": "PackageView",
-    "source": "desktop/frontend/src/ProtectionPanel.tsx",
-    "exported": false,
-    "line": 292
-  },
-  {
     "name": "FormatSheet",
     "source": "desktop/frontend/src/RawInspection.tsx",
     "exported": false,
     "line": 356
-  },
-  {
-    "name": "Reexecution",
-    "source": "desktop/frontend/src/Reexecution.tsx",
-    "exported": true,
-    "line": 12
   },
   {
     "name": "SearchSheet",
@@ -856,18 +826,6 @@
     "source": "desktop/frontend/src/Reports.tsx",
     "exported": false,
     "line": 1072
-  },
-  {
-    "name": "Review",
-    "source": "desktop/frontend/src/Review.tsx",
-    "exported": true,
-    "line": 39
-  },
-  {
-    "name": "Inventory",
-    "source": "desktop/frontend/src/Review.tsx",
-    "exported": false,
-    "line": 628
   },
   {
     "name": "ReviewSheet",
