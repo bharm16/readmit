@@ -161,6 +161,14 @@ Three Go modules. `github.com/bharm16/readmit` holds the engine and produces the
 
 ## Networking
 
+FHIR R4 desktop evidence is retained under `readmit-fhir-evidence/v1` by
+`internal/fhirevidence`, using the existing `fhirr4` interpreter and
+`fhirrequest` reader over original bytes. Project registration and offline
+inspection accept that separate artifact without changing historical v2 case
+readers. The existing Library and variant editors keep separate FHIR profile,
+scenario, typed check-group and edit-plan contracts; profile availability reads
+only saved local-validator metadata. See [protocol evidence](protocol-evidence.md).
+
 - Standard library `net`, `bufio`, `io`, `context`, and `crypto/tls`, with a readmit-owned MLLP framing implementation.
 - TLS 1.2 minimum, TLS 1.3 permitted, certificate verification always on, explicit customer CA configuration supported, and an explicit TLS server name and client certificate where an environment needs them. A client certificate's private key is a credential reference, never a file readmit keeps. `internal/transportsecurity` is the single implementation of that rule for every path that negotiates TLS, inbound or outbound, so a diagnosis, a send and a capture cannot honour three versions of the same settings. A `collect` listener is the inbound side of it: its certificate is a configured file, its private key is a credential reference, and declaring the authority that issues client certificates is what mutual TLS means there — a client certificate it issued is required and verified, never merely requested.
 - A named environment is one `readmit-target/v3` configuration an operator records, validates and diagnoses with `readmit target`. A connectivity diagnostic proves reachability and TLS and never sends an HL7 payload. The classification it records is displayed everywhere the target is shown and is never treated as permission. See [named test environments](target.md).

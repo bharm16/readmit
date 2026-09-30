@@ -188,7 +188,8 @@ portal operation, Makefile target or `tools/` script needs a row in
 `internal/capability`). A row names its `backend` operation
 (`{"package": "internal/x", "name": "Func"}` or `"Type.Method"`), the
 canonical `inputs` and `outputs` it reads and writes (`readmit-*/vN`
-contracts, or `hl7` for raw message bytes), and its `prerequisites` from the
+contracts, `hl7` for raw v2 message bytes, or `fhir-r4-json` for explicitly
+declared R4 JSON), and its `prerequisites` from the
 closed set in `internal/capability`; a command's activation prerequisite must
 match its declared operation-guard admission. Once it is `implemented` it
 names the `gui_test` that drives it — a component test

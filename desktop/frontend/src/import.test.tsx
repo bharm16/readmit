@@ -170,6 +170,28 @@ test("Choose files, folder and ZIP name each input, and a cancelled picker keeps
   expect(last).toMatchObject({ files: ["/exports/feed.hl7"], folders: [], archives: ["/exports/week.zip"] });
 });
 
+test("FHIR import declares R4 source semantics before preview and passes the same declaration to Import", async () => {
+  const user = userEvent.setup();
+  const { facade } = renderFlow({ ProbeImport: probing([CSV, TEXT]), PreviewImport: () => ({ state: "completed", mode: "fhir-r4", preview_token: "r4-preview", row_total: 2, rows: [{ index: 0, time: null, type: "Bundle", source: "synthetic-r4", direction: "unknown", kind: "resource", member: "synthetic-r4" }, { index: 1, time: null, type: "Patient", source: "synthetic-r4", direction: "unknown", kind: "resource", member: "synthetic-r4" }] }),
+    ImportCase: (request) => ({ state: "completed", context: request.context, case: CASE_REF, entry: "managed-r4", replayed: false }),
+  });
+  await chooseFiles(user, facade, ["/exports/synthetic-r4.json"]);
+  await user.click(flow().getByRole("button", { name: "Next" }));
+  await user.selectOptions(await flow().findByLabelText("Choose format"), "FHIR R4 JSON");
+  const format = within(await screen.findByRole("dialog", { name: "Format" }));
+  expect((format.getByLabelText("FHIR version") as HTMLSelectElement).value).toBe("4.0.1");
+  await user.selectOptions(format.getByLabelText("Source type"), "bundle");
+  await user.click(format.getByRole("button", { name: "Done" }));
+  await user.click(flow().getByRole("button", { name: "Next" }));
+  await flow().findByRole("table", { name: "Preview" });
+  expect(facade.oneCall("PreviewImport")[0]).toMatchObject({ mode: "fhir-r4", fhir: { source_kind: "bundle", context: { version: "4.0.1", media_type: "application/fhir+json", base: "" } } });
+  await user.click(flow().getByRole("button", { name: "Import" }));
+  await waitFor(() => expect(facade.callsTo("ImportCase")).toHaveLength(1));
+  const previewed = facade.oneCall("PreviewImport")[0];
+  expect(facade.oneCall("ImportCase")[0].source.fhir).toEqual(previewed.fhir);
+  expect(facade.callsTo("CheckTarget")).toHaveLength(0);
+});
+
 test("pasted messages become their own source named Pasted messages", async () => {
   const user = userEvent.setup();
   const { facade } = renderFlow({
@@ -227,6 +249,7 @@ test("an unambiguous HL7 file goes straight to preview and an ambiguous one asks
     "Choose a format",
     "CSV",
     "Text",
+    "FHIR R4 JSON",
     "Mirth Connect 4.5.2",
     "Open Integration Engine 4.6.0",
   ]);
@@ -479,4 +502,23 @@ test("Import sends one intent, opens Messages, and a second click creates nothin
   await user.click(flow().getByRole("button", { name: "Import" }));
   await waitFor(() => expect(importCase).toHaveBeenCalledTimes(2));
   expect(importCase.mock.calls[1]![0].intent_id).not.toBe(request.intent_id);
+});
+
+test("Stop cancels an import while it writes its case, and the flow keeps its selection and says why", async () => {
+  const user = userEvent.setup();
+  const { facade, onImported } = renderFlow({ ProbeImport: probing([CSV, TEXT], CSV_SAMPLE) });
+  const writing = facade.park("ImportCase");
+  await chooseFiles(user, facade, ["/exports/feed.csv"]);
+  await user.click(flow().getByRole("button", { name: "Next" }));
+  await mapCsv(user);
+  await user.click(flow().getByRole("button", { name: "Next" }));
+  await flow().findByRole("table", { name: "Preview" });
+  expect(flow().queryByRole("button", { name: "Stop" })).toBeNull();
+  await user.click(flow().getByRole("button", { name: "Import" }));
+  await user.click(await flow().findByRole("button", { name: "Stop" }));
+  expect(facade.callsTo("Cancel").at(-1)?.args).toEqual(["import"]);
+  writing.resolve({ state: "cancelled", reason: "the operation was cancelled", context: CONTEXT, replayed: false });
+  expect(await flow().findByText("the operation was cancelled")).toBeTruthy();
+  expect(flow().queryByRole("button", { name: "Stop" })).toBeNull();
+  expect(onImported).not.toHaveBeenCalled();
 });

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/bharm16/readmit/internal/engineexport"
+	"github.com/bharm16/readmit/internal/fhirevidence"
 	"github.com/bharm16/readmit/internal/importer"
 	"github.com/bharm16/readmit/internal/operation"
 )
@@ -47,17 +48,18 @@ func (r *PastedSourceResult) refuse(state State, reason string) { r.State, r.Rea
 // Context names the project an import flow belongs to, and Staged the pasted
 // sources StagePastedContent staged in it, which are read as files.
 type ImportRequest struct {
-	Context    RequestContext     `json:"context,omitzero"`
-	Workspace  string             `json:"workspace"`
-	Project    string             `json:"project,omitzero"`
-	Mode       string             `json:"mode"` // "plan", "recipe", "engine"
-	Files      []string           `json:"files,omitzero"`
-	Folders    []string           `json:"folders,omitzero"`
-	Archives   []string           `json:"archives,omitzero"`
-	Plan       *importer.Plan     `json:"plan,omitzero"`
-	Recipe     *importer.Recipe   `json:"recipe,omitzero"`
-	EnginePlan *engineexport.Plan `json:"engine_plan,omitzero"`
-	Staged     []string           `json:"staged,omitzero"`
+	Context    RequestContext            `json:"context,omitzero"`
+	Workspace  string                    `json:"workspace"`
+	Project    string                    `json:"project,omitzero"`
+	Mode       string                    `json:"mode"` // "plan", "recipe", "engine"
+	Files      []string                  `json:"files,omitzero"`
+	Folders    []string                  `json:"folders,omitzero"`
+	Archives   []string                  `json:"archives,omitzero"`
+	Plan       *importer.Plan            `json:"plan,omitzero"`
+	Recipe     *importer.Recipe          `json:"recipe,omitzero"`
+	EnginePlan *engineexport.Plan        `json:"engine_plan,omitzero"`
+	FHIR       *fhirevidence.Declaration `json:"fhir,omitzero"`
+	Staged     []string                  `json:"staged,omitzero"`
 }
 
 // ImportPreviewResult carries the preview outcome across plan, recipe or engine extraction.

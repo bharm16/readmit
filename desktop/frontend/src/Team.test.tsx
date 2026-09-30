@@ -660,3 +660,23 @@ test("a host task preview is stopped from its sheet and shows no command", async
   expect(await within(sheet).findByText("administration preview cancelled")).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Copy command" })).toBeNull();
 });
+
+test("a support summary review read while the team is still being read shows the summary, not the busy answer", async () => {
+  const user = userEvent.setup();
+  const support: HubTeamResult["reviews"][number] = {
+    id: "support-ask", support: true, item: "Support summary", requested_by: "ana", recipient: "rui", requested: "2026-09-20T10:00:00Z", updated: "2026-09-20T10:00:00Z",
+    status: "requested", evidence: "e".repeat(64), release: "f".repeat(64), to_me: true, discussion: [], requests: [{ id: "support-ask", evidence: "e".repeat(64), release: "f".repeat(64) }],
+  };
+  let asked = 0;
+  const facade = installFacade({
+    HubStatus: () => signedIn(),
+    ReadHubTeam: () => teamResult({ reviews: [support] }),
+    ReadHubSupportSummary: () => (++asked === 1 ? { state: "busy", reason: "another operation is already running" } : { state: "completed", source_kind: "retained-packet", outcome: "assertion_failure" }),
+  });
+  render(<HubPanel />);
+  await openTab(user, "Reviews");
+  await user.dblClick(await within(await screen.findByRole("table", { name: "Reviews" })).findByText("Support summary"));
+  expect(await screen.findByText("Check failed")).toBeTruthy();
+  expect(screen.queryByText("another operation is already running")).toBeNull();
+  expect(facade.callsTo("ReadHubSupportSummary")).toHaveLength(2);
+});

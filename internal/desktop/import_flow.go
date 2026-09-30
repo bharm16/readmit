@@ -18,6 +18,8 @@ import (
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/catalog"
 	"github.com/bharm16/readmit/internal/engineexport"
+	"github.com/bharm16/readmit/internal/fhirevidence"
+	"github.com/bharm16/readmit/internal/fhirr4"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/importer"
 	"github.com/bharm16/readmit/internal/operation"
@@ -184,6 +186,9 @@ type importRead struct {
 	file       string
 	token      string
 	staged     []string
+	fhir       *fhirr4.Document
+	fhirRaw    []byte
+	fhirRead   bool
 }
 
 // withSchemas is request with the contract version of each declaration it
@@ -226,6 +231,19 @@ func (a *App) extractImport(ctx context.Context, request ImportRequest) (*import
 	}
 	var err error
 	switch request.Mode {
+	case "fhir-r4":
+		if request.FHIR == nil || request.Plan != nil || request.Recipe != nil || request.EnginePlan != nil {
+			return nil, refusal{Failed, "R4 import requires one explicit source kind, version and media declaration"}
+		}
+		if len(files) != 1 || len(request.Folders)+len(request.Archives) != 0 {
+			return nil, refusal{Failed, "R4 import reads exactly one selected or pasted JSON source"}
+		}
+		read.file = filepath.Base(files[0])
+		read.fhirRaw, err = (artifactdir.Document{MaxBytes: fhirr4.MaxBytes}).Read(files[0])
+		if err == nil {
+			read.fhir, _, err = fhirevidence.Interpret(ctx, *request.FHIR, read.fhirRaw)
+		}
+		read.fhirRead = err == nil
 	case "plan":
 		if request.Plan == nil {
 			return nil, refusal{Failed, "an import plan is required"}
@@ -255,7 +273,7 @@ func (a *App) extractImport(ctx context.Context, request ImportRequest) (*import
 		preview, err = operation.ImportEnginePreview(ctx, *request.EnginePlan, files[0])
 		read.engine = &preview
 	default:
-		return nil, refusal{Failed, "unsupported import mode; choose plan, recipe, or engine"}
+		return nil, refusal{Failed, "unsupported import mode; choose plan, recipe, engine, or explicitly declared R4 JSON"}
 	}
 	if err != nil {
 		return failed(err)
@@ -271,6 +289,9 @@ func previewToken(request ImportRequest, read *importRead) string {
 	declared.Context, declared.Workspace, declared.Project = RequestContext{}, "", ""
 	data, _ := json.Marshal(declared, json.Deterministic(true))
 	digest.Write(data)
+	if read.fhirRead {
+		digest.Write(read.fhirRaw)
+	}
 	if read.extraction != nil {
 		for _, container := range read.extraction.Containers {
 			digest.Write([]byte("\x00" + string(container.Kind) + "\x00" + container.SHA256))
@@ -291,6 +312,9 @@ func previewToken(request ImportRequest, read *importRead) string {
 // problems counts what would not be read as messages.
 func (r *importRead) problems() ImportProblems {
 	problems := ImportProblems{}
+	if r.fhirRead {
+		return problems
+	}
 	if r.extraction != nil {
 		problems.Excluded, problems.Unmapped = r.extraction.Totals.Excluded, r.extraction.UnmappedRecords
 	}
@@ -390,6 +414,17 @@ func occurrences(source previewUnit, options hl7.Options) []previewUnit {
 // there are.
 func (r *importRead) previewRows() ([]ImportPreviewRow, int) {
 	rows := []ImportPreviewRow{}
+	if r.fhirRead {
+		if r.fhir == nil {
+			return []ImportPreviewRow{{Index: 0, Type: "FHIR request", Kind: "request", Source: fhirevidence.SourceID, Direction: string(bundle.Unknown), Member: r.file}}, 1
+		}
+		resources := r.fhir.Resources()
+		for i, resource := range resources[:min(len(resources), MaxPreviewRows)] {
+			resource.Type = fhirResourceCaption(resource.Type)
+			rows = append(rows, ImportPreviewRow{Index: i, Type: resource.Type, Kind: "resource", Source: fhirevidence.SourceID, Direction: string(bundle.Unknown), Member: r.file})
+		}
+		return rows, len(resources)
+	}
 	total := 0
 	for _, unit := range r.units() {
 		row := ImportPreviewRow{Time: unit.time, Source: unit.source, Direction: unit.direction, Member: unit.member}
@@ -451,6 +486,19 @@ func (a *App) InspectImportPreview(request ImportInspectRequest) InspectionResul
 		}
 		if read.token != request.PreviewToken {
 			return InspectionResult{State: Failed, Reason: staleRefusal}
+		}
+		if read.fhirRead {
+			occurrence := "request"
+			if read.fhir != nil {
+				resources := read.fhir.Resources()
+				if request.Row >= len(resources) {
+					return InspectionResult{State: Failed, Reason: "the preview holds no such resource"}
+				}
+				occurrence = resources[request.Row].Occurrence
+			} else if request.Row != 0 {
+				return InspectionResult{State: Failed, Reason: "the preview holds no such request"}
+			}
+			return inspectFHIR(ctx, read.token, occurrence, *source.FHIR, read.fhirRaw, read.fhir, inspectorWindow{Path: request.Path, NodeOffset: request.NodeOffset, ByteOffset: request.ByteOffset, RawOffset: -1, Reveal: request.Reveal})
 		}
 		index := 0
 		for _, unit := range read.units() {
@@ -581,6 +629,9 @@ func (a *App) ImportCase(request ImportCaseRequest) ImportCaseResult {
 		casePath, receiptPath := filepath.Join(incoming, "case"), filepath.Join(incoming, "receipt.json")
 		files := append(slices.Clone(source.Files), read.staged...)
 		switch source.Mode {
+		case "fhir-r4":
+			at := a.now().UTC()
+			_, err = fhirevidence.Create(ctx, casePath, *source.FHIR, read.fhirRaw, fhirevidence.Provenance{Mode: "imported", ImportedAt: &at})
 		case "plan":
 			_, _, err = operation.ImportPlanCommit(ctx, *source.Plan, files, source.Folders, source.Archives, casePath, receiptPath)
 		case "recipe":

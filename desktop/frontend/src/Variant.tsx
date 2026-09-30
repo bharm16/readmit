@@ -6,13 +6,12 @@
 // with its lineage in one save and opens it. Nothing here sends or resets.
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
-  discardEditorDraft,
+  inspectOccurrence,
   listWholeCatalog,
   messageFields,
   newIntentId,
   openItemDraft,
   resolveVariant,
-  saveEditorDraft,
   saveItem,
   type CatalogItem,
   type CorrelationRule,
@@ -27,12 +26,18 @@ import {
   type VariantResult,
   type VariantTransform,
   type VariantView,
+  type DatasetValue,
+  type FHIRFieldView,
+  type Fhirr4Resource,
+  type Fhirr4Selection,
 } from "./bindings";
+import { TypedValueFields } from "./Checks";
+import { RetentionStatus, useRetainer } from "./drafting";
 import { DataTable } from "./DataTable";
 import { FIELD_STATES, HIDDEN_VALUE, VARIANT_CHANGES, VARIANT_REASONS } from "./display";
 import { FieldList, FieldSelect } from "./FieldPicker";
 import { IconButton } from "./IconButton";
-import { EmptyState, FormDialog, Menu, Reveal, ValueRows, type MenuItem, type SubmitFailure } from "./layout";
+import { EmptyState, FormDialog, Menu, Modal, Reveal, ValueRows, type MenuItem, type SubmitFailure } from "./layout";
 import { typeLabel } from "./Messages";
 import "./variant.css";
 
@@ -46,7 +51,7 @@ const EDITS = new Set(["set-field/v1", "clear-field/v1"]);
 const DEPENDENCIES = new Set(["include-acknowledgements/v1", "include-prior-identity/v1"]);
 
 /** The case a variant is made from. */
-export type VariantSource = { ref: ItemRef; name: string; entry: string; identity: string };
+export type VariantSource = { ref: ItemRef; name: string; entry: string; identity: string; protocol?: string };
 
 /** A message as a list names it: its place in the case and its type. */
 export function messageText(message: VariantMessage | undefined, fallback = "Message"): string {
@@ -74,7 +79,7 @@ function staged(draft: VariantDraft, transform: VariantTransform | undefined): V
 }
 
 /** One change of the list: the plan step or sequence step it is, and how it reads. */
-type ChangeRow = { key: string; engine: "plan" | "sequence"; index: number; name: string; message: string; field: string; value: ReactNode };
+type ChangeRow = { key: string; engine: "plan" | "sequence" | "fhir"; index: number; name: string; message: string; field: string; value: ReactNode };
 
 type Sheet = null | "messages" | "dependencies" | "change" | "name" | "relations";
 
@@ -113,7 +118,10 @@ export function useVariantEditor({
   const [linkRules, setLinkRules] = useState<CatalogItem[]>([]);
   const [profiles, setProfiles] = useState<CatalogItem[]>([]);
   const [fields, setFields] = useState<MessageField[] | null>(null);
-  const draftId = useRef("");
+  const [leaving, setLeaving] = useState<(() => void) | null>(null);
+  const [discarding, setDiscarding] = useState(false);
+  const baseline = useRef<HeldVariant | null>(null);
+  const retainer = useRetainer(flow && root ? `${root}\u0000${flow.source.entry}\u0000${flow.source.identity}\u0000${flow.serial}` : undefined);
   const turn = useRef(0);
   const retry = useRef<{ submission: string; intent: string } | null>(null);
   // The draft an accepted edit already resolved, so it is not asked again.
@@ -123,27 +131,33 @@ export function useVariantEditor({
   // from the variant the person had not saved for this case.
   useEffect(() => {
     if (!flow || !root) return;
-    const held = flow.seed.length > 0 ? undefined : drafts?.find(
+    const held = drafts?.find(
       (entry) => entry.kind === VARIANT_DRAFT_KIND && entry.content_schema === VARIANT_DRAFT_SCHEMA && entry.workspace === root && entry.case === flow.source.entry && entry.identity === flow.source.identity,
     );
     const content = held ? (held.content as HeldVariant) : null;
-    draftId.current = held?.id ?? "";
+    const fhir = flow.source.protocol === "fhir-r4";
+    const fresh: HeldVariant = { name: `${flow.source.name} variant`, draft: {
+      source: flow.source.ref,
+      plan: fhir ? { schema: "", case: "", steps: [] } : { schema: PLAN_SCHEMA, case: flow.source.identity, steps: flow.seed.map((occurrence) => ({ operator: "select-occurrence/v1", occurrence })) },
+      ...(fhir ? { fhir: { schema: "readmit-fhir-variant/v1", parent: flow.source.identity, steps: [] } } : {}),
+    } };
+    baseline.current = fresh;
+    if (held) retainer.keepId(held.id);
+    else retainer.clear();
     settled.current = null;
-    setName(content?.name ?? `${flow.source.name} variant`);
-    setDraft(
-      content?.draft ?? {
-        source: flow.source.ref,
-        plan: { schema: PLAN_SCHEMA, case: flow.source.identity, steps: flow.seed.map((occurrence) => ({ operator: "select-occurrence/v1", occurrence })) },
-      },
-    );
+    setName(content?.name ?? fresh.name);
+    setDraft(content?.draft ?? fresh.draft);
     setHistory([]);
     setView(null);
     setFailure(null);
     setReveal(false);
     setPreviewing(false);
     setSaveProblem(null);
-    setSheet(content || flow.seed.length > 0 ? null : "messages");
+    setLeaving(null);
+    setDiscarding(false);
+    setSheet(fhir || content || flow.seed.length > 0 ? null : "messages");
     setFields(null);
+    if (fhir) return;
     void listWholeCatalog({ context: context(), kind: "link-rules", filter: {} }).then((answer) => setLinkRules((answer.page?.items ?? []).filter((item) => item.availability === "available")));
     void listWholeCatalog({ context: context(), kind: "profile", filter: {} }).then((answer) => setProfiles((answer.page?.items ?? []).filter((item) => item.availability === "available")));
     void messageFields({ workspace: root, case: flow.source.entry, identity: flow.source.identity }).then((answer) => setFields(answer.fields));
@@ -176,13 +190,9 @@ export function useVariantEditor({
   const keep = useCallback(
     (held: HeldVariant) => {
       if (!root || !source) return;
-      void saveEditorDraft({ id: draftId.current, kind: VARIANT_DRAFT_KIND, workspace: root, case: source.entry, identity: source.identity, content_schema: VARIANT_DRAFT_SCHEMA, content: held }).then(
-        (answer) => {
-          if (draftId.current === "") draftId.current = (answer.drafts ?? []).find((entry) => entry.kind === VARIANT_DRAFT_KIND && entry.case === source.entry)?.id ?? "";
-        },
-      );
+      retainer.save({ id: "", kind: VARIANT_DRAFT_KIND, workspace: root, case: source.entry, identity: source.identity, content_schema: VARIANT_DRAFT_SCHEMA, content: held });
     },
-    [root, source],
+    [root, source, retainer.save],
   );
 
   /** Tries one edit: accepted, it becomes the plan and Undo can take it
@@ -209,7 +219,13 @@ export function useVariantEditor({
   );
 
   const byOccurrence = useMemo(() => new Map((view?.messages ?? []).map((message) => [message.message.id, message])), [view]);
-  if (!flow || !draft) return { title: "Case variant", actions: null, body: null };
+  const dirty = Boolean(draft && baseline.current && JSON.stringify({ name, draft }) !== JSON.stringify(baseline.current));
+  const leave = (exit: () => void) => {
+    if (busy || saving !== null || discarding) return;
+    if (dirty) setLeaving(() => exit);
+    else exit();
+  };
+  if (!flow || !draft) return { title: "Case variant", actions: null, body: null, leave };
 
   const undo = () => {
     const previous = history[history.length - 1];
@@ -220,11 +236,18 @@ export function useVariantEditor({
     keep({ name, draft: previous });
   };
 
-  const label = (occurrence: string | undefined) => messageText(occurrence ? byOccurrence.get(occurrence) : undefined, occurrence ?? "Message");
+  const label = (occurrence: string | undefined) => {
+    if (view?.fhir) {
+      const at = view.fhir.resources.findIndex((resource) => resource.occurrence === occurrence);
+      return at >= 0 ? `${at + 1}. ${view.fhir.resources[at]!.type}` : "Resource";
+    }
+    return messageText(occurrence ? byOccurrence.get(occurrence) : undefined, occurrence ?? "Message");
+  };
   const included = (view?.messages ?? []).filter((message) => message.included);
   const sequenceSteps = draft.transform?.steps ?? [];
 
   const rows: ChangeRow[] = [];
+  draft.fhir?.steps.forEach((step, index) => rows.push({ key: `fhir-${index}`, engine: "fhir", index, name: step.operator === "remove" ? "Remove field" : "Replace value", message: label(step.occurrence), field: view?.fhir?.changes[index]?.field ?? "Selected R4 field", value: step.operator === "remove" ? "Absent" : reveal ? step.value?.text : HIDDEN_VALUE }));
   draft.plan.steps.forEach((step, index) => {
     if (!EDITS.has(step.operator)) return;
     rows.push({
@@ -252,6 +275,12 @@ export function useVariantEditor({
   // Moving a change moves it among the changes its engine applies in order;
   // the plan's edits always apply before the sequence's steps.
   const move = (row: ChangeRow, by: -1 | 1) => {
+    if (row.engine === "fhir" && draft.fhir) {
+      const steps = [...draft.fhir.steps];
+      const [moved] = steps.splice(row.index, 1);
+      steps.splice(row.index + by, 0, moved!);
+      return apply({ ...draft, fhir: { ...draft.fhir, steps } });
+    }
     if (row.engine === "sequence") {
       const steps = [...sequenceSteps];
       const [moved] = steps.splice(row.index, 1);
@@ -268,6 +297,7 @@ export function useVariantEditor({
     return apply({ ...draft, plan: { ...draft.plan, steps } });
   };
   const remove = (row: ChangeRow) => {
+    if (row.engine === "fhir" && draft.fhir) return apply({ ...draft, fhir: { ...draft.fhir, steps: draft.fhir.steps.filter((_, index) => index !== row.index) } });
     if (row.engine === "sequence") {
       const steps = sequenceSteps.filter((_, index) => index !== row.index);
       return apply(staged(draft, steps.length > 0 || draft.transform?.rules || draft.transform?.profile ? { ...draft.transform!, steps } : undefined));
@@ -284,7 +314,7 @@ export function useVariantEditor({
     ];
   };
 
-  const blocked = (view?.blocking.length ?? 1) > 0;
+  const blocked = (view?.blocking.length ?? 1) > 0 || Boolean(draft.fhir && draft.fhir.steps.length === 0);
   const save = async () => {
     if (saving) return;
     // Saving the same variant again after a failure is the same submission,
@@ -295,14 +325,18 @@ export function useVariantEditor({
     setSaving(intent);
     setSaveProblem(null);
     const answer = await saveItem({ context: context(), kind: "variant", draft: { name, variant: draft }, intent_id: intent });
-    setSaving(null);
     if (answer.outcome === "saved" && answer.saved) {
+      const dropped = await retainer.dropCurrent();
+      setSaving(null);
+      if (!dropped) {
+        setSaveProblem("The variant was saved, but its editor draft could not be discarded. Retry Save to finish it.");
+        return;
+      }
       retry.current = null;
-      if (draftId.current !== "") void discardEditorDraft(draftId.current);
-      draftId.current = "";
       onSaved(answer.saved);
       return;
     }
+    setSaving(null);
     setSaveProblem(answer.problems[0]?.problem ?? answer.reason ?? "The variant was not saved.");
   };
 
@@ -318,7 +352,7 @@ export function useVariantEditor({
         label="More variant actions"
         items={[
           { label: "Rename", onSelect: () => setSheet("name") },
-          { label: "Link rules and profile", onSelect: () => setSheet("relations") },
+          ...(!draft.fhir ? [{ label: "Link rules and profile", onSelect: () => setSheet("relations") }] : []),
         ]}
       />
     </>
@@ -329,6 +363,7 @@ export function useVariantEditor({
       <p className="variant-name">{name}</p>
       {failure ? <p role="alert">{failure}</p> : null}
       {saveProblem ? <p role="alert">{saveProblem}</p> : null}
+      {retainer.retention.state === "not-retained" || retainer.retention.state === "conflict" ? <RetentionStatus retention={retainer.retention} onRetry={retainer.retry} onKeepAsNew={retainer.keepAsNew} /> : null}
       {view && view.blocking.length > 0 && included.length > 0 ? (
         <ul className="variant-blocking" aria-label="Blocks save">
           {view.blocking.map((note, index) => (
@@ -340,7 +375,28 @@ export function useVariantEditor({
         </ul>
       ) : null}
       {previewing && view ? (
-        <VariantPreview view={view} label={label} reveal={reveal} onReveal={setReveal} />
+        view.fhir ? <FHIRVariantPreview view={view} label={label} reveal={reveal} onReveal={setReveal} /> : <VariantPreview view={view} label={label} reveal={reveal} onReveal={setReveal} />
+      ) : draft.fhir ? (
+        <div className="variant-columns">
+          <section aria-labelledby="variant-resources">
+            <div className="section-heading"><h2 id="variant-resources">Retained resources</h2></div>
+            <p>The source is kept in full. Changes below become a reviewed derived revision.</p>
+            {view?.fhir ? <DataTable label="Retained resources" className="page-table" rows={view.fhir.resources} rowId={(resource) => resource.occurrence} rowLabel={(resource) => label(resource.occurrence)} columns={[
+              { key: "resource", header: "Resource", priority: 1, minWidth: 10, flex: true, render: (resource) => label(resource.occurrence) },
+              { key: "state", header: "State", priority: 2, minWidth: 8, render: (resource) => resource.state },
+            ]} selected={null} onSelect={() => undefined} onOpen={(occurrence) => onOpenMessage?.(occurrence)} /> : <p aria-live="polite">Reading…</p>}
+          </section>
+          <section aria-labelledby="variant-changes">
+            <div className="section-heading"><h2 id="variant-changes">Changes</h2><div className="flow-actions">
+              <IconButton icon="undo" label="Undo last change" disabled={history.length === 0 || busy} onClick={undo} />
+              <button type="button" disabled={!view?.fhir || busy} onClick={() => setSheet("change")}>Add change</button>
+            </div></div>
+            {rows.length > 0 ? <>
+              <div className="toolbar list-toolbar"><Reveal revealed={reveal} onToggle={setReveal} /></div>
+              <ol className="variant-changes" aria-label="Changes in order">{rows.map((row) => <li key={row.key}><div className="variant-change-text"><span className="variant-change-name">{row.name}</span><span>{row.message} · {row.field}</span><span className="variant-change-value">{row.value}</span></div><Menu label={`Actions for ${row.name}`} items={rowMenu(row)} /></li>)}</ol>
+            </> : <p>No changes added.</p>}
+          </section>
+        </div>
       ) : (
         <div className="variant-columns">
           <section aria-labelledby="variant-included">
@@ -417,7 +473,24 @@ export function useVariantEditor({
         keep({ name: next, draft });
         setSheet(null);
       }} />
-      {view ? (
+      <Modal open={leaving !== null} title="Save changes?" size="small" onClose={() => { if (!discarding) setLeaving(null); }} footer={<div className="dialog-footer">
+        <button type="button" data-autofocus disabled={discarding} onClick={() => setLeaving(null)}>Keep editing</button>
+        <button type="button" disabled={discarding || busy || saving !== null} onClick={async () => {
+          const exit = leaving;
+          setDiscarding(true);
+          const dropped = await retainer.dropCurrent();
+          setDiscarding(false);
+          if (!dropped) { setSaveProblem("This draft could not be discarded. It remains open."); return; }
+          setLeaving(null);
+          exit?.();
+        }}>Discard</button>
+        <button type="button" className="primary" disabled={discarding || busy || blocked || saving !== null} onClick={() => { setLeaving(null); void save(); }}>Save</button>
+      </div>}>
+        <p>{name} has unsaved changes.</p>
+        {saveProblem ? <p role="alert">{saveProblem}</p> : null}
+      </Modal>
+      {view?.fhir && source && root ? <FHIRVariantChangeSheet open={sheet === "change"} root={root} source={source} resources={view.fhir.resources} draft={draft} initialOccurrence={flow.seed[0]} onClose={() => setSheet(null)} onApply={async (candidate) => { const failed = await apply(candidate); if (!failed) setSheet(null); return failed; }} /> : null}
+      {view && !draft.fhir ? (
         <>
           <MessagesSheet
             open={sheet === "messages"}
@@ -495,7 +568,88 @@ export function useVariantEditor({
       ) : null}
     </div>
   );
-  return { title: "Case variant", actions, body };
+  return { title: "Case variant", actions, body, leave };
+}
+
+function FHIRVariantChangeSheet({ open, root, source, resources, draft, initialOccurrence, onClose, onApply }: {
+  open: boolean;
+  root: string;
+  source: VariantSource;
+  resources: Fhirr4Resource[];
+  draft: VariantDraft;
+  initialOccurrence?: string | undefined;
+  onClose: () => void;
+  onApply: (candidate: VariantDraft) => Promise<SubmitFailure | null>;
+}) {
+  const [occurrence, setOccurrence] = useState("");
+  const [fields, setFields] = useState<FHIRFieldView[]>([]);
+  const [fieldId, setFieldId] = useState("");
+  const [offset, setOffset] = useState(0);
+  const [previous, setPrevious] = useState<number[]>([]);
+  const [total, setTotal] = useState(0);
+  const [operator, setOperator] = useState("set");
+  const [value, setValue] = useState<DatasetValue>({ state: "present", type: "text" });
+  const [reading, setReading] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    setOccurrence(resources.find((resource) => resource.occurrence === initialOccurrence)?.occurrence ?? resources[0]?.occurrence ?? "");
+    setFields([]); setFieldId(""); setOffset(0); setPrevious([]); setOperator("set"); setValue({ state: "present", type: "text" }); setProblem(null);
+    // The starting resource is taken once when this editor opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+  useEffect(() => {
+    if (!open || !occurrence) return;
+    let current = true;
+    setReading(true);
+    void inspectOccurrence({ workspace: root, case: source.entry, identity: source.identity, occurrence, path: "", node_offset: offset, byte_offset: -1, raw_offset: -1, reveal: false }).then((answer) => {
+      if (!current) return;
+      setReading(false);
+      if (answer.state === "completed" && answer.inspection?.fhir) {
+        setFields(answer.inspection.fhir.fields); setTotal(answer.inspection.child_count); setProblem(null);
+      } else { setFields([]); setProblem(answer.reason ?? "The typed R4 fields could not be read."); }
+    });
+    return () => { current = false; };
+  }, [open, occurrence, offset, root, source.entry, source.identity]);
+  const field = fields.find((held) => held.field.id === fieldId);
+  return <FormDialog open={open} title="Add change" submitLabel="Add" dirty={fieldId !== "" || (value.text ?? "") !== ""} submitDisabled={reading || !field || !draft.fhir || operator === "set" && (value.state !== "present" || (value.text ?? "") === "")} onClose={onClose} onSubmit={() => {
+    if (!field || !draft.fhir) return { reason: "Choose one typed R4 field." };
+    return onApply({ ...draft, fhir: { ...draft.fhir, steps: [...draft.fhir.steps, { occurrence, selector: field.field.selector, operator, ...(operator === "set" ? { value } : {}) }] } });
+  }}>
+    <p>One typed primitive is changed. Original evidence and expected results stay unchanged.</p>
+    <label htmlFor="fhir-variant-resource">Resource</label>
+    <select id="fhir-variant-resource" value={occurrence} onChange={(event) => { setOccurrence(event.target.value); setFieldId(""); setOffset(0); setPrevious([]); }}>
+      {resources.map((resource, at) => <option key={resource.occurrence} value={resource.occurrence}>{at + 1}. {resource.type}</option>)}
+    </select>
+    <label htmlFor="fhir-variant-field">Field</label>
+    <select id="fhir-variant-field" value={fieldId} disabled={reading} onChange={(event) => {
+      setFieldId(event.target.value);
+      const chosen = fields.find((held) => held.field.id === event.target.value);
+      if (chosen) setValue({ state: "present", type: chosen.field.type, ...(chosen.field.code_system ? { code_system: chosen.field.code_system } : {}) });
+    }}>
+      <option value="">{reading ? "Reading…" : "Choose a field"}</option>
+      {fields.map((held) => <option key={held.field.id} value={held.field.id}>{held.field.id} · {held.field.type}</option>)}
+    </select>
+    {total > fields.length ? <div className="flow-actions">
+      <button type="button" disabled={reading || previous.length === 0} onClick={() => { setOffset(previous.at(-1) ?? 0); setPrevious(previous.slice(0, -1)); setFieldId(""); }}>Previous fields</button>
+      <span>{offset + 1}–{Math.min(offset + fields.length, total)} of {total} fields</span>
+      <button type="button" disabled={reading || offset + fields.length >= total} onClick={() => { setPrevious([...previous, offset]); setOffset(offset + fields.length); setFieldId(""); }}>More fields</button>
+    </div> : null}
+    {problem ? <p role="alert">{problem}</p> : null}
+    <label htmlFor="fhir-variant-operator">Transformation</label>
+    <select id="fhir-variant-operator" value={operator} onChange={(event) => setOperator(event.target.value)}><option value="set">Replace value</option><option value="remove">Remove field</option></select>
+    {field ? <p>Recorded state: {field.selection.state}</p> : null}
+    {field && operator === "set" ? <TypedValueFields value={value} onChange={setValue} /> : null}
+  </FormDialog>;
+}
+
+function FHIRVariantPreview({ view, label, reveal, onReveal }: { view: VariantView; label: (occurrence: string) => string; reveal: boolean; onReveal: (next: boolean) => void }) {
+  const shown = (selection: Fhirr4Selection): string => selection.readings.length === 0 ? selection.state : selection.readings.map((reading) => reading.value.state !== "present" ? reading.value.state : reveal ? reading.value.text ?? "" : HIDDEN_VALUE).join(" · ");
+  return <section className="variant-preview" aria-labelledby="fhir-variant-preview"><div className="section-heading"><h2 id="fhir-variant-preview">Reviewed R4 changes</h2><Reveal revealed={reveal} onToggle={onReveal} /></div>
+    <table className="data-table plain" aria-label="Changed fields"><thead><tr><th scope="col">Resource</th><th scope="col">Field</th><th scope="col">Before</th><th scope="col">After</th></tr></thead><tbody>
+      {view.fhir?.changes.map((change, at) => <tr key={at}><td>{label(change.edit.occurrence)}</td><td>{change.field}</td><td>{shown(change.before)}</td><td>{shown(change.after)}</td></tr>)}
+    </tbody></table>
+  </section>;
 }
 
 /** The local difference Save would write: which messages are in and out,

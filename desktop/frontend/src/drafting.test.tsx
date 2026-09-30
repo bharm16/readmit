@@ -106,3 +106,62 @@ test("a retention status offers only the draft actions its owner really provides
   await user.click(screen.getByRole("button", { name: "Discard draft" }));
   expect(pressed).toEqual(["retry", "keep", "discard"]);
 });
+
+function OwnedEditor({ owner, reuseOwners = false }: { owner: "A" | "B"; reuseOwners?: boolean }) {
+  const retainer = useRetainer(owner, { reuseOwners });
+  const save = (text: string) => retainer.save({ ...draft("target", text), case: `case-${owner}`, identity: `identity-${owner}` });
+  return <>
+    <button type="button" onClick={() => save(`${owner} first`)}>First edit</button>
+    <button type="button" onClick={() => save(`${owner} last`)}>Last edit</button>
+    <button type="button" onClick={() => retainer.keepId("held-B")}>Restore B</button>
+    <button type="button" onClick={() => void retainer.dropCurrent()}>Discard current</button>
+    <p>{retainer.retention.state}</p>
+  </>;
+}
+
+test("returning to a pending owner continues its minted draft while another owner's queued write stays separate", async () => {
+  const user = userEvent.setup();
+  const facade = installFacade({});
+  const parked = facade.park("SaveEditorDraft");
+  const rendered = render(<OwnedEditor owner="A" reuseOwners />);
+  await user.click(screen.getByRole("button", { name: "First edit" }));
+  rendered.rerender(<OwnedEditor owner="B" reuseOwners />);
+  await user.click(screen.getByRole("button", { name: "First edit" }));
+  rendered.rerender(<OwnedEditor owner="A" reuseOwners />);
+  await user.click(screen.getByRole("button", { name: "Last edit" }));
+  const a: EditorDraft = { ...draft("target", "A first", "minted-A"), case: "case-A", identity: "identity-A" };
+  const b: EditorDraft = { ...draft("target", "B first", "minted-B"), case: "case-B", identity: "identity-B" };
+  parked.resolve(completed([a]));
+  await waitFor(() => expect(facade.callsTo("SaveEditorDraft")).toHaveLength(2));
+  expect((facade.callsTo("SaveEditorDraft")[1]!.args[0] as EditorDraft).id).toBe("");
+  parked.resolve(completed([a, b]));
+  await waitFor(() => expect(facade.callsTo("SaveEditorDraft")).toHaveLength(3));
+  const last = facade.callsTo("SaveEditorDraft")[2]!.args[0] as EditorDraft;
+  expect(last).toEqual({ ...a, content: { schema: "readmit-note-draft/v1", name: "", subject: "", title: "", body: "A last" } });
+  parked.resolve(completed([last, b]));
+  expect(await screen.findByText("saved")).toBeTruthy();
+  expect(facade.callsTo("DiscardEditorDraft")).toHaveLength(0);
+});
+
+test("discarding a new owner waits for the earlier owner's writes and never cancels or discards them", async () => {
+  const user = userEvent.setup();
+  const facade = installFacade({ DiscardEditorDraft: () => completed([]) });
+  const parked = facade.park("SaveEditorDraft");
+  const rendered = render(<OwnedEditor owner="A" />);
+  await user.click(screen.getByRole("button", { name: "First edit" }));
+  await user.click(screen.getByRole("button", { name: "Last edit" }));
+  rendered.rerender(<OwnedEditor owner="B" />);
+  await user.click(screen.getByRole("button", { name: "Restore B" }));
+  await user.click(screen.getByRole("button", { name: "First edit" }));
+  await user.click(screen.getByRole("button", { name: "Discard current" }));
+  const aFirst: EditorDraft = { ...draft("target", "A first", "minted-A"), case: "case-A", identity: "identity-A" };
+  const b: EditorDraft = { ...draft("target", "B held", "held-B"), case: "case-B", identity: "identity-B" };
+  parked.resolve(completed([aFirst, b]));
+  await waitFor(() => expect(facade.callsTo("SaveEditorDraft")).toHaveLength(2));
+  expect(facade.callsTo("SaveEditorDraft")[1]?.args[0]).toEqual({ ...aFirst, content: { schema: "readmit-note-draft/v1", name: "", subject: "", title: "", body: "A last" } });
+  parked.resolve(completed([{ ...aFirst, content: { schema: "readmit-note-draft/v1", name: "", subject: "", title: "", body: "A last" } }, b]));
+  await waitFor(() => expect(facade.callsTo("DiscardEditorDraft")).toHaveLength(1));
+  expect(facade.oneCall("DiscardEditorDraft")[0]).toBe("held-B");
+  expect(facade.callsTo("SaveEditorDraft")).toHaveLength(2);
+  expect(await screen.findByText("idle")).toBeTruthy();
+});

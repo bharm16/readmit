@@ -4306,6 +4306,12 @@ observation.
 
 ### Connected v2 and FHIR R4 configuration
 
+The existing Import, Messages, Library and variant flows also handle explicitly
+declared R4 resource, Bundle and request evidence. They retain original bytes,
+typed Go projections and exact saved pins through managed atomic publication.
+See [protocol evidence and generated cases](protocol-evidence.md) for the
+scope of local interpretation, profile availability and connected minimization.
+
 The Connection sheet selects either v2 MLLP (explicit plain or TLS transport) or
 FHIR R4 HTTPS. Historical target fields and saved v2 readers keep their meaning.
 A FHIR connection records R4 4.0.1, the HTTPS base, classification, TLS server name

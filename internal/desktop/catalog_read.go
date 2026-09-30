@@ -22,6 +22,7 @@ import (
 	"github.com/bharm16/readmit/internal/catalog"
 	"github.com/bharm16/readmit/internal/connectedtransport"
 	"github.com/bharm16/readmit/internal/diagnose"
+	"github.com/bharm16/readmit/internal/fhirevidence"
 	"github.com/bharm16/readmit/internal/lifecycle"
 	"github.com/bharm16/readmit/internal/observesource"
 	"github.com/bharm16/readmit/internal/observewindow"
@@ -292,6 +293,10 @@ func inWindow(name, lower, upper string) bool {
 // a file declaring a version this release does not read is still listed as
 // that kind of object — unsupported — rather than dropped.
 var familyKinds = map[string]ItemKind{
+	"readmit-fhir-profile/":         ProfileItem,
+	"readmit-fhir-profile-package/": ProfileItem,
+	"readmit-fhir-scenario/":        ScenarioItem,
+	"readmit-fhir-check-group/":     CheckGroupItem,
 	"readmit-fhir-connection/":      EnvironmentItem,
 	"readmit-target/":               EnvironmentItem,
 	"readmit-test/":                 TestItem,
@@ -689,6 +694,7 @@ func unsupportedDeclaration(path string) bool {
 // extraSchemas are the contracts the catalog reads beyond the listing's own.
 var extraSchemas = []string{observesource.SchemaV1, observesource.Schema, observesource.SchemaDatabase,
 	FHIRConnectionSchema,
+	FHIRProfileSchema, FHIRProfilePackageSchema, FHIRScenarioSchema, FHIRCheckGroupSchema,
 	assertion.Schema, scenario.Schema, scenario.OrderSchema, scenariogen.Schema, "readmit-runner/v1", "readmit-hub-schedules/v1"}
 
 // admissions are what the operation guard admits now.
@@ -723,7 +729,7 @@ func capabilitiesFor(item CatalogItem, admitted admissions) []ActionID {
 	// A variant is saved as a new case derived from another; its own
 	// evidence is never saved over. Of the profiles, only a local profile is
 	// saved; a metadata pack or a package is read-only.
-	if slices.Contains(savedKinds, kind) && kind != VariantItem && (kind != ProfileItem || item.Summary.Profile != nil && item.Summary.Profile.Form == "local-profile") &&
+	if slices.Contains(savedKinds, kind) && kind != VariantItem && (kind != ProfileItem || item.Summary.Profile != nil && (item.Summary.Profile.Form == "local-profile" || item.Summary.Profile.Form == "fhir-profile")) &&
 		(kind != ReportItem || item.Summary.Report != nil && item.Summary.Report.Form == "report") {
 		actions = append(actions, SaveAction)
 	}
@@ -738,7 +744,8 @@ func capabilitiesFor(item CatalogItem, admitted admissions) []ActionID {
 	if report := item.Summary.Report; kind == ReportItem && report != nil && report.Form == "export-review" && report.Status == readyForApproval {
 		actions = append(actions, ExportPacketAction)
 	}
-	if kind == CaseItem {
+	fhirCase := item.Summary.Case != nil && item.Summary.Case.Protocol == "fhir-r4"
+	if kind == CaseItem && !fhirCase {
 		actions = append(actions, DeriveReviewAction)
 	}
 	if kind == EnvironmentItem {
@@ -753,7 +760,9 @@ func capabilitiesFor(item CatalogItem, admitted admissions) []ActionID {
 	if admitted.execute {
 		switch kind {
 		case CaseItem:
-			actions = append(actions, ReplaySendAction)
+			if !fhirCase {
+				actions = append(actions, ReplaySendAction)
+			}
 		case ObservationItem:
 			actions = append(actions, CollectObservationAction)
 		case EnvironmentItem:
@@ -826,6 +835,11 @@ func (c *loadedCatalog) readRegistered(item catalog.Item) (view, Availability, s
 	state := operation.EvidenceState(c.root, facts)
 	if read.summary.Case != nil {
 		read.summary.Case.Evidence = state
+		if manifest, err := fhirevidence.Describe(filepath.Join(c.root, item.Entry)); err == nil {
+			read.summary.Case.Protocol, read.summary.Case.ProtocolVersion, read.summary.Case.SourceKind, read.summary.Case.Resources = "fhir-r4", manifest.Declaration.Context.Version, manifest.Declaration.SourceKind, manifest.Resources
+			read.createdAt, read.updatedAt = manifest.Provenance.ImportedAt, manifest.Provenance.ImportedAt
+			read.summary.Case.Sources = []project.Source{{ID: fhirevidence.SourceID, Name: registered.SourceNamed(fhirevidence.SourceID)}}
+		}
 	}
 	if manifest, err := bundle.Describe(filepath.Join(c.root, item.Entry)); err == nil {
 		read.createdAt = provenanceTime(manifest.Provenance)

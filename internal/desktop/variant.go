@@ -51,6 +51,7 @@ var acknowledgementRules = correlate.Rules{Schema: correlate.RulesSchema, Rules:
 // variantResolved is one variant draft resolved over its source, as a build
 // resolves it.
 type variantResolved struct {
+	fhir       *fhirVariantResolved
 	source     variantSource
 	plan       reproducer.Plan
 	resolution reproducer.Resolution
@@ -88,6 +89,9 @@ func resolveVariant(scope draftScope, draft VariantDraft, written bool) (*varian
 	if problem != nil {
 		return nil, []FieldProblem{*problem}
 	}
+	if source.fhir != nil || draft.FHIR != nil {
+		return resolveFHIRVariant(source, draft)
+	}
 	if draft.Plan.Case != source.bundle.Identity {
 		return nil, variantProblem("variant.plan", "the plan was made for different evidence than the source it names")
 	}
@@ -106,7 +110,7 @@ func resolveVariant(scope draftScope, draft VariantDraft, written bool) (*varian
 		return nil, variantProblem("variant.plan", err.Error())
 	}
 	resolved := &variantResolved{source: source, plan: plan, resolution: resolution}
-	if draft.Transform == nil || len(draft.Transform.Steps) == 0 || len(resolution.Occurrences) == 0 {
+	if draft.Transform == nil || len(resolution.Occurrences) == 0 {
 		return resolved, nil
 	}
 	sequence, problems := resolveSequence(scope, source, plan, *draft.Transform, written)
@@ -206,6 +210,9 @@ func resolveSequence(scope draftScope, source variantSource, plan reproducer.Pla
 // blocking is every relation the variant breaks and every relation it could
 // not decide: each blocks a save, at the row it is about.
 func (r *variantResolved) blocking() []VariantNote {
+	if r.fhir != nil {
+		return []VariantNote{}
+	}
 	notes := []VariantNote{}
 	if len(r.resolution.Occurrences) == 0 {
 		notes = append(notes, VariantNote{Code: "no-messages", Detail: "a variant includes at least one message"})
@@ -263,6 +270,7 @@ func (r *VariantResult) refuse(state State, reason string) { r.State, r.Reason =
 // it changes, what it does to each relation and to profile support, what it
 // could not settle, and what blocks saving it.
 type VariantView struct {
+	FHIR      *FHIRVariantView        `json:"fhir,omitzero"`
 	Messages  []VariantMessage        `json:"messages"`
 	Sequence  []VariantEntry          `json:"sequence"`
 	Changes   []VariantChange         `json:"changes"`
@@ -354,6 +362,9 @@ func (a *App) ResolveVariant(request VariantRequest) VariantResult {
 
 // view lays one resolved draft out for the editor.
 func (r *variantResolved) view(reveal bool) *VariantView {
+	if r.fhir != nil {
+		return r.fhirView(reveal)
+	}
 	view := &VariantView{Messages: []VariantMessage{}, Sequence: []VariantEntry{}, Changes: []VariantChange{}, Relations: []VariantRelation{},
 		Profile: []transform.Combination{}, Notes: []VariantNote{}, Blocking: r.blocking(), Revealed: reveal}
 	retained := map[string]reproducer.Retained{}

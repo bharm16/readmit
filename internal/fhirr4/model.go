@@ -127,6 +127,16 @@ func (d *Document) ResourceBytes(id string) ([]byte, error) {
 	}
 	return bytes.Clone(d.raw[r.node.start:r.node.end]), nil
 }
+
+// ResourceSpan is the occurrence's half-open range in the retained source.
+// Identical repeated resources still have their own distinct positions.
+func (d *Document) ResourceSpan(id string) (int, int, error) {
+	r := d.resource(id)
+	if r == nil {
+		return 0, 0, invalid
+	}
+	return r.node.start, r.node.end, nil
+}
 func (d *Document) resource(id string) *occurrence {
 	for i := range d.resources {
 		if d.resources[i].resource.Occurrence == id {

@@ -13,6 +13,10 @@ import type {
   AssertionQuantifier,
   AssertionRecordScope,
   FieldState,
+  AssertionDatasetAssertion,
+  AssertionDatasetBinding,
+  DatasetValue,
+  Fhirr4Projection,
 } from "./bindings";
 import { ChipsInput } from "./CaseSheets";
 import { FormDialog } from "./layout";
@@ -35,6 +39,42 @@ export const CHECK_TYPES: Record<AssertionOperator, string> = {
   record_key_matches: "Key pattern",
   records_changed: "Changed keys",
 };
+
+export const DATASET_CHECK_TYPES: Record<string, string> = { "value-equals": "Value equals", "decimal-equals": "Number equals", "instant-equals": "Instant equals", "value-related": "Values related", "value-changed": "Value changed", "row-count": "Record count", "unique-keys": "Unique keys", "each-equals": "Each value equals", "sequence-equals": "Sequence equals" };
+
+/** Shared typed primitive inputs. Type and source selectors are supplied by
+ * Go; decimal precision and partial-date meaning stay explicit authored facts. */
+export function TypedValueFields({ value, onChange }: { value: DatasetValue; onChange: (value: DatasetValue) => void }) {
+  return <fieldset><legend>Expected value</legend>
+    <p>{value.type}</p>
+    <label>State<select value={value.state} onChange={(event) => onChange(event.target.value === "present" ? { ...value, state: "present" } : { state: event.target.value, type: value.type })}>{["present", "empty", "null", "absent"].map((state) => <option key={state}>{state}</option>)}</select></label>
+    {value.state === "present" ? <>
+      <label>Value<input type="text" value={value.text ?? ""} onChange={(event) => onChange({ ...value, text: event.target.value })} /></label>
+      {value.type === "decimal" || value.type === "date" || value.type === "datetime" ? <label>Precision<input type="text" value={value.precision ?? ""} onChange={(event) => onChange({ ...value, precision: event.target.value })} /></label> : null}
+      {value.type === "date" || value.type === "datetime" ? <label>Time zone meaning<input type="text" value={value.timezone ?? ""} onChange={(event) => onChange({ ...value, timezone: event.target.value })} /></label> : null}
+      {value.type === "code" ? <label>Code system<input type="text" value={value.code_system ?? ""} onChange={(event) => onChange({ ...value, code_system: event.target.value })} /></label> : null}
+    </> : null}
+  </fieldset>;
+}
+
+export function DatasetCheckSheet({ check, bindings, projections, onClose, onSave }: { check: AssertionDatasetAssertion; bindings: AssertionDatasetBinding[]; projections: Fhirr4Projection[]; onClose: () => void; onSave: (check: AssertionDatasetAssertion) => void }) {
+  const [draft, setDraft] = useState(check);
+  const binding = bindings.find((held) => held.name === draft.subject.dataset);
+  return <FormDialog open title="Edit check" submitLabel="Done" dirty={JSON.stringify(draft) !== JSON.stringify(check)} onClose={onClose} onSubmit={() => { onSave(draft); onClose(); }}>
+    <p>{DATASET_CHECK_TYPES[draft.operator] ?? `Unsupported: ${draft.operator}`}</p>
+    <p>{binding?.namespace ?? draft.subject.dataset} · {binding?.phase} · {draft.subject.row || "All records"}</p>
+    {draft.column ? <p>Field {draft.column}{projections.map((p) => p.columns.find((c) => c.name === draft.column) ? ` · ${p.resource_type}` : "").join("")}</p> : null}
+    {draft.expected ? <TypedValueFields value={draft.expected} onChange={(expected) => setDraft({ ...draft, expected })} /> : null}
+    {draft.sequence ? <>
+      {draft.sequence.map((value, at) => <fieldset key={at}><legend>Value {at + 1}</legend><TypedValueFields value={value} onChange={(next) => setDraft({ ...draft, sequence: draft.sequence!.map((held, i) => i === at ? next : held) })} /><button type="button" onClick={() => setDraft({ ...draft, sequence: draft.sequence!.filter((_, i) => i !== at) })}>Remove value {at + 1}</button></fieldset>)}
+      <button type="button" onClick={() => setDraft({ ...draft, sequence: [...draft.sequence!, { state: "present", type: draft.sequence![0]?.type ?? "text", ...(draft.sequence![0]?.code_system ? { code_system: draft.sequence![0].code_system } : {}) }] })}>Add expected value</button>
+    </> : null}
+    {draft.count !== undefined ? <label>Count<input type="number" min={0} max={10000} step={1} required value={draft.count} onChange={(event) => setDraft({ ...draft, count: event.target.valueAsNumber })} /></label> : null}
+    {draft.quantifier ? <label>Records<select value={draft.quantifier} onChange={(event) => setDraft({ ...draft, quantifier: event.target.value })}>{["every", "any", "none"].map((value) => <option key={value}>{value}</option>)}</select></label> : null}
+    {draft.other ? <p>Compared with {draft.other.dataset} · {draft.other.row || "All records"} · {draft.other_column}</p> : null}
+    {draft.when ? <p>Conditional on {draft.when.subject.dataset} · {draft.when.column} · {draft.when.equals.state}</p> : null}
+  </FormDialog>;
+}
 
 type Stated = Exclude<FieldState, "">;
 const STATES: Record<Stated, string> = { present: "Present", empty: "Empty", null: "Null", omitted: "Not present" };

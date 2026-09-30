@@ -31,6 +31,9 @@ type Observation struct {
 	State             durablerun.State
 	DeliveryUncertain bool
 	Failed            []string
+	// StopReason is a connected lifecycle boundary that prevents this trial
+	// from answering the reduction question, even if some checks failed.
+	StopReason Reason
 }
 
 // Oracle is what reduction needs from one trial, and the whole of what it
@@ -47,6 +50,14 @@ type Oracle interface {
 	// given, and reports what the run established. An error means the oracle
 	// could not answer at all, which is undecided and never a verdict.
 	Observe(ctx context.Context, occurrences []string) (Observation, error)
+}
+
+// LifecycleOracle keeps setup, stimulus, observation and cleanup in the one
+// connected service call. Reset cannot be reported separately before that
+// service has established it. Historical oracles keep their separate calls.
+type LifecycleOracle interface {
+	Oracle
+	RunTrial(context.Context, []string) (fixturereset.Outcome, fixturereset.Reason, Observation, error)
 }
 
 // Request is one reduction: the evidence, the plan, the declarations the plan
@@ -436,14 +447,33 @@ func (s *session) trial(ctx context.Context, purpose Purpose, removed string, ca
 		s.request.Progress(trial, false)
 		defer func() { s.request.Progress(s.trials[len(s.trials)-1], true) }()
 	}
-	outcome, reason := s.oracle.Reset(ctx)
+	var outcome fixturereset.Outcome
+	var reason fixturereset.Reason
+	var observed Observation
+	var err error
+	if lifecycle, ok := s.oracle.(LifecycleOracle); ok {
+		outcome, reason, observed, err = lifecycle.RunTrial(ctx, s.occurrences(candidate))
+	} else {
+		outcome, reason = s.oracle.Reset(ctx)
+		if outcome == fixturereset.Confirmed {
+			observed, err = s.oracle.Observe(ctx, s.occurrences(candidate))
+		}
+	}
 	trial.Reset, trial.ResetReason = outcome, reason
 	if outcome != fixturereset.Confirmed {
 		trial.Verdict, trial.Reason = Undecided, ResetNotConfirmed
+		if observed.StopReason != "" {
+			trial.Reason = observed.StopReason
+		} else if observed.DeliveryUncertain {
+			trial.Reason = RunDeliveryUnknown
+		}
+		trial.State, trial.Failed = observed.State, slices.Clone(observed.Failed)
+		if trial.Failed == nil {
+			trial.Failed = []string{}
+		}
 		s.trials = append(s.trials, trial)
 		return trial, ""
 	}
-	observed, err := s.oracle.Observe(ctx, s.occurrences(candidate))
 	if err != nil {
 		trial.Verdict, trial.Reason = Undecided, OracleUnavailable
 		s.trials = append(s.trials, trial)
@@ -464,6 +494,9 @@ func (s *session) trial(ctx context.Context, purpose Purpose, removed string, ca
 // execution error and an uncertain delivery each say nothing about whether an
 // expectation was wrong.
 func (s *session) verdict(observed Observation) (Verdict, Reason) {
+	if observed.StopReason != "" {
+		return Undecided, observed.StopReason
+	}
 	if observed.DeliveryUncertain {
 		return Undecided, RunDeliveryUnknown
 	}

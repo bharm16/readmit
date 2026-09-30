@@ -56,7 +56,7 @@ func DecodeOrigin(data []byte) (Origin, error) {
 	if o.Schema != OriginSchema {
 		return Origin{}, errors.New("unsupported profile origin version")
 	}
-	if o.SourceFormat != localprofile.Schema && o.SourceFormat != "manual-external-mapping" {
+	if o.SourceFormat != localprofile.Schema && o.SourceFormat != "readmit-fhir-profile/v1" && o.SourceFormat != "manual-external-mapping" {
 		return Origin{}, errors.New("unsupported source format; external profiles require reviewed manual mapping")
 	}
 	for _, s := range []string{o.Source, o.Revision, o.License, o.MappingLimitations, o.ReviewReference} {

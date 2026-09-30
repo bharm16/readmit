@@ -78,6 +78,7 @@ export function sourceLabel(row: { source_id: string; source_name?: string }): s
 }
 
 export function rowType(row: MessageRow): string {
+  if (row.protocol === "fhir-r4") return `${row.resource_type || row.message_code || "Request"} · FHIR R4`;
   return typeLabel({ kind: row.kind, code: row.message_code, trigger: row.trigger_event });
 }
 
@@ -335,6 +336,7 @@ export function MessageList({
   onImport,
   onSearchSettings,
   onFields,
+  protocol,
   seed,
   onSeedUsed,
   busy,
@@ -368,6 +370,7 @@ export function MessageList({
   onSearchSettings: () => void;
   /** The fields present in this case, for the field picker. */
   onFields: () => Promise<MessageFieldsResult>;
+  protocol?: string | undefined;
   seed: FilterSeed | null;
   onSeedUsed: () => void;
   busy: boolean;
@@ -503,12 +506,10 @@ export function MessageList({
         <div className="toolbar-group">
           {checked.size > 0 ? (
             <div className="selection-actions" role="group" aria-label="Selected messages">
-              <button type="button" disabled={busy || sendable === 0} onClick={onCreateTest}>
-                Create test
-              </button>
-              <button type="button" disabled={busy || sendable === 0} onClick={onSendSelected}>
-                Send selected
-              </button>
+              {protocol !== "fhir-r4" ? <>
+                <button type="button" disabled={busy || sendable === 0} onClick={onCreateTest}>Create test</button>
+                <button type="button" disabled={busy || sendable === 0} onClick={onSendSelected}>Send selected</button>
+              </> : null}
               <button type="button" disabled={busy || sendable === 0} onClick={onCreateVariant}>
                 Create variant
               </button>
@@ -570,6 +571,7 @@ export function MessageList({
         query={query}
         facets={facets}
         onFields={onFields}
+        protocol={protocol}
         seed={seed}
         onApply={(next) => {
           onQuery(next);
@@ -726,6 +728,7 @@ function FilterSheet({
   query,
   facets,
   onFields,
+  protocol,
   seed,
   onApply,
   onClose,
@@ -734,6 +737,7 @@ function FilterSheet({
   query: GridQuery;
   facets: MessageFacets;
   onFields: () => Promise<MessageFieldsResult>;
+  protocol?: string | undefined;
   seed: FilterSeed | null;
   onApply: (query: GridQuery) => void;
   onClose: () => void;
@@ -747,6 +751,10 @@ function FilterSheet({
   // about their values is read.
   useEffect(() => {
     if (!open) return;
+    if (protocol === "fhir-r4") {
+      setFields([]); setFieldsProblem(null); setAllFields(true);
+      return;
+    }
     let live = true;
     void onFields().then((answer) => {
       if (!live) return;
@@ -837,7 +845,7 @@ function FilterSheet({
                 }}
               >
                 <option value="">Choose a field</option>
-                {FIELD_CHOICES.map((choice) => (
+                {FIELD_CHOICES.filter((choice) => protocol !== "fhir-r4" || choice.value !== "field" && choice.value !== "ack").map((choice) => (
                   <option key={choice.value} value={choice.value} disabled={choice.value !== "field" && exhausted(choice.value, rule.id)}>
                     {choice.value !== "field" && exhausted(choice.value, rule.id) ? `${choice.label} · already in a rule` : choice.label}
                   </option>

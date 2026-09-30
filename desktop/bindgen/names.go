@@ -161,6 +161,7 @@ var facadeNames = names{
 			"internal/desktop.runOperation",
 			"internal/desktop.runnerOperation",
 			"internal/desktop.scenarioCheckOperation",
+			"internal/desktop.scenarioCasesOperation",
 			"internal/desktop.suiteCoverageOperation",
 			"internal/desktop.syntheticPacketOperation",
 		},

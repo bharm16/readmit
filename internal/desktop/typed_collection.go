@@ -104,6 +104,10 @@ func bindTypedCollect(a *App, ctx context.Context, request PrepareActionRequest,
 		deny("Enable this source and save before collecting")
 	}
 	if setup.FHIR != nil {
+		// The legacy source is unused by a FHIR observation. A refused
+		// review still describes the selected FHIR destination.
+		review.Destination = ""
+		bound.review.Destination.Address = ""
 		raw, err := savedFile.Read(paths["source"])
 		if err != nil {
 			return nil, refusal{Failed, "The saved search is unavailable"}
@@ -127,6 +131,14 @@ func bindTypedCollect(a *App, ctx context.Context, request PrepareActionRequest,
 		connection, declined := bindFHIRCheck(a, ctx, PrepareActionRequest{Context: request.Context, Action: CheckFHIRCapabilitiesAction, Items: []ItemRef{ref}}, held)
 		if connection == nil {
 			return nil, declined
+		}
+		if connection.fhirCheck != nil {
+			address := connection.fhirCheck.connection.Base
+			if search, err := savedSearch.URL(address, nil); err == nil {
+				address = search
+			}
+			review.Destination = address
+			bound.review.Destination.Address = address
 		}
 		if !connection.review.Ready {
 			deny(connection.review.Refusal)

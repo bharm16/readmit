@@ -15,6 +15,7 @@ import (
 	"github.com/bharm16/readmit/internal/catalog"
 	"github.com/bharm16/readmit/internal/correlate"
 	"github.com/bharm16/readmit/internal/durablerun"
+	"github.com/bharm16/readmit/internal/fixturereset"
 	"github.com/bharm16/readmit/internal/reduce"
 	"github.com/bharm16/readmit/internal/reproducer"
 	"github.com/bharm16/readmit/internal/sendpolicy"
@@ -50,11 +51,12 @@ func init() {
 // the result must still fail, how the sequence is taken apart (each message
 // alone, or the groups one set of link rules relates), and the two bounds.
 type MinimizeOptions struct {
-	Checks        []string `json:"checks"`
-	Grouping      string   `json:"grouping"`
-	Rules         *ItemRef `json:"rules,omitzero"`
-	Trials        int      `json:"trials"`
-	Confirmations int      `json:"confirmations"`
+	Connected     *ConnectedMinimizeOptions `json:"connected,omitzero"`
+	Checks        []string                  `json:"checks"`
+	Grouping      string                    `json:"grouping"`
+	Rules         *ItemRef                  `json:"rules,omitzero"`
+	Trials        int                       `json:"trials"`
+	Confirmations int                       `json:"confirmations"`
 }
 
 // MinimizeReview is what one minimization will do, as its review shows it:
@@ -62,6 +64,7 @@ type MinimizeOptions struct {
 // failing, the case its messages come from, the grouping and how many groups
 // it makes, the bounds, and the environment with the reset every trial runs.
 type MinimizeReview struct {
+	Connected       *ConnectedMinimizeReview `json:"connected,omitzero"`
 	Run             ItemRef                  `json:"run"`
 	Test            *ItemRef                 `json:"test,omitzero"`
 	TestName        string                   `json:"test_name"`
@@ -108,17 +111,18 @@ type MinimizeOutcome struct {
 // run itself: whether it can be minimized at all, the exact test version,
 // the checks it failed, the case and the environment it ran against.
 type MinimizeSetup struct {
-	Run             ItemRef                  `json:"run"`
-	RunName         string                   `json:"run_name"`
-	Eligible        bool                     `json:"eligible"`
-	Refusal         string                   `json:"refusal,omitzero"`
-	Test            *ItemRef                 `json:"test,omitzero"`
-	Version         string                   `json:"version,omitzero"`
-	Case            *ItemRef                 `json:"case,omitzero"`
-	Failed          []testauthor.Expectation `json:"failed"`
-	Messages        []TestMessage            `json:"messages"`
-	Environment     *ItemRef                 `json:"environment,omitzero"`
-	EnvironmentName string                   `json:"environment_name,omitzero"`
+	Connected       []ConnectedMinimizeChoice `json:"connected"`
+	Run             ItemRef                   `json:"run"`
+	RunName         string                    `json:"run_name"`
+	Eligible        bool                      `json:"eligible"`
+	Refusal         string                    `json:"refusal,omitzero"`
+	Test            *ItemRef                  `json:"test,omitzero"`
+	Version         string                    `json:"version,omitzero"`
+	Case            *ItemRef                  `json:"case,omitzero"`
+	Failed          []testauthor.Expectation  `json:"failed"`
+	Messages        []TestMessage             `json:"messages"`
+	Environment     *ItemRef                  `json:"environment,omitzero"`
+	EnvironmentName string                    `json:"environment_name,omitzero"`
 	// Bounds and Groupings are the ones this release offers: no default is
 	// chosen for a person.
 	MaxTrials        int      `json:"max_trials"`
@@ -223,6 +227,10 @@ func (a *App) MinimizeSetup(request RunRequest) MinimizeSetupResult {
 			if setup.Case == nil {
 				setup.Case = loaded.entryRef(VariantItem, run.spec.spec.Input.Case)
 			}
+			setup.Connected = connectedMinimizeChoices(loaded, run)
+		}
+		if setup.Connected == nil {
+			setup.Connected = []ConnectedMinimizeChoice{}
 		}
 		result.State, result.Setup = Completed, setup
 		return result
@@ -231,17 +239,18 @@ func (a *App) MinimizeSetup(request RunRequest) MinimizeSetupResult {
 
 // minimizeBinding is what a minimization's Start executes.
 type minimizeBinding struct {
-	root     string
-	specPath string
-	target   string
-	reset    *boundAction
-	plan     reduce.Plan
-	rules    correlate.Rules
-	casePath string
-	caseRef  *ItemRef
-	caseName string
-	output   string
-	messages []TestMessage
+	connected *connectedMinimizeBinding
+	root      string
+	specPath  string
+	target    string
+	reset     *boundAction
+	plan      reduce.Plan
+	rules     correlate.Rules
+	casePath  string
+	caseRef   *ItemRef
+	caseName  string
+	output    string
+	messages  []TestMessage
 }
 
 func bindMinimize(a *App, ctx context.Context, request PrepareActionRequest, held bool) (*boundAction, refusal) {
@@ -330,6 +339,9 @@ func bindMinimize(a *App, ctx context.Context, request PrepareActionRequest, hel
 			memberDigest(environment.record, "reset"), memberDigest(environment.record, "links"))
 		if reason := environmentRefusal(environment.name, environment.members.target); reason != "" {
 			other, review.Refusal = cmp.Or(other, reason), EnvironmentRefusal
+		} else if options.Connected != nil && environment.members.isolation != nil {
+			// The selected lifecycle owns this saved typed isolation. It is
+			// bound below, with every manual setup clause retained.
 		} else if environment.members.reset == nil {
 			other, review.Refusal = cmp.Or(other, "every trial resets "+environment.name+" first, and it has no reset; add one to the environment"), EnvironmentRefusal
 		} else {
@@ -370,6 +382,15 @@ func bindMinimize(a *App, ctx context.Context, request PrepareActionRequest, hel
 	if planned.caseRef != nil {
 		review.Case, review.CaseName = planned.caseRef, planned.caseName
 	}
+	if options.Connected != nil {
+		connected, err := selectConnectedMinimize(loaded, run, environment, *options.Connected)
+		if err != nil {
+			other = cmp.Or(other, err.Error())
+		} else {
+			planned.connected, review.Connected = connected, &connected.review
+			parts = append(parts, connected.identity)
+		}
+	}
 	if other == "" {
 		preview, err := previewMinimize(planned)
 		if err != nil {
@@ -401,6 +422,26 @@ func bindMinimize(a *App, ctx context.Context, request PrepareActionRequest, hel
 		bound.review.Reset = planned.reset.review.Reset
 		bound.review.Requirements = slices.Clone(planned.reset.review.Requirements)
 	}
+	if planned.connected != nil {
+		bound.review.Isolation = &planned.connected.review.Isolation
+		if len(bound.review.Isolation.Manual) > 0 && !slices.Contains(bound.review.Requirements, ConfirmationsRequirement) {
+			bound.review.Requirements = append(bound.review.Requirements, ConfirmationsRequirement)
+		}
+		if bound.review.Reset == nil {
+			bound.review.Reset = &EnvironmentResetReview{Target: review.EnvironmentName, Name: planned.connected.review.Isolation.Name, Actions: []ResetReviewAction{}}
+		}
+		if bound.review.Reset != nil {
+			reset := *bound.review.Reset
+			reset.Actions = slices.Clone(reset.Actions)
+			for _, manual := range bound.review.Isolation.Manual {
+				if !slices.ContainsFunc(reset.Actions, func(action ResetReviewAction) bool { return action.ID == manual.ID }) {
+					reset.Actions = append(reset.Actions, ResetReviewAction{ID: manual.ID, Name: manual.Name, Type: fixturereset.OperatorConfirms, Instructions: manual.Instructions})
+				}
+			}
+			bound.review.Reset = &reset
+			review.Resets = slices.Clone(reset.Actions)
+		}
+	}
 	bound.review.Destination = ReviewDestination{Output: destination.Name}
 	if environment != nil {
 		bound.review.Destination.Name, bound.review.Destination.Address = environment.name, environment.members.target.Address
@@ -429,6 +470,13 @@ func expectationIDs(checks []testauthor.Expectation) []string {
 // previewMinimize reads how the reduction takes the sequence apart, with an
 // oracle that works in a private folder removed before it answers.
 func previewMinimize(binding *minimizeBinding) (reduce.Preview, error) {
+	if binding.connected != nil {
+		messages, required, err := reduce.InspectConnectedOracle(binding.connected.plan, binding.plan.Signature)
+		if err != nil {
+			return reduce.Preview{}, err
+		}
+		return reduce.PreviewPlan(reduce.Request{Case: binding.casePath, Plan: binding.plan, Rules: binding.rules, Messages: messages, Required: required})
+	}
 	scratch, err := os.MkdirTemp("", "readmit-minimize-preview-")
 	if err != nil {
 		return reduce.Preview{}, errors.New("the minimization cannot be previewed now")
@@ -486,11 +534,18 @@ func executeMinimize(a *App, ctx context.Context, bound *boundAction, decisions 
 	binding := bound.minimize
 	review := bound.review.Minimize
 	result := ReviewedActionResult{Outcome: ActionCompleted}
-	reset := binding.reset.reset.request
-	reset.Confirmed = slices.Clone(decisions.Confirmed)
 	output := filepath.Join(binding.root, binding.output)
-	oracle, err := reduce.NewDurableOracle(reduce.OracleRequest{SpecPath: binding.specPath, Workspace: output, Signature: binding.plan.Signature,
-		Target: binding.target, Reset: reset, Resolve: sendpolicy.SystemResolver})
+	var oracle minimizeOracle
+	var err error
+	if binding.connected != nil {
+		oracle, err = reduce.NewConnectedOracle(reduce.ConnectedOracleRequest{Plan: binding.connected.plan, Configuration: binding.connected.config, Workspace: output,
+			Signature: binding.plan.Signature, Confirmed: slices.Clone(decisions.Confirmed), Authorize: a.authorizeMinimizeTrial(bound)})
+	} else {
+		reset := binding.reset.reset.request
+		reset.Confirmed = slices.Clone(decisions.Confirmed)
+		oracle, err = reduce.NewDurableOracle(reduce.OracleRequest{SpecPath: binding.specPath, Workspace: output, Signature: binding.plan.Signature,
+			Target: binding.target, Reset: reset, Resolve: sendpolicy.SystemResolver})
+	}
 	if err != nil {
 		result.refuse(Failed, err.Error()+"; nothing was reset or sent")
 		return result
@@ -538,7 +593,9 @@ func executeMinimize(a *App, ctx context.Context, bound *boundAction, decisions 
 	result.State, result.Minimize = Completed, outcome
 	stopped := errors.Is(ctx.Err(), context.Canceled) || report.Reason == reduce.OperatorStopped
 	switch {
-	case slices.ContainsFunc(report.Trials, func(trial reduce.Trial) bool { return trial.Reason == reduce.RunDeliveryUnknown }):
+	case slices.ContainsFunc(report.Trials, func(trial reduce.Trial) bool {
+		return trial.Reason == reduce.RunDeliveryUnknown || trial.Reason == reduce.CleanupUnresolved
+	}):
 		result.Outcome = ActionUncertain
 	case stopped && report.Outcome == reduce.OutcomeUndecided:
 		result.State, result.Outcome, result.Reason = Cancelled, ActionCancelled, "the minimization was stopped; no trial was resent"
@@ -547,6 +604,12 @@ func executeMinimize(a *App, ctx context.Context, bound *boundAction, decisions 
 		outcome.Variant, outcome.VariantRefusal = a.publishMinimized(context.WithoutCancel(ctx), bound, report)
 	}
 	return result
+}
+
+type minimizeOracle interface {
+	reduce.Oracle
+	Messages() []string
+	Required() []string
 }
 
 // publishMinimized publishes a reduced result as one variant of the case the

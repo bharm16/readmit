@@ -236,3 +236,21 @@ func (s Selector) Validate() error {
 	}
 	return nil
 }
+
+// String names the finite typed position for readers and reviewed edit plans.
+// It is a label, never a FHIRPath expression or an alternative parser.
+func (s Selector) String() string {
+	var label strings.Builder
+	for i, step := range s.Steps {
+		if i > 0 {
+			label.WriteByte('.')
+		}
+		label.WriteString(step.Field)
+		if step.Each {
+			label.WriteString("[]")
+		} else if step.Index != nil {
+			label.WriteString("[" + strconv.Itoa(*step.Index) + "]")
+		}
+	}
+	return label.String()
+}

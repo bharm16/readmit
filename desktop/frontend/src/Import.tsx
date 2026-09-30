@@ -21,6 +21,7 @@ import {
   type EngineExportEngine,
   type EngineExportFormat,
   type EnginePlan,
+  type FhirevidenceDeclaration,
   type HL7Terminator,
   type ImportEnvelope,
   type ImportLocation,
@@ -94,7 +95,7 @@ function newMapping(): Mapping {
 }
 
 /** The format the import reads its inputs as. */
-type Format = { kind: "plan"; plan: ImportPlan; label: string } | { kind: "recipe"; envelope: ImportEnvelope; label: string } | { kind: "engine"; engine: EnginePlan; label: string };
+type Format = { kind: "plan"; plan: ImportPlan; label: string } | { kind: "recipe"; envelope: ImportEnvelope; label: string } | { kind: "engine"; engine: EnginePlan; label: string } | { kind: "fhir"; declaration: FhirevidenceDeclaration; label: string };
 
 type DraftContent = { step: string; sources: Sources; caseName: string; named: boolean; format: Format | null; mapping: Mapping };
 
@@ -197,7 +198,7 @@ export type ImportFlowProps = {
   onImported: (ref: ItemRef) => void;
 };
 
-export function ImportFlow({ open, root, context, drafts, busy, onClose, onImported }: ImportFlowProps) {
+export function ImportFlow({ open, root, context, drafts, busy: windowBusy, onClose, onImported }: ImportFlowProps) {
   const vocabulary = useVocabulary();
   const retainer = useRetainer();
   const [step, setStep] = useState("source");
@@ -212,6 +213,7 @@ export function ImportFlow({ open, root, context, drafts, busy, onClose, onImpor
   const [notice, setNotice] = useState<string | null>(null);
   // The import writing its case, which Stop cancels.
   const [importing, setImporting] = useState(false);
+  const busy = windowBusy || importing;
   const [sheet, setSheet] = useState<null | "paste" | "format" | "mapping" | "save-mapping">(null);
   const [selectedRow, setSelectedRow] = useState<number | null>(null);
   const [reading, setReading] = useState<InspectionResult | null>(null);
@@ -373,6 +375,7 @@ export function ImportFlow({ open, root, context, drafts, busy, onClose, onImpor
     const base = { context: context(), workspace: root, files: sources.files, folders: sources.folders, archives: sources.archives, staged: sources.staged.map((entry) => entry.id) };
     if (format.kind === "plan") return { ...base, mode: "plan", plan: format.plan };
     if (format.kind === "engine") return { ...base, mode: "engine", engine_plan: format.engine };
+    if (format.kind === "fhir") return { ...base, mode: "fhir-r4", fhir: format.declaration };
     return { ...base, mode: "recipe", recipe: recipeOf(format.envelope, mapping, probe) };
   };
 
@@ -406,7 +409,7 @@ export function ImportFlow({ open, root, context, drafts, busy, onClose, onImpor
     return answer;
   };
 
-  const formatReady = format !== null && (format.kind !== "recipe" || mappingComplete(format.envelope, mapping));
+  const formatReady = format !== null && (format.kind !== "recipe" || mappingComplete(format.envelope, mapping)) && (format.kind !== "fhir" || format.declaration.source_kind !== "");
   const previewReady = preview?.state === "completed" && Boolean(preview.preview_token);
 
   const sourceStep = (
@@ -490,6 +493,7 @@ export function ImportFlow({ open, root, context, drafts, busy, onClose, onImpor
       ];
     }
     if (format.kind === "engine") return [{ label: "Format", value: format.label }];
+    if (format.kind === "fhir") return [{ label: "Format", value: format.label }, { label: "Source type", value: format.declaration.source_kind }, { label: "FHIR version", value: format.declaration.context.version }, { label: "Media type", value: format.declaration.context.media_type }, ...(format.declaration.context.base ? [{ label: "Reference base", value: format.declaration.context.base }] : [])];
     return [{ label: "Format", value: format.label }];
   };
 
@@ -543,6 +547,7 @@ export function ImportFlow({ open, root, context, drafts, busy, onClose, onImpor
               setFormat(chosen.format);
               setPreview(null);
               if (chosen.format.kind === "recipe") setSheet("mapping");
+              if (chosen.format.kind === "fhir") setSheet("format");
             }}
           >
             <option value="">Choose a format</option>
@@ -771,7 +776,7 @@ function formatChoices(probe: ImportProbeResult | null, engines: EngineExportEng
       engine: { schema: "", engine: engine.engine, version: engine.version, format: engine.formats[0] ?? "raw", terminator: engine.terminators[0] ?? "cr" },
     },
   }));
-  return [...found, ...exports];
+  return [...found, { key: "fhir-r4", format: { kind: "fhir", label: "FHIR R4 JSON", declaration: { source_kind: "", context: { version: "4.0.1", media_type: "application/fhir+json", base: "" } } } }, ...exports];
 }
 
 /** Paste: messages typed or pasted in become their own source. */
@@ -814,7 +819,7 @@ function FormatSheet({ probe, format, onClose, onDone }: { probe: ImportProbeRes
   const plan = draft.kind === "plan" ? draft.plan : null;
   const setPlan = (patch: Partial<ImportPlan>) => plan && draft.kind === "plan" && setDraft({ ...draft, plan: { ...plan, ...patch } });
   return (
-    <FormDialog open title="Format" submitLabel="Done" dirty={JSON.stringify(draft) !== JSON.stringify(format)} onClose={onClose} onSubmit={() => { onDone(draft); return null; }}>
+    <FormDialog open title="Format" submitLabel="Done" submitDisabled={draft.kind === "fhir" && (draft.declaration.source_kind === "" || draft.declaration.source_kind === "request" && (!draft.declaration.context.base || !draft.declaration.request?.url))} dirty={JSON.stringify(draft) !== JSON.stringify(format)} onClose={onClose} onSubmit={() => { onDone(draft); return null; }}>
       <label htmlFor="format-choice">Format</label>
       <select
         id="format-choice"
@@ -872,6 +877,22 @@ function FormatSheet({ probe, format, onClose, onDone }: { probe: ImportProbeRes
           ) : null}
         </>
       ) : null}
+      {draft.kind === "fhir" ? <>
+        <label htmlFor="format-fhir-source">Source type</label>
+        <select id="format-fhir-source" value={draft.declaration.source_kind} onChange={(event) => {
+          const source_kind = event.target.value;
+          const { request: _request, ...declaration } = draft.declaration;
+          setDraft({ ...draft, declaration: { ...declaration, source_kind, ...(source_kind === "request" ? { request: { method: "GET", url: "", headers: {} } } : {}) } });
+        }}><option value="">Choose a source type</option><option value="resource">Resource</option><option value="bundle">Bundle</option><option value="request">Request evidence</option></select>
+        <label htmlFor="format-fhir-version">FHIR version</label><select id="format-fhir-version" value={draft.declaration.context.version} onChange={(event) => setDraft({ ...draft, declaration: { ...draft.declaration, context: { ...draft.declaration.context, version: event.target.value } } })}><option value="4.0.1">R4 · 4.0.1</option></select>
+        <label htmlFor="format-fhir-media">Media type</label><select id="format-fhir-media" value={draft.declaration.context.media_type} onChange={(event) => setDraft({ ...draft, declaration: { ...draft.declaration, context: { ...draft.declaration.context, media_type: event.target.value } } })}><option value="application/fhir+json">application/fhir+json</option></select>
+        <label htmlFor="format-fhir-base">Reference base</label><input id="format-fhir-base" type="text" value={draft.declaration.context.base} onChange={(event) => setDraft({ ...draft, declaration: { ...draft.declaration, context: { ...draft.declaration.context, base: event.target.value } } })} />
+        {draft.declaration.request ? <>
+          <label htmlFor="format-fhir-method">Request method</label><select id="format-fhir-method" value={draft.declaration.request.method} onChange={(event) => setDraft({ ...draft, declaration: { ...draft.declaration, request: { ...draft.declaration.request!, method: event.target.value } } })}>{["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"].map((method) => <option key={method}>{method}</option>)}</select>
+          <label htmlFor="format-fhir-url">Request URL</label><input id="format-fhir-url" type="text" value={draft.declaration.request.url} onChange={(event) => setDraft({ ...draft, declaration: { ...draft.declaration, request: { ...draft.declaration.request!, url: event.target.value } } })} />
+          {(["if_match", "if_none_match", "if_modified_since", "if_none_exist", "prefer"] as const).map((key) => <label key={key}>{key.replaceAll("_", "-")}<input type="text" value={draft.declaration.request?.headers[key] ?? ""} onChange={(event) => setDraft({ ...draft, declaration: { ...draft.declaration, request: { ...draft.declaration.request!, headers: { ...draft.declaration.request!.headers, [key]: event.target.value } } } })} /></label>)}
+        </> : null}
+      </> : null}
       {draft.kind === "engine" ? (
         <>
           <ValueRows rows={[{ label: "Version", value: draft.engine.version }]} />

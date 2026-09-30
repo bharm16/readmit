@@ -92,6 +92,44 @@ func (d *Document) Resolve(sourceID, reference string) Resolution {
 	}
 	return result
 }
+
+// Relationships lists finite Reference positions in one resource, preserving
+// repeated positions and using Join's scoped literal/identifier semantics.
+func (d *Document) Relationships(ctx context.Context, sourceID string) []Relationship {
+	resource := d.resource(sourceID)
+	if resource == nil {
+		return []Relationship{}
+	}
+	out := []Relationship{}
+	var walk func(*node, string, []Step)
+	walk = func(n *node, typ string, steps []Step) {
+		if n == nil || ctx.Err() != nil || len(out) >= MaxMatches {
+			return
+		}
+		if typ == "Reference" {
+			out = append(out, d.Join(ctx, sourceID, Selector{Steps: steps}, "")...)
+			return
+		}
+		for _, member := range n.members {
+			field, known := definitions[typ][member.key]
+			if !known || primitive(field.typ) || field.typ == "Resource" {
+				continue
+			}
+			if field.many {
+				for i, item := range member.value.array() {
+					index := i
+					next := append(append([]Step(nil), steps...), Step{Field: member.key, Index: &index})
+					walk(item, field.typ, next)
+				}
+			} else {
+				next := append(append([]Step(nil), steps...), Step{Field: member.key})
+				walk(member.value, field.typ, next)
+			}
+		}
+	}
+	walk(resource.node, resource.resource.Type, nil)
+	return out
+}
 func referenceVersion(reference string) (string, string) {
 	u, err := url.Parse(reference)
 	if err != nil {

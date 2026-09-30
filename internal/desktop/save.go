@@ -552,11 +552,23 @@ func validateItemDraft(scope draftScope, kind ItemKind, draft ItemDraft) ([]cata
 			// the plan, and must cover the family of its workflow.
 			if problem := scope.scenarioProfile(*draft.Scenario.Profile, plan.Plan); problem != nil {
 				problems = append(problems, *problem)
-			} else if metadata, err := metadataMember(libraryMetadata{Profile: draft.Scenario.Profile}); err != nil {
-				problems = append(problems, FieldProblem{Field: "scenario.profile", Problem: err.Error()})
 			} else {
 				ref := *draft.Scenario.Profile
-				members, plan.Profile = append(members, metadata...), &ref
+				plan.Profile = &ref
+			}
+		}
+		if len(problems) == 0 && draft.Scenario.Generation != nil {
+			problems = append(problems, scope.scenarioGeneration(plan.Plan, plan.Profile, *draft.Scenario.Generation)...)
+			if len(problems) == 0 {
+				settings := *draft.Scenario.Generation
+				plan.Generation = &settings
+			}
+		}
+		if len(problems) == 0 {
+			if metadata, err := metadataMember(libraryMetadata{Profile: plan.Profile, Generation: plan.Generation}); err != nil {
+				problems = append(problems, FieldProblem{Field: "scenario.profile", Problem: err.Error()})
+			} else {
+				members = append(members, metadata...)
 			}
 		}
 		if len(problems) == 0 {

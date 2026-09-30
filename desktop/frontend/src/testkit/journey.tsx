@@ -333,8 +333,8 @@ export class Journey {
    * entitlement, its trust store and an activated operation policy — at a
    * folder inside the root, and returns that folder. Choosing it in the
    * window is still the person's step. */
-  provisionLicense(relative: string): string {
-    return provisionInRoot(this.binary, this.root, relative);
+  provisionLicense(relative: string, options?: { activated: boolean }): string {
+    return provisionInRoot(this.binary, this.root, relative, options?.activated ?? true);
   }
 
   /** Provisions the terms a vendor signs over time, each as its own

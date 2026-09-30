@@ -132,12 +132,18 @@ export function SendReview({
   const [editingChanges, setEditingChanges] = useState(false);
   const held = useRef<string | null>(null);
   const turn = useRef(0);
+  const environmentRead = useRef<Promise<void>>(Promise.resolve());
   // The project's named environments, which a test or a send can be changed
   // to, read as the review opens.
   const [environments, setEnvironments] = useState<CatalogItem[]>([]);
   useEffect(() => {
+    environmentRead.current = Promise.resolve();
     if (!request || request.kind === "suite" || request.kind === "resume" || request.kind === "reviewed") return;
-    void listWholeCatalog({ context: context(), kind: "environment", filter: {} }).then((answer) => setEnvironments((answer.page?.items ?? []).filter((item) => item.availability === "available")));
+    let current = true;
+    environmentRead.current = listWholeCatalog({ context: context(), kind: "environment", filter: {} }).then((answer) => {
+      if (current) setEnvironments((answer.page?.items ?? []).filter((item) => item.availability === "available"));
+    });
+    return () => { current = false; };
     // Read once each time the review opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -161,7 +167,15 @@ export function SendReview({
       setChanging(true);
       return;
     }
-    void prepareAction({ context: context(), ...preparing(request, chosen) }).then((answer) => {
+    const asked = context();
+    // Both facade reads need its single operation slot. The review starts
+    // after this sheet's own listing has released it, and a closed or changed
+    // sheet cannot begin a late preparation.
+    void environmentRead.current.then(() => {
+      if (mine !== turn.current) return;
+      return prepareAction({ context: asked, ...preparing(request, chosen) });
+    }).then((answer) => {
+      if (!answer) return;
       if (mine !== turn.current) {
         if (answer.review?.token) void withdrawReview(answer.review.token);
         return;

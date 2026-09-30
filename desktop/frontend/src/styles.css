@@ -527,6 +527,7 @@ button.operation-label {
 /* A compact window wraps a long title to two lines rather than clipping it. */
 .app.compact .page-header h1 {
   display: -webkit-box;
+  min-width: min(100%, 12rem);
   overflow-wrap: anywhere;
   white-space: normal;
   -webkit-box-orient: vertical;
@@ -577,6 +578,7 @@ button.operation-label {
   flex: none;
   flex-wrap: wrap;
   gap: var(--s2);
+  max-width: 100%;
 }
 
 .back-link {

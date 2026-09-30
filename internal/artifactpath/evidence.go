@@ -12,6 +12,7 @@ const (
 	FamilyRun         = "readmit-run/"
 	FamilySequenceRun = "readmit-sequence-run/"
 	FamilyResult      = "readmit-result/"
+	FamilyFHIR        = "readmit-fhir-evidence/"
 )
 
 // EvidenceFamily reports which retained evidence family a manifest schema
@@ -21,7 +22,7 @@ const (
 // re-spelling the list, so adding a family changes protection and dispatch
 // together.
 func EvidenceFamily(schema string) string {
-	for _, prefix := range []string{FamilyCase, FamilyRun, FamilySequenceRun, FamilyResult} {
+	for _, prefix := range []string{FamilyCase, FamilyRun, FamilySequenceRun, FamilyResult, FamilyFHIR} {
 		if strings.HasPrefix(schema, prefix) {
 			return prefix
 		}

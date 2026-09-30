@@ -1,6 +1,7 @@
 package desktop
 
 import (
+	"context"
 	"encoding/json/v2"
 	"errors"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/catalog"
 	"github.com/bharm16/readmit/internal/correlate"
+	"github.com/bharm16/readmit/internal/fhirevidence"
 	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/project"
 	"github.com/bharm16/readmit/internal/reproducer"
@@ -31,7 +33,11 @@ type VariantDraft struct {
 	Source    ItemRef           `json:"source"`
 	Plan      reproducer.Plan   `json:"plan"`
 	Transform *VariantTransform `json:"transform,omitzero"`
+	FHIR      *FHIRVariantPlan  `json:"fhir,omitzero"`
 }
+
+type FHIRVariantPlan = fhirevidence.VariantPlan
+type FHIRVariantEdit = fhirevidence.VariantEdit
 
 // variantPrefix names the entries variants are published as.
 const variantPrefix = "variant"
@@ -42,6 +48,7 @@ type variantSource struct {
 	entry  string
 	path   string
 	bundle *bundle.Bundle
+	fhir   *fhirevidence.Artifact
 }
 
 func readVariant(c *loadedCatalog, item catalog.Item, paths map[string]string) (view, error) {
@@ -85,6 +92,9 @@ func validateVariantDraft(scope draftScope, draft ItemDraft) ([]catalog.Staged, 
 	}
 	if scope.item != "" {
 		return nil, normalized, []FieldProblem{{Field: "item", Problem: "a variant is saved as a new case; derived evidence is never changed"}}
+	}
+	if draft.Variant.FHIR != nil {
+		return validateFHIRVariantDraft(scope, draft)
 	}
 	resolved, problems := resolveVariant(scope, *draft.Variant, false)
 	if problems != nil {
@@ -140,6 +150,12 @@ func resolveVariantSource(scope draftScope, ref ItemRef) (variantSource, *FieldP
 		return variantSource{}, refused
 	}
 	path := filepath.Join(loaded.root, entry)
+	if root, fhir, handled, declined := openedFHIRCase(context.Background(), loaded.root, entry, recorded.Identity); handled {
+		if root == "" {
+			return variantSource{}, &FieldProblem{Field: "variant.source", Problem: declined.reason}
+		}
+		return variantSource{entry: entry, path: path, fhir: fhir}, nil
+	}
 	opened, err := operation.OpenVerifiedCase(path, recorded.Identity)
 	if err != nil {
 		return variantSource{}, &FieldProblem{Field: "variant.source", Problem: err.Error()}
@@ -153,6 +169,9 @@ func resolveVariantSource(scope draftScope, ref ItemRef) (variantSource, *FieldP
 // placed as the derived case alone, and registered as a revision of its
 // source.
 func variantEntry(resolved *variantResolved) *catalog.Entry {
+	if resolved.fhir != nil {
+		return fhirVariantEntry(resolved)
+	}
 	source, plan, sequence := resolved.source, resolved.plan, resolved.sequence
 	return &catalog.Entry{Prefix: variantPrefix, Owes: source.entry, Build: func(path string) error {
 		built := path + ".build"
@@ -180,6 +199,16 @@ func verifyVariant(files map[string]string) error {
 	data, err := boundedFile(files["plan"], catalog.MaxMemberBytes)
 	if err != nil {
 		return err
+	}
+	if fhirPlan, err := fhirevidence.DecodeVariant(data); err == nil {
+		derived, err := fhirevidence.Open(context.Background(), files[catalog.EntryRole])
+		if err != nil {
+			return err
+		}
+		if derived.Manifest.Provenance.Mode != "derived" || derived.Manifest.Provenance.Parent != fhirPlan.Parent || derived.Manifest.Provenance.Derivation != fhirevidence.VariantSchema || derived.Identity == fhirPlan.Parent {
+			return errors.New("the saved R4 variant does not retain its reviewed lineage")
+		}
+		return nil
 	}
 	plan, err := reproducer.DecodePlan(data)
 	if err != nil {
@@ -230,7 +259,7 @@ func verifyNewVariant(root string) catalog.Verifier {
 		if err := verifyVariant(files); err != nil {
 			return err
 		}
-		derived, err := operation.OpenCase(files[catalog.EntryRole])
+		identity, err := derivedIdentity(files)
 		if err != nil {
 			return err
 		}
@@ -240,12 +269,33 @@ func verifyNewVariant(root string) catalog.Verifier {
 		}
 		for _, registered := range revisions.Revisions {
 			// A resumed save whose entry was already registered is itself.
-			if registered.Identity == derived.Identity && filepath.Join(root, registered.Name) != filepath.Clean(files[catalog.EntryRole]) {
+			if registered.Identity == identity && filepath.Join(root, registered.Name) != filepath.Clean(files[catalog.EntryRole]) {
 				return errRevisionRegistered
 			}
 		}
 		return nil
 	}
+}
+
+// derivedIdentity is the identity of a verified variant's derived entry, read
+// as the R4 evidence or v2 case its plan declares.
+func derivedIdentity(files map[string]string) (string, error) {
+	data, err := boundedFile(files["plan"], catalog.MaxMemberBytes)
+	if err != nil {
+		return "", err
+	}
+	if _, err := fhirevidence.DecodeVariant(data); err == nil {
+		derived, err := fhirevidence.Open(context.Background(), files[catalog.EntryRole])
+		if err != nil {
+			return "", err
+		}
+		return derived.Identity, nil
+	}
+	derived, err := operation.OpenCase(files[catalog.EntryRole])
+	if err != nil {
+		return "", err
+	}
+	return derived.Identity, nil
 }
 
 // associateEntry records what a published entry of the project owes: a

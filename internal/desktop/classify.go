@@ -74,6 +74,8 @@ var schemaMarkerFiles = []struct {
 // as soon as it is readable.
 var declaredSchemas = func() map[string]Kind {
 	m := map[string]Kind{
+		FHIRProfileSchema:          ProfileArtifact,
+		FHIRProfilePackageSchema:   PackageArtifact,
 		index.Schema:               IndexArtifact,
 		replay.TargetSchema:        TargetArtifact,
 		replay.TargetSchemaV2:      TargetArtifact,

@@ -38,6 +38,25 @@ type ProfileDraft struct {
 	Pack         *ItemRef               `json:"pack,omitzero"`
 	Origin       *profilepackage.Origin `json:"origin,omitzero"`
 	PackDocument string                 `json:"pack_document,omitzero"`
+	FHIR         *FHIRProfileDefinition `json:"fhir,omitzero"`
+	MetadataPack *MetadataPackDraft     `json:"metadata_pack,omitzero"`
+}
+
+// MetadataPackDraft is the exact imported pack plus the shared reader's
+// metadata projection. The document is retained whole, including v2-v5
+// structure and datatype clauses that are outside profilepack/v1 metadata.
+// The projection is recomputed before Save; it grants no validation claim.
+type MetadataPackDraft struct {
+	Document string           `json:"document"`
+	Metadata profilepack.Pack `json:"metadata"`
+	Schema   string           `json:"schema"`
+}
+
+// Bound zero profiles encode nil segment lists as empty JSON arrays. They
+// carry no rule; an authored schema, identity, base or any rule still does.
+func emptyLocalProfile(profile localprofile.Profile) bool {
+	return profile.Schema == "" && profile.Identity == (localprofile.Identity{}) && profile.Base == (localprofile.Base{}) &&
+		len(profile.Segments)+len(profile.Terminology)+len(profile.Authorities)+len(profile.Dates) == 0
 }
 
 // The roles a profile is saved as.
@@ -56,6 +75,12 @@ const (
 // seal in the project records for other content, and its origin read as the
 // package contract reads one.
 func validateProfileDraft(scope draftScope, draft ItemDraft) ([]catalog.Staged, *ProfileDraft, []FieldProblem) {
+	if draft.Profile.MetadataPack != nil {
+		return validateMetadataPackDraft(scope, draft)
+	}
+	if draft.Profile.FHIR != nil {
+		return validateFHIRProfileDraft(scope, draft)
+	}
 	problems := []FieldProblem{}
 	held := *draft.Profile
 	profile, pack, found := scope.profileWithPack(draft.Name, held)
@@ -238,7 +263,11 @@ func (c *loadedCatalog) packBytes(ref ItemRef) ([]byte, error) {
 	if ref.Kind != ProfileItem || index < 0 || c.document.Items[index].Kind != string(ProfileItem) || c.removed(c.document.Items[index]) {
 		return nil, errors.New("the project holds no such metadata pack")
 	}
-	paths, availability, reason := c.backing(c.document.Items[index])
+	record, heldRevision := itemAt(c.document.Items[index], ref.Revision)
+	if !heldRevision {
+		return nil, errors.New("the metadata pack has no saved revision " + ref.Revision)
+	}
+	paths, availability, reason := c.backing(record)
 	if availability != ItemAvailable {
 		return nil, errors.New(reason)
 	}
@@ -342,6 +371,17 @@ func profileFromPackage(data []byte) (localprofile.Profile, *profilepackage.Orig
 }
 
 func verifyProfile(files map[string]string) error {
+	if schema, _ := sniffSchema(files[profileRole]); strings.HasPrefix(schema, "readmit-profile-pack/") {
+		raw, err := boundedFile(files[profileRole], profilepack.MaxPackBytes)
+		if err != nil {
+			return err
+		}
+		_, err = metadataPackDraftOf(raw)
+		return err
+	}
+	if schema, _ := sniffSchema(files[profileRole]); schema == FHIRProfileSchema || schema == FHIRProfilePackageSchema {
+		return verifyFHIRProfile(files)
+	}
 	profile, _, err := readLocalProfile(files)
 	if err != nil {
 		return err
