@@ -1,6 +1,7 @@
 import { DiagnosticsSheet, HelpTopics, SearchHelpSheet, useHelpArticle } from "./Help";
 import { DemoTask } from "./DemoTask";
 import { useBenchmarks } from "./Benchmarks";
+import { useSchedules } from "./Schedules";
 import { AdministratorSetup } from "./OperationAccess";
 import { ComputerLicense } from "./ComputerLicense";
 import { GeneralView, SecurityView, usePreferences, type ConnectionRoute } from "./Settings";
@@ -285,8 +286,6 @@ export default function App() {
   const [runsEnded, setRunsEnded] = useState(0);
   // What Create report hands Reports: a run, its case and its test version.
   const [reportSeed, setReportSeed] = useState<ReportSeed | null>(null);
-  // What Schedule or Set up CI on a suite opens Runners with.
-  const [runnerSeed, setRunnerSeed] = useState<{ tab: "schedules" | "ci"; suite: string; environment: string; count: number } | null>(null);
   // The demo task over the open project, read back from what it holds, and
   // the steps whose read results this window saw.
   const [demo, setDemo] = useState<DemoProgress | null>(null);
@@ -340,7 +339,6 @@ export default function App() {
   // pages: each new count starts that page's setup once.
   const [securityReturn, setSecurityReturn] = useState<string | undefined>(undefined);
   const [setupFromSecurity, setSetupFromSecurity] = useState<null | "team" | "operator" | "portal" | "runner">(null);
-  const [runnerPath, setRunnerPath] = useState<string | undefined>(undefined);
   const [setupRequests, setSetupRequests] = useState({ team: 0, operator: 0, portal: 0, runner: 0 });
   const [packagesOpen, setPackagesOpen] = useState(false);
   // The inspector width each project was last given, in rem. The shown width
@@ -1440,14 +1438,7 @@ export default function App() {
     busy,
     onRun: handoff,
     onLibrary: () => open({ destination: "library" }),
-    onSchedule: (entry) => {
-      setRunnerSeed((held) => ({ tab: "schedules", suite: entry, environment: "", count: (held?.count ?? 0) + 1 }));
-      open({ destination: "settings", view: "runners" });
-    },
-    onSetUpCI: (entry, environment) => {
-      setRunnerSeed((held) => ({ tab: "ci", suite: entry, environment, count: (held?.count ?? 0) + 1 }));
-      open({ destination: "settings", view: "runners" });
-    },
+    onSchedule: (suite) => open({ destination: "schedules", objectId: `suite:${suite}` }),
     restoreDraft: restoringSuite,
     onRestored: (reason) => {
       setRestoringSuite(null);
@@ -1479,10 +1470,7 @@ export default function App() {
     onOpen: openRunPage,
     onRun: setSendRequest,
     onCompare: (ids) => open({ destination: "compare-runs", objectId: ids.join("..") }),
-    onSchedules: () => {
-      setRunnerSeed((held) => ({ tab: "schedules", suite: "", environment: "", count: (held?.count ?? 0) + 1 }));
-      open({ destination: "settings", view: "runners" });
-    },
+    onSchedules: () => open({ destination: "schedules" }),
     activity: runActivity.activity,
   });
   /** Opens a case's Messages at the occurrences a run or report names. */
@@ -1608,6 +1596,15 @@ export default function App() {
   }, [place, route.objectId]);
 
   const benchmarks = useBenchmarks({ root, shown: place === "benchmarks", busy });
+  // Schedules (#564): the project's one collection, narrowed to the suite or
+  // runner it was opened from.
+  const scheduleFilter = place === "schedules" ? (route.objectId ?? "") : "";
+  const schedules = useSchedules({
+    root,
+    shown: place === "schedules",
+    ...(scheduleFilter.startsWith("suite:") ? { suite: scheduleFilter.slice("suite:".length) } : {}),
+    ...(scheduleFilter.startsWith("runner:") ? { runner: scheduleFilter.slice("runner:".length) } : {}),
+  });
   const helpArticleId = place === "help-article" ? route.objectId : undefined;
   const openHelpArticle = (id: string) => open({ destination: "help-article", objectId: id });
   const helpAction = (action: HelpActionID) => {
@@ -1948,7 +1945,6 @@ export default function App() {
         openSettings("team");
         return;
       case "runner":
-        setRunnerPath(route.path);
         setSetupFromSecurity("runner");
         requestSetup("runner");
         openSettings("runners");
@@ -2714,6 +2710,10 @@ export default function App() {
           )}
         </Page>
 
+        <Page id="schedules" shown={place === "schedules"} title="Schedules" back={<BackLink label="Back" onBack={back} />} actions={schedules.actions}>
+          {schedules.body}
+        </Page>
+
         <Page id="compare-runs" shown={place === "compare-runs"} title={runComparison.title} back={<BackLink label="Runs" onBack={back} />} actions={root ? runComparison.actions : null}>
           {root ? runComparison.body : noProject("runs")}
         </Page>
@@ -2991,7 +2991,13 @@ export default function App() {
               />
             </TaskPanel>
             <TaskPanel tabs="settings-views" tab="runners" className="task-panel view-panel" shown={settingsView === "runners"}>
-              <RunnerPanel request={setupRequests.runner} configPath={runnerPath} onHandled={setupHandled("runner")} onConfigured={configured("runner", "runner:config")} seed={runnerSeed} />
+              <RunnerPanel
+                root={root}
+                request={setupRequests.runner}
+                onHandled={setupHandled("runner")}
+                onConfigured={configured("runner", "runner:config")}
+                onSchedules={(runner) => open({ destination: "schedules", objectId: `runner:${runner}` })}
+              />
             </TaskPanel>
             <TaskPanel tabs="settings-views" tab="security" className="task-panel view-panel" shown={settingsView === "security"}>
               {place === "settings" && settingsView === "security" ? (

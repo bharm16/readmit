@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -36,6 +37,9 @@ type Store struct {
 	root       *os.Root
 	config     Config
 	mu         sync.Mutex
+	// managed is the managed schedule service while ServeManagedSchedules
+	// runs; without it the schedule route answers unavailable.
+	managed atomic.Pointer[ManagedScheduler]
 }
 
 func Open(ctx context.Context, c Config) (*Store, error) {

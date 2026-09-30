@@ -83,6 +83,8 @@ var profiles = map[string]operationguard.Profile{
 	"ConnectOperatorHub":       {Name: hubRequestOperation},
 	"ReadOperatorHubArtifact":  {Name: hubRequestOperation},
 	"StoreOperatorHubArtifact": {Name: hubRequestOperation, Author: true},
+	"ListSchedules":            {Name: hubRequestOperation},
+	"CommandSchedule":          {Name: hubRequestOperation, Author: true},
 
 	// Credential references and protection, which run declared programs.
 	"TestSecretReference":      {Name: secretTestOperation, Interruptible: true},

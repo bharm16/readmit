@@ -13,6 +13,14 @@
 // values to an analytics or rendering service: nothing leaves the machine.
 
 import type {
+  RunnerGrantsResult,
+  RunnerListResult,
+  SchedulePrepareRequest,
+  SchedulePrepareResult,
+  ScheduleListRequest,
+  ScheduleListResult,
+  ScheduleCommandRequest,
+  ScheduleCommandResult,
   BenchmarkDefaultsResult,
   BenchmarkInputsResult,
   BenchmarkRequest,
@@ -1304,6 +1312,36 @@ export function inspectGatePolicy(path: string): Promise<GatePolicyResult> {
 
 export function verifyCIGate(directory: string, identity: string): Promise<CIGateVerifyResult> {
   return guard(() => facade().VerifyCIGate(directory, identity), { state: "failed" });
+}
+
+/** The project's named runners, needing attention first. */
+export function listRunners(context: RequestContext): Promise<RunnerListResult> {
+  return retryingRead(() => facade().ListRunners(context), { state: "failed", context, runners: [] });
+}
+
+/** The grants a hub runner policy holds for one project. */
+export function readRunnerGrants(path: string, project: string): Promise<RunnerGrantsResult> {
+  return guard(() => facade().ReadRunnerGrants(path, project), { state: "failed", grants: [] });
+}
+
+/** The host's dialog for one path a runner, CI or gate task names. */
+export function chooseRunnerPath(kind: string): Promise<PathChoiceResult> {
+  return guard(() => facade().ChooseRunnerPath(kind), { state: "failed" });
+}
+
+/** Prepares and reviews exactly what a schedule would run; sends nothing. */
+export function prepareSchedule(request: SchedulePrepareRequest): Promise<SchedulePrepareResult> {
+  return guard(() => facade().PrepareSchedule(request), { state: "failed", context: request.context, problems: [] });
+}
+
+/** The project's schedules as the hub scheduler holds them. */
+export function listSchedules(request: ScheduleListRequest): Promise<ScheduleListResult> {
+  return retryingRead(() => facade().ListSchedules(request), { state: "failed", context: request.context, schedules: [] });
+}
+
+/** One schedule change, acknowledged by the hub scheduler or kept pending. */
+export function commandSchedule(request: ScheduleCommandRequest): Promise<ScheduleCommandResult> {
+  return guard(() => facade().CommandSchedule(request), { state: "failed", context: request.context, revision: 0, pending: false, replayed: false });
 }
 
 export function observationSupport(): Promise<ObservationSupportResult> {

@@ -738,6 +738,7 @@ export function StepDialog({
   submitLabel,
   submitDisabled = false,
   nextLabel = "Next",
+  finalSecondary,
   ...sheet
 }: {
   open: boolean;
@@ -746,6 +747,8 @@ export function StepDialog({
   steps: FlowStep[];
   /** What going on from a step before the last is called. */
   nextLabel?: string;
+  /** A second way to finish, drawn beside the final action on the last step. */
+  finalSecondary?: ReactNode;
   step: string;
   onStep: (key: string) => void;
   onSubmit: () => void | SubmitFailure | null | Promise<void | SubmitFailure | null>;
@@ -775,11 +778,14 @@ export function StepDialog({
             }
       }
       secondary={
-        at > 0 ? (
-          <button type="button" onClick={() => onStep(steps[at - 1]!.key)}>
-            Back
-          </button>
-        ) : null
+        <>
+          {at > 0 ? (
+            <button type="button" onClick={() => onStep(steps[at - 1]!.key)}>
+              Back
+            </button>
+          ) : null}
+          {last ? finalSecondary : null}
+        </>
       }
     >
       <ol className="flow-steps" aria-label="Steps">

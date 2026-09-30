@@ -3334,7 +3334,7 @@ goes first and Started shortens to the time or the day; the result never goes.
 
 **Filter** narrows by result, environment, test or suite and a start date range
 in this computer's time zone. **Compare** is offered for exactly two finished,
-readable runs of a test. **Schedules** opens Settings › Runners › Schedules.
+readable runs of a test. **Schedules** opens the project's schedules, and **Import CI results** reads a retained CI run.
 **Run test** opens a picker of the project's saved tests and runnable suites
 and then the reviewed send. A run folder is never named, typed or chosen here:
 every output is the application's own.
@@ -4152,166 +4152,127 @@ entry is not the authorization.
   `team.resolve` action: one new revision naming every tip, never overwriting
   another person's. Case and report evidence bytes are never changed.
 
-## Customer runners, recurring schedules and CI handoffs
+## Runners, schedules and CI
 
-The **Runners, schedules and CI** panel sits in Settings › Runners beside the
-artifact hub. It carries the application-facing half of the customer-runner
-workflow (#263): the documents a hub-enrolled runner and its schedules read are
-generated and validated in the window, a configured runner's state is displayed,
-and one explicitly pinned job is executed through the same admission the command
-line takes. Local use needs no hub and no runner; the panel stays inert until a
-configuration is selected, and it says so rather than offering a fake flow.
-Only a failure reads as a refusal: a refused admission keeps the sentence its
-step gives it, and an answer that is busy, cancelled, has nothing to show or
-was not permitted is shown as that state, through the window's status.
+### Runners
 
-### Generated documents, never hand-authored JSON
+Settings › Runners lists the project's named runners: Runner, Environment,
+Status and Last seen, those needing attention first, then by name. A runner is
+an object of the project: its `readmit-runner/v1` configuration, saved whole
+with **Save** under its name, and the project environment it serves
+(`readmit-runner-links/v1`). Its status is what the window last established by
+an actual read or admission, kept with when (`readmit-desktop-runner-status/v1`
+beside the window's other documents): **Available** after an admission the hub
+granted, **Refused** when the hub refused one, **Offline** when one did not
+complete, **Setup required** after its setup was exported and before any
+admission, and **Not checked** when nothing has checked it. A runner whose
+working folder is on this machine is read on every listing: a retained job that
+needs recovery reads **Needs attention** and a current lease **Busy**. No
+runners shows `No runners` and **Add runner**; the landing page holds no
+fields.
 
-- **Runner configuration** (`readmit-runner/v1`): the structured form requires
-  every member the contract requires — the HTTPS hub origin, project,
-  environment, runner root, CA and client certificate paths, both credential
-  references (the absolute program that reads each value back and the arguments
-  that select it; never a value), the standard-base64 Ed25519 deployment key and
-  the approved update engine. The canonical document is previewed before it is
-  written to one new private (0600) file; an existing destination is never
-  replaced. A configuration the administrator wrote on the runner host reads
-  back without the root being present, and the display says when health and
-  retained jobs live on another machine.
-- **Hub runner grant** (`readmit-runner-policy/v1`): one grant is added to, or
-  replaced in, the operator's policy and the whole revision is validated through
-  the admission protocol's own strict reader. An empty engine names the running
-  build's pin; installation on the hub stays the administrator's action. The
-  revision is written to a new file and shown as written. A grant the existing
-  policy holds for the same project and environment, such as one still pinned
-  to a build the runner no longer runs, is replaced rather than joined, and the
-  existing policy file is left as it was.
-- **Job documents** (`readmit-runner-job/v1`): the job id and absolute spec path
-  are validated before anything is written. A retained job id is never reused,
-  and the panel never generates a new attempt automatically.
-- **Schedule revisions** (`readmit-hub-schedules/v1`): entries are authored
-  through structured controls and validated by the schedule contract's own
-  reader — the same code the hub service runs. The preview shows the policy
-  identity the hub binds its journal to, each entry's next occurrences computed
-  by the backend's own occurrence function (a nonexistent spring-forward minute
-  is marked `dst-gap`, never shifted; an occurrence older than its window is
-  marked `missed`). Without an anchor, each entry starts on today's date in
-  its own zone, including when that local date differs from UTC; an explicit
-  anchor starts every entry on the chosen date. The preview also shows the
-  serial `serial-skip-missed` discipline and the exact
-  fixed notification body an approved route may emit. A pin that the readable
-  spec's prepared inputs disagree with refuses to save. Removing an entry is how
-  a schedule stops; installing a revision and restarting the hub — which fails
-  closed on a changed policy rather than retaining authority — remain the
-  customer administrator's actions.
-- **CI handoffs**: the panel generates the documented workflow for the three
-  supported integrations (POSIX shell, GitHub Actions, Azure DevOps) with the
-  six non-secret path/selection variables validated. The generated file's
-  checklist lines are comments; the workflow itself is env-var driven and
-  discloses nothing customer-specific. A value holding a line break or another
-  control character is refused, because it would end its comment line and put
-  the rest of itself into the workflow the agent runs. Asked for, the
-  **reviewed change gate** adds the documented
-  [gate step](customer-ci.md#the-change-gate-in-a-generated-workflow) after
-  the suite: `suite ci` then retains the approved promotion (release
-  references, approval, its full identity and the operator's target revision),
-  and the unchanged `readmit suite gate` retains a snapshot of the run against
-  the reviewed baseline under the gate policy and the identity pinned for it.
-  The gate runs even when the suite failed and never replaces the suite's exit
-  status: the POSIX script exits with the suite's status when it failed, and
-  GitHub Actions and Azure DevOps run the gate as its own step. The eight
-  further variables are validated before anything is written — both
-  identities are full SHA-256 identities, and the run, the baseline and the
-  snapshot are three separate folders — and the workflow uses the pinned
-  identity as provisioned, never computing one. The application never commits
-  to a repository, authorizes a third-party service or uploads anything; a
-  trusted customer-owned self-hosted agent and installation remain the
-  customer's.
-- **Installation handoffs**: the shipped native service unit
-  (`runner/readmit-runner.service`) and container image definition
-  (`runner/Dockerfile`) consume the configuration the panel writes; provisioning
-  credentials, volumes, quotas and the operation policy on the runner host stay
-  the customer administrator's explicit, never silent, actions.
+**Add runner** is one sheet: Connection (name, customer hub, hub project, the
+hub's certificate authority and the runner's certificate, the key and token
+readers and the names they read, the deployment key and the approved build),
+Assignment (the project environment, the hub environment and where it runs —
+this Mac, with the working folder chosen through the folder dialog, or another
+host) and Review. The configuration's own strict reader decides before the
+review. For this Mac the final action is **Request admission**: the runner is
+saved and the same certificate-bound probe `readmit runner enroll` performs is
+made, and the acknowledged lease and capacity are shown. For another host it is
+**Export setup**: the configuration is written to a file the person names for
+the host's administrator, and the runner stays Setup required — nothing is
+installed or enrolled from here.
 
-### Enrollment, execution and recovery
+Selecting a runner shows its saved values, status, last contact (dated) and
+active jobs, with **Request admission**, **Schedules** (the schedules it runs)
+and **Refresh**, which reads the configuration and the working folder as they
+are and probes nothing. Its tasks are behind More, each its own sheet:
+**Configuration** edits the saved runner whole; **Access** reads a hub runner
+policy (`readmit-runner-policy/v1`) for the grants it holds for the runner's
+project — subject, environment, build, maximum time and jobs — and saves one
+grant after a review of its exact scope, as a new policy file for the hub
+administrator (a signed-in identity needs the admin scope); **Capacity** shows
+the license's licensed, active, stale and free instances and the admitted
+instances, each released or reconciled only by the action that names it, and
+never an active one; **Recovery** reads the retained jobs and each job's
+acknowledged, uncertain and not-attempted deliveries and offers no resend;
+**Update** verifies a staged candidate against the pinned deployment key and
+approved build, as `readmit runner verify-update` does, reading it and never
+running it, then offers Export setup; **Run job** runs one job file — chosen,
+or written new for a test — previewed against the runner and run once through
+its own admission, and a job id the runner already holds is never run again;
+**Export setup** writes the configuration for the host's administrator.
 
-When the window holds a signed-in customer-hub session, runner lifecycle
-operations consult that session's real authority before they run: the granted
-scopes must include the action (enrollment or execution — the access policy's
-roles decide who holds them), and the project's administration log must not
-record the signed-in identity's removal. A session that cannot establish the
-administration state refuses new runner work rather than assuming a pass. This
-gate is additional, never a substitute: the hub re-checks the same roles and
-the same removal log at every admission, and without a window session the
-runner's own certificate-bound credential path applies unchanged.
+When the window holds a signed-in customer-hub session, admission and job
+execution consult that session's granted scopes and the project's
+administration log first; the hub re-checks the same at every admission.
 
-Inspecting a configuration reads the current state before any new deliberate
-action is offered: the configured hub, project and environment, this build's
-engine pin, and — when the runner root is on this machine — the runner health
-snapshot (`idle`, `lease_current` or `recovery_required`), the retained jobs
-with their durable states, and any uncertain deliveries. **Enrollment** is the
-same certificate-bound probe `readmit runner enroll` performs: it reserves the
-environment for at most ten seconds and displays the lease, the granted
-capacity, or the hub's own reasoned refusal (a version or environment
-disagreement, a leased environment, exhausted capacity). **Execution** asks the
-existing explicit operation approval and then runs through the runner's own
-lease, quota, state-isolation and duplicate-admission rules, which the panel
-does not widen; the preflight is the runner's own check of the job, and a
-preflighted input identity is bound to the execution, so a changed spec is
-refused before admission. A preflight whose job id the runner root on this
-machine already holds is refused and names the id rather than a pin: the runner
-reserves an id permanently, whatever became of its job, and refuses to run it
-again by its own rule. While a job
-runs, Execute is disabled and the focus moves to Cancel, which names its own
-operation and retains uncertain delivery exactly as `run start` does; the
-result display offers no resend. **Recovery** is a read: acknowledged,
-uncertain and not-attempted deliveries, never a resume, a reset or a send.
+### Schedules
 
-### Staged runner updates
+Schedules are the hub scheduler's, one collection for the project, reached from
+a suite's **Schedule**, Runs › **Schedules** and a runner's **Schedules**, which
+show only that suite's or runner's. The list shows Suite, Time/zone,
+Environment, State and Next run, soonest first, paused ones last. The next run
+is the scheduler's own instant, shown in the schedule's zone. Schedules need
+the customer hub: without a signed-in session, or with a hub serving without
+its schedule service, the page says so and schedules nothing on this machine.
 
-The runner view checks a staged update against the configuration named in its
-configuration path, as `readmit runner verify-update MANIFEST BINARY --config
-CONFIG` checks it (see [deployment and updates](customer-runner.md#deployment-and-updates)).
-The private `readmit-runner-update/v1` manifest must be signed by the Ed25519
-deployment key the configuration pins and name the build its `update_engine`
-approves and this platform, and the candidate's bytes must be the ones the
-manifest names. The check reads the candidate and never runs it. A verified
-candidate is reported with the build it approves; any other is refused with the
-runner's own sentence, the one the command line prints. Naming another
-manifest, candidate or configuration withdraws the answer, which described only
-the files it checked at that moment. Stopping the service, installing the
-verified bytes and changing the hub's approved engine remain the
-administrator's actions.
+**New schedule** starts from the suite it was opened from: Name, Suite (at its
+exact current version), Environment, Runner, Repeat (Daily, Weekdays or
+Selected days, at least one), Time, Time zone, Run window in minutes and an
+optional notification destination (an HTTPS origin). **Review** prepares the
+suite version for the environment inside the project, pins it
+(`runqueue.PinnedJobs`) and shows the exact test and target versions, the
+runner, the recurrence in its zone, the next three occurrences, the run window,
+the environments reset before each run and the notification destination, which
+receives only the run state. **Enable schedule** and **Save paused** send
+`readmit-hub-schedule-command/v1`, bound to that review: what the schedule
+runs changing meanwhile refuses the command. **Edit** shows every value and
+reviews again. A row's **Pause**, **Enable** and **Delete** name the schedule
+and state their consequence.
 
-### Retained CI results and gate policies
+A command is recorded in the project as pending
+(`readmit-schedule-intents/v1`) before it is sent and cleared only by the
+scheduler's acknowledgement, or its refusal. A command the hub did not answer
+stays **Pending** with its reason, never the state it asked for; **Send again**
+sends the same change under the same intent, which the scheduler applies at
+most once. A refused command changes nothing. Once acknowledged, the schedule
+runs on the hub (`readmit-hub serve -schedules`, see the hub's README) whether
+or not this window is open. Each row's detail shows its recent occurrences —
+passed, failed, missed, skipped for a nonexistent local minute, refused,
+uncertain — and why the scheduler paused it by itself: what it runs changed,
+the runner host could not read it, or the hub's runner authority was
+unavailable.
 
-The panel inspects a retained CI output directory's `readmit-suite-ci/v1`
-aggregate and, when present, the `readmit-ci-gate/v1` change-gate summary,
-through their strict readers; a missing summary is reported, never a pass. A
-reviewed `readmit-ci-gate-policy/v1` file is read for its canonical identity —
-the identity the customer pins independently in protected configuration — and
-reading a policy approves nothing. Typing another directory or policy path
-withdraws the reading shown beside it, so an identity is never left beside a
-path it was not read from. GUI-prepared suites and CI artifacts execute
-through the unchanged command-line contracts with equivalent verdicts, which the
-differential tests prove against a real hub and the actual CLI executable.
+**Export policy**, under More, is the expert action for a hub its operator runs
+from an installed `readmit-hub-schedules/v1` policy: it can open an installed
+policy, adds daily entries with the runner and test they run, computes each
+entry's pin from its test, previews the next occurrences (a nonexistent minute
+is skipped, never shifted) and writes the policy to a file the person names.
+It schedules nothing here.
 
-**Verify a retained change gate** checks one retained snapshot against the
-policy identity pinned for it through `suite.VerifyGate`, the operation
-`readmit suite verify-gate` runs: every retained byte is checked against the
-snapshot's `readmit-ci-retention/v1` manifest and the assessment is repeated at
-the instant the snapshot was retained, with retention expiry judged by this
-machine's clock. The window shows the `readmit-ci-gate/v1` summary the command
-prints for the same snapshot and identity, each part's verdict, and every part
-not verified. An unknown gate is refused, never a pass, and the refusal says
-which it is: a snapshot that was tampered with, one retained under another
-policy and a folder that is not a snapshot could not be verified at all; an
-intact snapshot whose retained verdict is unknown matches its manifest but
-still passes nothing; and a snapshot past its retention end is refused as
-expired with nothing deleted. Verification reads only the snapshot and never
-sends, reruns or changes a byte. The focus moves to its **Cancel
-verification** control, which stops exactly that verification by the name it
-runs under and reaches no
-verdict; a cancelled verification is shown as cancelled, not refused.
+### CI
+
+A suite's **Set up CI** is one sheet: integration (POSIX shell, GitHub Actions
+or Azure DevOps), the exact suite version, environment, runner, and the Agent
+paths on the CI host — the readmit program, operation policy, suite file, run
+folder and coverage declaration — with the run folder taken from the runner's
+working folder when one is chosen. An optional **Change gate** step reads a
+reviewed gate policy for its identity and the promotion identity it pins, and
+takes the release pins, promotion, baseline run, gate results folder and target
+revision. **Generate configuration** writes the documented workflow to a file
+the person names; it never commits, installs or enables CI. The gate runs after
+the suite even when it failed and never replaces its exit status. Every value
+is one line, and the run, baseline and gate folders are three separate folders.
+
+Runs › **Import CI results** reads a retained CI output folder's
+`readmit-suite-ci/v1` aggregate and any `readmit-ci-gate/v1` summary through
+their strict readers; a missing summary is reported, never a pass. A suite's
+**Gate results** verifies one retained snapshot against the identity of the
+gate policy chosen for it, through `suite.VerifyGate` as
+`readmit suite verify-gate` does: it sends, reruns and approves nothing, and a
+part that could not be verified stays shown as Not verified.
 
 ## Library
 

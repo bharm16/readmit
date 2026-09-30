@@ -32,7 +32,7 @@ type ShellDocuments struct {
 	Folder string
 }
 
-// The eleven file names. The store owns them: nothing the shell is wired up
+// The twelve file names. The store owns them: nothing the shell is wired up
 // with names a document, only the folder they all live in. An earlier
 // release's recent-folder list may still be there beside them.
 const (
@@ -47,6 +47,7 @@ const (
 	preferencesName         = "preferences.json"
 	openedName              = "opened.json"
 	hubTeamName             = "hub-team.json"
+	runnerStatusName        = "runners.json"
 )
 
 // recentName is an earlier release's recent-folder list. It is read only

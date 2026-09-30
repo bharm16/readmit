@@ -1,6 +1,7 @@
 package desktop
 
 import (
+	"cmp"
 	"context"
 	"encoding/json/v2"
 	"errors"
@@ -76,7 +77,11 @@ type RunnerConfigRequest struct {
 	Token        RunnerReferenceInput `json:"token"`
 	UpdateKey    string               `json:"update_key"`
 	UpdateEngine string               `json:"update_engine"`
-	Output       string               `json:"output"`
+	// Output is the new file written; empty asks the person to name one.
+	Output string `json:"output"`
+	// Source is the named runner's saved configuration this setup is
+	// exported from, empty for none.
+	Source string `json:"source,omitzero"`
 }
 
 func readRunner(c *loadedCatalog, item catalog.Item, paths map[string]string) (view, error) {
@@ -121,7 +126,7 @@ func (a *App) PreviewRunnerConfig(request RunnerConfigRequest) RunnerDocumentRes
 // configuration on the runner host is an operator-controlled file, and a
 // revision is installed deliberately by the administrator.
 func (a *App) SaveRunnerConfig(request RunnerConfigRequest) RunnerDocumentResult {
-	return run(a, false, true, func(context.Context) RunnerDocumentResult {
+	return run(a, false, true, func(ctx context.Context) RunnerDocumentResult {
 		config, declined := runnerConfigFrom(request)
 		if declined.reason != "" {
 			return RunnerDocumentResult{State: declined.state, Reason: declined.reason}
@@ -130,10 +135,25 @@ func (a *App) SaveRunnerConfig(request RunnerConfigRequest) RunnerDocumentResult
 		if result.State != Completed {
 			return result
 		}
+		if request.Output == "" {
+			destination, declined := a.newDestination(ctx, "Export setup", "readmit-runner.json")
+			if destination == "" {
+				return RunnerDocumentResult{State: declined.state, Reason: declined.reason}
+			}
+			request.Output = destination
+		}
 		if declined := writePrivateDocument(request.Output, []byte(result.Document)); declined.reason != "" {
 			return RunnerDocumentResult{State: declined.state, Reason: declined.reason}
 		}
 		result.Output = request.Output
+		if request.Source != "" {
+			// An exported setup installs nothing: the named runner it came
+			// from stays Setup required until an admission succeeds.
+			if record, held := a.runnerStatuses()[request.Source]; !held || record.State != RunnerAvailable {
+				a.recordRunnerStatus(request.Source, RunnerSetupRequired, "")
+			}
+			return result
+		}
 		a.configureRunner(request.Output, config.Environment, config.Hub, false)
 		return result
 	})
@@ -192,7 +212,7 @@ type RunnerGrantRequest struct {
 // revision to a new file. Installing it on the hub and reloading its tokens
 // remain the administrator's actions.
 func (a *App) SaveRunnerGrant(request RunnerGrantRequest) RunnerDocumentResult {
-	return run(a, false, true, func(context.Context) RunnerDocumentResult {
+	return run(a, false, true, func(ctx context.Context) RunnerDocumentResult {
 		if !runnerprotocol.ID(request.Project) || !runnerprotocol.ID(request.Environment) || strings.TrimSpace(request.Subject) == "" || len(request.Subject) > 256 {
 			return RunnerDocumentResult{State: Failed, Reason: "a grant names a project and environment the admission protocol accepts and one subject"}
 		}
@@ -243,11 +263,55 @@ func (a *App) SaveRunnerGrant(request RunnerGrantRequest) RunnerDocumentResult {
 		if result.State != Completed {
 			return result
 		}
+		// A signed-in identity edits grants only with the hub's admin scope;
+		// the hub administrator who installs the policy decides the rest.
+		if _, session, err := a.hub.SignedIn(); err == nil && !session.Allows("admin") {
+			return RunnerDocumentResult{State: PermissionDenied, Reason: "the signed-in hub identity's granted scopes do not include admin; runner grants are an administrator's"}
+		}
+		if request.Output == "" {
+			destination, declined := a.newDestination(ctx, "Save grant", "readmit-runner-policy.json")
+			if destination == "" {
+				return RunnerDocumentResult{State: declined.state, Reason: declined.reason}
+			}
+			request.Output = destination
+		}
 		if declined := writePrivateDocument(request.Output, []byte(result.Document)); declined.reason != "" {
 			return RunnerDocumentResult{State: declined.state, Reason: declined.reason}
 		}
 		result.Output = request.Output
 		return result
+	})
+}
+
+// RunnerGrantsResult is the grants a runner policy holds for one project,
+// read through the admission protocol's own reader.
+type RunnerGrantsResult struct {
+	State  State                  `json:"state"`
+	Reason string                 `json:"reason,omitzero"`
+	Grants []runnerprotocol.Grant `json:"grants"`
+}
+
+func (r *RunnerGrantsResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
+// ReadRunnerGrants reads the hub runner policy at path and answers the grants
+// it holds for project. It changes nothing.
+func (a *App) ReadRunnerGrants(path, project string) RunnerGrantsResult {
+	return run(a, false, false, func(context.Context) RunnerGrantsResult {
+		raw, declined := readPrivateFile(path, 1<<20)
+		if declined.reason != "" {
+			return RunnerGrantsResult{State: declined.state, Reason: declined.reason, Grants: []runnerprotocol.Grant{}}
+		}
+		policy, err := runnerprotocol.DecodePolicy(raw)
+		if err != nil {
+			return RunnerGrantsResult{State: Failed, Reason: "the runner policy could not be read through its own strict reader", Grants: []runnerprotocol.Grant{}}
+		}
+		grants := []runnerprotocol.Grant{}
+		for _, grant := range policy.Runners {
+			if grant.Project == project {
+				grants = append(grants, grant)
+			}
+		}
+		return RunnerGrantsResult{State: Completed, Grants: grants}
 	})
 }
 
@@ -264,7 +328,7 @@ type RunnerJobRequest struct {
 // never reused after a retained execution, and the panel says so rather than
 // generating a new attempt automatically.
 func (a *App) SaveRunnerJob(request RunnerJobRequest) RunnerDocumentResult {
-	return run(a, false, true, func(context.Context) RunnerDocumentResult {
+	return run(a, false, true, func(ctx context.Context) RunnerDocumentResult {
 		job := customerrunner.Job{Schema: "readmit-runner-job/v1", ID: request.ID, Spec: request.Spec}
 		if customerrunner.ValidateJob(job) != nil {
 			return RunnerDocumentResult{State: Failed, Reason: "a job id is 1-64 lowercase letters, digits or hyphens starting with a letter or digit, and the spec is one absolute path"}
@@ -272,6 +336,13 @@ func (a *App) SaveRunnerJob(request RunnerJobRequest) RunnerDocumentResult {
 		result := runnerDocumentResult(job)
 		if result.State != Completed {
 			return result
+		}
+		if request.Output == "" {
+			destination, declined := a.newDestination(ctx, "New job", request.ID+".json")
+			if destination == "" {
+				return RunnerDocumentResult{State: declined.state, Reason: declined.reason}
+			}
+			request.Output = destination
 		}
 		if declined := writePrivateDocument(request.Output, []byte(result.Document)); declined.reason != "" {
 			return RunnerDocumentResult{State: declined.state, Reason: declined.reason}
@@ -420,11 +491,16 @@ func (a *App) EnrollRunner(configPath string) RunnerEnrollmentResult {
 		lease, err := customerrunner.Enroll(ctx, config)
 		if err != nil {
 			result.Reason = err.Error()
-			if errors.Is(err, customerrunner.ErrHubRefused) {
+			switch {
+			case errors.Is(err, customerrunner.ErrHubRefused):
 				result.State = PermissionDenied
+				a.recordRunnerStatus(configPath, RunnerRefused, "The hub refused admission")
+			case ctx.Err() == nil:
+				a.recordRunnerStatus(configPath, RunnerOffline, "The hub could not be reached")
 			}
 			return result
 		}
+		a.recordRunnerStatus(configPath, RunnerAvailable, "")
 		a.configureRunner(configPath, config.Environment, config.Hub, true)
 		result.State = Completed
 		result.ExpiresAt = lease.Expires.UTC().Format(time.RFC3339)
@@ -840,6 +916,7 @@ func (r *SchedulePreviewResult) refuse(state State, reason string) { r.State, r.
 func schedulePolicyFrom(request SchedulePolicyRequest) (runnerprotocol.SchedulePolicy, refusal) {
 	policy := runnerprotocol.SchedulePolicy{Schema: "readmit-hub-schedules/v1", Concurrency: runnerprotocol.ScheduleConcurrency}
 	for _, entry := range request.Entries {
+		entry = pinnedEntry(entry)
 		policy.Schedules = append(policy.Schedules, runnerprotocol.Schedule{
 			ID: entry.ID, Zone: entry.Zone, At: entry.At, WindowSeconds: entry.WindowSeconds,
 			Runner: entry.Runner, Spec: entry.Spec, Input: entry.Input, Route: entry.Route, Approved: entry.Approved,
@@ -854,6 +931,20 @@ func schedulePolicyFrom(request SchedulePolicyRequest) (runnerprotocol.ScheduleP
 		return parsed, refusal{Failed, "the schedule contract refuses this revision; every member is required, the concurrency is serial-skip-missed, times are HH:MM in a named zone, and an approved entry names an HTTPS route"}
 	}
 	return parsed, refusal{}
+}
+
+// pinnedEntry is an entry with no input pin given pinned to what its spec
+// prepares to on this machine, so a pin is computed, never typed.
+func pinnedEntry(entry ScheduleEntryInput) ScheduleEntryInput {
+	if entry.Input != "" {
+		return entry
+	}
+	if prepared, err := durablerun.Prepare(entry.Spec); err == nil {
+		if pin, err := prepared.InputIdentity(); err == nil {
+			entry.Input = pin
+		}
+	}
+	return entry
 }
 
 // PreviewSchedulePolicy validates the entries and shows what the hub would
@@ -904,6 +995,7 @@ func schedulePreview(request SchedulePolicyRequest, now time.Time) SchedulePrevi
 			year, month, day := now.In(loc).Date()
 			startDay = time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
 		}
+		entry = pinnedEntry(entry)
 		view := ScheduleEntryView{Entry: entry, PinState: "unreadable"}
 		if prepared, err := durablerun.Prepare(entry.Spec); err == nil {
 			if pin, err := prepared.InputIdentity(); err == nil {
@@ -944,7 +1036,7 @@ func schedulePreview(request SchedulePolicyRequest, now time.Time) SchedulePrevi
 // the revision and restarting the service remain the administrator's
 // explicit actions; this window commits nothing to any host.
 func (a *App) SaveSchedulePolicy(request SchedulePolicyRequest) SchedulePreviewResult {
-	return run(a, false, true, func(context.Context) SchedulePreviewResult {
+	return run(a, false, true, func(ctx context.Context) SchedulePreviewResult {
 		preview := schedulePreview(request, time.Now())
 		if preview.State != Completed {
 			return preview
@@ -962,6 +1054,13 @@ func (a *App) SaveSchedulePolicy(request SchedulePolicyRequest) SchedulePreviewR
 		canonical, err := canonicalDocument(policy)
 		if err != nil {
 			return SchedulePreviewResult{State: Failed, Reason: "the schedule policy could not be canonicalized"}
+		}
+		if request.Output == "" {
+			destination, declined := a.newDestination(ctx, "Export policy", "readmit-hub-schedules.json")
+			if destination == "" {
+				return SchedulePreviewResult{State: declined.state, Reason: declined.reason}
+			}
+			request.Output = destination
 		}
 		if declined := writePrivateDocument(request.Output, canonical); declined.reason != "" {
 			return SchedulePreviewResult{State: declined.state, Reason: declined.reason}
@@ -1011,6 +1110,9 @@ type CIHandoffRequest struct {
 	CoverageFile    string      `json:"coverage_file"`
 	Output          string      `json:"output"`
 	Gate            *CIGateStep `json:"gate,omitzero"`
+	// Suite names the saved suite version the agent's suite file holds, for
+	// the checklist; empty names none.
+	Suite string `json:"suite,omitzero"`
 }
 
 // CIGateStep is the reviewed change gate a handoff runs after the suite: the
@@ -1052,9 +1154,18 @@ func (r *CIHandoffResult) refuse(state State, reason string) { r.State, r.Reason
 // before anything is written. The generated text contains no value, no
 // credential and no patient data.
 func (a *App) SaveCIHandoff(request CIHandoffRequest) CIHandoffResult {
-	return run(a, false, true, func(context.Context) CIHandoffResult {
+	return run(a, false, true, func(ctx context.Context) CIHandoffResult {
 		if declined := validateCIHandoff(request); declined != "" {
 			return CIHandoffResult{State: Failed, Reason: declined}
+		}
+		if request.Output == "" {
+			// Without a named output the person names the new file.
+			name := map[string]string{"github": "readmit-suite.yml", "azure": "azure-pipelines.yml"}[request.Integration]
+			destination, declined := a.newDestination(ctx, "Generate configuration", cmp.Or(name, "readmit-suite.sh"))
+			if destination == "" {
+				return CIHandoffResult{State: declined.state, Reason: declined.reason}
+			}
+			request.Output = destination
 		}
 		document := ciHandoffDocument(request)
 		if declined := writePrivateDocument(request.Output, []byte(document)); declined.reason != "" {
@@ -1080,6 +1191,9 @@ func validateCIHandoff(request CIHandoffRequest) string {
 		agentValue{"the saved suite", request.SuiteFile},
 	); declined != "" {
 		return declined
+	}
+	if len(request.Suite) > 256 || !utf8.ValidString(request.Suite) || strings.ContainsFunc(request.Suite, unicode.IsControl) {
+		return "the saved suite is named on one line"
 	}
 	if !runnerprotocol.ID(request.Environment) {
 		return "the environment is the named nonproduction environment the suite binds to"
@@ -1204,6 +1318,9 @@ func ciHandoffDocument(request CIHandoffRequest) string {
 		"  SUITE_ENVIRONMENT=" + request.Environment,
 		"  RUN_DIRECTORY=" + request.RunDirectory + " (a new path on the persistent private volume for this one invocation)",
 		"  COVERAGE_FILE=" + request.CoverageFile,
+	}
+	if request.Suite != "" {
+		checklist = append(checklist, "SUITE_FILE holds the saved suite "+request.Suite+".")
 	}
 	gate := request.Gate
 	command := ciSuiteCommand

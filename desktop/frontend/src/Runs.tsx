@@ -3,6 +3,7 @@
 // opens its own page; two finished runs of a test are compared. Nothing here
 // sends: a send is the review's Send, and what it is doing is shown by the
 // run it started, wherever the person goes meanwhile.
+import { CIResultsSheet } from "./CISheets";
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   cancelOperation,
@@ -205,7 +206,7 @@ export function useRuns({ root, shown, busy, generation, onOpen, onRun, onCompar
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   const [selected, setSelected] = useState<string | null>(null);
   const [checked, setChecked] = useState<Set<string>>(new Set());
-  const [sheet, setSheet] = useState<null | "filter" | "run">(null);
+  const [sheet, setSheet] = useState<null | "filter" | "run" | "ci">(null);
   const { compact } = useContext(FrameContext);
 
   const refresh = useCallback(async () => {
@@ -343,10 +344,14 @@ export function useRuns({ root, shown, busy, generation, onOpen, onRun, onCompar
         <button type="button" className="quiet" onClick={onSchedules}>
           Schedules
         </button>
+        <button type="button" className="quiet" onClick={() => setSheet("ci")}>
+          Import CI results
+        </button>
       </div>
     ) : null,
     body: (
       <>
+        {sheet === "ci" ? <CIResultsSheet onClose={() => setSheet(null)} /> : null}
         {chips.length > 0 ? (
           <div className="chips" role="group" aria-label="Applied filters">
             {chips.map((chip) => (

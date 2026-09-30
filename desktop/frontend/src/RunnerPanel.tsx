@@ -1,1469 +1,801 @@
-import { useEffect, useId, useRef, useState } from "react";
-import { TaskTabs } from "./TaskTabs";
+// Settings › Runners (#564): the project's named runners as a list, each one's
+// saved values and actual status on selection, and its work as named tasks —
+// Configuration, Access, Capacity, Recovery and Update — each in its own sheet.
+// Status is what an actual read or admission established, dated; a runner
+// nothing has checked reads Not checked. Adding a runner ends in a real
+// admission, or in Export setup for an administrator, which installs nothing.
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import "./runner.css";
 import {
+  chooseRunnerPath,
+  enrollRunner,
+  executeRunnerJob,
+  inspectRunnerJob,
+  listCatalog,
+  listRunners,
+  newIntentId,
+  openItemDraft,
+  operationStatus,
   previewRunnerConfig,
+  readRunnerConfig,
+  readRunnerGrants,
+  readRunnerRecovery,
+  RequestScope,
+  saveItem,
   saveRunnerConfig,
   saveRunnerGrant,
   saveRunnerJob,
-  readRunnerConfig,
-  enrollRunner,
-  inspectRunnerJob,
-  executeRunnerJob,
-  readRunnerRecovery,
   settleRunnerAdmission,
   showRunnerAdmissions,
   verifyRunnerUpdate,
-  openSchedulePolicy,
-  previewSchedulePolicy,
-  saveSchedulePolicy,
-  saveCIHandoff,
-  inspectCIResults,
-  inspectGatePolicy,
-  verifyCIGate,
+  type CatalogItem,
+  type ItemRef,
+  type RequestContext,
+  type RunnerDraft,
   type RunnerConfigRequest,
-  type RunnerDocumentResult,
-  type RunnerGrantRequest,
-  type RunnerInspectResult,
   type RunnerEnrollmentResult,
-  type RunnerJobPreviewResult,
   type RunnerExecutionResult,
+  type RunnerJobPreviewResult,
+  type RunnerGrantsResult,
+  type RunnerInspectResult,
+  type RunnerListResult,
   type RunnerRecoveryResult,
+  type RunnerRow,
   type RunnerStatusResult,
   type RunnerUpdateResult,
-  type ScheduleEntryInput,
-  type SchedulePreviewResult,
-  type CIHandoffRequest,
-  type CIHandoffResult,
-  type CIInspectResult,
-  type GatePolicyResult,
-  type CIGateStep,
-  type CIGateReport,
-  type CIGateVerifyResult,
-  type State,
 } from "./bindings";
-import { Outcome, useLifecycle } from "./lifecycle";
+import { DataTable, type Column } from "./DataTable";
+import { IconButton } from "./IconButton";
+import { BackLink, EmptyState, FormDialog, Menu, Modal, StepDialog, ValueRows, type FlowStep, type MenuItem, type SubmitFailure } from "./layout";
+import { useLifecycle } from "./lifecycle";
 import { useViewState } from "./viewstate";
 
-const emptyReference = { command: "", arguments: "" };
-
-function parseArguments(value: string): string[] {
-  return value
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-}
-
-function Field(props: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  disabled?: boolean;
-  /** A constraint the input keeps beside it: its format, where the path
-   * lives, or what the value is not. */
-  help?: string;
-  readOnly?: boolean;
-}) {
-  const input = useId();
-  const help = useId();
-  return (
-    <div className="runner-field">
-      <label htmlFor={input}>{props.label}</label>
-      <input
-        id={input}
-        type="text"
-        value={props.value}
-        placeholder={props.placeholder}
-        disabled={props.disabled}
-        readOnly={props.readOnly}
-        aria-describedby={props.help ? help : undefined}
-        onChange={(event) => props.onChange(event.target.value)}
-      />
-      {props.help ? (
-        <span className="runner-note" id={help}>
-          {props.help}
-        </span>
-      ) : null}
-    </div>
-  );
-}
-
-/** An answer that did not complete. A failure reads as the refusal it is, in
- * the words the section gives it, and so does a refused admission where the
- * section words that; every other state — busy, cancelled, nothing to show,
- * permission denied — is drawn through Status with its own word and shape,
- * never as a refusal. */
-function Refusal(props: {
-  result: { state: State; reason?: string | undefined };
-  refused?: string;
-  denied?: string;
-  unexplained?: string;
-}) {
-  const { result, refused = "Refused: ", denied, unexplained } = props;
-  const prefix = result.state === "failed" ? refused : result.state === "permission_denied" ? denied : undefined;
-  if (prefix === undefined) {
-    return <Outcome result={result} outcome />;
-  }
-  return (
-    <p className="runner-refused" role="alert">
-      {prefix}
-      {result.reason ?? unexplained}
-    </p>
-  );
-}
-
-function ResultLine(props: { result: { state: State; reason?: string | undefined } | null; done?: string | undefined }) {
-  if (!props.result) {
-    return null;
-  }
-  if (props.result.state === "completed") {
-    return (
-      <p className="runner-ok" role="status">
-        {props.done ?? "Completed."}
-      </p>
-    );
-  }
-  return <Refusal result={props.result} unexplained="the operation did not run" />;
-}
-
-type RunnerView = "status" | "configuration" | "grant" | "recovery" | "update";
-
-function RunnerSection({
-  onConfigured,
-  requested,
-}: {
-  onConfigured?: ((chosen: boolean) => void) | undefined;
-  /** A configuration Security's Edit names, filled in for inspecting. */
-  requested?: { path: string } | null;
-}) {
-  const [view, setView] = useViewState<RunnerView>("RunnerSection.view", "status");
-  const [config, setConfig] = useViewState<RunnerConfigRequest>("RunnerSection.config", {
-    hub: "",
-    project: "",
-    environment: "",
-    root: "",
-    ca: "",
-    certificate: "",
-    key: { command: "", arguments: [] },
-    token: { command: "", arguments: [] },
-    update_key: "",
-    update_engine: "",
-    output: "",
-  });
-  const [keyArguments, setKeyArguments] = useViewState("RunnerSection.keyArguments", emptyReference);
-  const [tokenArguments, setTokenArguments] = useViewState("RunnerSection.tokenArguments", emptyReference);
-  const [document, setDocument] = useViewState<RunnerDocumentResult | null>("RunnerSection.document", null);
-  const [grant, setGrant] = useViewState<RunnerGrantRequest>("RunnerSection.grant", {
-    policy: "",
-    project: "",
-    subject: "",
-    environment: "",
-    engine: "",
-    spec: "",
-    profile: "",
-    max_seconds: 300,
-    max_jobs: 100,
-    output: "",
-  });
-  const [grantResult, setGrantResult] = useViewState<RunnerDocumentResult | null>("RunnerSection.grantResult", null);
-  const [configPath, setConfigPath] = useViewState("RunnerSection.configPath", "");
-  useEffect(() => {
-    if (requested) setConfigPath(requested.path);
-  }, [requested]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [inspection, setInspection] = useViewState<RunnerInspectResult | null>("RunnerSection.inspection", null);
-  const [enrollment, setEnrollment] = useViewState<RunnerEnrollmentResult | null>("RunnerSection.enrollment", null);
-  const [job, setJob] = useViewState("RunnerSection.job", { id: "", spec: "", output: "" });
-  const [jobResult, setJobResult] = useViewState<RunnerDocumentResult | null>("RunnerSection.jobResult", null);
-  const [jobPath, setJobPath] = useViewState("RunnerSection.jobPath", "");
-  // A preview names the configuration and job file it was asked for. Its
-  // prepared input ID is the only identity a send carries, and only while
-  // both still name what the preview read: changing either withdraws it, and
-  // an answer that arrives after they changed is discarded.
-  const [preview, setPreview] = useViewState<{ result: RunnerJobPreviewResult; config: string; job: string } | null>("RunnerSection.preview", null);
-  const [execution, setExecution] = useViewState<RunnerExecutionResult | null>("RunnerSection.execution", null);
-  const inputs = useRef({ config: "", job: "" });
-  inputs.current = { config: configPath, job: jobPath };
-  // Send is disabled while its job runs, so the focus moves to Cancel job,
-  // the one action the running job offers, rather than being left on
-  // nothing. The execution runs under the facade's runner operation, which
-  // Cancel job stops, so it can reach only this panel's work and never
-  // another panel's.
-  const cancelControl = useRef<HTMLButtonElement>(null);
-  const lifecycle = useLifecycle<"working" | "executing">({
-    names: { executing: "runner" },
-    stops: { executing: cancelControl },
-  });
-  const busy = lifecycle.running !== null;
-  const [recoveryJob, setRecoveryJob] = useViewState("RunnerSection.recoveryJob", "");
-  const [recovery, setRecovery] = useViewState<RunnerRecoveryResult | null>("RunnerSection.recovery", null);
-  const [update, setUpdate] = useViewState("RunnerSection.update", { manifest: "", candidate: "" });
-  const [updateCheck, setUpdateCheck] = useViewState<RunnerUpdateResult | null>("RunnerSection.updateCheck", null);
-
-  async function handlePreview() {
-    await lifecycle.run("working", async () => {
-      const request = {
-        ...config,
-        key: { command: keyArguments.command, arguments: parseArguments(keyArguments.arguments) },
-        token: { command: tokenArguments.command, arguments: parseArguments(tokenArguments.arguments) },
-      };
-      setDocument(await previewRunnerConfig(request));
-    });
-  }
-
-  async function handleSaveConfig() {
-    await lifecycle.run("working", async () => {
-      const request = {
-        ...config,
-        key: { command: keyArguments.command, arguments: parseArguments(keyArguments.arguments) },
-        token: { command: tokenArguments.command, arguments: parseArguments(tokenArguments.arguments) },
-      };
-      const saved = await saveRunnerConfig(request);
-      setDocument(saved);
-      if (saved.state === "completed") onConfigured?.(true);
-    });
-  }
-
-  async function handleSaveGrant() {
-    await lifecycle.run("working", async () => {
-      setGrantResult(await saveRunnerGrant(grant));
-    });
-  }
-
-  async function handleInspect(path?: string) {
-    await lifecycle.run("working", async () => {
-      const result = await readRunnerConfig(path ?? configPath);
-      setInspection(result);
-      // A completed re-read invalidates only the enrollment probe's view of
-      // current authority; the last execution result stays on display.
-      if (result.state === "completed") {
-        setEnrollment(null);
-        onConfigured?.(true);
-      }
-    });
-  }
-
-  async function handleEnroll() {
-    await lifecycle.run("working", async () => {
-      const enrolled = await enrollRunner(configPath);
-      setEnrollment(enrolled);
-      if (enrolled.state === "completed") onConfigured?.(true);
-    });
-  }
-
-  async function handleSaveJob() {
-    await lifecycle.run("working", async () => {
-      setJobResult(await saveRunnerJob({ id: job.id, spec: job.spec, output: job.output }));
-    });
-  }
-
-  async function handlePreflight() {
-    const asked = { config: configPath, job: jobPath };
-    await lifecycle.run("working", async () => {
-      setPreview(null);
-      const result = await inspectRunnerJob(asked.config, asked.job);
-      if (inputs.current.config === asked.config && inputs.current.job === asked.job) {
-        setPreview({ result, ...asked });
-      }
-    });
-  }
-
-  async function handleExecute() {
-    if (!previewed) return;
-    const request = { config_path: previewed.config, job_path: previewed.job, expected_identity: previewed.result.input_identity ?? "" };
-    await lifecycle.run("executing", async () => {
-      setExecution(null);
-      setExecution(await executeRunnerJob(request));
-      void handleInspect();
-    });
-  }
-
-  async function handleRecovery() {
-    await lifecycle.run("working", async () => {
-      setRecovery(await readRunnerRecovery(configPath, recoveryJob));
-    });
-  }
-
-  async function handleVerifyUpdate() {
-    await lifecycle.run("working", async () => {
-      setUpdateCheck(null);
-      setUpdateCheck(await verifyRunnerUpdate(configPath, update.manifest, update.candidate));
-    });
-  }
-
-  // An answer describes the files it checked; naming others withdraws it.
-  function changeUpdate(change: Partial<typeof update>) {
-    setUpdate({ ...update, ...change });
-    setUpdateCheck(null);
-  }
-
-  function changeConfigPath(path: string) {
-    setConfigPath(path);
-    setUpdateCheck(null);
-    setPreview(null);
-  }
-
-  function changeJobPath(path: string) {
-    setJobPath(path);
-    setPreview(null);
-  }
-
-  const configured = inspection?.state === "completed" && inspection.config !== undefined;
-  // The preview that still describes the configuration and job file named now.
-  const previewed =
-    preview && preview.result.state === "completed" && preview.config === configPath && preview.job === jobPath && preview.result.input_identity
-      ? preview
-      : null;
-
-  return (
-    <section className="runner-section" aria-label="Runner">
-      <h4>Runner setup</h4>
-      <p className="runner-note">
-        Local use needs no hub and no runner; this section stays inert until you select an
-        installed configuration. Reading it again after a disconnection shows the current state
-        before any new action is offered.
-      </p>
-      <div className="runner-form">
-        <Field
-          label="Runner configuration file"
-          value={configPath}
-          disabled={busy}
-          onChange={changeConfigPath}
-          help="The installed configuration this window inspects and runs jobs with."
-        />
-      </div>
-      <TaskTabs<RunnerView>
-        label="Runner views"
-        id="runner-view"
-        tablistClass="runner-tabs"
-        panelClass="runner-section"
-        selected={view}
-        onSelect={setView}
-        tabs={[
-          { key: "status", label: "Status and jobs" },
-          { key: "configuration", label: "Configuration" },
-          { key: "grant", label: "Access grant" },
-          { key: "recovery", label: "Recovery" },
-          { key: "update", label: "Update verification" },
-        ]}
-      >
-        {view === "status" ? (
-          <>
-            <div className="runner-actions">
-              <button type="button" disabled={busy || configPath === ""} onClick={() => void handleInspect()}>
-                Inspect runner
-              </button>
-              <button type="button" disabled={busy || configPath === ""} onClick={() => void handleEnroll()}>
-                Check runner admission
-              </button>
-            </div>
-            <p className="runner-note">
-              Checking admission asks the hub whether this runner is admitted now. It installs no service.
-            </p>
-            {inspection ? <ResultLine result={inspection} /> : null}
-            {configured && inspection ? (
-              <div className="runner-inspect" role="status">
-                <p>
-                  <strong>{inspection.config?.project}</strong> at <strong>{inspection.config?.environment}</strong> on{" "}
-                  {inspection.config?.hub} — this build pin: {inspection.engine}
-                </p>
-                {inspection.health ? (
-                  <p>
-                    Health: <strong>{inspection.health.state}</strong>, {inspection.health.jobs} retained job(s).
-                  </p>
-                ) : (
-                  <p className="runner-note">{inspection.health_note}</p>
-                )}
-                {inspection.jobs && inspection.jobs.length > 0 ? (
-                  <table className="runner-table">
-                    <thead>
-                      <tr>
-                        <th>Job</th>
-                        <th>State</th>
-                        <th>Delivery</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {inspection.jobs.map((entry) => (
-                        <tr key={entry.id}>
-                          <td>{entry.id}</td>
-                          <td>{entry.state ?? entry.reason}</td>
-                          <td>{entry.delivery_uncertain ? "uncertain — read recovery, never resend" : "no uncertain delivery"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : null}
-              </div>
-            ) : null}
-            {enrollment ? (
-              enrollment.state === "completed" ? (
-                <p className="runner-ok" role="status">
-                  Admitted: lease until {enrollment.expires_at}, at most {enrollment.max_seconds}s per job
-                  and {enrollment.max_jobs} retained jobs.
-                </p>
-              ) : (
-                <Refusal result={enrollment} denied="Admission refused: " />
-              )
-            ) : null}
-
-            <h4>Job execution</h4>
-            <p className="runner-note">
-              Execution asks the existing explicit approval and the runner's own admission. A retained
-              job id is never replayed, and an execution whose delivery stayed uncertain is never
-              offered again: open its recovery, then choose a new job ID only once receiver state is
-              established.
-            </p>
-            <div role="group" aria-label="Create job">
-              <div className="runner-form">
-                <Field label="Job ID" value={job.id} disabled={busy} onChange={(id) => setJob({ ...job, id })} />
-                <Field label="Test file" value={job.spec} disabled={busy} onChange={(spec) => setJob({ ...job, spec })} />
-                <Field
-                  label="Job file"
-                  value={job.output}
-                  disabled={busy}
-                  onChange={(output) => setJob({ ...job, output })}
-                  help="A new local file. Saving it sends nothing."
-                />
-              </div>
-              <div className="runner-actions">
-                <button type="button" disabled={busy} onClick={() => void handleSaveJob()}>
-                  Save job
-                </button>
-              </div>
-              <ResultLine result={jobResult} done={jobResult?.output ? `Saved to ${jobResult.output}.` : undefined} />
-            </div>
-            <div role="group" aria-label="Send job">
-              <div className="runner-form">
-                <Field label="Job file" value={jobPath} disabled={busy} onChange={changeJobPath} />
-                <Field
-                  label="Prepared input ID"
-                  value={previewed?.result.input_identity ?? ""}
-                  readOnly
-                  onChange={() => {}}
-                  help="Filled by a successful preview of this job file under this configuration."
-                />
-              </div>
-              <div className="runner-actions">
-                <button type="button" disabled={busy || jobPath === "" || configPath === ""} onClick={() => void handlePreflight()}>
-                  Preview job
-                </button>
-                <button type="button" disabled={busy || !previewed} onClick={() => void handleExecute()}>
-                  Send job
-                </button>
-                {lifecycle.running === "executing" ? (
-                  <button type="button" ref={cancelControl} onClick={lifecycle.cancel}>
-                    Cancel job
-                  </button>
-                ) : null}
-              </div>
-              {preview ? (
-                preview.result.state === "completed" ? (
-                  <p className="runner-ok" role="status">
-                    Send job sends {preview.job} (job {preview.result.job_id}) to environment {preview.result.environment} under
-                    prepared inputs {preview.result.input_identity}, after the runner&apos;s own admission and your explicit
-                    approval.
-                  </p>
-                ) : (
-                  <Refusal result={preview.result} refused="Preflight refused: " />
-                )
-              ) : null}
-            </div>
-            {execution ? (
-              execution.state === "completed" && execution.summary ? (
-                <div className="runner-inspect" role="status">
-                  <p>
-                    Job {execution.job_id} finished: <strong>{execution.summary.state}</strong>.
-                    {execution.summary.delivery_uncertain
-                      ? " Delivery stayed uncertain; nothing will be resent from here."
-                      : ""}
-                  </p>
-                </div>
-              ) : (
-                <Refusal result={execution} denied="Not admitted: " />
-              )
-            ) : null}
-            <RunnerCapacity />
-          </>
-        ) : null}
-
-        {view === "configuration" ? (
-          <>
-            <p className="runner-note">
-              Every document is generated and validated here; nothing is hand-authored JSON. The shipped
-              native service unit (<code>runner/readmit-runner.service</code>) and container image
-              definition (<code>runner/Dockerfile</code>) are the installation handoffs that consume the
-              configuration this panel writes. Installing a service, provisioning credentials and
-              restarting the hub remain customer-administrator actions. Credential members are
-              references into your own store, never values.
-            </p>
-            <div className="runner-form">
-              <Field label="Hub URL" value={config.hub} onChange={(hub) => setConfig({ ...config, hub })} placeholder="https://hub.example:8443" />
-              <Field label="Hub project" value={config.project} onChange={(project) => setConfig({ ...config, project })} />
-              <Field label="Environment ID" value={config.environment} onChange={(environment) => setConfig({ ...config, environment })} />
-              <Field
-                label="Runner data folder"
-                value={config.root}
-                onChange={(root) => setConfig({ ...config, root })}
-                help="Storage on the runner host, not this workspace."
-              />
-              <Field label="CA certificate file" value={config.ca} onChange={(ca) => setConfig({ ...config, ca })} />
-              <Field label="Client certificate file" value={config.certificate} onChange={(certificate) => setConfig({ ...config, certificate })} />
-              <Field
-                label="Key lookup program"
-                value={keyArguments.command}
-                onChange={(command) => setKeyArguments({ ...keyArguments, command })}
-                help="Absolute path of the program that reads the client key from your store. Never the key itself."
-              />
-              <div className="runner-field">
-                <label htmlFor="runner-key-arguments">Key lookup arguments</label>
-                <textarea
-                  id="runner-key-arguments"
-                  aria-describedby="runner-key-arguments-help"
-                  value={keyArguments.arguments}
-                  onChange={(event) => setKeyArguments({ ...keyArguments, arguments: event.target.value })}
-                />
-                <span className="runner-note" id="runner-key-arguments-help">
-                  One argument per line.
-                </span>
-              </div>
-              <Field
-                label="Token lookup program"
-                value={tokenArguments.command}
-                onChange={(command) => setTokenArguments({ ...tokenArguments, command })}
-                help="Absolute path of the program that reads the runner token from your store. Never the token itself."
-              />
-              <div className="runner-field">
-                <label htmlFor="runner-token-arguments">Token lookup arguments</label>
-                <textarea
-                  id="runner-token-arguments"
-                  aria-describedby="runner-token-arguments-help"
-                  value={tokenArguments.arguments}
-                  onChange={(event) => setTokenArguments({ ...tokenArguments, arguments: event.target.value })}
-                />
-                <span className="runner-note" id="runner-token-arguments-help">
-                  One argument per line.
-                </span>
-              </div>
-              <Field
-                label="Update verification key"
-                value={config.update_key}
-                onChange={(update_key) => setConfig({ ...config, update_key })}
-                help="The approved deployment public key, in standard base64. Not the client private key."
-              />
-              <Field
-                label="Approved engine version"
-                value={config.update_engine}
-                onChange={(update_engine) => setConfig({ ...config, update_engine })}
-                help="The exact build a staged update must be, not the latest available."
-              />
-              <Field
-                label="Configuration file"
-                value={config.output}
-                onChange={(output) => setConfig({ ...config, output })}
-                help="A new local file. It is not installed on the runner host automatically."
-              />
-            </div>
-            <div className="runner-actions">
-              <button type="button" disabled={busy} onClick={() => void handlePreview()}>
-                Preview configuration
-              </button>
-              <button type="button" disabled={busy} onClick={() => void handleSaveConfig()}>
-                Save configuration
-              </button>
-            </div>
-            <ResultLine result={document} done={document?.output ? `Saved to ${document.output}.` : undefined} />
-            {document?.document ? <pre className="runner-document">{document.document}</pre> : null}
-          </>
-        ) : null}
-
-        {view === "grant" ? (
-          <>
-            <h4>Hub runner grant</h4>
-            <div className="runner-form">
-              <Field
-                label="Existing grant policy (optional)"
-                value={grant.policy}
-                onChange={(policy) => setGrant({ ...grant, policy })}
-                help="Read to build the revision; it does not change the running hub."
-              />
-              <Field label="Project" value={grant.project} onChange={(project) => setGrant({ ...grant, project })} />
-              <Field
-                label="Runner subject"
-                value={grant.subject}
-                onChange={(subject) => setGrant({ ...grant, subject })}
-                help="The authenticated subject the hub admits, exactly as its identity provider issues it."
-              />
-              <Field label="Environment" value={grant.environment} onChange={(environment) => setGrant({ ...grant, environment })} />
-              <Field
-                label="Engine version (optional)"
-                value={grant.engine}
-                onChange={(engine) => setGrant({ ...grant, engine })}
-                help="Leave empty to name this build's engine."
-              />
-              <Field label="Job time limit (seconds)" value={String(grant.max_seconds)} onChange={(value) => setGrant({ ...grant, max_seconds: Number(value) || 0 })} />
-              <Field label="Maximum retained jobs" value={String(grant.max_jobs)} onChange={(value) => setGrant({ ...grant, max_jobs: Number(value) || 0 })} />
-              <Field
-                label="Grant file"
-                value={grant.output}
-                onChange={(output) => setGrant({ ...grant, output })}
-                help="A new local file. It is not installed on the hub automatically."
-              />
-            </div>
-            <div className="runner-actions">
-              <button type="button" disabled={busy} onClick={() => void handleSaveGrant()}>
-                Save grant revision
-              </button>
-            </div>
-            <ResultLine result={grantResult} done={grantResult?.output ? `Saved to ${grantResult.output}. Installing it on the hub is the administrator's action.` : undefined} />
-            {grantResult?.document ? <pre className="runner-document">{grantResult.document}</pre> : null}
-          </>
-        ) : null}
-
-        {view === "recovery" ? (
-          <>
-            <p className="runner-note">Recovery reads what the runner retained for one job. It never sends or resends.</p>
-            <div className="runner-form">
-              <Field label="Job ID" value={recoveryJob} disabled={busy} onChange={setRecoveryJob} />
-            </div>
-            <div className="runner-actions">
-              <button type="button" disabled={busy || recoveryJob === "" || configPath === ""} onClick={() => void handleRecovery()}>
-                Open recovery
-              </button>
-            </div>
-            {recovery ? (
-              recovery.state === "completed" ? (
-                <p className="runner-ok" role="status">
-                  {recovery.job_id}: {recovery.acknowledged} acknowledged, {recovery.uncertain} uncertain,{" "}
-                  {recovery.not_attempted} not attempted. Recovery never sends.
-                </p>
-              ) : (
-                <Refusal result={recovery} />
-              )
-            ) : null}
-          </>
-        ) : null}
-
-        {view === "update" ? (
-          <>
-            <h4>Runner update</h4>
-            <p className="runner-note">
-              A staged candidate is checked against the deployment key and the approved update engine the
-              selected configuration pins, as <code>readmit runner verify-update</code> checks it: the
-              manifest's signature, this platform and the candidate's exact bytes. The candidate is read,
-              never run. Stopping the service, installing the verified bytes and changing the hub's
-              approved engine remain the administrator's actions.
-            </p>
-            <div className="runner-form">
-              <Field label="Update manifest" value={update.manifest} onChange={(manifest) => changeUpdate({ manifest })} />
-              <Field label="Candidate file" value={update.candidate} onChange={(candidate) => changeUpdate({ candidate })} />
-            </div>
-            <div className="runner-actions">
-              <button
-                type="button"
-                disabled={busy || configPath === "" || update.manifest === "" || update.candidate === ""}
-                onClick={() => void handleVerifyUpdate()}
-              >
-                Verify update
-              </button>
-            </div>
-            <ResultLine
-              result={updateCheck}
-              done={`Verified: the staged candidate is the approved build ${updateCheck?.engine ?? ""} for this platform, signed by the pinned deployment key. It was not run; installing it is the administrator's action.`}
-            />
-          </>
-        ) : null}
-      </TaskTabs>
-    </section>
-  );
-}
-
-function ScheduleRow(props: { entry: ScheduleEntryInput; index: number; onChange: (entry: ScheduleEntryInput) => void; onRemove: () => void }) {
-  const { entry, index, onChange, onRemove } = props;
-  const set = (change: Partial<ScheduleEntryInput>) => onChange({ ...entry, ...change });
-  return (
-    <div className="runner-schedule-row" role="group" aria-label={`Schedule ${index + 1}`}>
-      <Field label="Schedule ID" value={entry.id} onChange={(id) => set({ id })} />
-      <Field
-        label="Time zone"
-        value={entry.zone}
-        onChange={(zone) => set({ zone })}
-        placeholder="UTC"
-        help="A named zone such as America/New_York. This computer's zone is never assumed."
-      />
-      <Field label="Daily time" value={entry.at} onChange={(at) => set({ at })} placeholder="02:30" help="HH:MM, 24-hour, in the time zone above." />
-      <Field
-        label="Start window (seconds)"
-        value={String(entry.window_seconds)}
-        onChange={(value) => set({ window_seconds: Number(value) || 0 })}
-        help="How long after the daily time a start may still begin; a start missed past it is recorded and skipped. Not a run time limit."
-      />
-      <Field
-        label="Runner configuration file"
-        value={entry.runner_config}
-        onChange={(runner_config) => set({ runner_config })}
-        help="Absolute path on the hub host."
-      />
-      <Field label="Test file" value={entry.spec} onChange={(spec) => set({ spec })} help="Absolute path on the hub host." />
-      <Field
-        label="Input SHA-256"
-        value={entry.input_sha256}
-        onChange={(input_sha256) => set({ input_sha256 })}
-        help="The full 64-character SHA-256 pin of the test's inputs."
-      />
-      <Field
-        label="Notification URL"
-        value={entry.route}
-        // A changed destination is not the one that was approved.
-        onChange={(route) => set({ route, approved: route === entry.route ? entry.approved : false })}
-        placeholder="https://alerts.example/"
-        help="An HTTPS origin only."
-      />
-      <div className="runner-field">
-        <label>
-          <input type="checkbox" checked={entry.approved} onChange={(event) => set({ approved: event.target.checked })} />{" "}
-          Approve notifications
-        </label>
-        <span className="runner-note">Approves the fixed alert body for this schedule&apos;s URL only. It authorizes no execution.</span>
-      </div>
-      <button type="button" onClick={onRemove}>
-        Remove from draft
-      </button>
-      <p className="runner-note">
-        Removes this row from the unsaved draft only. The installed policy and the running service are
-        unchanged until an administrator installs a saved revision; the backend defines no pause.
-      </p>
-    </div>
-  );
-}
-
-function emptyScheduleEntry(): ScheduleEntryInput {
-  return {
-    id: "",
-    zone: "UTC",
-    at: "02:30",
-    window_seconds: 600,
-    runner_config: "",
-    spec: "",
-    input_sha256: "",
-    route: "",
-    approved: false,
-  };
-}
-
-/** A suite Schedule or Set up CI opened this area for. */
-export type RunnerSeed = { tab: "schedules" | "ci"; suite: string; environment: string; count: number };
-
-function SchedulesSection({ seed = null }: { seed?: RunnerSeed | null } = {}) {
-  const [output, setOutput] = useViewState("SchedulesSection.output", "");
-  const [anchor, setAnchor] = useViewState("SchedulesSection.anchor", "");
-  const [entries, setEntries] = useViewState<ScheduleEntryInput[]>("SchedulesSection.entries", []);
-  // Whether the rows were edited since they were last opened, so opening a
-  // policy asks before it replaces them.
-  const [dirty, setDirty] = useViewState("SchedulesSection.dirty", false);
-  const [installedPath, setInstalledPath] = useViewState("SchedulesSection.installedPath", "");
-  // The read, the preview and the save each keep their own answer. A preview
-  // describes the rows it was asked for and is withdrawn when they change.
-  const [opened, setOpened] = useViewState<SchedulePreviewResult | null>("SchedulesSection.opened", null);
-  const [replacing, setReplacing] = useViewState<SchedulePreviewResult | null>("SchedulesSection.replacing", null);
-  const [preview, setPreview] = useViewState<SchedulePreviewResult | null>("SchedulesSection.preview", null);
-  const [saved, setSaved] = useViewState<SchedulePreviewResult | null>("SchedulesSection.saved", null);
-  const lifecycle = useLifecycle<"working">();
-  const busy = lifecycle.running !== null;
-
-  function editRows(next: ScheduleEntryInput[]) {
-    setEntries(next);
-    setDirty(true);
-    setPreview(null);
-    setSaved(null);
-  }
-
-  // A suite's Schedule adds one row that runs its exact version, unless one
-  // already does.
-  const scheduled = useRef(0);
-  useEffect(() => {
-    if (!seed || seed.count === scheduled.current) return;
-    scheduled.current = seed.count;
-    // Schedules opened from Runs names no suite; one opened from a suite adds it.
-    if (seed.suite && !entries.some((entry) => entry.spec === seed.suite)) editRows([...entries, { ...emptyScheduleEntry(), spec: seed.suite }]);
-  }, [seed]); // eslint-disable-line react-hooks/exhaustive-deps
-
-
-  function load(result: SchedulePreviewResult) {
-    setEntries((result.entries ?? []).map((view) => ({ ...view.entry })));
-    setDirty(false);
-    setPreview(null);
-    setSaved(null);
-    setReplacing(null);
-  }
-
-  async function open() {
-    await lifecycle.run("working", async () => {
-      setReplacing(null);
-      const result = await openSchedulePolicy(installedPath);
-      setOpened(result);
-      if (result.state !== "completed") return;
-      if (dirty && entries.length > 0) setReplacing(result);
-      else load(result);
-    });
-  }
-
-  const empty = entries.length === 0;
-  // Whether the draft rows are exactly what the opened file declares; once
-  // they are not, the opened read no longer describes the draft.
-  const draftIsOpened =
-    opened?.state === "completed" &&
-    JSON.stringify(entries) === JSON.stringify((opened.entries ?? []).map((view) => ({ ...view.entry })));
-
-  return (
-    <section className="runner-section" aria-label="Recurring schedules">
-      <h4>Schedules</h4>
-      <p className="runner-note">
-        A revision of the hub's schedule policy is generated and validated here with the backend's
-        own semantics: serial execution, a window missed while the scheduler was not running is
-        recorded and skipped, and a nonexistent spring-forward minute is marked, never shifted.
-        Installing the revision and restarting the hub service remain the administrator's actions.
-      </p>
-      <div className="runner-form">
-        <Field
-          label="Schedule policy file"
-          value={installedPath}
-          onChange={setInstalledPath}
-          help="A local copy to read. Reading it does not show that the hub installed it."
-        />
-      </div>
-      <div className="runner-actions">
-        <button type="button" disabled={busy || installedPath === ""} onClick={() => void open()}>
-          Open schedule policy
-        </button>
-        <button type="button" disabled={busy} onClick={() => editRows([...entries, emptyScheduleEntry()])}>
-          Add schedule
-        </button>
-      </div>
-      {opened && opened.state !== "completed" ? <Refusal result={opened} /> : null}
-      {replacing ? (
-        <div role="group" aria-label="Replace draft" className="runner-actions">
-          <p role="alert">The draft has unsaved edits. Replace its rows with the {replacing.entries?.length ?? 0} schedule(s) of the opened policy?</p>
-          <button type="button" onClick={() => load(replacing)}>
-            Replace draft
-          </button>
-          <button type="button" onClick={() => setReplacing(null)}>
-            Keep draft
-          </button>
-        </div>
-      ) : null}
-      {opened?.state === "completed" && !replacing ? (
-        <div role="group" aria-label="Opened policy">
-          <p className="runner-note">
-            {draftIsOpened
-              ? "Opened this policy file into the draft below. Reading it does not show that the hub installed it."
-              : "The draft below differs from this policy file. Reading it does not show that the hub installed it."}
-          </p>
-          <SchedulePreviewView preview={opened} />
-        </div>
-      ) : null}
-      {entries.map((entry, index) => (
-        <ScheduleRow
-          key={index}
-          index={index}
-          entry={entry}
-          onChange={(next) => editRows(entries.map((existing, at) => (at === index ? next : existing)))}
-          onRemove={() => editRows(entries.filter((_, at) => at !== index))}
-        />
-      ))}
-      {empty ? (
-        <p className="runner-note" role="status">
-          The draft holds no schedule. A schedule policy must declare at least one, so an empty draft cannot be
-          previewed or saved; the installed policy is unchanged and scheduling has not stopped.
-        </p>
-      ) : null}
-      <div className="runner-form">
-        <Field
-          label="Preview start date (optional)"
-          value={anchor}
-          onChange={(value) => {
-            setAnchor(value);
-            setPreview(null);
-          }}
-          placeholder="2026-01-01"
-          help="YYYY-MM-DD. Leave empty to start from each schedule's current day in its own time zone. It changes only the preview."
-        />
-        <Field
-          label="Policy revision file"
-          value={output}
-          onChange={setOutput}
-          help="A new local file. Saving it deploys nothing."
-        />
-      </div>
-      <div className="runner-actions">
-        <button
-          type="button"
-          disabled={busy || empty}
-          onClick={() =>
-            void lifecycle.run("working", async () => {
-              setPreview(await previewSchedulePolicy({ output: "", anchor, entries }));
-            })
-          }
-        >
-          Preview schedule policy
-        </button>
-        <button
-          type="button"
-          disabled={busy || empty || output === ""}
-          onClick={() =>
-            void lifecycle.run("working", async () => {
-              const result = await saveSchedulePolicy({ output, anchor, entries });
-              setSaved(result);
-              // The saved revision now describes these rows; its own view
-              // replaces the preview, and the draft matches a saved file.
-              if (result.state === "completed") {
-                setPreview(null);
-                setDirty(false);
-              }
-            })
-          }
-        >
-          Save schedule policy
-        </button>
-      </div>
-      {preview ? (
-        <div role="group" aria-label="Policy preview">
-          <SchedulePreviewView preview={preview} />
-        </div>
-      ) : null}
-      {saved ? (
-        saved.state === "completed" ? (
-          <div role="group" aria-label="Saved revision">
-            <p className="runner-ok">Saved {output}. Nothing was installed on the hub.</p>
-            <SchedulePreviewView preview={saved} />
-          </div>
-        ) : (
-          <Refusal result={saved} />
-        )
-      ) : null}
-    </section>
-  );
-}
-
-function SchedulePreviewView(props: { preview: SchedulePreviewResult }) {
-  const { preview } = props;
-  if (preview.state !== "completed") {
-    return <Refusal result={preview} />;
-  }
-  return (
-    <div className="runner-inspect" role="status">
-      <p>
-        Policy identity <code>{preview.identity}</code> — the hub binds its journal to it, and a
-        changed identity stops admission until an administrator restarts the service.
-      </p>
-      <p className="runner-note">A save writes the revision this identity names; nothing is installed by this window.</p>
-      <p>
-        Concurrency: <strong>{preview.concurrency}</strong>. Execution is serial; a window missed
-        while the scheduler was not running is recorded and skipped, never replayed; two schedules
-        share one environment only through the runner's own admission.
-      </p>
-      {(preview.entries ?? []).map((view) => (
-        <div key={view.entry.id} className="runner-schedule-view">
-          <p>
-            <strong>{view.entry.id}</strong> at {view.entry.at} in {view.entry.zone}, window{" "}
-            {view.entry.window_seconds}s — pin {view.pin_state}
-            {view.identity ? ` (${view.identity})` : ""}.
-          </p>
-          <ul className="runner-occurrences">
-            {(view.occurrences ?? []).map((occurrence) => (
-              <li key={occurrence.day}>
-                {occurrence.day}: {occurrence.state}
-                {occurrence.utc ? ` at ${occurrence.utc}` : ""}
-              </li>
-            ))}
-          </ul>
-          <p>{view.notification}</p>
-        </div>
-      ))}
-      {preview.alert ? (
-        <div>
-          <p>An approved schedule emits exactly this fixed body — no names, paths, values or errors:</p>
-          <pre className="runner-document">{preview.alert}</pre>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-const emptyGateStep: CIGateStep = {
-  releases: "",
-  promotion: "",
-  promotion_identity: "",
-  revision: "",
-  baseline: "",
-  policy: "",
-  policy_identity: "",
-  snapshot_directory: "",
+export const RUNNER_STATUS: Record<string, string> = {
+  available: "Available",
+  busy: "Busy",
+  "not-checked": "Not checked",
+  "setup-required": "Setup required",
+  offline: "Offline",
+  refused: "Refused",
+  attention: "Needs attention",
 };
 
-/** The parts of a readmit-ci-gate/v1 summary, in the order it lists them. */
-const gateParts: { key: keyof CIGateReport; label: string }[] = [
-  { key: "approval", label: "approval" },
-  { key: "pins", label: "pins" },
-  { key: "coverage", label: "coverage" },
-  { key: "baseline", label: "baseline" },
-  { key: "retention", label: "retention" },
-  { key: "target_revision", label: "target revision" },
-];
+/** A recorded instant as a person reads it. */
+export function when(stamp: string | undefined): string {
+  if (!stamp) return "—";
+  const date = new Date(stamp);
+  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
 
-function GateVerification(props: { result: CIGateVerifyResult }) {
-  const { result } = props;
-  const gate = result.gate;
-  if (result.state === "cancelled") {
-    return (
-      <p className="runner-note" role="status">
-        Cancelled: {result.reason ?? "the verification was cancelled"}
-      </p>
-    );
-  }
-  if (!gate) {
-    return <Refusal result={result} unexplained="the verification did not run" />;
-  }
-  const unverified = gateParts.filter((part) => (result.unverified ?? []).includes(part.key)).map((part) => part.label);
+/** The configuration request a runner draft is, exported for its host. */
+function configRequest(draft: RunnerDraft, source = ""): RunnerConfigRequest {
+  return { hub: draft.hub, project: draft.project, environment: draft.environment, root: draft.root, ca: draft.ca, certificate: draft.certificate,
+    key: draft.key, token: draft.token, update_key: draft.update_key, update_engine: draft.update_engine, output: "", ...(source ? { source } : {}) };
+}
+
+/** Exports a saved runner's setup to a file the person names. */
+async function exportSetup(context: () => RequestContext, runner: RunnerRow): Promise<string | null> {
+  const opened = await openItemDraft({ context: context(), ref: runner.ref });
+  if (opened.state !== "completed" || !opened.draft?.runner) return opened.reason ?? "The runner could not be opened.";
+  const answer = await saveRunnerConfig(configRequest(opened.draft.runner, runner.config));
+  if (answer.state === "completed") return `Exported ${answer.output}`;
+  return answer.state === "cancelled" ? null : answer.reason ?? "The setup was not exported.";
+}
+
+function emptyDraft(): RunnerDraft {
+  return { hub: "", project: "", environment: "", root: "", ca: "", certificate: "", key: { command: "", arguments: [] }, token: { command: "", arguments: [] }, update_key: "", update_engine: "", assigned: "" };
+}
+
+/** A path chosen through the host's dialog, shown with its Choose button. */
+function ChosenPath({ id, label, value, kind, onChange }: { id: string; label: string; value: string; kind: string; onChange: (path: string) => void }) {
   return (
-    <div className="runner-inspect" role={gate.state === "passed" ? "status" : "alert"}>
-      <p>
-        Retained change gate: <strong>{gate.state}</strong> (exit {gate.exit_code}).
-      </p>
-      <p>
-        {gateParts.map((part) => `${part.label[0]!.toUpperCase()}${part.label.slice(1)} ${gate[part.key]}`).join(" · ")}
-      </p>
-      {unverified.length > 0 ? <p>Not verified: {unverified.join(", ")}.</p> : null}
-      {result.state === "completed" ? (
-        <p className="runner-note">
-          Every retained byte matched the snapshot&apos;s manifest and its assessment was repeated at
-          the instant it was retained. The target revision is the operator&apos;s assumption, not an
-          attestation; nothing was sent or rerun.
-        </p>
+    <>
+      <span className="field-label" id={`${id}-label`}>{label}</span>
+      <div className="value-with-action" aria-labelledby={`${id}-label`}>
+        <span className="location-value">{value || "—"}</span>
+        <button
+          type="button"
+          id={id}
+          aria-label={`Choose ${label.toLowerCase()}`}
+          onClick={() => void chooseRunnerPath(kind).then((chosen) => { if (chosen.state === "completed" && chosen.paths?.[0]) onChange(chosen.paths[0]); })}
+        >
+          Choose…
+        </button>
+      </div>
+    </>
+  );
+}
+
+function TextField({ id, label, value, onChange, placeholder, type = "text" }: { id: string; label: string; value: string; onChange: (value: string) => void; placeholder?: string; type?: string }) {
+  return (
+    <>
+      <label htmlFor={id}>{label}</label>
+      <input id={id} type={type} value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} />
+    </>
+  );
+}
+
+/** The connection a runner reaches its hub with. */
+function ConnectionFields({ draft, set }: { draft: RunnerDraft; set: (draft: RunnerDraft) => void }) {
+  return (
+    <>
+      <TextField id="runner-hub" label="Customer hub" value={draft.hub} placeholder="https://hub.example" onChange={(hub) => set({ ...draft, hub })} />
+      <TextField id="runner-project" label="Hub project" value={draft.project} onChange={(project) => set({ ...draft, project })} />
+      <ChosenPath id="runner-ca" label="Hub certificate authority" kind="ca-certificate" value={draft.ca} onChange={(ca) => set({ ...draft, ca })} />
+      <ChosenPath id="runner-certificate" label="Runner certificate" kind="client-certificate" value={draft.certificate} onChange={(certificate) => set({ ...draft, certificate })} />
+      <ChosenPath id="runner-key" label="Key reader" kind="locator-program" value={draft.key.command} onChange={(command) => set({ ...draft, key: { ...draft.key, command } })} />
+      <TextField id="runner-key-name" label="Key name" value={draft.key.arguments.join(" ")} onChange={(value) => set({ ...draft, key: { ...draft.key, arguments: value.split(" ").filter(Boolean) } })} />
+      <ChosenPath id="runner-token" label="Token reader" kind="locator-program" value={draft.token.command} onChange={(command) => set({ ...draft, token: { ...draft.token, command } })} />
+      <TextField id="runner-token-name" label="Token name" value={draft.token.arguments.join(" ")} onChange={(value) => set({ ...draft, token: { ...draft.token, arguments: value.split(" ").filter(Boolean) } })} />
+      <TextField id="runner-update-key" label="Deployment key" value={draft.update_key} onChange={(update_key) => set({ ...draft, update_key })} />
+      <TextField id="runner-update-engine" label="Approved build" value={draft.update_engine} onChange={(update_engine) => set({ ...draft, update_engine })} />
+    </>
+  );
+}
+
+/** Where a runner runs and what it serves. */
+function AssignmentFields({ draft, set, environments, host, onHost, localSupported = true }: {
+  localSupported?: boolean;
+  draft: RunnerDraft;
+  set: (draft: RunnerDraft) => void;
+  environments: CatalogItem[];
+  host?: "local" | "remote";
+  onHost?: (host: "local" | "remote") => void;
+}) {
+  return (
+    <>
+      <label htmlFor="runner-assigned">Environment</label>
+      <select id="runner-assigned" value={draft.assigned} onChange={(event) => set({ ...draft, assigned: event.target.value })}>
+        <option value="">None</option>
+        {environments.map((entry) => <option key={entry.ref.id} value={entry.ref.id}>{entry.name}</option>)}
+      </select>
+      <TextField id="runner-environment" label="Hub environment" value={draft.environment} onChange={(environment) => set({ ...draft, environment })} />
+      {host && onHost ? (
+        <fieldset className="checks">
+          <legend>Runs on</legend>
+          <label className="check"><input type="radio" name="runner-host" checked={host === "local"} disabled={!localSupported} onChange={() => onHost("local")} /> This Mac</label>
+          <label className="check"><input type="radio" name="runner-host" checked={host === "remote"} onChange={() => onHost("remote")} /> Another host</label>
+        </fieldset>
+      ) : null}
+      {host === "remote" ? (
+        <TextField id="runner-root" label="Working folder" value={draft.root} placeholder="/var/lib/readmit-runner" onChange={(root) => set({ ...draft, root })} />
       ) : (
-        <p className="runner-refused">{result.reason}</p>
+        <ChosenPath id="runner-root" label="Working folder" kind="working-folder" value={draft.root} onChange={(root) => set({ ...draft, root })} />
       )}
-    </div>
+    </>
   );
 }
 
-type CITask = "generate" | "inspect" | "verify";
+function connectionComplete(draft: RunnerDraft) {
+  return draft.hub !== "" && draft.project !== "" && draft.ca !== "" && draft.certificate !== "" && draft.key.command !== "" && draft.token.command !== "" && draft.update_key !== "" && draft.update_engine !== "";
+}
 
-function CISection({ seed = null }: { seed?: RunnerSeed | null } = {}) {
-  const [task, setTask] = useViewState<CITask>("CISection.task", "generate");
-  const [request, setRequest] = useViewState<CIHandoffRequest>("CISection.request", {
-    integration: "posix",
-    binary: "",
-    operation_policy: "",
-    suite_file: "",
-    environment: "",
-    run_directory: "",
-    coverage_file: "",
-    output: "",
-  });
-  // Set up CI from a suite names its exact version and environment.
-  const seeded = useRef(0);
+function runnerRows(draft: RunnerDraft, environments: CatalogItem[]) {
+  return [
+    { label: "Customer hub", value: draft.hub },
+    { label: "Hub project", value: draft.project },
+    { label: "Environment", value: environments.find((entry) => entry.ref.id === draft.assigned)?.name ?? "None" },
+    { label: "Hub environment", value: draft.environment },
+    { label: "Working folder", value: draft.root },
+    { label: "Approved build", value: draft.update_engine },
+  ];
+}
+
+function saveFailure(result: { reason?: string; problems?: { problem: string }[] }): SubmitFailure {
+  return { reason: result.problems?.[0]?.problem ?? result.reason ?? "The runner was not saved." };
+}
+
+/** Add runner: Connection → Assignment → Review. The last step requests a
+ * real admission for a runner on this Mac, or exports its setup for another
+ * host's administrator; nothing is installed from here. */
+function AddRunnerFlow({ context, environments, onClose, onDone }: {
+  context: () => RequestContext;
+  environments: CatalogItem[];
+  onClose: () => void;
+  onDone: (id: string) => void;
+}) {
+  const [step, setStep] = useState("connection");
+  const [name, setName] = useState("");
+  const [draft, setDraft] = useState<RunnerDraft>(emptyDraft);
+  const [host, setHost] = useState<"local" | "remote">("local");
+  // A runner on this Mac is offered only where this Mac's license grants
+  // runner capacity; otherwise the setup goes to another host.
+  const [localSupported, setLocalSupported] = useState(true);
   useEffect(() => {
-    if (!seed || seed.count === seeded.current) return;
-    seeded.current = seed.count;
-    setRequest((held) => ({ ...held, suite_file: seed.suite, environment: seed.environment }));
-  }, [seed]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [gated, setGated] = useViewState("CISection.gated", false);
-  const [gate, setGate] = useViewState<CIGateStep>("CISection.gate", emptyGateStep);
-  const [handoff, setHandoff] = useViewState<CIHandoffResult | null>("CISection.handoff", null);
-  const [resultsDirectory, setResultsDirectory] = useViewState("CISection.resultsDirectory", "");
-  const [results, setResults] = useViewState<CIInspectResult | null>("CISection.results", null);
-  const [policyPath, setPolicyPath] = useViewState("CISection.policyPath", "");
-  const [policy, setPolicy] = useViewState<GatePolicyResult | null>("CISection.policy", null);
-  const [snapshot, setSnapshot] = useViewState("CISection.snapshot", { directory: "", identity: "" });
-  const [verification, setVerification] = useViewState<CIGateVerifyResult | null>("CISection.verification", null);
-  // Verify is disabled while it reads, so the focus moves to the one action
-  // the running verification offers rather than being left on nothing. The
-  // verification runs under the facade's ci-gate-verify operation, so that
-  // cancel reaches exactly that verification.
-  const cancelVerification = useRef<HTMLButtonElement>(null);
-  const lifecycle = useLifecycle<"working" | "verifying">({
-    names: { verifying: "ci-gate-verify" },
-    stops: { verifying: cancelVerification },
-  });
-  const busy = lifecycle.running !== null;
-  const verifying = lifecycle.running === "verifying";
-
-  async function handleGenerate() {
-    await lifecycle.run("working", async () => {
-      setHandoff(await saveCIHandoff(gated ? { ...request, gate } : request));
+    void operationStatus().then((status) => {
+      const supported = status.state === "completed" && status.runner_instances > 0;
+      setLocalSupported(supported);
+      if (!supported) setHost("remote");
     });
-  }
-
-  async function handleResults() {
-    await lifecycle.run("working", async () => {
-      setResults(await inspectCIResults(resultsDirectory));
-    });
-  }
-
-  async function handlePolicy() {
-    await lifecycle.run("working", async () => {
-      setPolicy(await inspectGatePolicy(policyPath));
-    });
-  }
-
-  async function handleVerify() {
-    await lifecycle.run("verifying", async () => {
-      setVerification(null);
-      setVerification(await verifyCIGate(snapshot.directory, snapshot.identity));
-    });
-  }
-
-  // A reading shown beside a field names what that field held when it was
-  // read. Once the field changes, the reading is withdrawn: an identity left
-  // beside another policy's path is one a person could pin by mistake. The
-  // fields hold still while the section works, so a reading always answers
-  // what they show.
-  function changeResultsDirectory(value: string) {
-    setResultsDirectory(value);
-    setResults(null);
-  }
-  function changePolicyPath(value: string) {
-    setPolicyPath(value);
-    setPolicy(null);
-  }
-  function changeSnapshot(change: Partial<typeof snapshot>) {
-    setSnapshot({ ...snapshot, ...change });
-    setVerification(null);
-  }
-
+  }, []);
+  const intent = useRef(newIntentId());
+  const steps: FlowStep[] = [
+    {
+      key: "connection",
+      label: "Connection",
+      valid: name.trim() !== "" && connectionComplete(draft),
+      render: () => (
+        <>
+          <TextField id="runner-name" label="Name" value={name} onChange={setName} />
+          <ConnectionFields draft={draft} set={setDraft} />
+        </>
+      ),
+    },
+    {
+      key: "assignment",
+      label: "Assignment",
+      valid: draft.environment !== "" && draft.root !== "",
+      // The configuration's own strict reader decides before the review.
+      advance: async () => {
+        const checked = await previewRunnerConfig(configRequest(draft));
+        return checked.state === "completed" ? null : { reason: checked.reason ?? "The runner configuration is not complete." };
+      },
+      render: () => <AssignmentFields draft={draft} set={setDraft} environments={environments} host={host} onHost={setHost} localSupported={localSupported} />,
+    },
+    {
+      key: "review",
+      label: "Review",
+      valid: true,
+      render: () => (
+        <>
+          <ValueRows label="Runner" rows={[{ label: "Name", value: name }, ...runnerRows(draft, environments)]} />
+          <p className="consequence">
+            {host === "local" ? `Asks ${draft.hub} to admit this runner.` : "Writes the setup for the runner host's administrator; nothing is installed."}
+          </p>
+        </>
+      ),
+    },
+  ];
   return (
-    <section className="runner-section" aria-label="CI handoffs">
-      <TaskTabs<CITask>
-        label="CI tasks"
-        id="ci-task"
-        tablistClass="runner-tabs"
-        panelClass="runner-section"
-        selected={task}
-        onSelect={setTask}
-        tabs={[
-          { key: "generate", label: "Generate workflow" },
-          { key: "inspect", label: "Inspect results" },
-          { key: "verify", label: "Verify gate" },
-        ]}
-      >
-        {/* Every task stays mounted, so a verification keeps running and
-          * holds the other tasks' controls while another task is shown. */}
-        <div hidden={task !== "generate"} role="group" aria-labelledby="ci-setup-title">
-            <h4 id="ci-setup-title">CI setup</h4>
-            <p className="runner-note">
-              The generated file is the documented workflow for one supported integration, unchanged.
-              Provision its six variables on a customer-owned, trusted agent; this application never
-              commits to a repository, authorizes a third-party service, uploads, installs or runs anything.
-            </p>
-            <div className="runner-form">
-              <label className="runner-field">
-                <span>Integration</span>
-                <select value={request.integration} onChange={(event) => setRequest({ ...request, integration: event.target.value })}>
-                  <option value="posix">POSIX shell</option>
-                  <option value="github">GitHub Actions</option>
-                  <option value="azure">Azure DevOps</option>
-                </select>
-              </label>
-            </div>
-            <fieldset className="runner-gate-step">
-              <legend>Paths on the CI agent</legend>
-              <p className="runner-note">These name the customer&apos;s agent filesystem, not this computer.</p>
-              <div className="runner-form">
-                <Field label="Executable path on CI agent" value={request.binary} onChange={(binary) => setRequest({ ...request, binary })} />
-                <Field
-                  label="Operation policy on CI agent"
-                  value={request.operation_policy}
-                  onChange={(operation_policy) => setRequest({ ...request, operation_policy })}
-                  help="Must already be activated on the agent; naming it here activates nothing."
-                />
-                <Field label="Suite file on CI agent" value={request.suite_file} onChange={(suite_file) => setRequest({ ...request, suite_file })} />
-                <Field label="Environment ID" value={request.environment} onChange={(environment) => setRequest({ ...request, environment })} />
-                <Field
-                  label="Run folder on CI agent"
-                  value={request.run_directory}
-                  onChange={(run_directory) => setRequest({ ...request, run_directory })}
-                  help="Fresh per invocation; never a resume path."
-                />
-                <Field label="Coverage file on CI agent" value={request.coverage_file} onChange={(coverage_file) => setRequest({ ...request, coverage_file })} />
-              </div>
-            </fieldset>
-            <fieldset className="runner-gate-step">
-              <legend>On this computer</legend>
-              <div className="runner-form">
-                <Field
-                  label="Workflow output file"
-                  value={request.output}
-                  onChange={(output) => setRequest({ ...request, output })}
-                  help="Where the generated workflow is written on this computer."
-                />
-              </div>
-            </fieldset>
-            <fieldset className="runner-gate-step">
-              <legend>Change gate</legend>
-              <label className="runner-field">
-                <span>
-                  <input type="checkbox" checked={gated} onChange={(event) => setGated(event.target.checked)} /> Include
-                  change gate
-                </span>
-              </label>
-              <p className="runner-note">
-                The reviewed change gate runs after the suite; including it approves no gate and implies
-                no passing result.
-              </p>
-              {gated ? (
-                <>
-                  <p className="runner-note">
-                    The step runs <code>readmit suite gate</code> after <code>suite ci</code>, even when the
-                    suite failed, and never replaces the suite&apos;s exit status. The suite then runs with
-                    the approved promotion the gate policy pins. Pin the identity reviewed for the policy;
-                    the workflow never computes one and never approves what it finds later. These paths are
-                    on the CI agent.
-                  </p>
-                  <div className="runner-form">
-                    <Field label="Release pins file" value={gate.releases} onChange={(releases) => setGate({ ...gate, releases })} />
-                    <Field label="Promotion approval file" value={gate.promotion} onChange={(promotion) => setGate({ ...gate, promotion })} />
-                    <Field
-                      label="Promotion approval ID"
-                      value={gate.promotion_identity}
-                      onChange={(promotion_identity) => setGate({ ...gate, promotion_identity })}
-                      help="The full reviewed identity of that approval."
-                    />
-                    <Field label="Target revision (operator-declared)" value={gate.revision} onChange={(revision) => setGate({ ...gate, revision })} />
-                    <Field
-                      label="Baseline run folder"
-                      value={gate.baseline}
-                      onChange={(baseline) => setGate({ ...gate, baseline })}
-                      help="The reviewed baseline run."
-                    />
-                    <Field label="Gate policy file" value={gate.policy} onChange={(policy) => setGate({ ...gate, policy })} help="The reviewed gate policy." />
-                    <Field
-                      label="Gate policy ID"
-                      value={gate.policy_identity}
-                      onChange={(policy_identity) => setGate({ ...gate, policy_identity })}
-                      help="The full identity reviewed for that policy; the workflow pins it."
-                    />
-                    <Field
-                      label="Gate snapshot folder"
-                      value={gate.snapshot_directory}
-                      onChange={(snapshot_directory) => setGate({ ...gate, snapshot_directory })}
-                      help="Fresh per invocation, on the CI agent."
-                    />
-                  </div>
-                </>
-              ) : null}
-            </fieldset>
-            <div className="runner-actions">
-              <button type="button" disabled={busy} onClick={() => void handleGenerate()}>
-                Generate configuration
-              </button>
-            </div>
-            {handoff ? (
-              handoff.state === "completed" ? (
-                <div className="runner-inspect" role="status">
-                  <p className="runner-ok">Saved to {handoff.output}. Install it as the customer administrator.</p>
-                  <details>
-                    <summary>Generated workflow</summary>
-                    <pre className="runner-document">{handoff.document}</pre>
-                  </details>
-                </div>
-              ) : (
-                <Refusal result={handoff} />
-              )
-            ) : null}
-        </div>
-
-        <div hidden={task !== "inspect"} role="group" aria-labelledby="ci-results-title">
-            <h4 id="ci-results-title">CI results</h4>
-            <p className="runner-note">Both read local retained copies on this computer.</p>
-            <div className="runner-form">
-              <Field label="CI results folder" value={resultsDirectory} onChange={changeResultsDirectory} disabled={busy} />
-              <Field label="Gate policy file" value={policyPath} onChange={changePolicyPath} disabled={busy} />
-            </div>
-            <div className="runner-actions">
-              <button type="button" disabled={busy || resultsDirectory === ""} onClick={() => void handleResults()}>
-                Open CI results
-              </button>
-              <button type="button" disabled={busy || policyPath === ""} onClick={() => void handlePolicy()}>
-                Open gate policy
-              </button>
-            </div>
-            {results ? (
-              results.state === "completed" ? (
-                <div className="runner-inspect" role="status">
-                  {results.ci ? (
-                    <p>
-                      Suite gate: <strong>{results.ci.state}</strong> (exit {results.ci.exit_code}).
-                    </p>
-                  ) : null}
-                  {results.gate ? (
-                    <p>
-                      Change gate: <strong>{results.gate.state}</strong> (exit {results.gate.exit_code}).
-                    </p>
-                  ) : null}
-                  {results.warning ? <p className="runner-note">{results.warning}</p> : null}
-                </div>
-              ) : (
-                <Refusal result={results} />
-              )
-            ) : null}
-            {policy ? (
-              policy.state === "completed" ? (
-                <div className="runner-inspect" role="status">
-                  <p>
-                    Identity <code>{policy.identity}</code> for environment {policy.environment}, engine{" "}
-                    {policy.engine}, {policy.specifications} pinned specification(s), retention until{" "}
-                    {policy.retain_until}. Pin this identity in protected customer configuration; reading
-                    a policy approves nothing.
-                  </p>
-                </div>
-              ) : (
-                <Refusal result={policy} />
-              )
-            ) : null}
-        </div>
-
-        <div hidden={task !== "verify"} role="group" aria-labelledby="ci-verify-title">
-            <h4 id="ci-verify-title">Verify gate</h4>
-            <p className="runner-note">
-              Verification reads only the retained snapshot, as <code>readmit suite verify-gate</code>{" "}
-              does: every retained byte is checked against the snapshot&apos;s manifest and the assessment
-              is repeated at the instant it was retained, against the identity pinned for its policy.
-              Nothing is sent, rerun or changed, and an unknown gate is never a pass.
-            </p>
-            <div className="runner-form">
-              <Field label="Gate snapshot folder" value={snapshot.directory} onChange={(directory) => changeSnapshot({ directory })} disabled={busy} />
-              <Field label="Pinned gate policy ID" value={snapshot.identity} onChange={(identity) => changeSnapshot({ identity })} disabled={busy} />
-            </div>
-            <div className="runner-actions">
-              <button
-                type="button"
-                disabled={busy || snapshot.directory === "" || snapshot.identity === ""}
-                onClick={() => void handleVerify()}
-              >
-                Verify gate
-              </button>
-              {verifying ? (
-                <button type="button" ref={cancelVerification} onClick={lifecycle.cancel}>
-                  Cancel verification
-                </button>
-              ) : null}
-            </div>
-            {verifying ? (
-              <p className="runner-note" role="status">
-                Verifying the retained snapshot…
-              </p>
-            ) : null}
-            {verification ? <GateVerification result={verification} /> : null}
-        </div>
-      </TaskTabs>
-    </section>
+    <StepDialog
+      open
+      title="Add runner"
+      onClose={onClose}
+      dirty={name !== "" || draft.hub !== ""}
+      steps={steps}
+      step={step}
+      onStep={setStep}
+      submitLabel={host === "local" ? "Request admission" : "Export setup"}
+      onSubmit={async () => {
+        const saved = await saveItem({ context: context(), kind: "runner", draft: { name: name.trim(), runner: draft }, intent_id: intent.current });
+        if (saved.outcome !== "saved" || !saved.saved) return saveFailure(saved);
+        const listed = await listRunners(context());
+        const row = listed.runners.find((entry) => entry.ref.id === saved.saved!.id);
+        if (!row?.config) return { reason: "The runner was saved but could not be read back." };
+        // The runner is saved either way; a refused admission or an export
+        // not written keeps the sheet open with the reason, and trying again
+        // saves nothing twice.
+        if (host === "local") {
+          const admitted = await enrollRunner(row.config);
+          if (admitted.state !== "completed") return { reason: admitted.reason ?? "The hub did not admit this runner." };
+        } else {
+          const exported = await saveRunnerConfig(configRequest(draft, row.config));
+          if (exported.state !== "completed") return { reason: exported.state === "cancelled" ? "No file was named." : exported.reason ?? "The setup was not exported." };
+        }
+        onDone(saved.saved.id);
+        return null;
+      }}
+    />
   );
 }
 
-/** The license's runner capacity: which execution instances the organization's
- * authority has admitted, held and free, settled only by an explicit release
- * or reconcile. It lives with the runner work it governs, not on the License
- * page; the actions keep their selected authority and explicit semantics. */
-function RunnerCapacity() {
-  const [runners, setRunners] = useViewState<RunnerStatusResult | null>("RunnerCapacity.runners", null);
+/** Configuration: the saved values, edited whole. */
+function ConfigurationSheet({ runner, context, environments, onClose, onDone }: {
+  runner: RunnerRow;
+  context: () => RequestContext;
+  environments: CatalogItem[];
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [held, setHeld] = useState<{ ref: ItemRef; name: string; draft: RunnerDraft } | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
+  const intent = useRef(newIntentId());
+  useEffect(() => {
+    void openItemDraft({ context: context(), ref: runner.ref }).then((opened) => {
+      if (opened.state === "completed" && opened.draft?.runner && opened.ref) setHeld({ ref: opened.ref, name: opened.draft.name ?? runner.name, draft: opened.draft.runner });
+      else setFailure(opened.reason ?? "The runner could not be opened.");
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <FormDialog
+      open
+      title="Configuration"
+      onClose={onClose}
+      submitLabel="Save"
+      submitDisabled={held === null}
+      status={failure ? <p role="alert">{failure}</p> : undefined}
+      onSubmit={async () => {
+        if (!held) return null;
+        const saved = await saveItem({ context: context(), kind: "runner", item: held.ref.id, ...(held.ref.revision ? { base_revision: held.ref.revision } : {}), draft: { name: held.name, runner: held.draft }, intent_id: intent.current });
+        if (saved.outcome !== "saved") return saveFailure(saved);
+        onDone();
+        return null;
+      }}
+    >
+      {held ? (
+        <>
+          <TextField id="runner-name" label="Name" value={held.name} onChange={(name) => setHeld({ ...held, name })} />
+          <ConnectionFields draft={held.draft} set={(draft) => setHeld({ ...held, draft })} />
+          <AssignmentFields draft={held.draft} set={(draft) => setHeld({ ...held, draft })} environments={environments} host={runner.local ? "local" : "remote"} />
+        </>
+      ) : null}
+    </FormDialog>
+  );
+}
+
+/** Access: the hub grants for this runner's project, and one grant edited
+ * with its exact scope shown before it is saved for the hub administrator. */
+function AccessSheet({ runner, onClose }: { runner: RunnerRow; onClose: () => void }) {
+  const [policy, setPolicy] = useState("");
+  const [grants, setGrants] = useState<RunnerGrantsResult | null>(null);
+  const [step, setStep] = useState("grant");
+  const [subject, setSubject] = useState("");
+  const [seconds, setSeconds] = useState("600");
+  const [jobs, setJobs] = useState("10");
+  const [saved, setSaved] = useState<string | null>(null);
+  const choose = (path: string) => {
+    setPolicy(path);
+    void readRunnerGrants(path, runner.project).then((answer) => {
+      setGrants(answer);
+      const current = answer.grants.find((grant) => grant.environment === hubEnvironment(runner));
+      if (current) {
+        setSubject(current.subject);
+        setSeconds(String(current.max_seconds));
+        setJobs(String(current.max_jobs));
+      }
+    });
+  };
+  const steps: FlowStep[] = [
+    {
+      key: "grant",
+      label: "Grant",
+      valid: subject.trim() !== "" && Number(seconds) >= 1 && Number(jobs) >= 1,
+      render: () => (
+        <>
+          <ChosenPath id="access-policy" label="Current runner policy" kind="runner-policy" value={policy} onChange={choose} />
+          {grants?.state === "completed" ? (
+            grants.grants.length === 0 ? <p>No grants for this project.</p> : (
+              <table aria-label="Grants">
+                <thead><tr><th>Runner subject</th><th>Environment</th><th>Build</th><th>Max time</th><th>Max jobs</th></tr></thead>
+                <tbody>
+                  {grants.grants.map((grant) => (
+                    <tr key={`${grant.environment}:${grant.subject}`}><td>{grant.subject}</td><td>{grant.environment}</td><td>{grant.engine}</td><td>{grant.max_seconds} s</td><td>{grant.max_jobs}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            )
+          ) : grants ? <p role="alert">{grants.reason}</p> : null}
+          <TextField id="access-subject" label="Runner subject" value={subject} onChange={setSubject} />
+          <TextField id="access-seconds" label="Max time (seconds)" type="number" value={seconds} onChange={setSeconds} />
+          <TextField id="access-jobs" label="Max jobs" type="number" value={jobs} onChange={setJobs} />
+        </>
+      ),
+    },
+    {
+      key: "review",
+      label: "Review",
+      valid: true,
+      render: () => (
+        <>
+          <ValueRows label="Grant" rows={[
+            { label: "Hub project", value: runner.project },
+            { label: "Runner subject", value: subject },
+            { label: "Hub environment", value: hubEnvironment(runner) },
+            { label: "Build", value: "This build" },
+            { label: "Max time", value: `${seconds} s` },
+            { label: "Max jobs", value: jobs },
+          ]} />
+          <p className="consequence">Writes a new runner policy for the hub administrator to install.</p>
+          {saved ? <p>Saved {saved}</p> : null}
+        </>
+      ),
+    },
+  ];
+  return (
+    <StepDialog
+      open
+      title="Access"
+      onClose={onClose}
+      steps={steps}
+      step={step}
+      onStep={setStep}
+      submitLabel="Save grant"
+      onSubmit={async () => {
+        const answer = await saveRunnerGrant({ policy, project: runner.project, subject: subject.trim(), environment: hubEnvironment(runner), engine: "", spec: "", profile: "", max_seconds: Number(seconds), max_jobs: Number(jobs), output: "" });
+        if (answer.state !== "completed") return { reason: answer.reason ?? "The grant was not saved." };
+        setSaved(answer.output ?? "");
+        onClose();
+        return null;
+      }}
+    />
+  );
+}
+
+/** The hub environment id a runner's configuration names. */
+function hubEnvironment(runner: RunnerRow) {
+  return runner.hub_environment || runner.environment;
+}
+
+/** Capacity: the license's admitted instances, each released or reconciled
+ * only by its own named action. */
+function CapacitySheet({ onClose }: { onClose: () => void }) {
+  const [status, setStatus] = useState<RunnerStatusResult | null>(null);
+  const [confirm, setConfirm] = useState<{ instance: string; reconcile: boolean } | null>(null);
+  const { running, run } = useLifecycle<"working">();
+  useEffect(() => { void showRunnerAdmissions().then(setStatus); }, []);
+  return (
+    <>
+      <Modal open={confirm === null} title="Capacity" onClose={onClose} footer={<div className="dialog-footer"><button type="button" onClick={onClose}>Close</button></div>}>
+        {status?.state === "completed" ? (
+          <>
+            <ValueRows label="Capacity" rows={[
+              { label: "Licensed", value: String(status.instances ?? 0) },
+              { label: "Active", value: String(status.active ?? 0) },
+              { label: "Stale", value: String(status.stale ?? 0) },
+              { label: "Free", value: String(status.free ?? 0) },
+            ]} />
+            {status.admissions?.length ? (
+              <table aria-label="Admitted instances">
+                <thead><tr><th>Instance</th><th>State</th><th>Admitted</th><th>Lease until</th><th><span className="visually-hidden">Actions</span></th></tr></thead>
+                <tbody>
+                  {status.admissions.map((admission) => (
+                    <tr key={admission.instance}>
+                      <td>{admission.instance}</td><td>{admission.state === "stale" ? "Stale" : "Active"}</td><td>{when(admission.admitted)}</td><td>{when(admission.lease_until)}</td>
+                      <td>
+                        <Menu label={`Actions for ${admission.instance}`} items={[
+                          { label: "Release", disabled: admission.state !== "stale", onSelect: () => setConfirm({ instance: admission.instance, reconcile: false }) },
+                          { label: "Reconcile", disabled: admission.state !== "stale", onSelect: () => setConfirm({ instance: admission.instance, reconcile: true }) },
+                        ]} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : null}
+          </>
+        ) : status ? <p role="alert">{status.reason}</p> : null}
+      </Modal>
+      {confirm ? (
+        <FormDialog
+          open
+          title={confirm.reconcile ? "Reconcile" : "Release"}
+          size="small"
+          busy={running !== null}
+          onClose={() => setConfirm(null)}
+          submitLabel={`${confirm.reconcile ? "Reconcile" : "Release"} ${confirm.instance}`}
+          onSubmit={async () => {
+            let failure: SubmitFailure | null = null;
+            await run("working", async () => {
+              const answer = await settleRunnerAdmission({ instance: confirm.instance, reconcile: confirm.reconcile });
+              if (answer.state === "completed") {
+                setStatus(answer);
+                setConfirm(null);
+              } else failure = { reason: answer.reason ?? "Nothing was settled." };
+            });
+            return failure;
+          }}
+        >
+          <p className="consequence">{confirm.reconcile ? "Frees capacity held by this stale instance." : "Frees the capacity this instance holds."}</p>
+        </FormDialog>
+      ) : null}
+    </>
+  );
+}
+
+/** Recovery: the retained jobs of the runner as they stand, read only. */
+function RecoverySheet({ runner, inspected, onClose }: { runner: RunnerRow; inspected: RunnerInspectResult | null; onClose: () => void }) {
+  const [recovery, setRecovery] = useState<RunnerRecoveryResult | null>(null);
+  const jobs = inspected?.jobs ?? [];
+  return (
+    <Modal open title="Recovery" onClose={onClose} footer={<div className="dialog-footer"><button type="button" onClick={onClose}>Close</button></div>}>
+      {inspected?.health_note ? <p>{inspected.health_note}</p> : null}
+      {jobs.length === 0 && !inspected?.health_note ? <p>No retained jobs.</p> : null}
+      {jobs.length ? (
+        <table aria-label="Retained jobs">
+          <thead><tr><th>Job</th><th>State</th><th>Delivery</th></tr></thead>
+          <tbody>
+            {jobs.map((job) => (
+              <tr key={job.id}>
+                <td><button type="button" className="link" onClick={() => void readRunnerRecovery(runner.config, job.id).then(setRecovery)}>{job.id}</button></td>
+                <td>{job.state || job.reason || "—"}</td>
+                <td>{job.delivery_uncertain ? "Uncertain" : "Settled"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : null}
+      {recovery?.state === "completed" ? (
+        <ValueRows label={`Job ${recovery.job_id}`} rows={[
+          { label: "Acknowledged", value: String(recovery.acknowledged) },
+          { label: "Uncertain", value: String(recovery.uncertain) },
+          { label: "Not attempted", value: String(recovery.not_attempted) },
+        ]} />
+      ) : recovery ? <p role="alert">{recovery.reason}</p> : null}
+    </Modal>
+  );
+}
+
+/** Update: a staged candidate verified against the pinned deployment key and
+ * build; it is read, never run. */
+function UpdateSheet({ runner, onClose, onExport }: { runner: RunnerRow; onClose: () => void; onExport: () => void }) {
+  const [manifest, setManifest] = useState("");
+  const [program, setProgram] = useState("");
+  const [result, setResult] = useState<RunnerUpdateResult | null>(null);
+  return (
+    <FormDialog
+      open
+      title="Update"
+      onClose={onClose}
+      submitLabel="Verify update"
+      submitDisabled={manifest === "" || program === ""}
+      status={result?.state === "completed" ? (
+        <span>Verified for build {result.engine}. <button type="button" onClick={onExport}>Export setup</button></span>
+      ) : undefined}
+      onSubmit={async () => {
+        const answer = await verifyRunnerUpdate(runner.config, manifest, program);
+        setResult(answer);
+        return answer.state === "completed" ? null : { reason: answer.reason ?? "The candidate was not verified." };
+      }}
+    >
+      <ChosenPath id="update-manifest" label="Update manifest" kind="update-manifest" value={manifest} onChange={(path) => { setManifest(path); setResult(null); }} />
+      <ChosenPath id="update-program" label="Staged program" kind="update-program" value={program} onChange={(path) => { setProgram(path); setResult(null); }} />
+    </FormDialog>
+  );
+}
+
+type Task = "configuration" | "access" | "capacity" | "recovery" | "update" | "job";
+
+/** Run job: one job file — chosen, or written new for a test — previewed
+ * against this runner, then run once through the runner's own admission. A
+ * job id the runner already holds is never run again. */
+function RunJobSheet({ runner, onClose }: { runner: RunnerRow; onClose: () => void }) {
+  const [step, setStep] = useState("job");
+  const [mode, setMode] = useState<"file" | "new">("file");
+  const [job, setJob] = useState("");
+  const [id, setId] = useState("");
+  const [spec, setSpec] = useState("");
+  const [preview, setPreview] = useState<RunnerJobPreviewResult | null>(null);
+  const [ran, setRan] = useState<RunnerExecutionResult | null>(null);
+  const steps: FlowStep[] = [
+    {
+      key: "job",
+      label: "Job",
+      valid: mode === "file" ? job !== "" : id.trim() !== "" && spec !== "",
+      advance: async () => {
+        let path = job;
+        if (mode === "new") {
+          const written = await saveRunnerJob({ id: id.trim(), spec, output: "" });
+          if (written.state !== "completed" || !written.output) return written.state === "cancelled" ? { reason: "No job file was named." } : { reason: written.reason ?? "The job was not written." };
+          path = written.output;
+          setJob(path);
+          setMode("file");
+        }
+        const answer = await inspectRunnerJob(runner.config, path);
+        setPreview(answer);
+        return answer.state === "completed" ? null : { reason: answer.reason ?? "The job was not prepared." };
+      },
+      render: () => (
+        <>
+          <fieldset className="checks">
+            <legend>Job</legend>
+            <label className="check"><input type="radio" name="job-mode" checked={mode === "file"} onChange={() => setMode("file")} /> Job file</label>
+            <label className="check"><input type="radio" name="job-mode" checked={mode === "new"} onChange={() => setMode("new")} /> New job</label>
+          </fieldset>
+          {mode === "file" ? (
+            <ChosenPath id="job-file" label="Job file" kind="job" value={job} onChange={setJob} />
+          ) : (
+            <>
+              <TextField id="job-id" label="Job name" value={id} onChange={setId} />
+              <ChosenPath id="job-spec" label="Test" kind="spec" value={spec} onChange={setSpec} />
+            </>
+          )}
+        </>
+      ),
+    },
+    {
+      key: "review",
+      label: "Review",
+      valid: preview?.state === "completed" && ran === null,
+      render: () => (
+        <>
+          {preview?.state === "completed" ? (
+            <ValueRows label="Job" rows={[{ label: "Job", value: preview.job_id ?? "" }, { label: "Hub environment", value: preview.environment ?? "" }, { label: "Runner", value: runner.name }]} />
+          ) : null}
+          <p className="consequence">Sends this job's messages to {preview?.environment ?? "its environment"} once.</p>
+          {ran?.state === "completed" ? <p role="status">{ran.summary?.state ?? "Finished"}</p> : null}
+        </>
+      ),
+    },
+  ];
+  return (
+    <StepDialog
+      open
+      title="Run job"
+      onClose={onClose}
+      steps={steps}
+      step={step}
+      onStep={(next) => { setStep(next); if (next === "job") { setPreview(null); setRan(null); } }}
+      submitLabel="Run job"
+      onSubmit={async () => {
+        const answer = await executeRunnerJob({ config_path: runner.config, job_path: job, expected_identity: preview?.input_identity ?? "" });
+        setRan(answer);
+        return answer.state === "completed" ? null : { reason: answer.reason ?? "The job did not run." };
+      }}
+    />
+  );
+}
+
+/** One runner: its saved values, its status and last contact, active jobs,
+ * and its tasks. */
+function RunnerDetail({ runner, context, environments, onBack, onChanged, onSchedules }: {
+  runner: RunnerRow;
+  context: () => RequestContext;
+  environments: CatalogItem[];
+  onBack: () => void;
+  onChanged: () => Promise<void>;
+  onSchedules?: (runner: string) => void;
+}) {
+  const [task, setTask] = useState<Task | null>(null);
+  const [inspected, setInspected] = useState<RunnerInspectResult | null>(null);
+  const [admission, setAdmission] = useState<RunnerEnrollmentResult | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const { running, run } = useLifecycle<"working">();
   const busy = running !== null;
-
-  async function perform<T>(action: () => Promise<T>, apply: (value: T) => void) {
-    if (busy) return;
-    await run("working", async () => {
-      apply(await action());
-    });
-  }
-
+  const perform = (work: () => Promise<void>) => { if (!busy) void run("working", work); };
+  const refresh = () => perform(async () => {
+    setNotice(null);
+    setInspected(await readRunnerConfig(runner.config));
+    await onChanged();
+  });
+  const more: MenuItem[] = [
+    { label: "Configuration", onSelect: () => setTask("configuration") },
+    { label: "Access", onSelect: () => setTask("access") },
+    { label: "Capacity", onSelect: () => setTask("capacity") },
+    { label: "Recovery", onSelect: () => perform(async () => { setInspected(await readRunnerConfig(runner.config)); setTask("recovery"); }) },
+    { label: "Update", onSelect: () => setTask("update") },
+    { label: "Run job", onSelect: () => setTask("job") },
+    { label: "Export setup", separated: true, onSelect: () => perform(async () => {
+      setNotice(await exportSetup(context, runner));
+      await onChanged();
+    }) },
+  ];
   return (
-    <section className="runner-section" aria-label="Runner capacity">
-      <h4>Runner capacity</h4>
-      <button disabled={busy} onClick={() => void perform(showRunnerAdmissions, setRunners)}>Runner capacity</button>
-      {runners ? (
-        runners.state === "completed" ? <>
-          <p>Organization {runners.organization}, authority {runners.authority}: {runners.active} active, {runners.stale} stale, {runners.free} free of {runners.instances} granted instances. Stale capacity is held until an operator reconciles it.</p>
-          {runners.admissions?.length ? <table>
-            <thead><tr><th>Instance ID</th><th>Admission state</th><th>Admitted at</th><th>Lease expires</th><th>Actions</th></tr></thead>
-            <tbody>
-              {runners.admissions.map(admission => <tr key={admission.instance}>
-                <td>{admission.instance}</td>
-                <td>{admission.state}</td>
-                <td>{admission.admitted}</td>
-                <td>{admission.lease_until}</td>
-                <td>
-                  <button disabled={busy} onClick={() => void perform(() => settleRunnerAdmission({ instance: admission.instance, reconcile: false }), setRunners)}>Release {admission.instance}</button>
-                  <button disabled={busy} onClick={() => void perform(() => settleRunnerAdmission({ instance: admission.instance, reconcile: true }), setRunners)}>Reconcile {admission.instance}</button>
-                </td>
-              </tr>)}
-            </tbody>
-          </table> : <p>No execution instance is admitted against this authority.</p>}
-        </> : <p role="note">{runners.reason}</p>
-      ) : null}
+    <section aria-label={runner.name} className="runner-detail">
+      <BackLink label="Runners" onBack={onBack} />
+      <div className="section-header">
+        <h2>{runner.name}</h2>
+        <span className="row-actions">
+          <button type="button" className="primary" disabled={busy || !runner.config} onClick={() => perform(async () => {
+            setNotice(null);
+            setAdmission(await enrollRunner(runner.config));
+            await onChanged();
+          })}>Request admission</button>
+          {onSchedules ? <button type="button" onClick={() => onSchedules(runner.ref.id)}>Schedules</button> : null}
+          <IconButton icon="refresh" label="Refresh runner" disabled={busy || !runner.config} onClick={refresh} />
+          <Menu label="More runner actions" items={more} />
+        </span>
+      </div>
+      <ValueRows label="Runner" rows={[
+        { label: "Status", value: RUNNER_STATUS[runner.status] ?? runner.status },
+        ...(runner.reason ? [{ label: "Reason", value: runner.reason }] : []),
+        { label: "Last seen", value: when(runner.last_seen) },
+        { label: "Customer hub", value: runner.hub },
+        { label: "Hub project", value: runner.project },
+        { label: "Environment", value: runner.environment },
+        { label: "Working folder", value: runner.root },
+        ...(runner.local ? [{ label: "Active jobs", value: String(runner.active_jobs) }] : []),
+        ...(admission?.state === "completed"
+          ? [{ label: "Lease until", value: when(admission.expires_at) }, { label: "Max jobs", value: String(admission.max_jobs ?? 0) }, { label: "Max time", value: `${admission.max_seconds ?? 0} s` }]
+          : []),
+      ]} />
+      {admission && admission.state !== "completed" ? <p role="alert">{admission.reason}</p> : null}
+      {inspected && inspected.state !== "completed" ? <p role="alert">{inspected.reason}</p> : null}
+      {notice ? <p role="status">{notice}</p> : null}
+      {task === "configuration" ? <ConfigurationSheet runner={runner} context={context} environments={environments} onClose={() => setTask(null)} onDone={() => { setTask(null); void onChanged(); }} /> : null}
+      {task === "access" ? <AccessSheet runner={runner} onClose={() => setTask(null)} /> : null}
+      {task === "capacity" ? <CapacitySheet onClose={() => setTask(null)} /> : null}
+      {task === "recovery" ? <RecoverySheet runner={runner} inspected={inspected} onClose={() => setTask(null)} /> : null}
+      {task === "update" ? <UpdateSheet runner={runner} onClose={() => setTask(null)} onExport={() => { setTask(null); more[more.length - 1]!.onSelect(); }} /> : null}
+      {task === "job" ? <RunJobSheet runner={runner} onClose={() => setTask(null)} /> : null}
     </section>
   );
 }
 
 export function RunnerPanel({
+  root = null,
   request = 0,
   onHandled,
   onConfigured,
-  configPath,
-  seed = null,
+  onSchedules,
 }: {
-  /** Each new value opens the Runner area, as Security's Add connection ›
-   * Runner does. */
+  /** The open project, whose runners these are. */
+  root?: string | null;
+  /** Each new value opens Add runner, as Security's Add connection › Runner does. */
   request?: number;
   /** The request was taken up; the window stops asking. */
   onHandled?: () => void;
-  /** A runner configuration was saved, read or enrolled. */
+  /** A runner was added. */
   onConfigured?: (chosen: boolean) => void;
-  /** The configuration a request edits, when it names one. */
-  configPath?: string | undefined;
-  /** Schedule or Set up CI on a suite: each new count opens that area with
-   * the suite's exact version, and for CI its environment, chosen. */
-  seed?: RunnerSeed | null;
+  /** Opens Schedules for one runner. */
+  onSchedules?: (runner: string) => void;
 } = {}) {
-  const [tab, setTab] = useViewState<"runner" | "schedules" | "ci">("RunnerPanel.tab", "runner");
-  const [requestedPath, setRequestedPath] = useState<{ path: string } | null>(null);
-  // A request is handled once: a remount, or StrictMode's second run, does
-  // not start the setup again.
+  const scope = useRef(new RequestScope());
+  const context = useCallback(() => scope.current.enter(root ?? ""), [root]);
+  const [list, setList] = useState<RunnerListResult | null>(null);
+  const [environments, setEnvironments] = useState<CatalogItem[]>([]);
+  const [selected, setSelected] = useViewState<string | null>("Runners.selected", null);
+  const [opened, setOpened] = useViewState<string | null>("Runners.opened", null);
+  const [adding, setAdding] = useState(false);
+
+  const reload = useCallback(async () => {
+    if (!root) return;
+    const [answer, envs] = await Promise.all([listRunners(context()), listCatalog({ context: context(), kind: "environment", filter: {} })]);
+    setList(answer);
+    setEnvironments(envs.page?.items ?? []);
+  }, [root, context]);
+  useEffect(() => { void reload(); }, [reload]);
+
   const handled = useRef(0);
   useEffect(() => {
     if (request === 0) handled.current = 0;
     if (request === 0 || request === handled.current) return;
     handled.current = request;
     onHandled?.();
-    setTab("runner");
-    if (configPath) setRequestedPath({ path: configPath });
+    setOpened(null);
+    setAdding(true);
   }, [request]); // eslint-disable-line react-hooks/exhaustive-deps
-  const seeded = useRef(0);
-  useEffect(() => {
-    if (!seed || seed.count === seeded.current) return;
-    seeded.current = seed.count;
-    setTab(seed.tab);
-  }, [seed]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!root) return <section aria-label="Runners" className="runner-panel"><EmptyState title="Open a project to see its runners" /></section>;
+  const runners = list?.runners ?? [];
+  const detail = opened ? runners.find((entry) => entry.ref.id === opened) : undefined;
+  const columns: Column<RunnerRow>[] = [
+    { key: "name", header: "Runner", priority: 1, minWidth: 13.75, flex: true, render: (row) => row.name },
+    { key: "environment", header: "Environment", priority: 2, minWidth: 10, render: (row) => row.environment || "—" },
+    { key: "status", header: "Status", priority: 1, minWidth: 8, render: (row) => RUNNER_STATUS[row.status] ?? row.status },
+    { key: "seen", header: "Last seen", priority: 3, minWidth: 9, render: (row) => when(row.last_seen) },
+  ];
+  const addFlow = adding ? (
+    <AddRunnerFlow
+      context={context}
+      environments={environments}
+      onClose={() => setAdding(false)}
+      onDone={(id) => { setAdding(false); onConfigured?.(true); void reload().then(() => setOpened(id)); }}
+    />
+  ) : null;
+  if (detail) {
+    return (
+      <section aria-label="Runners" className="runner-panel">
+        <RunnerDetail runner={detail} context={context} environments={environments} onBack={() => setOpened(null)} onChanged={reload} {...(onSchedules ? { onSchedules } : {})} />
+        {addFlow}
+      </section>
+    );
+  }
+  let body: ReactNode;
+  if (list && list.state !== "completed") body = <p role="alert">{list.reason}</p>;
+  else if (list && runners.length === 0) body = <EmptyState title="No runners" action={<button type="button" className="primary" onClick={() => setAdding(true)}>Add runner</button>} />;
+  else body = (
+    <DataTable
+      label="Runners"
+      rows={runners}
+      rowId={(row) => row.ref.id}
+      rowLabel={(row) => row.name}
+      columns={columns}
+      selected={selected}
+      onSelect={setSelected}
+      onOpen={setOpened}
+      loading={list === null}
+    />
+  );
   return (
-    <section className="runner-panel" aria-labelledby="runner-panel-title">
-      <h3 id="runner-panel-title">Runners, schedules and CI</h3>
-      <TaskTabs<"runner" | "schedules" | "ci">
-        label="Runner areas"
-        id="runner-area"
-        tablistClass="runner-tabs"
-        panelClass="runner-section"
-        selected={tab}
-        onSelect={setTab}
-        tabs={[
-          { key: "runner", label: "Runner" },
-          { key: "schedules", label: "Schedules" },
-          { key: "ci", label: "CI handoff" },
-        ]}
-      >
-        {tab === "runner" ? <RunnerSection onConfigured={onConfigured} requested={requestedPath} /> : null}
-        {tab === "schedules" ? <SchedulesSection seed={seed?.tab === "schedules" ? seed : null} /> : null}
-        {tab === "ci" ? <CISection seed={seed?.tab === "ci" ? seed : null} /> : null}
-      </TaskTabs>
+    <section aria-label="Runners" className="runner-panel">
+      <div className="section-header">
+        <h2>Runners</h2>
+        <span className="row-actions">
+          <button type="button" className="primary" onClick={() => setAdding(true)}>Add runner</button>
+        </span>
+      </div>
+      {body}
+      {addFlow}
     </section>
   );
 }

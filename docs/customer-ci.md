@@ -100,7 +100,7 @@ with the [reviewed change gate](#the-change-gate-in-a-generated-workflow) when
 it is asked for, inspects retained `ci.json`, `gate.json` and gate-policy
 identities in-app, and verifies a retained gate snapshot as
 `readmit suite verify-gate` does; it never commits to a repository, authorizes a
-third-party service or uploads anything. See [the desktop shell](desktop.md#customer-runners-recurring-schedules-and-ci-handoffs).
+third-party service or uploads anything. See [the desktop shell](desktop.md#runners-schedules-and-ci).
 
 ## Generic CI (POSIX shell)
 

@@ -63,6 +63,7 @@ import {
   type BindingChoice,
 } from "./SuiteSheets";
 import { addTests, datasetChecks, draftProblems, emptySuite, identifier, problemsUnder, referencesTo, type AddedTest } from "./suite-model";
+import { GateResultsSheet, SetUpCISheet } from "./CISheets";
 import { TaskTabs } from "./TaskTabs";
 import { checkExpected, checkTitle } from "./TestEditor";
 import "./suites.css";
@@ -210,17 +211,15 @@ export type SuitesProps = {
   busy: boolean;
   onRun: (handoff: SuiteRunHandoff) => void;
   onLibrary: () => void;
-  /** Opens schedules with this suite's version chosen. */
-  onSchedule: (entry: string) => void;
-  /** Opens CI setup with this suite's exact version and an environment chosen. */
-  onSetUpCI: (entry: string, environment: string) => void;
+  /** Opens this suite's schedules. */
+  onSchedule: (suite: string) => void;
   /** A retained editor draft to reopen, once. */
   restoreDraft?: EditorDraft | null;
   onRestored?: (reason?: string) => void;
 };
 
 /** Suites supplies its pages' titles, ways back, actions and bodies. */
-export function useSuites({ root, shown: pageShown, place, go, back, busy, onRun, onLibrary, onSchedule, onSetUpCI, restoreDraft = null, onRestored }: SuitesProps) {
+export function useSuites({ root, shown: pageShown, place, go, back, busy, onRun, onLibrary, onSchedule, restoreDraft = null, onRestored }: SuitesProps) {
   const scope = useRef(new RequestScope());
   const context = useCallback(() => scope.current.enter(root ?? ""), [root]);
   const [items, setItems] = useState<CatalogItem[] | null>(null);
@@ -337,7 +336,6 @@ export function useSuites({ root, shown: pageShown, place, go, back, busy, onRun
     refresh,
     onRun,
     onSchedule,
-    onSetUpCI,
     onEdit: (opened, sheet) => {
       if (!opened.draft?.suite || !opened.ref) return;
       setStart({ ref: opened.ref, name: opened.draft.name ?? item?.name ?? "", draft: opened.draft.suite, versions: opened.suite?.tests ?? [], ...(sheet ? { sheet } : {}) });
@@ -1102,7 +1100,6 @@ function useSuiteDetail({
   refresh,
   onRun,
   onSchedule,
-  onSetUpCI,
   onEdit,
   onImport,
 }: {
@@ -1114,8 +1111,7 @@ function useSuiteDetail({
   go: (place: SuitesPlace) => void;
   refresh: () => Promise<void>;
   onRun: (handoff: SuiteRunHandoff) => void;
-  onSchedule: (entry: string) => void;
-  onSetUpCI: (entry: string, environment: string) => void;
+  onSchedule: (suite: string) => void;
   onEdit: (opened: ItemDraftResult, sheet?: EditSheet) => void;
   onImport: () => void;
 }) {
@@ -1123,7 +1119,7 @@ function useSuiteDetail({
   const [history, setHistory] = useState<SuiteHistoryResult | null>(null);
   const [assessment, setAssessment] = useState<SuiteAssessment | null>(null);
   const [assessed, setAssessed] = useState<{ run: string; previous: string[] } | null>(null);
-  const [sheet, setSheet] = useState<null | "run" | "export-run" | "ci" | "approve-environment" | "duplicate" | "details" | "runs">(null);
+  const [sheet, setSheet] = useState<null | "run" | "export-run" | "ci" | "gate" | "approve-environment" | "duplicate" | "details" | "runs">(null);
   const [notice, setNotice] = useState<{ text: string; problem?: boolean } | null>(null);
   const ref = item?.ref ?? null;
 
@@ -1190,7 +1186,7 @@ function useSuiteDetail({
         results={history?.results ?? []}
         onAdd={() => edit({ kind: "add-tests" })}
         onOpen={(id) => edit({ kind: "test", id })}
-        {...(runnable && entry ? { onSchedule: () => onSchedule(entry) } : {})}
+        {...(runnable ? { onSchedule: () => onSchedule(ref.id) } : {})}
       />
     ) : view === "data" ? (
       <DataSection draft={draft} versions={versions} lists={lists} problems={[]} onAdd={() => edit({ kind: "dataset", id: null })} />
@@ -1222,7 +1218,8 @@ function useSuiteDetail({
   const menu: MenuItem[] = [
     { label: "Duplicate", onSelect: () => setSheet("duplicate"), disabled: busy || !draft },
     { label: "Approve for environment", onSelect: () => setSheet("approve-environment"), disabled: busy || original || !runnable },
-    { label: "Set up CI", onSelect: () => (environments.length === 1 ? onSetUpCI(entry, environments[0]!.id) : setSheet("ci")), disabled: busy || !runnable || !entry },
+    { label: "Set up CI", onSelect: () => setSheet("ci"), disabled: busy || !runnable || environments.length === 0 },
+    { label: "Gate results", onSelect: () => setSheet("gate"), disabled: busy },
     { label: "Export run configuration", onSelect: () => setSheet("export-run"), disabled: busy || !runnable },
     { label: "Import suite", onSelect: onImport, disabled: busy },
     {
@@ -1264,17 +1261,20 @@ function useSuiteDetail({
           handoff(environment);
         }}
       />
-      <RunSuiteSheet
-        open={sheet === "ci"}
-        title="Set up CI"
-        submitLabel="Continue"
-        environments={environments}
-        onClose={() => setSheet(null)}
-        onRun={(environment) => {
-          setSheet(null);
-          onSetUpCI(entry, environment);
-        }}
-      />
+      {sheet === "ci" ? (
+        <SetUpCISheet
+          suite={item.name}
+          version={original || !revision ? "Original" : `Version ${revision}`}
+          environments={environments}
+          context={context}
+          onClose={() => setSheet(null)}
+          onDone={(output) => {
+            setSheet(null);
+            setNotice({ text: `Wrote ${fileName(output)}` });
+          }}
+        />
+      ) : null}
+      {sheet === "gate" ? <GateResultsSheet onClose={() => setSheet(null)} /> : null}
       <RunSuiteSheet
         open={sheet === "export-run"}
         title="Export run configuration"

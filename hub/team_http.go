@@ -60,6 +60,10 @@ func (s *Store) teamRequest(w http.ResponseWriter, r *http.Request, access *Acce
 	// The version is parsed once here; handlers take it as a fact they never
 	// re-derive from the path again.
 	v2, project := parts[0] == "v2", parts[2]
+	if len(parts) == 4 && parts[3] == "schedules" && !v2 {
+		s.scheduleRequest(w, r, access, project)
+		return
+	}
 	if len(parts) == 4 && parts[3] == "lifecycle" {
 		s.lifecycleRequest(w, r, access, project)
 		return
