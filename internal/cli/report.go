@@ -98,10 +98,10 @@ func retainedVerifyCommand() *cobra.Command {
 }
 
 func portableExportCommand() *cobra.Command {
-	var output string
+	var output, title string
 	cmd := &cobra.Command{Use: "export PACKET --output NEW_REVIEW", Short: "Export retained evidence and inert offline reports into a sealed private review", Annotations: declareInterruptible(capabilityFree), Args: reportOneArgument, RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := cmd.Context()
-		review, err := report.ExportReview(ctx, args[0], output)
+		review, err := report.ExportDocumentReview(ctx, args[0], output, report.Authored{Title: title})
 		if err != nil {
 			return err
 		}
@@ -112,6 +112,7 @@ func portableExportCommand() *cobra.Command {
 		return nil
 	}}
 	cmd.Flags().StringVar(&output, "output", "", "New private review directory; never overwrite")
+	cmd.Flags().StringVar(&title, "title", "", "Report title; defaults to the current run's test name followed by report")
 	return cmd
 }
 func portableReviewCommand() *cobra.Command {
@@ -136,6 +137,6 @@ func portableReviewCommand() *cobra.Command {
 		}
 		return nil
 	}}
-	cmd.Flags().StringVar(&format, "format", "", "Explicit sensitive content to stdout: html, pdf, markdown, json or junit")
+	cmd.Flags().StringVar(&format, "format", "", "Explicit sensitive content to stdout: html, pdf, pdf-a4 (structured reviews), markdown, json or junit")
 	return cmd
 }

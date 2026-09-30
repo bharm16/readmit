@@ -29,7 +29,48 @@ const (
 
 // RetainedInput selects historical artifacts; no path is executed. BaselineCase
 // defaults to Case. Spec must be the exact specification retained by Current.
-type RetainedInput struct{ Case, Spec, Current, Baseline, BaselineCase string }
+type RetainedInput struct {
+	Case, Spec, Current, Baseline, BaselineCase string
+	// spec is the exact specification bytes a run retained itself, read
+	// in place of Spec when a packet is assembled from runs.
+	spec []byte
+}
+
+// RunsInput selects the runs a report is made from: the current run and the
+// case it sent, and optionally a distinct comparison run and its own case.
+// The exact specification the current run executed is read from the run
+// itself, never from the current editable test.
+type RunsInput struct{ Case, Current, Comparison, ComparisonCase string }
+
+// AssembleRuns assembles the retained packet of a report from runs, as
+// Assemble does with the specification the current run retained.
+func AssembleRuns(ctx context.Context, in RunsInput, output string) (*RetainedPacket, error) {
+	spec, err := RunSpecification(in.Current)
+	if err != nil {
+		return nil, err
+	}
+	return Assemble(ctx, RetainedInput{Case: in.Case, Current: in.Current, Baseline: in.Comparison, BaselineCase: in.ComparisonCase, spec: spec}, output)
+}
+
+// RunSpecification is the exact specification bytes a finished run retained.
+func RunSpecification(run string) ([]byte, error) {
+	opened, err := runresult.Open(run)
+	if err != nil {
+		return nil, errors.New("the run is not a retained execution this release verifies")
+	}
+	if opened.Artifact == nil {
+		return nil, errors.New("the run has no finalized result; a report is made from a run that finished")
+	}
+	raw, err := retainedSpecFile.Read(filepath.Join(opened.ResultPath, "spec.json"))
+	if err != nil {
+		return nil, errors.New("the run retained no readable specification")
+	}
+	if _, err := testrunner.DecodeSpec(raw); err != nil {
+		return nil, errors.New("unsupported retained specification")
+	}
+	return raw, nil
+}
+
 type RetainedRun struct {
 	RunState          string `json:"run_state"`
 	JournalIncomplete bool   `json:"journal_incomplete"`
@@ -144,9 +185,12 @@ func admitRetained(ctx context.Context, in RetainedInput) (map[string][]byte, er
 			files[name] = data
 		}
 	}
-	raw, err := retainedSpec(in.Spec)
-	if err != nil {
-		return nil, err
+	raw := in.spec
+	if raw == nil {
+		raw, err = retainedSpec(in.Spec)
+		if err != nil {
+			return nil, err
+		}
 	}
 	files["spec.json"] = raw
 	total += len(raw)
@@ -172,7 +216,7 @@ func admitRetained(ctx context.Context, in RetainedInput) (map[string][]byte, er
 // case defaults to the current case. It is also the one admission check both
 // make of a request, in the one sentence.
 func retainedSections(in RetainedInput) (map[string]string, error) {
-	if in.Case == "" || in.Spec == "" || in.Current == "" || (in.Baseline == "" && in.BaselineCase != "") {
+	if in.Case == "" || in.Spec == "" && in.spec == nil || in.Current == "" || (in.Baseline == "" && in.BaselineCase != "") {
 		return nil, errors.New("select case, exact retained spec and current result; baseline case requires baseline result")
 	}
 	sections := map[string]string{"case": in.Case, "current": in.Current}

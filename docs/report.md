@@ -183,13 +183,13 @@ invalid contract, unsupported mode, corrupt input or I/O failure. Default consol
 output includes identities, counts and fixed labels; it does not echo source
 values, selected paths or endpoints.
 
-In the desktop shell the same three operations are the synthetic section of
-the investigation-packet panels: it generates into a new folder named in the
+In the desktop shell the same three operations are Tools › Sample data's demo
+report: it generates into a new folder named in the
 host's save dialog, verifies a packet chosen in the folder dialog offline and
 read-only, and prepares runnable copies into a new folder outside it, refusing
 what these commands refuse in their words. Every view labels the packet
 synthetic and never presents it as the person's own evidence. See
-[the desktop shell](desktop.md#investigation-packets-and-portable-reports).
+[the desktop shell](desktop.md#reports).
 
 ## Packets from actual retained runs
 
@@ -232,11 +232,8 @@ manifest is canonical strict JSON with required fields; its completion hash is
 written last. On cancellation/failure any partial output remains incomplete;
 retry with a new destination. No overwrite or automatic send recovery exists.
 
-In the desktop shell the same operations are the investigation-packet panels:
-the window previews the exact inputs, assembles into a new protected
-destination, exports the portable review through the host's native destination
-controls, and opens packets and reviews read-only. See
-[the desktop shell](desktop.md#investigation-packets-and-portable-reports).
+In the desktop shell a report is made from runs with this assembly and opened
+through this verifier; see [reports from actual runs](#reports-from-actual-runs).
 
 This is **customer-local original evidence**, including sensitive source values,
 historical paths, assertion values and endpoint configuration. It is not a
@@ -259,53 +256,84 @@ readers remain unchanged. `report assemble` supplies the retained evidence input
 ## Portable reports and read-only review
 
 ~~~sh
-readmit report export RETAINED_PACKET --output NEW_REVIEW
+readmit report export RETAINED_PACKET --output NEW_REVIEW [--title TITLE]
 readmit report review NEW_REVIEW
-readmit report review NEW_REVIEW --format markdown
+readmit report review NEW_REVIEW --format pdf
 ~~~
 
-Export writes a new private `readmit-portable-review/v1` directory containing
-`packet/` (the complete original retained packet, byte for byte), `report.html`,
-`report.pdf`, `report.md`, `report.json`, and `junit.xml`, plus `manifest.json`
-and the last-written `identity.sha256` seal. No original artifact is changed,
-no target is contacted, and no fixture execution substitutes for actual evidence.
-Copy the directory and matching binary to review offline without the original
-workspace. Synthetic `report verify` and actual `report verify-retained` remain
-separate unchanged contracts.
+Export writes a new private `readmit-portable-review/v3` directory containing
+`packet/` (the complete original retained packet, byte for byte),
+`authored.json`, `report.json`, `report.html`, `report.pdf`, `report.md` and
+`junit.xml`, plus `manifest.json` and the last-written `identity.sha256` seal.
+No original artifact is changed, no target is contacted, and no fixture
+execution substitutes for actual evidence. Copy the directory and matching
+binary to review offline without the original workspace.
 
-All five renderings carry the same canonical report text: packet identity,
-sensitivity, current/baseline limitations and lifecycle, rerun instructions,
-retained result assertions and expected/observed values, historical specification
-and setup, replay events/timings, and relative evidence references. References
-are inert text; inspect raw bytes under `packet/` separately. Profile/version
-claims remain those recorded by the evidence; absence establishes no support.
-`report.json` is a canonical strict `readmit-portable-report/v1` document with
-required `schema`, `packet_identity`, `export_policy`, `contains_source_values`
-and `lines`. Opening a review regenerates every document from verified evidence
-and requires exact canonical bytes, refusing missing/null/unknown/duplicate
-members, invented verdicts and altered renderings even if hashes are recomputed.
-JUnit has one test case per retained execution, includes that same report text
-in `system-out`, and distinguishes assertion failures from execution errors.
-Unresolved durable lifecycle or uncertain delivery is an error, never a pass.
+`authored.json` is a strict `readmit-report-authored/v1` document: the report's
+`title` (one line of at most 400 bytes; `--title`, or the current run's test
+name followed by "report") and its `notes` (at most 64 KiB). It is what a
+person wrote and never carries an outcome. `report.json` is the structured
+`readmit-portable-report/v3` document every rendering is made from:
+
+| Member | Meaning |
+| --- | --- |
+| `title`, `notes` | What was written; `notes` is null when none was |
+| `packet_identity`, `export_policy`, `contains_source_values` | The sealed packet and its sensitivity |
+| `result` | The current run's `outcome` — `passed`, `failed`, `error` or `incomplete` — beside its `status`, `error_class`, `run_state`, `journal_incomplete` and `delivery_uncertain` |
+| `runs` | The current run and, when included, the comparison run: test name, result, start and completion, boundary, and the result, specification, case and target identities |
+| `checks` | Each check's operator, message and selector, `expected`, `observed` (null when nothing was observed) with `unavailable` saying why, `result` and the source messages it rests on; failed and not-evaluated checks first, then the declared order |
+| `comparison` | Null without a comparison run; otherwise whether case and target configuration are the same, whether the specification changed, and each check's definition (`unchanged`, `changed`, `added`, `removed`) with its before and after result and observed value |
+| `messages` | Each message the current run sent, its type from the case's MSH-9, delivery, acknowledgement code and outcome |
+| `limitations` | What the evidence does not establish |
+| `evidence` | Typed references — case, test version, result, records before and after, sent message, response — each by its path inside the packet and SHA-256 |
+
+The outcome is `passed` only for a run whose status is pass and whose lifecycle
+is usable; an uncertain delivery, an incomplete journal or an undecided state
+is `incomplete` whatever the checks decided, and an execution error is `error`.
+Nothing is derived that the evidence does not record: no conclusion, no cause,
+and an unobserved value is never zero.
+
+The renderings are documents, not text dumps. HTML is one self-contained page
+of semantic headings and tables in a 760-pixel reading column, system fonts and
+light system colours, under a content security policy that loads nothing; it
+has no script, event handler, form, image or link. The PDF is Letter portrait
+by default (`--format pdf-a4` renders A4 from the same verified document) with
+18 mm margins, an 11 pt body, 14 pt sections and a 20 pt title in the standard
+Helvetica faces, table headers repeated on every page, a page number on every
+page, no row split across pages unless it is taller than one, and no heading
+left without what follows it; it carries no action, annotation, link,
+attachment, form, script or external resource. Markdown uses headings,
+paragraphs and pipe tables with every value escaped, and a fenced code block
+only for a long raw value. A value longer than a table cell reads is moved to a
+labelled appendix, and record lists are listed there in full; nothing is
+clipped or dropped. JUnit has a `Run` test case, an error when the run ended in
+an execution error or is incomplete, and one test case per check: a failed
+check is a failure and a check the run never evaluated is an error; its
+standard output is the Markdown document.
+
+Every value is written through one escape in every format: printable text as
+it is, a backslash doubled, and every control character, invalid byte and
+Unicode format or separator character as a visible `\u{…}` or `\xNN` escape.
+Present text, `""`, Empty, Null and Not present stay distinct words. The PDF's
+standard fonts draw printable ASCII, so other characters are written as their
+`\u{…}` escapes there; JSON keeps the exact values.
+
+`readmit-portable-review/v3`'s manifest binds the renderer
+(`"renderer": "readmit-portable-report/v3"`). `report review` and `OpenReview`
+verify a review with the renderer its manifest binds: they verify the nested
+packet, read `authored.json` strictly, rebuild the document from those two,
+render every format again and require exact canonical bytes, refusing a
+changed verdict, value or limitation even when every hash was recomputed. A
+`readmit-portable-review/v1` review an earlier release wrote still verifies
+through the v1 line renderer, byte for byte, and is never regenerated or
+resealed as v3. New exports are always v3.
 
 The `review` command is the read-only mode: it verifies without writing,
 executing, resolving historical paths, or transmitting anything. Its default
 output contains only integrity identity and privacy labels. An explicit
-`--format html|pdf|markdown|json|junit` writes sensitive report bytes to stdout;
-redirecting those bytes is an operator-controlled write outside the mode.
-The returned Go review object exposes only verification metadata and a renderer
-for these five formats; no operation to execute or modify evidence exists.
-
-Evidence strings use quoted printable ASCII with reversible Unicode/control
-escapes in every format. Unicode is represented, never dropped or replaced.
-Markdown uses indented code throughout (no live links or raw HTML). HTML uses
-escaped text in a self-contained `pre`, no scripts, forms, images or links, and
-a deny-all content security policy. PDF uses a fixed paginated Courier text
-layout, escapes literal delimiters, and contains no actions, annotations,
-attachments, JavaScript, forms or URLs. Long PDF text wraps at 96 columns;
-this introduces presentation line breaks only. XML escapes text and attributes;
-control characters appear as printable escapes, never forbidden XML bytes.
-No viewer, browser, external converter or runtime dependency is launched.
+`--format html|pdf|pdf-a4|markdown|json|junit` writes sensitive report bytes to
+stdout; redirecting those bytes is an operator-controlled write outside the
+mode.
 
 **Every rendering and the sealed directory inherit source sensitivity.** They
 retain patient values, historical paths, endpoint configuration and assertions.
@@ -318,12 +346,40 @@ program from editing a copied file. Verification detects that editing.
 
 The existing 256-file, 16 MiB/file, 64 MiB/packet, 200-byte-path and five-slash
 bounds apply to the whole review including its nested packet and renderings.
-Canonical report text is limited to 1 MiB before rendering. Inputs exceeding
-these bounds are refused without truncation; select a smaller packet. Directory
-permissions are 0700 and files 0600 on Unix; Windows inherits directory ACLs.
-Cancellation, invalid input and I/O failure may leave an incomplete destination,
-which cannot pass verification. Retry with a new destination; existing outputs
-and paths inside evidence are refused. No automatic resend or recovery occurs.
+Inputs exceeding these bounds are refused without truncation; select a smaller
+packet. Directory permissions are 0700 and files 0600 on Unix; Windows inherits
+directory ACLs. Cancellation, invalid input and I/O failure may leave an
+incomplete destination, which cannot pass verification. Retry with a new
+destination; existing outputs and paths inside evidence are refused. No
+automatic resend or recovery occurs.
+
+### Version 1 reviews
+
+A `readmit-portable-review/v1` review holds the same `packet/` beside five
+renderings of one line-based `readmit-portable-report/v1` document (required
+`schema`, `packet_identity`, `export_policy`, `contains_source_values` and
+`lines`): quoted printable ASCII lines in an indented Markdown code block, an
+HTML `pre`, a fixed Courier PDF wrapped at 96 columns, and JUnit with one test
+case per retained execution. That contract is unchanged and is only read.
+
+## Reports from actual runs
+
+In the desktop shell a report is a named object of the project made from
+actual runs. Creating one resolves each run's retained result, the exact
+specification it executed (never the current editable test) and the case it
+sent, assembles their `readmit-retained-packet/v1` packet through the assembly
+above into a new project entry, and publishes it with the report's
+`readmit-report-authored/v1` title and notes and its
+`readmit-report-sources/v1` list of the runs it names (the current run and an
+optional distinct comparison run, by catalog identity) as one revision. Editing
+the title or notes publishes a new revision of those documents only; the runs
+and the packet never change. Opening a report verifies its packet and reads the
+structured document above from it. Exporting one renders a format, or writes
+the v3 portable review of its original evidence, under a reviewed action bound
+to the exact output and version. A person's review of a version is recorded
+separately, never by producing a file, as a `readmit-report-approval/v1`
+document (report, version, who and when). A new revision is a draft again, and
+makes a prepared export or review stale. See [the desktop shell](desktop.md#reports).
 
 Retained packets, comparison, portable reviews and value-free extracts of
 actual connected lifecycle runs use the separate `readmit-retained-packet/v2`

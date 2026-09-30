@@ -1,32 +1,22 @@
 package desktop_test
 
-// The investigation-packet journeys: a packet is previewed from the exact
-// actual evidence it will copy, assembled by the existing retained-packet
-// operation into one new protected destination and read back by identity,
-// sealed into a portable review of five inert offline renderings through the
-// existing export operation, and reopened read-only through the same
-// verifiers the command line uses. A missing baseline stays absent, a
-// historical specification is never substituted, and opening a packet or a
-// review acquires no authority at all.
+// Reports (#559): a report is created from actual retained runs, verified and
+// read as one structured document, edited as its title and notes only, and
+// exported as the exact bytes a person reviewed.
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json/v2"
+	"bytes"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/bharm16/readmit/internal/bundle"
+	"github.com/bharm16/readmit/internal/catalog"
 	"github.com/bharm16/readmit/internal/cli"
 	"github.com/bharm16/readmit/internal/desktop"
 	"github.com/bharm16/readmit/internal/durablerun"
-	"github.com/bharm16/readmit/internal/engine"
-	"github.com/bharm16/readmit/internal/observation"
 	"github.com/bharm16/readmit/internal/report"
+	"github.com/bharm16/readmit/internal/testauthor"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
 
@@ -49,494 +39,10 @@ func packetWorkspace(t *testing.T, app *desktop.App) (root, spec, baseline, curr
 	return root, "reschedule.json", "baseline-run", "current-run"
 }
 
-func packetRequest(root, spec, baseline, current string) desktop.PacketRequest {
-	request := desktop.PacketRequest{Workspace: root, Case: "case", Spec: spec, Current: current}
-	if baseline != "" {
-		request.Baseline = baseline
-		request.BaselineCase = "case"
-	}
-	return request
-}
-
-func shaOf(raw []byte) string {
-	sum := sha256.Sum256(raw)
-	return hex.EncodeToString(sum[:])
-}
-
-// reseal recomputes a packet's manifest index, canonical manifest bytes and
-// completion record from the files on disk, the way a coherent re-seal would.
-// Verification must still refuse what the re-seal cannot make true.
-func reseal(t *testing.T, packet string, mutate func(*report.RetainedManifest)) {
-	t.Helper()
-	files := map[string][]byte{}
-	err := filepath.WalkDir(packet, func(path string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() {
-			return nil
-		}
-		name, err := filepath.Rel(packet, path)
-		if err != nil {
-			return err
-		}
-		slash := filepath.ToSlash(name)
-		if slash == "manifest.json" || slash == "identity.sha256" {
-			return nil
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		files[slash] = data
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	raw, err := os.ReadFile(filepath.Join(packet, "manifest.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var manifest report.RetainedManifest
-	if json.Unmarshal(raw, &manifest) != nil {
-		t.Fatal("the stored manifest could not be read back")
-	}
-	if mutate != nil {
-		mutate(&manifest)
-	}
-	names := make([]string, 0, len(files))
-	for name := range files {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	manifest.Files = make([]bundle.Payload, 0, len(names))
-	for _, name := range names {
-		manifest.Files = append(manifest.Files, bundle.Payload{Path: name, Size: len(files[name]), SHA256: shaOf(files[name])})
-	}
-	encoded, err := json.Marshal(manifest, json.Deterministic(true))
-	if err != nil {
-		t.Fatal(err)
-	}
-	encoded = append(encoded, '\n')
-	if err := os.WriteFile(filepath.Join(packet, "manifest.json"), encoded, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(packet, "identity.sha256"), []byte(shaOf(encoded)+"\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestPacketPreviewReportsInputsBoundariesAndProblems(t *testing.T) {
-	app := workspaceApp(t)
-	root, spec, baseline, current := packetWorkspace(t, app)
-
-	preview := app.PreviewPacket(packetRequest(root, spec, baseline, current))
-	if preview.State != desktop.Completed || preview.Preview == nil {
-		t.Fatalf("preview: %+v", preview)
-	}
-	p := preview.Preview
-	if !p.BaselineSupplied || p.Case == nil || p.Spec == nil || p.Current == nil || p.Baseline == nil {
-		t.Fatalf("the preview lost an input: %+v", p)
-	}
-	if !p.Case.Found || !p.Case.CaseMatch || p.Case.Identity == "" {
-		t.Fatalf("the case was not verified: %+v", p.Case)
-	}
-	if !p.Spec.Found || !p.Spec.SpecMatch {
-		t.Fatalf("the historical specification did not match what the run retained: %+v", p.Spec)
-	}
-	if !p.Current.Found || p.Current.Status != string(testrunner.Pass) || p.Current.Boundary != testrunner.ACKBoundary {
-		t.Fatalf("the current result was not reported with its boundary: %+v", p.Current)
-	}
-	if !p.Current.Durable || p.Current.RunState != string(durablerun.Passed) || p.Current.DeliveryUncertain {
-		t.Fatalf("the current lifecycle was not reported: %+v", p.Current)
-	}
-	if p.Baseline.ResultIdentity == p.Current.ResultIdentity {
-		t.Fatalf("the baseline was not a distinct retained execution: %+v", p)
-	}
-	if !p.Destination.Generated || !p.Destination.Fresh || !strings.HasPrefix(p.Destination.Name, "packet-") {
-		t.Fatalf("the preview did not propose a fresh packet destination: %+v", p.Destination)
-	}
-	if !p.ContainsSourceValues || p.ExportPolicy != "customer-local-only" {
-		t.Fatalf("the sensitivity was not stated: %+v", p)
-	}
-	if len(p.Problems) != 0 || len(p.Limitations) == 0 {
-		t.Fatalf("problems and limitations: %+v", p)
-	}
-	if _, err := os.Lstat(filepath.Join(root, p.Destination.Name)); !os.IsNotExist(err) {
-		t.Fatal("the preview wrote a destination")
-	}
-
-	single := app.PreviewPacket(packetRequest(root, spec, "", current))
-	if single.State != desktop.Completed || single.Preview == nil || single.Preview.BaselineSupplied {
-		t.Fatalf("single-run preview: %+v", single)
-	}
-	stated := false
-	for _, limitation := range single.Preview.Limitations {
-		stated = stated || strings.Contains(limitation, "No observed baseline")
-	}
-	if !stated {
-		t.Fatalf("an absent baseline was not stated as absent: %+v", single.Preview.Limitations)
-	}
-}
-
-func TestPacketPreviewShowsMissingAndMismatchedInputs(t *testing.T) {
-	app := workspaceApp(t)
-	root, spec, baseline, current := packetWorkspace(t, app)
-
-	// A missing baseline is shown as missing, never invented.
-	absent := app.PreviewPacket(packetRequest(root, spec, "absent-run", current))
-	if absent.State != desktop.Completed || absent.Preview == nil || absent.Preview.Baseline == nil {
-		t.Fatalf("absent baseline preview: %+v", absent)
-	}
-	if absent.Preview.Baseline.Found || len(absent.Preview.Baseline.Problems) == 0 {
-		t.Fatalf("a missing baseline was not shown: %+v", absent.Preview.Baseline)
-	}
-	if len(absent.Preview.Problems) == 0 {
-		t.Fatalf("the missing baseline carried no problem: %+v", absent.Preview)
-	}
-
-	// A specification rewritten after the runs is not silently substituted.
-	writeAckSpec(t, root, spec, "AE")
-	changedPreview := app.PreviewPacket(packetRequest(root, spec, baseline, current))
-	if changedPreview.State != desktop.Completed || changedPreview.Preview == nil {
-		t.Fatalf("changed spec preview: %+v", changedPreview)
-	}
-	if changedPreview.Preview.Spec.SpecMatch || len(changedPreview.Preview.Spec.Problems) == 0 {
-		t.Fatalf("a mismatched historical specification was not named: %+v", changedPreview.Preview.Spec)
-	}
-	if !strings.Contains(strings.Join(changedPreview.Preview.Spec.Problems, " "), "never substitutes") {
-		t.Fatalf("the refusal did not say the spec is never substituted: %+v", changedPreview.Preview.Spec.Problems)
-	}
-	if len(changedPreview.Preview.Problems) == 0 {
-		t.Fatalf("the mismatch did not surface as a problem: %+v", changedPreview.Preview)
-	}
-
-	// An unrelated case is named, not accepted.
-	writeCase(t, root, "other", framed("MSH|^~\\&|OTHER|SITE|||20260101000000||ADT^A01|OTHER|P|2.5.1\r"))
-	other := packetRequest(root, spec, baseline, current)
-	other.Case = "other"
-	otherPreview := app.PreviewPacket(other)
-	if otherPreview.State != desktop.Completed || otherPreview.Preview == nil {
-		t.Fatalf("other case preview: %+v", otherPreview)
-	}
-	if otherPreview.Preview.Case.CaseMatch || len(otherPreview.Preview.Case.Problems) == 0 {
-		t.Fatalf("an unrelated case was not named: %+v", otherPreview.Preview.Case)
-	}
-
-	// The current run relabelled as the baseline is refused before assembly.
-	samePreview := app.PreviewPacket(packetRequest(root, spec, current, current))
-	if samePreview.State != desktop.Completed || samePreview.Preview == nil {
-		t.Fatalf("same-run preview: %+v", samePreview)
-	}
-	found := false
-	for _, problem := range samePreview.Preview.Problems {
-		found = found || strings.Contains(problem, "distinct retained execution")
-	}
-	if !found {
-		t.Fatalf("the current result stood in for a baseline: %+v", samePreview.Preview.Problems)
-	}
-
-	// Entries that are not executions are named as such, and a workspace
-	// escape is refused outright.
-	notARun := app.PreviewPacket(packetRequest(root, spec, "", "case"))
-	if notARun.State != desktop.Completed || notARun.Preview == nil || notARun.Preview.Current.Found {
-		t.Fatalf("a case was previewed as an execution: %+v", notARun)
-	}
-	escape := app.PreviewPacket(packetRequest(root, spec, "", "../outside"))
-	if escape.State != desktop.Failed {
-		t.Fatalf("a workspace escape was previewed: %+v", escape)
-	}
-}
-
-func TestPacketAssembleVerifiesReadsBackAndRegisters(t *testing.T) {
-	app := workspaceApp(t)
-	root, spec, baseline, current := packetWorkspace(t, app)
-
-	assembled := app.AssemblePacket(packetRequest(root, spec, baseline, current))
-	if assembled.State != desktop.Completed || assembled.Packet == nil {
-		t.Fatalf("assemble: %+v", assembled)
-	}
-	packet := assembled.Packet
-	if packet.Identity == "" || packet.Entry != "packet-001" || packet.Schema != report.RetainedSchema {
-		t.Fatalf("the assembled packet lost its identity: %+v", packet)
-	}
-	if packet.Current.Status != string(testrunner.Pass) || packet.Baseline == nil || packet.Baseline.Status != string(testrunner.Pass) {
-		t.Fatalf("the outcomes were not read back: %+v", packet)
-	}
-	if packet.Current.CaseProvenance != "imported" || packet.Current.Boundary != testrunner.ACKBoundary {
-		t.Fatalf("the provenance and boundary were not carried: %+v", packet)
-	}
-	if len(packet.Files) == 0 || !packet.ContainsSourceValues {
-		t.Fatalf("the inventory or sensitivity was not carried: %+v", packet)
-	}
-
-	// Reading the packet back by its registered name verifies the same seal.
-	reopened := app.OpenPacket(root, packet.Entry)
-	if reopened.State != desktop.Completed || reopened.Packet == nil || reopened.Packet.Identity != packet.Identity {
-		t.Fatalf("reopen: %+v", reopened)
-	}
-	if len(reopened.Packet.Files) != len(packet.Files) {
-		t.Fatalf("the inventory changed between assembly and reopen: %+v", reopened.Packet)
-	}
-
-	// The packet is registered in the workspace listing as its own kind.
-	listing := app.OpenWorkspace(root)
-	if listing.State != desktop.Completed || listing.Workspace == nil {
-		t.Fatalf("listing: %+v", listing)
-	}
-	kind := ""
-	for _, artifact := range listing.Workspace.Artifacts {
-		if artifact.Name == packet.Entry {
-			kind = string(artifact.Kind)
-		}
-	}
-	if kind != string(desktop.PacketArtifact) {
-		t.Fatalf("the assembled packet did not register as a packet: %q", kind)
-	}
-
-	// The command line's own verifier accepts the same packet.
-	var stdout, stderr strings.Builder
-	if err := cli.Execute("dev", []string{"report", "verify-retained", filepath.Join(root, packet.Entry)}, &stdout, &stderr); err != nil {
-		t.Fatalf("verify-retained: %v %s", err, stderr.String())
-	}
-	if !strings.Contains(stdout.String(), packet.Identity) {
-		t.Fatalf("the command line verified a different identity: %q", stdout.String())
-	}
-
-	// Without a baseline the packet says so, honestly and on both sides.
-	single := app.AssemblePacket(packetRequest(root, spec, "", current))
-	if single.State != desktop.Completed || single.Packet == nil || single.Packet.Baseline != nil {
-		t.Fatalf("single-run assemble: %+v", single)
-	}
-	stated := false
-	for _, limitation := range single.Packet.Limitations {
-		stated = stated || strings.Contains(limitation, "No observed baseline")
-	}
-	if !stated {
-		t.Fatal("the single-run packet did not state its missing baseline")
-	}
-	if err := cli.Execute("dev", []string{"report", "verify-retained", filepath.Join(root, single.Packet.Entry)}, &stdout, &stderr); err != nil {
-		t.Fatalf("verify single-run packet: %v %s", err, stderr.String())
-	}
-}
-
-func TestPacketAssembleRefusalsLeavePartialOutputsExplicitlyIncomplete(t *testing.T) {
-	app := workspaceApp(t)
-	root, spec, baseline, current := packetWorkspace(t, app)
-
-	// A destination that already exists is refused before anything is written,
-	// and what it holds is not touched.
-	if err := os.Mkdir(filepath.Join(root, "taken"), 0700); err != nil {
-		t.Fatal(err)
-	}
-	collision := packetRequest(root, spec, baseline, current)
-	collision.Output = "taken"
-	if refused := app.AssemblePacket(collision); refused.State != desktop.Failed || refused.Packet != nil {
-		t.Fatalf("an existing destination was assembled into: %+v", refused)
-	}
-	if entries := bytesUnder(t, filepath.Join(root, "taken")); len(entries) != 0 {
-		t.Fatalf("the collision wrote into the destination: %v", entries)
-	}
-
-	// A specification rewritten after the runs is refused by the operation
-	// itself; the partial destination it leaves never verifies as complete.
-	writeAckSpec(t, root, spec, "AE")
-	mismatch := packetRequest(root, spec, baseline, current)
-	mismatch.Output = "mismatched"
-	refused := app.AssemblePacket(mismatch)
-	if refused.State != desktop.Failed || refused.Packet != nil {
-		t.Fatalf("a mismatched historical specification assembled: %+v", refused)
-	}
-	if _, err := os.Lstat(filepath.Join(root, "mismatched")); err == nil {
-		t.Log("the refusal left a partial destination behind")
-	}
-	if verified := app.OpenPacket(root, "mismatched"); verified.State == desktop.Completed {
-		t.Fatalf("a partial destination verified: %+v", verified)
-	}
-
-	// The same selection assembles again once the spec matches what the run
-	// retained: recovery is a new destination, never an overwrite.
-	writeAckSpec(t, root, spec, "AA")
-	retry := packetRequest(root, spec, baseline, current)
-	retry.Output = "packet-two"
-	if second := app.AssemblePacket(retry); second.State != desktop.Completed || second.Packet == nil {
-		t.Fatalf("retry after refusal: %+v", second)
-	}
-}
-
-func TestPacketOpenRefusesCorruptionAndUnsupportedVersions(t *testing.T) {
-	app := workspaceApp(t)
-	root, spec, baseline, current := packetWorkspace(t, app)
-
-	assembled := app.AssemblePacket(packetRequest(root, spec, baseline, current))
-	if assembled.State != desktop.Completed || assembled.Packet == nil {
-		t.Fatalf("assemble: %+v", assembled)
-	}
-
-	// An incomplete packet — its completion record missing — is never read as
-	// complete evidence.
-	incomplete := filepath.Join(t.TempDir(), "incomplete")
-	if err := os.CopyFS(incomplete, os.DirFS(filepath.Join(root, assembled.Packet.Entry))); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Remove(filepath.Join(incomplete, "identity.sha256")); err != nil {
-		t.Fatal(err)
-	}
-	if opened := app.OpenPacket(filepath.Dir(incomplete), filepath.Base(incomplete)); opened.State == desktop.Completed {
-		t.Fatalf("an incomplete packet opened: %+v", opened)
-	}
-
-	// Changed content is refused even before the seal is consulted.
-	altered := filepath.Join(t.TempDir(), "altered")
-	if err := os.CopyFS(altered, os.DirFS(filepath.Join(root, assembled.Packet.Entry))); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(altered, "SUMMARY.md"), []byte("Manufactured passing baseline"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if opened := app.OpenPacket(filepath.Dir(altered), filepath.Base(altered)); opened.State == desktop.Completed {
-		t.Fatalf("an altered packet opened: %+v", opened)
-	}
-
-	// A packet whose retained engine pin names versions this release cannot
-	// read is refused even when its hashes are coherently recomputed.
-	repinned := filepath.Join(t.TempDir(), "repinned")
-	if err := os.CopyFS(repinned, os.DirFS(filepath.Join(root, assembled.Packet.Entry))); err != nil {
-		t.Fatal(err)
-	}
-	pin, err := engine.Encode(engine.Pin{Schema: engine.Schema, Engine: "0.9.0-alpha.7", Spec: "readmit-test/v2", Profile: observation.Profile})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(repinned, "current", "engine.json"), pin, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	reseal(t, repinned, nil)
-	if opened := app.OpenPacket(filepath.Dir(repinned), filepath.Base(repinned)); opened.State == desktop.Completed {
-		t.Fatalf("a packet pinned to unsupported versions opened: %+v", opened)
-	}
-
-	// An unknown packet contract is unsupported, never read as v1.
-	renamed := filepath.Join(t.TempDir(), "renamed")
-	if err := os.CopyFS(renamed, os.DirFS(filepath.Join(root, assembled.Packet.Entry))); err != nil {
-		t.Fatal(err)
-	}
-	reseal(t, renamed, func(m *report.RetainedManifest) { m.Schema = "readmit-retained-packet/v2" })
-	if opened := app.OpenPacket(filepath.Dir(renamed), filepath.Base(renamed)); opened.State == desktop.Completed {
-		t.Fatalf("an unsupported packet contract opened: %+v", opened)
-	}
-}
-
-func TestPacketExportSealsRenderingsAndReviewsReopenReadOnly(t *testing.T) {
-	app := newApp(t, &chooser{})
-	root, spec, baseline, current := packetWorkspace(t, app)
-	// The review is exported beside the packet, as an entry of the workspace.
-	destination := filepath.Join(root, "review")
-	app2 := newApp(t, &chooser{destination: destination})
-	assembled := app.AssemblePacket(packetRequest(root, spec, baseline, current))
-	if assembled.State != desktop.Completed || assembled.Packet == nil {
-		t.Fatalf("assemble: %+v", assembled)
-	}
-
-	// The new folder named natively is a destination only.
-	chosen := app2.ChoosePacketExportPath()
-	if chosen.State != desktop.Completed || chosen.Path != destination {
-		t.Fatalf("choose: %+v", chosen)
-	}
-	dismissed := newApp(t, &chooser{}).ChoosePacketExportPath()
-	if dismissed.State != desktop.Cancelled {
-		t.Fatalf("a dismissed destination dialog was not cancelled: %+v", dismissed)
-	}
-
-	exported := app.ExportPacketReview(desktop.PacketExportRequest{Workspace: root, Packet: assembled.Packet.Entry, Destination: destination})
-	if exported.State != desktop.Completed || exported.Identity == "" {
-		t.Fatalf("export: %+v", exported)
-	}
-	if exported.PacketIdentity != assembled.Packet.Identity || exported.ContainsSourceValues != true {
-		t.Fatalf("the review lost its packet binding or sensitivity: %+v", exported)
-	}
-	if len(exported.Formats) != 5 {
-		t.Fatalf("the five offline renderings were not all named: %+v", exported.Formats)
-	}
-	for _, rendering := range []string{"report.html", "report.pdf", "report.md", "report.json", "junit.xml"} {
-		if _, err := os.Lstat(filepath.Join(destination, rendering)); err != nil {
-			t.Fatalf("rendering %s: %v", rendering, err)
-		}
-	}
-	if _, err := os.Lstat(filepath.Join(destination, "packet", "manifest.json")); err != nil {
-		t.Fatalf("the nested packet: %v", err)
-	}
-
-	// The review sits wherever the operator chose; the packet itself is what
-	// registers in the workspace listing.
-	if kind := listingKind(t, app, root, assembled.Packet.Entry); kind != string(desktop.PacketArtifact) {
-		t.Fatalf("packet kind: %q", kind)
-	}
-
-	// Read-only open: verification metadata without the sensitive text.
-	hidden := app.OpenPacketReview(desktop.PacketReviewRequest{Workspace: root, Entry: filepath.Base(destination)})
-	if hidden.State != desktop.Completed || hidden.Review == nil {
-		t.Fatalf("review open: %+v", hidden)
-	}
-	if hidden.Review.Identity != exported.Identity || hidden.Review.PacketIdentity != assembled.Packet.Identity {
-		t.Fatalf("the review open lost the identities: %+v", hidden.Review)
-	}
-	if len(hidden.Review.Renderings) != 5 || hidden.Review.Current != string(testrunner.Pass) {
-		t.Fatalf("the renderings or run status were not reported: %+v", hidden.Review)
-	}
-	if hidden.Review.Revealed || len(hidden.Review.Lines) != 0 {
-		t.Fatalf("report text crossed the boundary without the deliberate reveal: %+v", hidden.Review)
-	}
-	revealed := app.OpenPacketReview(desktop.PacketReviewRequest{Workspace: root, Entry: filepath.Base(destination), Reveal: true})
-	if revealed.State != desktop.Completed || !revealed.Review.Revealed || len(revealed.Review.Lines) == 0 {
-		t.Fatalf("the deliberate reveal produced nothing: %+v", revealed)
-	}
-
-	// The command line verifies the same review read-only and renders the same
-	// five formats from it.
-	var stdout, stderr strings.Builder
-	if err := cli.Execute("dev", []string{"report", "review", destination}, &stdout, &stderr); err != nil {
-		t.Fatalf("review: %v %s", err, stderr.String())
-	}
-	if !strings.Contains(stdout.String(), exported.Identity) {
-		t.Fatalf("the command line verified a different review identity: %q", stdout.String())
-	}
-	stdout.Reset()
-	if err := cli.Execute("dev", []string{"report", "review", destination, "--format", "json"}, &stdout, &stderr); err != nil {
-		t.Fatalf("review json: %v %s", err, stderr.String())
-	}
-	if !strings.HasPrefix(stdout.String(), "{") {
-		t.Fatal("the rendered strict JSON report was not written")
-	}
-
-	// An existing destination is refused; a corrupted packet exports nothing
-	// that verifies, and the partial destination stays explicitly incomplete.
-	if second := app.ExportPacketReview(desktop.PacketExportRequest{Workspace: root, Packet: assembled.Packet.Entry, Destination: destination}); second.State != desktop.Failed {
-		t.Fatalf("an existing destination was exported into: %+v", second)
-	}
-	// A packet in the workspace whose bytes no longer verify is assembled as
-	// any other, then altered; exporting it produces nothing that verifies.
-	if corrupt := app.AssemblePacket(func() desktop.PacketRequest {
-		request := packetRequest(root, spec, baseline, current)
-		request.Output = "packet-corrupt"
-		return request
-	}()); corrupt.State != desktop.Completed || corrupt.Packet == nil {
-		t.Fatalf("assemble corruptible packet: %+v", corrupt)
-	}
-	if err := os.WriteFile(filepath.Join(root, "packet-corrupt", "SUMMARY.md"), []byte("Manufactured"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	corruptDestination := filepath.Join(root, "corrupt-review")
-	if exported := app.ExportPacketReview(desktop.PacketExportRequest{Workspace: root, Packet: "packet-corrupt", Destination: corruptDestination}); exported.State == desktop.Completed {
-		t.Fatalf("a corrupted packet exported: %+v", exported)
-	}
-	// Whatever the failed export left behind is not a review, by the command
-	// line's own read-only reader.
-	var reviewOut, reviewErr strings.Builder
-	if err := cli.Execute("dev", []string{"report", "review", corruptDestination}, &reviewOut, &reviewErr); err == nil {
-		t.Fatal("a partial portable review verified")
-	}
+// packetInput names a workspace's retained evidence as the retained-packet
+// assembly reads it.
+func packetInput(root, spec, baseline, current string) report.RetainedInput {
+	return report.RetainedInput{Case: filepath.Join(root, "case"), Spec: filepath.Join(root, spec), Current: filepath.Join(root, current), Baseline: filepath.Join(root, baseline)}
 }
 
 func listingKind(t *testing.T, app *desktop.App, root, name string) string {
@@ -553,78 +59,234 @@ func listingKind(t *testing.T, app *desktop.App, root, name string) string {
 	return ""
 }
 
-// Packet reads are capability-free, exactly as the command line's report
-// commands are: an installation with no operation policy at all can still
-// preview, assemble, verify and review evidence, while a send stays refused.
-func TestPacketOperationsAcquireNoSendOrMutationAuthority(t *testing.T) {
-	state := t.TempDir()
-	author := activatedApp(t, &chooser{}, state)
-	root, spec, baseline, current := packetWorkspace(t, author)
+// reportsProject is a project holding the retained native-acceptance case and
+// both of its runs — the baseline whose record check failed and the post-fix
+// run that passed — under a window whose dialogs the test answers.
+func reportsProject(t *testing.T) (*desktop.App, *chooser, desktop.RequestContext, map[string]desktop.CatalogItem) {
+	t.Helper()
+	dialogs := &chooser{folder: t.TempDir()}
+	app := newApp(t, dialogs)
+	created := app.CreateNamedProject(desktop.NewProjectRequest{Name: "Scheduling QA", Location: app.ChooseProjectLocation().Location})
+	if created.State != desktop.Completed {
+		t.Fatalf("create: %+v", created)
+	}
+	root := created.Context.Project
+	for _, name := range []string{"baseline", "post-fix", "regression"} {
+		copyEntry(t, filepath.Join(nativeAcceptance, name), filepath.Join(root, name))
+	}
+	return app, dialogs, created.Context, listed(t, app, root, desktop.RunItem)
+}
 
-	viewer := desktop.New(&chooser{}, desktop.ShellDocuments{Folder: t.TempDir()})
+// createReport saves a new report of run compared with comparison.
+func createReport(t *testing.T, app *desktop.App, context desktop.RequestContext, intent string, draft desktop.ReportDraft) desktop.SaveItemResult {
+	t.Helper()
+	return app.SaveItem(desktop.SaveItemRequest{Context: context, Kind: desktop.ReportItem, Draft: desktop.ItemDraft{Report: &draft}, IntentID: intent})
+}
 
-	if preview := viewer.PreviewPacket(packetRequest(root, spec, baseline, current)); preview.State != desktop.Completed {
-		t.Fatalf("a policy-less viewer could not preview: %+v", preview)
+// A report is created from a failed run and a distinct passed run with no
+// packet, specification file or output path: the window's report is the
+// retained packet `readmit report verify-retained` verifies, and it reads as
+// the failed check expected and observed beside acknowledged messages, with
+// the comparison run before it.
+func TestAReportIsCreatedFromRunsAsTheRetainedPacketReadmitVerifies(t *testing.T) {
+	app, _, context, runs := reportsProject(t)
+	root := context.Project
+	baseline, postFix := runs["@baseline"].Ref, runs["@post-fix"].Ref
+	saved := createReport(t, app, context, "report-1", desktop.ReportDraft{Run: baseline, Comparison: &postFix})
+	if saved.Outcome != desktop.SavedOutcome || saved.Saved == nil || saved.Saved.Revision != "1" {
+		t.Fatalf("create: %+v", saved)
 	}
-	assembled := viewer.AssemblePacket(packetRequest(root, spec, baseline, current))
-	if assembled.State != desktop.Completed || assembled.Packet == nil {
-		t.Fatalf("a policy-less viewer could not assemble a local copy: %+v", assembled)
+	listedReport := listed(t, app, root, desktop.ReportItem)["Native acceptance reschedule report"]
+	summary := listedReport.Summary.Report
+	if summary == nil || summary.Form != "report" || summary.Status != "draft" || summary.RelatedCase == nil ||
+		summary.RelatedCase.ID != listed(t, app, root, desktop.CaseItem)["@regression"].Ref.ID {
+		t.Fatalf("the listed report: %+v", listedReport)
 	}
-	if opened := viewer.OpenPacket(root, assembled.Packet.Entry); opened.State != desktop.Completed {
-		t.Fatalf("a policy-less viewer could not verify a packet: %+v", opened)
+	opened := app.OpenReport(desktop.ReportRequest{Context: context, Ref: *saved.Saved})
+	view := opened.Report
+	if opened.State != desktop.Completed || view == nil || view.Result.Outcome != report.OutcomeFailed || view.Title != "Native acceptance reschedule report" || view.Review != "draft" {
+		t.Fatalf("the report: %+v", opened)
+	}
+	check := view.Checks[0]
+	if check.Result != desktop.CheckFailed || check.Check.Operator != testauthor.LedgerCount || check.Observed == nil || *check.Observed.Count != 2 || *check.Check.Count != 1 {
+		t.Fatalf("the failed check: %+v", check)
+	}
+	if len(view.Messages) == 0 || view.Messages[0].Message == nil || view.Messages[0].Message.MessageCode != "SIU" || view.Messages[0].Delivery != desktop.DeliveryAcknowledged {
+		t.Fatalf("the messages: %+v", view.Messages)
+	}
+	if view.Comparison == nil || len(view.Comparison.Checks) != 1 || view.Comparison.Checks[0].Before != testrunner.Passed || view.Comparison.Checks[0].After != testrunner.Failed ||
+		view.Comparison.Checks[0].Definition != "unchanged" || len(view.Runs) != 2 || view.Runs[0].Run == nil || view.Runs[0].Run.ID != baseline.ID || view.Runs[1].Run.ID != postFix.ID ||
+		view.Runs[0].Case == nil || len(view.Versions) != 1 || view.Draft == nil {
+		t.Fatalf("the comparison and runs: %+v", view)
 	}
 
-	// A review exported beside the packet registers as its own entry of the
-	// same workspace; one exported elsewhere is opened by opening the folder
-	// that holds it, exactly the offline recipient's journey.
-	destination := filepath.Join(root, "review")
-	if exported := viewer.ExportPacketReview(desktop.PacketExportRequest{Workspace: root, Packet: assembled.Packet.Entry, Destination: destination}); exported.State != desktop.Completed {
-		t.Fatalf("a policy-less viewer could not export: %+v", exported)
+	// The report's retained packet is the packet the command line verifies.
+	store, err := catalog.Open(root)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if review := viewer.OpenPacketReview(desktop.PacketReviewRequest{Workspace: root, Entry: "review", Reveal: true}); review.State != desktop.Completed || len(review.Review.Lines) == 0 {
-		t.Fatalf("a policy-less viewer could not open the review read-only: %+v", review)
+	document, _, err := store.Read()
+	if err != nil {
+		t.Fatal(err)
 	}
-	if kind := listingKind(t, viewer, root, "review"); kind != string(desktop.PortableReviewArtifact) {
-		t.Fatalf("the portable review did not register: %q", kind)
+	entry := document.Items[document.Find(saved.Saved.ID)].Entry
+	packet, err := report.OpenRetained(t.Context(), filepath.Join(root, entry))
+	if err != nil || packet.Identity != view.Packet || !strings.HasPrefix(entry, "report-") {
+		t.Fatalf("the retained packet %s: %v", entry, err)
 	}
-	// The same policy-less viewer still cannot send: reading never acquires
-	// execution authority.
-	identity := preflighted(t, viewer, desktop.RunPreflightRequest{Workspace: root, Spec: spec})
-	if executed := viewer.StartDurableRun(desktop.DurableRunRequest{Workspace: root, Spec: spec, Output: "another-run", Expected: identity}); executed.State != desktop.PermissionDenied {
-		t.Fatalf("opening packets acquired send authority: %+v", executed)
+	var stdout, stderr bytes.Buffer
+	if err := cli.Execute("test", []string{"report", "verify-retained", filepath.Join(root, entry)}, &stdout, &stderr); err != nil || !strings.Contains(stdout.String(), packet.Identity) {
+		t.Fatalf("the command line: %v %s", err, stderr.String())
+	}
+
+	// A comparison with the same run, and a run the project does not hold,
+	// are refused at their own field and nothing is written.
+	for name, draft := range map[string]desktop.ReportDraft{
+		"the same run": {Run: baseline, Comparison: &baseline},
+		"no such run":  {Run: desktop.ItemRef{Kind: desktop.RunItem, ID: strings.Repeat("a", 24)}},
+		"not a run":    {Run: desktop.ItemRef{Kind: desktop.CaseItem, ID: summary.RelatedCase.ID}},
+		"a long title": {Run: postFix, Title: strings.Repeat("x", 401)},
+	} {
+		refused := createReport(t, app, context, "refused-"+strings.ReplaceAll(name, " ", "-"), draft)
+		if refused.Outcome != desktop.InvalidOutcome || len(refused.Problems) == 0 || !strings.HasPrefix(refused.Problems[0].Field, "report.") {
+			t.Fatalf("%s: %+v", name, refused)
+		}
+	}
+	if reports := listed(t, app, root, desktop.ReportItem); len(reports) != 1 {
+		t.Fatalf("a refused report was listed: %+v", reports)
 	}
 }
 
-// A cancel action names its own operation: cancelling the packet operation
-// while a durable run executes cannot stop the run.
-func TestPacketCancelNameCannotReachADifferentOperation(t *testing.T) {
-	peer := newDelayedAckingPeer(t, "AA", 750*time.Millisecond)
-	workspace := ackWorkspace(t, peer.address)
-	writeAckSpec(t, workspace, "reschedule.json", "AA")
-	app := workspaceApp(t)
-	identity := preflighted(t, app, desktop.RunPreflightRequest{Workspace: workspace, Spec: "reschedule.json"})
+// Editing a report's title and notes publishes a new version and changes no
+// run or outcome; an export prepared for the earlier version is stale and
+// does nothing, and a review recorded for it stays with that version.
+func TestEditingAReportWithdrawsItsExportAndKeepsItsRuns(t *testing.T) {
+	app, dialogs, context, runs := reportsProject(t)
+	baseline, postFix := runs["@baseline"].Ref, runs["@post-fix"].Ref
+	saved := createReport(t, app, context, "report-1", desktop.ReportDraft{Title: "Reschedule regression", Run: baseline, Comparison: &postFix})
+	first := app.OpenReport(desktop.ReportRequest{Context: context, Ref: *saved.Saved}).Report
+	prepared := app.PrepareAction(desktop.PrepareActionRequest{Context: context, Action: desktop.ExportReportAction, Items: []desktop.ItemRef{*saved.Saved},
+		ReportExport: &desktop.ReportExportOptions{Format: "html"}})
+	if prepared.Review == nil || !prepared.Review.Ready || prepared.Review.ReportExport == nil || prepared.Review.ReportExport.File != "Reschedule regression.html" ||
+		prepared.Review.ReportExport.Size == 0 || prepared.Review.ReportExport.Version != "1" {
+		t.Fatalf("the export review: %+v", prepared)
+	}
 
-	done := make(chan desktop.DurableRunResult, 1)
-	go func() {
-		done <- app.StartDurableRun(desktop.DurableRunRequest{Workspace: workspace, Spec: "reschedule.json", Output: "job-001", Expected: identity})
-	}()
-	deadline := time.Now().Add(10 * time.Second)
-	for peer.deliveries() == 0 && time.Now().Before(deadline) {
-		time.Sleep(2 * time.Millisecond)
+	// Mark reviewed records the version shown; a file written is not a review.
+	marked := app.PrepareAction(desktop.PrepareActionRequest{Context: context, Action: desktop.ReviewReportAction, Items: []desktop.ItemRef{*saved.Saved}})
+	if marked.Review == nil || !marked.Review.Ready || marked.Review.ReportReview == nil || marked.Review.ReportReview.Version != "1" {
+		t.Fatalf("the review: %+v", marked)
 	}
-	if peer.deliveries() == 0 {
-		t.Fatal("nothing was sent")
+	if recorded := app.ExecuteReviewedAction(desktop.ExecuteActionRequest{Context: context, Token: marked.Review.Token, IntentID: "review-1"}); recorded.Outcome != desktop.ActionCompleted {
+		t.Fatalf("mark reviewed: %+v", recorded)
 	}
-	// The packet panels' cancel cannot stop another panel's work.
-	app.Cancel(packetOperationName)
-	result := <-done
-	if result.State != desktop.Completed {
-		t.Fatalf("the packet cancel stopped a durable run: %+v", result)
+	if reviewed := app.OpenReport(desktop.ReportRequest{Context: context, Ref: *saved.Saved}).Report; reviewed.Review != "reviewed" {
+		t.Fatalf("a marked version is not reviewed: %s", reviewed.Review)
 	}
-	app.Cancel("durable-run")
-	app.Cancel("")
+	if again := app.PrepareAction(desktop.PrepareActionRequest{Context: context, Action: desktop.ReviewReportAction, Items: []desktop.ItemRef{*saved.Saved}}); again.Review == nil || again.Review.Ready {
+		t.Fatalf("a reviewed version is reviewed again: %+v", again)
+	}
+
+	edit := desktop.ReportDraft{Title: "Reschedule regression, duplicate booking", Notes: "Seen twice in QA.", Run: baseline, Comparison: &postFix}
+	edited := app.SaveItem(desktop.SaveItemRequest{Context: context, Kind: desktop.ReportItem, Item: saved.Saved.ID, BaseRevision: "1", Draft: desktop.ItemDraft{Report: &edit}, IntentID: "edit-1"})
+	if edited.Outcome != desktop.SavedOutcome || edited.Saved.Revision != "2" {
+		t.Fatalf("edit: %+v", edited)
+	}
+	second := app.OpenReport(desktop.ReportRequest{Context: context, Ref: *edited.Saved}).Report
+	if second.Title != edit.Title || second.Notes != edit.Notes || second.Packet != first.Packet || second.Result != first.Result || len(second.Versions) != 2 || second.Versions[1].Title != "Reschedule regression" {
+		t.Fatalf("the edited report: %+v", second)
+	}
+	if again := app.SaveItem(desktop.SaveItemRequest{Context: context, Kind: desktop.ReportItem, Item: saved.Saved.ID, BaseRevision: "1", Draft: desktop.ItemDraft{Report: &edit}, IntentID: "edit-2"}); again.Outcome != desktop.ConflictOutcome {
+		t.Fatalf("an edit of an earlier version: %+v", again)
+	}
+	moved := edit
+	moved.Comparison = nil
+	if other := app.SaveItem(desktop.SaveItemRequest{Context: context, Kind: desktop.ReportItem, Item: saved.Saved.ID, BaseRevision: "2", Draft: desktop.ItemDraft{Report: &moved}, IntentID: "edit-3"}); other.Outcome != desktop.InvalidOutcome || other.Problems[0].Field != "report.run" {
+		t.Fatalf("an edit that changes the runs: %+v", other)
+	}
+
+	dialogs.destination, dialogs.opened = filepath.Join(t.TempDir(), "stale.html"), nil
+	stale := app.ExecuteReviewedAction(desktop.ExecuteActionRequest{Context: context, Token: prepared.Review.Token, IntentID: "export-stale"})
+	if stale.Outcome != desktop.ActionStale || len(dialogs.opened) != 0 {
+		t.Fatalf("an export of an earlier version: %+v %v", stale, dialogs.opened)
+	}
+	if _, err := os.Stat(dialogs.destination); !os.IsNotExist(err) {
+		t.Fatal("a stale export wrote")
+	}
+	if second.Review != "draft" || second.Versions[1].Review != "reviewed" {
+		t.Fatalf("a new version keeps the earlier review: %+v", second.Versions)
+	}
 }
 
-// packetOperationName is the operation name the packet panels cancel through;
-// duplicated here so the test reads the same sentence the panel does.
-const packetOperationName = "packet"
+// An export writes exactly the bytes its review rendered to the file a person
+// names, and is never itself a review; original evidence is the portable
+// review `readmit report review` verifies, and a rendered report never
+// carries the original message bytes.
+func TestAReportExportWritesTheReviewedBytesAndOriginalEvidenceReadmitReviews(t *testing.T) {
+	app, dialogs, context, runs := reportsProject(t)
+	baseline := runs["@baseline"].Ref
+	saved := createReport(t, app, context, "report-1", desktop.ReportDraft{Title: "Reschedule regression", Run: baseline})
+	for _, format := range []string{"html", "pdf", "markdown", "json", "junit"} {
+		options := &desktop.ReportExportOptions{Format: format}
+		if format == "pdf" {
+			options.Paper = "a4"
+		}
+		prepared := app.PrepareAction(desktop.PrepareActionRequest{Context: context, Action: desktop.ExportReportAction, Items: []desktop.ItemRef{*saved.Saved}, ReportExport: options})
+		if prepared.Review == nil || !prepared.Review.Ready {
+			t.Fatalf("%s review: %+v", format, prepared)
+		}
+		dialogs.destination = filepath.Join(t.TempDir(), prepared.Review.ReportExport.File)
+		exported := app.ExecuteReviewedAction(desktop.ExecuteActionRequest{Context: context, Token: prepared.Review.Token, IntentID: "export-" + format})
+		if exported.Outcome != desktop.ActionCompleted || exported.ReportExport == nil || exported.ReportExport.File != filepath.Base(dialogs.destination) {
+			t.Fatalf("%s export: %+v", format, exported)
+		}
+		written, err := os.ReadFile(dialogs.destination)
+		if err != nil || len(written) != prepared.Review.ReportExport.Size {
+			t.Fatalf("%s written: %v", format, err)
+		}
+		if bytes.Contains(written, []byte("MSH|")) {
+			t.Fatalf("the %s report carries original message bytes", format)
+		}
+		if format == "pdf" && !bytes.Contains(written, []byte("/MediaBox [0 0 595.28 841.89]")) {
+			t.Fatal("the A4 PDF")
+		}
+	}
+	// A file written is not a review.
+	if exported := app.OpenReport(desktop.ReportRequest{Context: context, Ref: *saved.Saved}).Report; exported.Review != "draft" {
+		t.Fatalf("an exported version reads as reviewed: %+v", exported.Versions)
+	}
+	if listed(t, app, context.Project, desktop.ReportItem)["Reschedule regression"].Summary.Report.Status != "draft" {
+		t.Fatal("the listed report reads as reviewed")
+	}
+
+	prepared := app.PrepareAction(desktop.PrepareActionRequest{Context: context, Action: desktop.ExportReportAction, Items: []desktop.ItemRef{*saved.Saved},
+		ReportExport: &desktop.ReportExportOptions{Format: "original"}})
+	if prepared.Review == nil || !prepared.Review.ReportExport.Original || !prepared.Review.ReportExport.ContainsSourceValues {
+		t.Fatalf("original evidence review: %+v", prepared)
+	}
+	dialogs.destination = filepath.Join(t.TempDir(), "original")
+	if exported := app.ExecuteReviewedAction(desktop.ExecuteActionRequest{Context: context, Token: prepared.Review.Token, IntentID: "export-original"}); exported.Outcome != desktop.ActionCompleted {
+		t.Fatalf("original evidence: %+v", exported)
+	}
+	review, err := report.OpenReview(t.Context(), dialogs.destination)
+	if err != nil || review.Document == nil || review.Document.Title != "Reschedule regression" || review.Manifest.Schema != report.ReviewSchemaV3 {
+		t.Fatalf("the original evidence export: %v", err)
+	}
+	var stdout, stderr bytes.Buffer
+	if err := cli.Execute("test", []string{"report", "review", dialogs.destination}, &stdout, &stderr); err != nil || !strings.Contains(stdout.String(), review.Identity) {
+		t.Fatalf("the command line: %v %s", err, stderr.String())
+	}
+
+	// A file already there is never overwritten.
+	prepared = app.PrepareAction(desktop.PrepareActionRequest{Context: context, Action: desktop.ExportReportAction, Items: []desktop.ItemRef{*saved.Saved}, ReportExport: &desktop.ReportExportOptions{Format: "html"}})
+	dialogs.destination = filepath.Join(t.TempDir(), "taken.html")
+	if err := os.WriteFile(dialogs.destination, []byte("kept"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if refused := app.ExecuteReviewedAction(desktop.ExecuteActionRequest{Context: context, Token: prepared.Review.Token, IntentID: "export-taken"}); refused.State != desktop.Failed {
+		t.Fatalf("an existing file: %+v", refused)
+	}
+	if kept, _ := os.ReadFile(dialogs.destination); string(kept) != "kept" {
+		t.Fatal("an existing file was overwritten")
+	}
+}

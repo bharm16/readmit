@@ -19,6 +19,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/catalog"
 	"github.com/bharm16/readmit/internal/desktop"
+	"github.com/bharm16/readmit/internal/report"
 )
 
 // catalogProject is the sample workspace registered as a project, holding one
@@ -573,21 +574,20 @@ func TestAReportNamesItsCaseAndWhetherItWasReviewed(t *testing.T) {
 	app := newApp(t, &chooser{})
 	root, spec, baseline, current := packetWorkspace(t, app)
 	writeProject(t, root, "")
-	assembled := app.AssemblePacket(packetRequest(root, spec, baseline, current))
-	if assembled.Packet == nil {
-		t.Fatalf("a packet: %+v", assembled)
+	if _, err := report.Assemble(t.Context(), packetInput(root, spec, baseline, current), filepath.Join(root, "packet-001")); err != nil {
+		t.Fatal(err)
 	}
 	incident := listed(t, app, root, desktop.CaseItem)["@case"]
-	packet := listed(t, app, root, desktop.ReportItem)["@"+assembled.Packet.Entry]
+	packet := listed(t, app, root, desktop.ReportItem)["@packet-001"]
 	if packet.Summary.Report == nil || packet.Summary.Report.Form != "packet" || packet.Summary.Report.Status != "not-reviewed" ||
 		packet.Summary.Report.RelatedCase == nil || packet.Summary.Report.RelatedCase.ID != incident.Ref.ID {
 		t.Fatalf("the sealed packet: %+v", packet)
 	}
-	if exported := app.ExportPacketReview(desktop.PacketExportRequest{Workspace: root, Packet: assembled.Packet.Entry, Destination: filepath.Join(root, "review")}); exported.State != desktop.Completed {
-		t.Fatalf("a portable review: %+v", exported)
+	if _, err := report.ExportReview(t.Context(), filepath.Join(root, "packet-001"), filepath.Join(root, "review")); err != nil {
+		t.Fatalf("a portable review: %v", err)
 	}
 	reports := listed(t, app, root, desktop.ReportItem)
-	if reviewed := reports["@"+assembled.Packet.Entry]; reviewed.Summary.Report.Status != "reviewed" {
+	if reviewed := reports["@packet-001"]; reviewed.Summary.Report.Status != "reviewed" {
 		t.Fatalf("the reviewed packet: %+v", reviewed)
 	}
 	if review := reports["@review"]; review.Summary.Report == nil || review.Summary.Report.Form != "portable-review" || review.Summary.Report.Status != "sealed" ||

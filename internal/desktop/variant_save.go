@@ -177,6 +177,10 @@ func verifyVariant(files map[string]string) error {
 // from, once.
 func associateEntry(root string) func(kind, entry, owes string) error {
 	return func(kind, entry, owes string) error {
+		if ItemKind(kind) == ReportItem {
+			// A report's retained packet owes the project nothing more.
+			return nil
+		}
 		if ItemKind(kind) != VariantItem {
 			return errors.New("this release publishes no entry of this kind")
 		}

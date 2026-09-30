@@ -5,7 +5,7 @@
 // a type error rather than a title-cased code on screen. Only stable concepts
 // are mapped: payload text, filenames and exact protocol values are shown as
 // they are, never humanized.
-import type { CheckChange, RunCheckResult, RunDelivery, RunQueueIsolation, RunResult, BundleMode, CorrelationDecisionAction, CorrelationReviewStatus, SequenceAnalysisDeclaredCoverage, SequenceAnalysisRetryBasis, SearchField, Theme, DiagnosisClassification, DiagnosisSeverity, FindingScope, FindingVerdict, SimilarMemberState, FieldState, ResetOperator, ResetReason, SendPolicyReason, TargetClassification, TestBoundary, TestChange, TestExpectationOperator, TestRunnerStatus, SuiteApprovalScope, SuiteResult, HubActivityKind, HubFileType, HubReviewStatus, RetentionChange } from "./bindings";
+import type { CheckChange, RunCheckResult, RunDelivery, RunQueueIsolation, RunResult, BundleMode, CorrelationDecisionAction, CorrelationReviewStatus, SequenceAnalysisDeclaredCoverage, SequenceAnalysisRetryBasis, SearchField, Theme, DiagnosisClassification, DiagnosisSeverity, FindingScope, FindingVerdict, SimilarMemberState, FieldState, ResetOperator, ResetReason, SendPolicyReason, TargetClassification, TestBoundary, TestChange, TestExpectationOperator, TestRunnerStatus, SuiteApprovalScope, SuiteResult, HubActivityKind, HubFileType, HubReviewStatus, RetentionChange, ReportOutcome } from "./bindings";
 
 /** A caption for every member of one closed vocabulary. */
 export type DisplayMap<K extends string> = Record<K, string>;
@@ -254,6 +254,38 @@ export const RUN_DELIVERIES: DisplayMap<RunDelivery> = {
   acknowledged: "Acknowledged",
   uncertain: "Uncertain",
   not_attempted: "Not attempted",
+};
+
+/** A report's result: Passed only for a decided, passing run. */
+export const REPORT_OUTCOMES: DisplayMap<ReportOutcome> = {
+  passed: "Passed",
+  failed: "Failed",
+  error: "Error",
+  incomplete: "Incomplete",
+};
+
+/** Whether a report version was reviewed through its export. */
+export const REPORT_REVIEWS: DisplayMap<"draft" | "reviewed"> = {
+  draft: "Draft",
+  reviewed: "Reviewed",
+};
+
+/** The formats a report is exported as. */
+export const REPORT_FORMATS: DisplayMap<"html" | "pdf" | "markdown" | "json" | "junit" | "original"> = {
+  html: "HTML",
+  pdf: "PDF",
+  markdown: "Markdown",
+  json: "JSON",
+  junit: "JUnit",
+  original: "Original evidence",
+};
+
+/** What happened to a compared check's definition. */
+export const DEFINITION_CHANGES: DisplayMap<"unchanged" | "changed" | "added" | "removed"> = {
+  unchanged: "Unchanged",
+  changed: "Changed",
+  added: "Added",
+  removed: "Removed",
 };
 
 /** What a run decided about one check. */

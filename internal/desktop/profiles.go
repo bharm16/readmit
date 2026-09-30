@@ -107,8 +107,6 @@ var profiles = map[string]operationguard.Profile{
 	"StartBenchmark":           {Name: corpusOperation, Interruptible: true},
 	"ExplainRun":               {Name: explanationOperation, Interruptible: true},
 	"CompareRuns":              {Name: runComparisonOperation, Interruptible: true},
-	"AssemblePacket":           {Name: packetOperation, Interruptible: true},
-	"ExportPacketReview":       {Name: packetOperation, Interruptible: true},
 	"PublishSupportSummary":    {Name: supportOperation, Interruptible: true},
 	"VerifyCIGate":             {Name: ciGateVerifyOperation, Interruptible: true},
 	"CheckScenarioLibrary":     {Name: scenarioCheckOperation, Interruptible: true},

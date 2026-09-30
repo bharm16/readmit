@@ -31,10 +31,10 @@ import (
 
 // savedKinds are the kinds this release saves whole. Each one's editor lives
 // with its screen; the guarantees are these.
-var savedKinds = []ItemKind{EnvironmentItem, TestItem, ObservationItem, CaseItem, ProjectItem, AnalysisSettingsItem, FindingReviewItem, VariantItem, ProfileItem, CheckGroupItem, ScenarioItem, LinkRulesItem, CoverageItem, MappingItem, SourceItem, SuiteItem}
+var savedKinds = []ItemKind{EnvironmentItem, TestItem, ObservationItem, CaseItem, ProjectItem, AnalysisSettingsItem, FindingReviewItem, VariantItem, ProfileItem, CheckGroupItem, ScenarioItem, LinkRulesItem, CoverageItem, MappingItem, SourceItem, SuiteItem, ReportItem}
 
 // savedKindsRule is the refusal of a kind this release does not save.
-const savedKindsRule = "this release saves environments, tests, observations, case details, project settings, analysis settings, finding reviews, variants, profiles, check groups, scenarios, link rules, coverage, mapping presets, capture sources and suites whole"
+const savedKindsRule = "this release saves environments, tests, observations, case details, project settings, analysis settings, finding reviews, variants, profiles, check groups, scenarios, link rules, coverage, mapping presets, capture sources, suites and reports whole"
 
 // documentKinds are the saved kinds whose state the project document holds
 // rather than a revision the catalog publishes.
@@ -97,6 +97,9 @@ type ItemDraft struct {
 	Source  *CaptureSourceDraft `json:"source,omitzero"`
 	// Suite is a whole suite, published as one version.
 	Suite *SuiteDraft `json:"suite,omitzero"`
+	// Report is a report made from runs: created with its retained packet,
+	// and edited as its title and notes.
+	Report *ReportDraft `json:"report,omitzero"`
 }
 
 // ObservationDraft is an observation source and its window, which only mean
@@ -159,7 +162,7 @@ func (a *App) ValidateDraft(request DraftRequest) DraftValidation {
 			return a.validateDocumentDraft(ctx, request)
 		}
 		scope := draftScope{item: request.Item}
-		if request.Kind == EnvironmentItem || request.Kind == TestItem || request.Kind == FindingReviewItem || request.Kind == VariantItem || request.Kind == ProfileItem || request.Kind == ScenarioItem || request.Kind == CoverageItem || request.Kind == SourceItem || request.Kind == SuiteItem {
+		if request.Kind == EnvironmentItem || request.Kind == TestItem || request.Kind == FindingReviewItem || request.Kind == VariantItem || request.Kind == ProfileItem || request.Kind == ScenarioItem || request.Kind == CoverageItem || request.Kind == SourceItem || request.Kind == SuiteItem || request.Kind == ReportItem {
 			loaded, declined := a.loadCatalog(ctx, request.Context, false)
 			if loaded == nil {
 				result.refuse(declined.state, declined.reason)
@@ -280,6 +283,17 @@ func (a *App) SaveItem(request SaveItemRequest) SaveItemResult {
 			// The derived case is published beside the plan it was built by.
 			source, _ := resolveVariantSource(scope, projection.Variant.Source)
 			entry = variantEntry(source, projection.Variant.Plan)
+		}
+		if request.Kind == ReportItem && request.Item == "" {
+			// A new report is published with the retained packet of its runs.
+			built, problem := reportEntry(ctx, scope, projection.Report)
+			if problem != nil {
+				result.State, result.Outcome = Failed, InvalidOutcome
+				result.Problems = []FieldProblem{*problem}
+				result.Reason = "the draft has problems to fix; nothing was saved"
+				return result
+			}
+			entry = built
 		}
 		saved, err := store.Save(catalog.Draft{
 			Kind: string(request.Kind), ItemID: request.Item, Name: projection.Name, Base: request.BaseRevision,
@@ -549,6 +563,12 @@ func validateItemDraft(scope draftScope, kind ItemKind, draft ItemDraft) ([]cata
 		if len(found) == 0 {
 			staged, normalized.Source = members, source
 		}
+	case ReportItem:
+		members, reportDraft, found := validateReportDraft(scope, draft)
+		problems = append(problems, found...)
+		if len(found) == 0 {
+			staged, normalized = members, reportDraft
+		}
 	case SuiteItem:
 		if draft.Suite == nil {
 			return nil, nil, append(problems, FieldProblem{Field: "suite", Problem: "a suite is its tests, data, environments and coverage"})
@@ -658,6 +678,11 @@ func verifierFor(kind ItemKind) catalog.Verifier {
 			return verifySuite(files)
 		case SuiteApprovalItem:
 			_, err := readSuiteApproval(files[primaryRole(SuiteApprovalItem)])
+			return err
+		case ReportItem:
+			return verifyReport(files)
+		case ReportReviewItem:
+			_, err := readReportApprovalFile(files[string(ReportReviewItem)])
 			return err
 		}
 		return errors.New("this release does not save this kind of object")

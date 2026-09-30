@@ -547,12 +547,7 @@ artifacts are never reported as completed.
 | `ChooseExplanationInput` | Presents the host's folder dialog for the retained run and its file dialog for the assertion set and an observation's two documents, each kept to one entry of the open workspace, or for a run to one job of a suite execution's runs. |
 | `PreviewReplay` | Reports what one `readmit replay` of the verified case would send, from the shared preparation the command uses: the selected messages and their wire bytes, every field a named transformation changes (values only under a deliberate reveal), the target, the send decision a preview reaches, a fresh run folder and the operation guard's admission. Sends nothing and writes nothing. |
 | `SendReplay` | Sends what one approved preview showed, once, under the identity that preview fixed, into the fresh run folder it named, and retains the send decision beside it before any connection opens. Refused without approval, when anything the preview identified changed, and wherever the command refuses. Cancel stops at the message in flight; nothing is ever sent again. |
-| `PreviewPacket` | Verifies the exact actual inputs one packet assembly would copy — case, historical specification, current result, optional baseline — and reports each one's state, the observation boundaries, the proposed fresh destination and the packet's limitations before anything is written. |
-| `AssemblePacket` | Assembles customer-local evidence from actual retained runs into one new protected destination through the existing retained-packet operation, and reads the sealed identity back from disk. |
-| `OpenPacket` | Verifies one sealed retained packet of the workspace offline and read-only, exactly as `readmit report verify-retained` does. |
-| `ChoosePacketExportPath` | Presents the host's native save dialog to name the new folder a portable review is sealed into. |
-| `ExportPacketReview` | Seals the packet, byte for byte, beside the five inert offline renderings — offline HTML, PDF, Markdown, strict JSON and JUnit — through the existing export operation. |
-| `OpenPacketReview` | Verifies one portable review offline in read-only mode; the canonical report text is present only under the deliberate reveal, and opening acquires no send or mutation authority. |
+| `OpenReport` | Reads one report of the project for its page: verifies its retained packet and reads the structured report from it — result, checks with expected and observed values, the comparison, messages, notes, limitations, typed evidence references and its versions — with field text and record lists withheld until a deliberate reveal. Writes nothing. |
 | `ChooseSyntheticPacketPath` | Names the new folder a synthetic demonstration packet or its runnable copies are written into in the host's native save dialog, or chooses an existing synthetic packet to verify in the folder dialog. Choosing creates, verifies and contacts nothing. |
 | `GenerateSyntheticPacket` | Generates the committed synthetic scenario into the new folder, exactly as `readmit report --scenario siu-reschedule-v1` does, against fresh built-in defective and fixed receivers on loopback, and reads the sealed packet back through the verifier. |
 | `OpenSyntheticPacket` | Verifies one synthetic packet offline and read-only, exactly as `readmit report verify` does, refusing a changed, incomplete or unsupported one with the verifier's sentence. |
@@ -986,7 +981,7 @@ time never stands in for one, and an unknown date is null.
 | Run | address actually reached, start and completion, outcome, uncertain deliveries; for a suite execution, its suite and number of jobs, the earliest start and latest completion of its jobs, how many jobs have an unsettled delivery, and `executed`, `stopped` (the queue did not execute every job) or `incomplete` (no queue report was retained) |
 | Environment | declared classification, address and transport, the latest explicit check (when, its outcome and the revision it checked), the linked observation, whether it has a send policy, and its reset's name and number of actions |
 | Observation | source type, latest completed collection among the project's completion records |
-| Report | form, related case, state: a sealed packet `not-reviewed` or `reviewed` once a portable review is exported from it, a portable review `sealed`, and an export review (`export-review`) `blocked` or `ready-for-approval` |
+| Report | form, related case, state: a report made here (`report`) `draft`, or `reviewed` once its current version was marked reviewed; a sealed packet `not-reviewed` or `reviewed` once a portable review is exported from it, a portable review `sealed`, and an export review (`export-review`) `blocked` or `ready-for-approval` |
 | Profile | family, protocol version, published version |
 
 A page holds at most 200 rows. The first page is cut from a snapshot of the
@@ -3603,8 +3598,7 @@ the run's name and Stop. A Send that did not start — a stale or refused review
 A finished run (`OpenRun`) shows its result, environment, start and duration,
 **Create report**, and **Run again** and **Analyze with checks** under More.
 Run again is a fresh review of the version and environment the run used, never
-an immediate repeat. Create report opens Reports with the run, its case and the
-exact version of the test it executed chosen.
+an immediate repeat. Create report opens New report with the run chosen.
 
 **Checks** lists failed and not-evaluated checks first, then the rest in the
 order the test declares them, each with what it expected, what the run observed
@@ -3666,98 +3660,62 @@ value, and infers no cause. **Change selection** chooses two runs by name, and
 Runs that cannot be compared show the comparison's own refusal and Change
 selection.
 
-## Investigation packets and portable reports
+## Reports
 
-The **Investigation packets** panel is where an investigation's actual
-evidence leaves the machine honestly: it assembles a sealed packet from what
-the workspace really retained, exports the portable offline reports, and opens
-either artifact read-only. It is the existing `report assemble`, `report
-verify-retained`, `report export` and `report review` operations — the packet
-panels decide nothing the report package does not already own, and the command
-line verifies the same packets and reviews byte for byte.
+**Reports** lists the project's reports: each by name with the case its run
+sent, when it was last changed and its review — **Draft**, or **Reviewed** once
+a person marked its current version reviewed. The list is sorted newest change first;
+Search and Filter (by review and case) narrow it, and an empty list offers
+**New report**. Retained packets and portable reviews earlier releases or the
+command line wrote are listed too and open the same way, read-only.
 
-**Assembly** selects four entries of the open workspace: the verified case,
-the exact historical specification, the retained current execution — a run
-folder or one job inside a suite execution's runs — and, never invented, an
-optional retained baseline with its own case when that differs. **Preview
-assembly** verifies each input through the same readers assembly verifies them
-with and shows what it found before anything is written: which inputs are
-missing, whether the specification is the exact one the current result
-retained (a rewritten one is named, never silently substituted), whether the
-baseline is a distinct retained execution, both runs' observation boundaries
-and lifecycle facts, the fresh destination, and the packet's own limitations —
-including the statement an absent baseline always earns. Nothing here
-manufactures evidence: a missing baseline stays a single-run report that
-proves no before/after improvement, and no editable current test ever stands
-in for a historical specification.
+**New report** asks for a name, the run and, optionally, a distinct run to
+compare with and notes; **Create report** on a run's page opens it with that
+run chosen. The name starts as the run's test followed by "report". There is no
+packet, specification file or output path to choose: the save
+(`SaveItem`, kind `report`) resolves the run's result, the exact specification
+it executed and the case it sent, assembles the retained packet of those runs
+through `report assemble`'s own assembly, and publishes it as a new project
+entry (`report-NNN`) beside what the person wrote — its title and notes
+(`readmit-report-authored/v1`) and the runs it names
+(`readmit-report-sources/v1`) — as one revision. A run that did not finish,
+whose delivery is uncertain or whose record is incomplete, a comparison with the
+same run, and a run whose case is gone are refused at their own field and
+every value typed stays.
 
-**Assemble packet** runs the existing retained-packet operation into the new
-protected destination (a fresh workspace entry written owner-only where the
-platform has file modes) and reads
-the sealed identity back from disk, so what the panel shows is what verified.
-The packet registers in the workspace listing as a `packet` entry, and the
-panel states the handoff it does not perform: the verified packet is ready for
-privacy review, and protection, transformation and disclosure approval are
-separate deliberate steps — nothing is uploaded and nothing is shared by
-assembling. A refusal or a cancellation leaves any partial destination
-explicitly incomplete; it never verifies, and recovery is a new destination,
-never an overwrite.
+A report's page verifies its packet and reads it as a document in the reading
+column (`OpenReport`): **Result**, **Checks** failed and not-evaluated first
+with what each expected and observed, **Comparison** when a comparison run is
+included — before and after for each unchanged check, and changed definitions
+separately — **Messages**, **Notes** when written, and a closed **Details**
+section with every run's exact versions and identities, the limitations the
+evidence states and the packet it is sealed from. A run whose lifecycle is not
+decided reads **Incomplete** whatever its checks decided, and a value the run
+did not observe is **Unavailable** with its reason, never zero. Field text and
+record lists stay **Hidden** until **Show values**. Selecting a check opens the
+messages it is supported by in the case, and **Evidence** opens each verified
+item — the case and its messages, or the run — by its kind. A report whose
+packet no longer verifies stays listed with the reason, **Retry** and, when its
+folder moved, **Locate**.
 
-**Portable review** exports the packet through the existing export operation
-into a new folder named in the host's native save dialog, which the export
-creates. The review is the
-complete packet copied byte for byte beside the five locally rendered offline
-reports — offline HTML, PDF, Markdown, strict JSON and JUnit — with no
-external rendering service, no active content and no network. Sealing a review
-inherits the packet's sensitivity and grants no disclosure approval.
+**Edit title** and **Edit notes** publish a new version of what was written;
+the runs, their packet and their outcomes never change, and **History** lists
+every version with its runs, when it was saved and whether it was reviewed.
+**Mark reviewed** is a reviewed action of its own (`report.review`) that
+records a person's review of the version shown
+(`readmit-report-approval/v1`); producing a file never does. A version saved
+afterwards is a Draft again, and a review or export prepared for the earlier
+version is stale and does nothing.
 
-Opening a packet or a review is a **read-only mode**. `OpenPacket` and
-`OpenPacketReview` verify through the same verifiers the command line uses —
-re-deriving every claim and rendering from the sealed bytes, so altered or
-invented content is refused even when hashes are recomputed — and acquire no
-admission at all: a viewer with no operation policy can verify and read,
-because reading never grants authority, and no operation exists behind these
-results that could execute, send, reset or modify anything. The review view
-shows the verification metadata, the five renderings, both runs' retained
-statuses as the labels they are, and the version requirements the evidence
-records; the canonical report text carries the actual expected and observed
-content and appears only under the deliberate reveal. Integrity is shown
-separately from what it is not: not source authenticity, not disclosure
-approval, not a regression-equivalence claim, and a successfully rendered
-report is not a passing run. See
-[sealed packets and portable reports](report.md) for both contracts' bounds,
-refusals and reader rules.
-
-**Synthetic demonstration packets** sit beside them in a section of their own:
-`readmit report`, `report verify` and `report prepare`, over the same
-operations and readers. Choose new packet folder… names a new folder in the
-host's save dialog; Generate synthetic packet runs the one committed scenario,
-`siu-reschedule-v1`, against fresh built-in defective and fixed receivers this
-window starts on loopback, seals the packet there and reads it back through
-the verifier, so the identity the panel shows begins the one `readmit report
-verify` prints.
-The synthetic messages go nowhere else, and generation, like the command,
-needs no activation: the synthetic walkthrough stays ungated. Cancel
-generation stops the fixture executions and answers cancelled; the partial
-folder never verifies, so the panel lets go of the folder it named and
-generating again needs a new one. Choose a
-synthetic packet… picks an existing packet in the folder dialog, and Verify
-synthetic packet verifies it offline and read-only; a changed, incomplete or
-unsupported packet, a retained investigation packet or any other folder is
-refused in the verifier's own words. From a verified packet, Prepare runnable
-copies writes the case, a loopback target and runnable copies of the
-historical specification for the baseline, post-fix and reintroduced trials
-into a new folder outside the packet, named in the save dialog, on the
-loopback address the section proposes (`127.0.0.1:2575`) or one typed in its
-place; a folder inside the packet and an address that is not numeric loopback
-are refused, and the packet is never edited.
-
-A synthetic packet is never the person's own evidence, and every view says so:
-the listing names it a `synthetic-packet`, the panel labels each packet it
-generated or verified synthetic-only with the packet's own limitations, and
-the prepared copies' case keeps its generated provenance. The retained-packet
-panels never offer one, and opening, exporting or reviewing one as retained
-evidence is refused, as `readmit report verify-retained` refuses it.
+**Export** is a reviewed action (`report.export`): the sheet renders the exact
+bytes of the chosen format — PDF (Letter or A4), HTML, Markdown, JSON or JUnit
+— and shows the file name and size before anything is written; **Export**
+writes those bytes, rendered again and unchanged, to a new file named in the
+save dialog. **Original evidence** is a separate choice: the
+portable review of the report's retained packet, byte for byte, with its five
+renderings. A rendered report never carries original message bytes. **Share**
+opens the sharing page. See [reports](report.md#reports-from-actual-runs) for
+the document and its formats.
 
 ## Privacy review, protected export and support sharing
 

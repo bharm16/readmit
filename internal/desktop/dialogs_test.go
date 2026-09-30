@@ -122,7 +122,6 @@ func TestEveryNativeDialogCancelsFailsRecoverablyAndAnswersItsChoice(t *testing.
 		{name: "ChooseOperationPolicy", call: func(a *desktop.App) any { return a.ChooseOperationPolicy() }, opens: "folder", folder: filepath.Dir(policy)},
 		{name: "ReviewActivationFolder", call: func(a *desktop.App) any { return a.ReviewActivationFolder() }, opens: "folder", folder: filepath.Dir(policy), title: "Choose the license activation folder"},
 		{name: "ChooseSupportExportPath", call: func(a *desktop.App) any { return a.ChooseSupportExportPath() }, opens: "save", destination: unnamed()},
-		{name: "ChoosePacketExportPath", call: func(a *desktop.App) any { return a.ChoosePacketExportPath() }, opens: "save", destination: unnamed()},
 		{name: "ChooseSyntheticPacketPath(packet-destination)", call: synthetic("packet-destination"), opens: "save", destination: unnamed()},
 		{name: "ChooseSyntheticPacketPath(rerun-destination)", call: synthetic("rerun-destination"), opens: "save", destination: unnamed()},
 		{name: "ChooseSyntheticPacketPath(packet)", call: synthetic("packet"), opens: "folder", folder: fresh()},
@@ -239,11 +238,6 @@ func TestEveryNewFolderIsNamedInTheSaveDialogAndCreatedOnlyByItsWriter(t *testin
 	if retirement.State != desktop.Completed || retirement.Preview == nil {
 		t.Fatalf("retirement preview: %+v", retirement)
 	}
-	packets, spec, baseline, current := packetWorkspace(t, app)
-	packet := app.AssemblePacket(packetRequest(packets, spec, baseline, current))
-	if packet.State != desktop.Completed || packet.Packet == nil {
-		t.Fatalf("assemble: %+v", packet)
-	}
 	shared, review, _ := readyReview(t, app)
 	if saved := app.SaveSharingPolicy(desktop.SupportPolicyRequest{
 		Workspace: shared, Output: "sharing.json", Support: true, Destinations: []string{"local-file"}, MaxBytes: 4096,
@@ -277,9 +271,6 @@ func TestEveryNewFolderIsNamedInTheSaveDialogAndCreatedOnlyByItsWriter(t *testin
 		}, "cannot create the restored project; destination must be new and parent writable"},
 		{"recovery archive", func() any { return app.ChooseMaintenancePath("archive-destination") }, func(path string) any {
 			return app.ArchiveOrDeleteProject(desktop.ProjectArchiveRequest{Project: project, Destination: path, Selection: retirement.Preview.Selection})
-		}, "destination must be new"},
-		{"portable review", func() any { return app.ChoosePacketExportPath() }, func(path string) any {
-			return app.ExportPacketReview(desktop.PacketExportRequest{Workspace: packets, Packet: packet.Packet.Entry, Destination: path})
 		}, "destination must be new"},
 		{"support bundle", func() any { return app.ChooseSupportExportPath() }, func(path string) any {
 			return app.PublishSupportSummary(desktop.SupportPublishRequest{
@@ -333,7 +324,6 @@ func TestADismissedSaveDialogDoesNothing(t *testing.T) {
 		func() any { return app.ChooseMaintenancePath("backup-destination") },
 		func() any { return app.ChooseMaintenancePath("restore-destination") },
 		func() any { return app.ChooseMaintenancePath("archive-destination") },
-		func() any { return app.ChoosePacketExportPath() },
 		func() any { return app.ChooseSupportExportPath() },
 		func() any { return app.ChooseSyntheticPacketPath("packet-destination") },
 		func() any { return app.ChooseSyntheticPacketPath("rerun-destination") },
@@ -351,7 +341,7 @@ func TestADismissedSaveDialogDoesNothing(t *testing.T) {
 	}
 	state := t.TempDir()
 	folderOnly := activatedApp(t, &folderDialogOnly{folder: t.TempDir()}, state)
-	if result := folderOnly.ChoosePacketExportPath(); result.State != desktop.Failed || result.Reason != "the save dialog is unavailable" || result.Path != "" {
+	if result := folderOnly.ChooseSupportExportPath(); result.State != desktop.Failed || result.Reason != "the save dialog is unavailable" || result.Path != "" {
 		t.Fatalf("a host without a save dialog answered %+v", result)
 	}
 }

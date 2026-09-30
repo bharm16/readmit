@@ -14,7 +14,6 @@ import { IconButton } from "../IconButton";
 import { MessageReader } from "../Inspector";
 import { AdministratorSetup } from "../OperationAccess";
 import { OperatorHub } from "../OperatorHub";
-import { PacketPanel } from "../PacketPanel";
 import { PrivacyDocuments } from "../PrivacyDocuments";
 import { PrivacyPanel } from "../PrivacyPanel";
 import { ProtectionPanel } from "../ProtectionPanel";
@@ -137,7 +136,6 @@ export const examples: Example[] = [
   )),
   e("AdministratorSetup", () => <AdministratorSetup />),
   e("OperatorHub", () => <OperatorHub />),
-  e("PacketPanel", () => <PacketPanel {...common} />),
   e("PrivacyDocuments", () => (
     <PrivacyDocuments
       {...common}

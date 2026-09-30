@@ -51,6 +51,8 @@ export type ActionID =
   | "environment.isolation.setup"
   | "environment.isolation.reconcile"
   | "environment.isolation.cleanup"
+  | "report.export"
+  | "report.review"
   | "run.test"
   | "run.suite"
   | "run.resume"
@@ -91,6 +93,8 @@ export interface ActionReview {
   transport?: TransportReview;
   run?: RunReview;
   team?: TeamActionReview;
+  report_export?: ReportExportReview;
+  report_review?: ReportReviewView;
 }
 
 /** internal/desktop.ActionReviewResult */
@@ -4495,7 +4499,7 @@ export interface InterfaceRevision {
   default: boolean;
 }
 
-/** internal/desktop.analysisOperation, internal/desktop.captureOperation, internal/desktop.ciGateVerifyOperation, internal/desktop.corpusOperation, internal/desktop.explanationOperation, internal/desktop.hubSignInOperation, internal/desktop.importOperation, internal/desktop.packetOperation, internal/desktop.practiceOperation, internal/desktop.privacyOperation, internal/desktop.protectOperation, internal/desktop.reductionOperation, internal/desktop.reexecutionOperation, internal/desktop.replayOperation, internal/desktop.replayPreviewOperation, internal/desktop.runComparisonOperation, internal/desktop.runOperation, internal/desktop.runnerOperation, internal/desktop.scenarioCheckOperation, internal/desktop.suiteCoverageOperation, internal/desktop.syntheticPacketOperation */
+/** internal/desktop.analysisOperation, internal/desktop.captureOperation, internal/desktop.ciGateVerifyOperation, internal/desktop.corpusOperation, internal/desktop.explanationOperation, internal/desktop.hubSignInOperation, internal/desktop.importOperation, internal/desktop.practiceOperation, internal/desktop.privacyOperation, internal/desktop.protectOperation, internal/desktop.reductionOperation, internal/desktop.reexecutionOperation, internal/desktop.replayOperation, internal/desktop.replayPreviewOperation, internal/desktop.runComparisonOperation, internal/desktop.runOperation, internal/desktop.runnerOperation, internal/desktop.scenarioCheckOperation, internal/desktop.suiteCoverageOperation, internal/desktop.syntheticPacketOperation */
 export type InterruptibleOperation =
   | "analysis"
   | "capture"
@@ -4504,7 +4508,6 @@ export type InterruptibleOperation =
   | "run-explanation"
   | "hub-sign-in"
   | "import"
-  | "packet"
   | "practice"
   | "privacy"
   | "protect"
@@ -4637,6 +4640,7 @@ export interface ItemDraft {
   mapping?: MappingRecipe;
   source?: CaptureSourceDraft;
   suite?: SuiteDraft;
+  report?: ReportDraft;
 }
 
 /** internal/desktop.ItemDraftResult */
@@ -4686,6 +4690,7 @@ export type ItemKind =
   | "attachment"
   | "mapping"
   | "source"
+  | "report-review"
   | "suite-approval";
 
 /** internal/desktop.ItemRef */
@@ -6020,161 +6025,11 @@ export interface OperationResult {
 /** internal/desktop.Ordering */
 export type Ordering = "observed" | "unknown" | "message" | "source";
 
-/** internal/desktop.PacketExportRequest */
-export interface PacketExportRequest {
-  workspace: string;
-  packet: string;
-  destination: string;
-}
-
-/** internal/desktop.PacketExportResult */
-export interface PacketExportResult {
-  state: State;
-  reason?: string;
-  review?: string;
-  identity?: string;
-  packet_identity?: string;
-  formats?: string[];
-  export_policy?: string;
-  contains_source_values?: boolean;
-}
-
-/** internal/desktop.PacketFile */
-export interface PacketFile {
-  path: string;
-  size: number;
-  sha256: string;
-}
-
-/** internal/desktop.PacketInputView */
-export interface PacketInputView {
-  entry: string;
-  found: boolean;
-  identity?: string;
-  provenance?: string;
-  status?: string;
-  error_class?: string;
-  boundary?: string;
-  run_state?: string;
-  durable?: boolean;
-  journal_incomplete?: boolean;
-  delivery_uncertain?: boolean;
-  result_identity?: string;
-  spec_identity?: string;
-  case_identity?: string;
-  target_identity?: string;
-  spec_match?: boolean;
-  case_match?: boolean;
-  problems: string[];
-}
-
 /** internal/desktop.PacketPathResult */
 export interface PacketPathResult {
   state: State;
   reason?: string;
   path?: string;
-}
-
-/** internal/desktop.PacketPreview */
-export interface PacketPreview {
-  case?: PacketInputView;
-  spec?: PacketInputView;
-  current?: PacketInputView;
-  baseline?: PacketInputView;
-  baseline_case?: PacketInputView;
-  baseline_supplied: boolean;
-  destination: RunDestination;
-  export_policy: string;
-  contains_source_values: boolean;
-  problems: string[];
-  limitations: string[];
-  inventory: string[];
-}
-
-/** internal/desktop.PacketPreviewResult */
-export interface PacketPreviewResult {
-  state: State;
-  reason?: string;
-  preview?: PacketPreview;
-}
-
-/** internal/desktop.PacketRequest */
-export interface PacketRequest {
-  workspace: string;
-  case: string;
-  spec: string;
-  current: string;
-  baseline?: string;
-  baseline_case?: string;
-  output?: string;
-}
-
-/** internal/desktop.PacketResult */
-export interface PacketResult {
-  state: State;
-  reason?: string;
-  packet?: PacketView;
-}
-
-/** internal/desktop.PacketReviewRequest */
-export interface PacketReviewRequest {
-  workspace: string;
-  entry: string;
-  reveal: boolean;
-}
-
-/** internal/desktop.PacketReviewResult */
-export interface PacketReviewResult {
-  state: State;
-  reason?: string;
-  review?: PacketReviewView;
-}
-
-/** internal/desktop.PacketReviewView */
-export interface PacketReviewView {
-  entry: string;
-  identity: string;
-  schema: string;
-  state: string;
-  packet_identity: string;
-  export_policy: string;
-  contains_source_values: boolean;
-  renderings: PacketFile[];
-  files: number;
-  current: string;
-  baseline?: string;
-  version_requirements: string[];
-  lines: string[];
-  revealed: boolean;
-}
-
-/** internal/desktop.PacketRunView */
-export interface PacketRunView {
-  status: string;
-  error_class?: string;
-  boundary: string;
-  case_identity?: string;
-  case_provenance?: string;
-  run_state?: string;
-  journal_incomplete: boolean;
-  delivery_uncertain: boolean;
-  result_identity?: string;
-  spec_identity?: string;
-  target_identity?: string;
-}
-
-/** internal/desktop.PacketView */
-export interface PacketView {
-  entry: string;
-  identity: string;
-  schema: string;
-  state: string;
-  export_policy: string;
-  contains_source_values: boolean;
-  current: PacketRunView;
-  baseline?: PacketRunView;
-  files: PacketFile[];
-  limitations: string[];
 }
 
 /** internal/desktop.PastedSourceRequest */
@@ -6264,6 +6119,7 @@ export interface PrepareActionRequest {
   derive_review?: DeriveReviewOptions;
   run?: RunActionOptions;
   team?: TeamActionOptions;
+  report_export?: ReportExportOptions;
 }
 
 /** internal/desktop.PreparedCandidate */
@@ -7575,11 +7431,160 @@ export interface ReplayTransformation {
   shift?: string;
 }
 
+/** internal/desktop.ReportChange */
+export interface ReportChange {
+  check: TestExpectation;
+  definition: string;
+  before: string;
+  after: string;
+  before_observed?: TestRunnerValue;
+  after_observed?: TestRunnerValue;
+  before_records?: number;
+  after_records?: number;
+  before_available: boolean;
+  after_available: boolean;
+}
+
+/** internal/desktop.ReportComparison */
+export interface ReportComparison {
+  same_case: boolean;
+  same_target: boolean;
+  specification: string;
+  checks: ReportChange[];
+}
+
+/** internal/report.DocumentEvidence */
+export interface ReportDocumentEvidence {
+  kind: string;
+  role: string;
+  source: string;
+  path: string;
+  sha256: string;
+}
+
+/** internal/report.DocumentResult */
+export interface ReportDocumentResult {
+  outcome: ReportOutcome;
+  status: string;
+  error_class: string;
+  run_state: string;
+  journal_incomplete: boolean;
+  delivery_uncertain: boolean;
+}
+
+/** internal/desktop.ReportDraft */
+export interface ReportDraft {
+  title: string;
+  notes: string;
+  run: ItemRef;
+  job?: string;
+  comparison?: ItemRef;
+  comparison_job?: string;
+}
+
+/** internal/desktop.ReportExportOptions */
+export interface ReportExportOptions {
+  format: string;
+  paper?: string;
+}
+
+/** internal/desktop.ReportExportOutcome */
+export interface ReportExportOutcome {
+  file: string;
+}
+
+/** internal/desktop.ReportExportReview */
+export interface ReportExportReview {
+  report: string;
+  version?: string;
+  format: string;
+  paper?: string;
+  file: string;
+  size: number;
+  original: boolean;
+  contains_source_values: boolean;
+}
+
+/** internal/report.Outcome */
+export type ReportOutcome = "passed" | "failed" | "error" | "incomplete";
+
+/** internal/desktop.ReportRequest */
+export interface ReportRequest {
+  context: RequestContext;
+  ref: ItemRef;
+  reveal: boolean;
+}
+
+/** internal/desktop.ReportResult */
+export interface ReportResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  report?: ReportView;
+}
+
+/** internal/desktop.ReportReviewView */
+export interface ReportReviewView {
+  report: string;
+  version: string;
+}
+
+/** internal/desktop.ReportRun */
+export interface ReportRun {
+  role: string;
+  test: string;
+  result: ReportDocumentResult;
+  started_at: string | null;
+  completed_at: string | null;
+  boundary: string;
+  result_identity: string;
+  spec_identity: string;
+  case_identity: string;
+  case_provenance: string;
+  target_identity: string;
+  run?: ItemRef;
+  job?: string;
+  case?: ItemRef;
+}
+
 /** internal/desktop.ReportSummary */
 export interface ReportSummary {
   form: string;
   related_case: ItemRef | null;
   status?: string;
+}
+
+/** internal/desktop.ReportVersion */
+export interface ReportVersion {
+  revision: string;
+  title: string;
+  published_at: string | null;
+  author?: string;
+  runs: string[];
+  review: string;
+  current: boolean;
+}
+
+/** internal/desktop.ReportView */
+export interface ReportView {
+  item: CatalogItem;
+  form: string;
+  revision?: string;
+  current: boolean;
+  title: string;
+  result: ReportDocumentResult;
+  runs: ReportRun[];
+  checks: RunCheck[];
+  comparison?: ReportComparison;
+  messages: RunMessage[];
+  notes?: string;
+  limitations: string[];
+  evidence: ReportDocumentEvidence[];
+  packet: string;
+  versions: ReportVersion[];
+  review: string;
+  draft?: ReportDraft;
+  revealed: boolean;
 }
 
 /** internal/desktop.Reproducer */
@@ -8090,6 +8095,7 @@ export interface ReviewedActionResult {
   approved?: ItemRef;
   run?: ItemRef;
   team?: TeamActionOutcome;
+  report_export?: ReportExportOutcome;
 }
 
 /** internal/desktop.ReviewedOutcome */
@@ -11418,7 +11424,6 @@ export interface Facade {
   ApplyLibraryDocument(request: LibraryDocumentRequest): Promise<ItemDraftResult>;
   ApproveExpectations(request: TestRequest): Promise<TestResult>;
   ArchiveOrDeleteProject(request: ProjectArchiveRequest): Promise<BackupResult>;
-  AssemblePacket(request: PacketRequest): Promise<PacketResult>;
   AuthorTest(request: TestRequest): Promise<TestResult>;
   BackupLocation(): Promise<ProjectLocationResult>;
   BackupProject(request: StorageBackupRequest): Promise<StorageBackupResult>;
@@ -11456,7 +11461,6 @@ export interface Facade {
   ChooseMaintenancePath(kind: string): Promise<MaintenancePathResult>;
   ChooseOperationPolicy(): Promise<OperationResult>;
   ChooseOperatorHubConfig(): Promise<HubResult>;
-  ChoosePacketExportPath(): Promise<PacketPathResult>;
   ChooseProjectLocation(): Promise<ProjectLocationResult>;
   ChooseRunSpec(workspace: string): Promise<RunSpecChoiceResult>;
   ChooseSupportExportPath(): Promise<PacketPathResult>;
@@ -11518,7 +11522,6 @@ export interface Facade {
   ExportInstalledLicense(): Promise<LicenseExportResult>;
   ExportLibraryItem(request: LibraryExportRequest): Promise<LibraryExportResult>;
   ExportLicenseDocument(): Promise<LicenseExportResult>;
-  ExportPacketReview(request: PacketExportRequest): Promise<PacketExportResult>;
   ExportProtectionControl(workspace: string, entry: string, name: string): Promise<ProtectionExportResult>;
   ExportSuiteItem(request: SuiteExportRequest): Promise<SuiteExportResult>;
   ExportSuiteRunConfiguration(request: SuiteExportRequest): Promise<SuiteExportResult>;
@@ -11609,11 +11612,10 @@ export interface Facade {
   OpenNormalizationPolicy(workspace: string, entry: string): Promise<NormalizationPolicyResult>;
   OpenObservationSource(workspace: string, sourceFile: string): Promise<ObservationSourceResult>;
   OpenObservationWindow(workspace: string, windowFile: string): Promise<ObservationWindowResult>;
-  OpenPacket(workspace: string, entry: string): Promise<PacketResult>;
-  OpenPacketReview(request: PacketReviewRequest): Promise<PacketReviewResult>;
   OpenProject(path: string): Promise<ProjectResult>;
   OpenProjectOverview(path: string): Promise<ProjectOverviewResult>;
   OpenProtectedPackage(request: ProtectionOpenRequest): Promise<ProtectionPackageResult>;
+  OpenReport(request: ReportRequest): Promise<ReportResult>;
   OpenRetainedCapture(request: CaptureSessionRequest): Promise<RetainedCaptureResult>;
   OpenReview(request: ReviewRequest): Promise<ReviewResult>;
   OpenRun(request: RunRequest): Promise<RunDetailResult>;
@@ -11636,7 +11638,6 @@ export interface Facade {
   PreviewFindingReview(request: DraftRequest): Promise<FindingReviewPreview>;
   PreviewHubRetention(request: HubRetentionRequest): Promise<HubRetentionResult>;
   PreviewImport(request: ImportRequest): Promise<ImportPreviewResult>;
-  PreviewPacket(request: PacketRequest): Promise<PacketPreviewResult>;
   PreviewProjectMigration(path: string): Promise<MigrationPreviewResult>;
   PreviewProjectRetirement(path: string): Promise<RetirementPreviewResult>;
   PreviewReduction(request: ReductionRequest): Promise<ReductionResult>;

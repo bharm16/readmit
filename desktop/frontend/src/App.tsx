@@ -11,7 +11,7 @@ import { useRunComparison } from "./RunComparison";
 import { SendReview, sendTitle, type SendRequest } from "./RunPanel";
 import { useRunPage } from "./RunExplanation";
 import { useRunActivity, useRuns, type RunsPlace } from "./Runs";
-import { PacketPanel } from "./PacketPanel";
+import { useReportPage, useReports, type ReportSeed, type ReportsPlace } from "./Reports";
 import { PrivacyPanel } from "./PrivacyPanel";
 import { ProtectionPanel } from "./ProtectionPanel";
 import { SUITE_EDITOR_DRAFT, SUITE_VIEWS, useSuites, type SuiteRunHandoff, type SuitesPlace, type SuiteView } from "./Suites";
@@ -333,7 +333,7 @@ export default function App() {
   // Counts the runs that ended, so Runs reads its list again.
   const [runsEnded, setRunsEnded] = useState(0);
   // What Create report hands Reports: a run, its case and its test version.
-  const [reportSeed, setReportSeed] = useState<{ case: string; spec: string; run: string; count: number } | null>(null);
+  const [reportSeed, setReportSeed] = useState<ReportSeed | null>(null);
   // What Schedule or Set up CI on a suite opens Runners with.
   const [runnerSeed, setRunnerSeed] = useState<{ tab: "schedules" | "ci"; suite: string; environment: string; count: number } | null>(null);
   const [comparisonResult, setComparisonResult] = useState<CompareResult | null>(null);
@@ -1867,6 +1867,17 @@ export default function App() {
     },
     activity: runActivity.activity,
   });
+  /** Opens a case's Messages at the occurrences a run or report names. */
+  const viewMessages = (caseRef: ItemRef, occurrences: string[]) => {
+    const entry = listedCases.current.find((item) => item.ref.id === caseRef.id)?.summary.case?.entry;
+    if (!root || !entry) return;
+    void verifyCase(root, entry, { skipAutoGrid: true }).then((opened) => {
+      if (!opened?.case) return;
+      setEvidenceFocus(occurrences.map((occurrence) => ({ occurrence, field: "" })));
+      setEvidenceFrom("run");
+      void loadMessages(root, { case: entry, identity: opened.case.identity }, NO_QUERY, null, 0, occurrences);
+    });
+  };
   const runPage = useRunPage({
     root: place === "runs" ? root : null,
     place: runsPlace,
@@ -1880,20 +1891,14 @@ export default function App() {
     },
     onStop: runActivity.stop,
     onRun: setSendRequest,
-    onCreateReport: (source) => {
-      setReportSeed((held) => ({ case: source.case ?? "", spec: source.spec ?? "", run: source.run, count: (held?.count ?? 0) + 1 }));
+    onCreateReport: () => {
+      if (runsPlace.kind !== "run") return;
+      const run = { kind: "run" as const, id: runsPlace.id };
+      const job = runsPlace.job;
+      setReportSeed((held) => ({ run, job, count: (held?.count ?? 0) + 1 }));
       open({ destination: "reports" });
     },
-    onViewMessages: (caseRef, occurrences) => {
-      const entry = listedCases.current.find((item) => item.ref.id === caseRef.id)?.summary.case?.entry;
-      if (!root || !entry) return;
-      void verifyCase(root, entry, { skipAutoGrid: true }).then((opened) => {
-        if (!opened?.case) return;
-        setEvidenceFocus(occurrences.map((occurrence) => ({ occurrence, field: "" })));
-        setEvidenceFrom("run");
-        void loadMessages(root, { case: entry, identity: opened.case.identity }, NO_QUERY, null, 0, occurrences);
-      });
-    },
+    onViewMessages: (caseRef, occurrences) => viewMessages(caseRef, occurrences),
     onOpenObservation: (observation) => open({ destination: "environments", objectId: `observation:${observation.id}` }),
     onRead: (answer) => {
       const defective = demo?.steps.find((step) => step.id === "run-defective")?.ref?.id;
@@ -1991,6 +1996,27 @@ export default function App() {
     }
   };
   const helpArticle = useHelpArticle(helpArticleId, helpAction);
+  // Reports reads under its own request scope: its list, and one report.
+  const reportsPlace: ReportsPlace = place === "reports" && route.objectId ? { kind: "report", id: route.objectId } : { kind: "list" };
+  const openRunFrom = (run: ItemRef, job?: string) => open({ destination: "runs", objectId: job ? `${run.id}:${job}` : run.id });
+  const reports = useReports({
+    root,
+    shown: place === "reports",
+    place: reportsPlace,
+    go: (to) => (to.kind === "report" ? open({ destination: "reports", objectId: to.id }) : open({ destination: "reports" })),
+    busy,
+    seed: reportSeed,
+  });
+  const reportPage = useReportPage({
+    root: place === "reports" ? root : null,
+    id: reportsPlace.kind === "report" ? reportsPlace.id : null,
+    busy,
+    listed: reports.listed,
+    onOpenRun: openRunFrom,
+    onViewMessages: viewMessages,
+    onShare: () => open({ destination: "share-report" }),
+    onChanged: () => void reports.refresh(),
+  });
 
   /** Create test: the case open now and its chosen messages (all of them
    * when none is chosen) go to the one test editor. */
@@ -3163,24 +3189,34 @@ export default function App() {
         <Page
           id="reports"
           shown={place === "reports"}
-          title="Reports"
+          title={reportsPlace.kind === "list" ? "Reports" : reportPage.title}
+          back={reportsPlace.kind === "list" ? undefined : <BackLink label="Reports" onBack={back} />}
           actions={
             root ? (
-              <>
-                <button type="button" onClick={() => open({ destination: "share-report" })}>
-                  Share
-                </button>
-                <Menu
-                  label="More report actions"
-                  items={[
-                    { label: "Transform and export", onSelect: () => open({ destination: "export-report" }) },
-                  ]}
-                />
-              </>
+              reportsPlace.kind === "list" ? (
+                <>
+                  {reports.actions}
+                  <Menu label="More report actions" items={[{ label: "Transform and export", onSelect: () => open({ destination: "export-report" }) }]} />
+                </>
+              ) : (
+                reportPage.actions
+              )
             ) : null
           }
         >
-          {root ? <PacketPanel workspace={root} entries={artifacts} onRefresh={() => void refreshListing()} seed={reportSeed} /> : noProject("reports")}
+          {!root ? (
+            noProject("reports")
+          ) : reportsPlace.kind === "list" ? (
+            <>
+              <div className="toolbar list-toolbar">{reports.toolbar}</div>
+              {reports.body}
+            </>
+          ) : (
+            <>
+              {reportPage.body}
+              {reports.body}
+            </>
+          )}
         </Page>
 
         <Page id="share-report" shown={place === "share-report"} title="Share report" back={<BackLink label="Reports" onBack={back} />}>

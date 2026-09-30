@@ -146,7 +146,6 @@ test("the failing and fixed runs become a sealed packet, a portable review that 
   // Dismissing the save dialog names nothing, and nothing can be exported.
   await journey.dismissDialog("save", "Choose a new folder for the portable review");
   await press(user, portableReview().getByRole("button", { name: "Choose destination…" }));
-  await waitFor(() => expect(journey.callsTo("ChoosePacketExportPath").at(-1)?.result).toMatchObject({ state: "cancelled" }));
   expect(portableReview().getByText("No destination chosen.")).toBeTruthy();
   expect((portableReview().getByRole("button", { name: "Export review" }) as HTMLButtonElement).disabled).toBe(true);
   await journey.nameNewFolder(journey.path(PROJECT, "reschedule-review"), "Choose a new folder for the portable review");

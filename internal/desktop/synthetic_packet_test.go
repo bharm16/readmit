@@ -223,27 +223,26 @@ func TestSyntheticPacketsChangedIncompleteOrUnsupportedAreRefusedByTheWindowAndT
 	refused("an unsupported packet version", future)
 
 	// The person's own retained evidence is not a synthetic packet.
-	assembled := app.AssemblePacket(packetRequest(root, spec, baseline, current))
-	if assembled.State != desktop.Completed || assembled.Packet == nil {
-		t.Fatalf("assemble: %+v", assembled)
+	if _, err := report.Assemble(t.Context(), packetInput(root, spec, baseline, current), filepath.Join(root, "packet-001")); err != nil {
+		t.Fatalf("assemble: %v", err)
 	}
-	refused("a retained investigation packet", filepath.Join(root, assembled.Packet.Entry))
+	refused("a retained investigation packet", filepath.Join(root, "packet-001"))
 
-	// Nor is a synthetic packet ever verified, exported or reviewed as the
-	// person's own evidence: the retained-packet panels refuse it exactly as
-	// `readmit report verify-retained` does.
+	// Nor is a synthetic packet ever verified or exported as the person's
+	// own evidence: `readmit report verify-retained` and `report export`
+	// refuse it.
 	if err := os.CopyFS(filepath.Join(root, "synthetic"), os.DirFS(source)); err != nil {
 		t.Fatal(err)
 	}
 	if kind := listingKind(t, app, root, "synthetic"); kind != string(desktop.SyntheticPacketArtifact) {
 		t.Fatalf("a synthetic packet lists as %q", kind)
 	}
-	asRetained := app.OpenPacket(root, "synthetic")
-	_, stderr, err := commandLine(t, "report", "verify-retained", filepath.Join(root, "synthetic"))
-	refusedWordForWord(t, "a synthetic packet verified as retained evidence", asRetained.State, asRetained.Reason, stderr, err)
+	if _, _, err := commandLine(t, "report", "verify-retained", filepath.Join(root, "synthetic")); err == nil {
+		t.Fatal("a synthetic packet verified as retained evidence")
+	}
 	review := filepath.Join(t.TempDir(), "review")
-	if exported := app.ExportPacketReview(desktop.PacketExportRequest{Workspace: root, Packet: "synthetic", Destination: review}); exported.State == desktop.Completed {
-		t.Fatalf("a synthetic packet was exported as a portable review: %+v", exported)
+	if _, _, err := commandLine(t, "report", "export", filepath.Join(root, "synthetic"), "--output", review); err == nil {
+		t.Fatal("a synthetic packet was exported as a portable review")
 	}
 	if _, _, err := commandLine(t, "report", "review", review); err == nil {
 		t.Fatal("a portable review of a synthetic packet verified")

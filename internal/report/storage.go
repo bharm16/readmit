@@ -55,6 +55,7 @@ var (
 	packetFamily      = sealed("manifest.json", "identity.sha256", []string{"profiles"}, []string{"reproducer", "baseline", "post-fix"}, "spec.json", "baseline-target.json", "post-fix-target.json", "diagnosis.json", "diagnosis.md", "profiles/receiver.json", "profiles/diagnosis.json", "profiles/diagnose-config.json", "diff.json", "diff.md", "history.json", "SUMMARY.md", "RERUN.md")
 	retainedFamily    = sealed("manifest.json", "identity.sha256", nil, []string{"case", "current", "baseline", "baseline-case"}, "spec.json", "SUMMARY.md", "RERUN.md")
 	reviewFamily      = sealed("manifest.json", "identity.sha256", nil, []string{"packet"}, "report.html", "report.md", "report.json", "junit.xml", "report.pdf")
+	reviewFamilyV3    = sealed("manifest.json", "identity.sha256", nil, []string{"packet"}, "authored.json", "report.html", "report.md", "report.json", "junit.xml", "report.pdf")
 	preparationFamily = sealed("preparation.json", "preparation.sha256", []string{"baseline", "post-fix", "reintroduced"}, []string{"reproducer"}, "target.json", "RERUN.md", "baseline/spec.json", "post-fix/spec.json", "reintroduced/spec.json")
 	// trialFamily is one trial's execution workspace inside the workspace
 	// Create removes before it answers: the case and spec it sends and the

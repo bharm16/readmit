@@ -35,7 +35,7 @@ import {
 import { facadeStub } from "./testkit/wails";
 import { renderApp } from "./testkit/app";
 import { windowWidth } from "./testkit/window";
-import { findCaseRow, goTo, goToView, page, readCaseIdentity, sidebar } from "./testkit/navigation";
+import { findCaseRow, goTo, goToView, openView, page, readCaseIdentity, sidebar } from "./testkit/navigation";
 import type { CatalogItem, CommercialStatusResult, HubResult, RequestContext } from "./bindings";
 
 /** Opens a folder the way a person does from anywhere: the projects page's
@@ -705,12 +705,13 @@ test("a page not on screen is not mounted, and going back to it shows what was t
   await openFolder(user);
   await sidebar().findByRole("button", { name: /^Project: / });
   await goTo(user, "Reports");
-  await user.type(page().getByLabelText("Packet folder"), "tuesday-packet");
+  await openView(user, "Transform and export");
+  await user.type(page().getByLabelText("Review ID"), "tuesday-review");
   await goTo(user, "Cases");
-  // The reports page's form is gone from the window, not hidden in it.
-  expect(document.getElementById("packet-output")).toBeNull();
+  // The page's form is gone from the window, not hidden in it.
+  expect(document.getElementById("review-approval")).toBeNull();
   await goTo(user, "Reports");
-  expect((page().getByLabelText("Packet folder") as HTMLInputElement).value).toBe("tuesday-packet");
+  expect((page().getByLabelText("Review ID") as HTMLInputElement).value).toBe("tuesday-review");
 });
 
 test("opening another project starts every page afresh: nothing typed, selected or revealed for the last one stays", async () => {
@@ -719,12 +720,15 @@ test("opening another project starts every page afresh: nothing typed, selected 
   await openFolder(user);
   await sidebar().findByRole("button", { name: /^Project: / });
   await goTo(user, "Reports");
-  await user.type(page().getByLabelText("Packet folder"), "tuesday-packet");
+  await openView(user, "Transform and export");
+  await user.type(page().getByLabelText("Review ID"), "tuesday-review");
   facade.reply({ SelectWorkspace: () => folderChosen("/work/other-project", [{ name: "project.json", kind: "project", schema: "readmit-project/v2" }]) });
   await openFolder(user);
   await waitFor(() => expect(facade.callsTo("SelectWorkspace")).toHaveLength(2));
   await goTo(user, "Reports");
-  expect((page().getByLabelText("Packet folder") as HTMLInputElement).value).toBe("");
+  expect(page().queryByLabelText("Review ID")).toBeNull();
+  await openView(user, "Transform and export");
+  expect((page().getByLabelText("Review ID") as HTMLInputElement).value).toBe("");
 });
 
 test("in a compact window a long case title opens the case's details from the keyboard", async () => {
