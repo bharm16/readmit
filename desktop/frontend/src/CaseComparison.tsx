@@ -671,19 +671,25 @@ function PolicySheet({
   const blank = (): PolicyRow => ({ key: next.current++, id: "", selector: "", operator: "ignore" });
   useEffect(() => {
     if (!open) return;
+    let current = true;
     setLoaded(false);
     setName("");
     setRules([]);
+    setBase(undefined);
     void openItemDraft({ context: context(), ref: policy ?? { kind: "normalization-policy", id: "" } }).then((answer) => {
+      if (!current) return;
       setName(answer.draft?.name ?? "");
       setBase(policy ? answer.ref?.revision : undefined);
       const held = answer.draft?.normalization_policy?.rules ?? [];
       setRules(held.length > 0 ? held.map((rule) => ({ ...rule, key: next.current++ })) : [blank()]);
       setLoaded(true);
     });
+    return () => {
+      current = false;
+    };
     // Read when the sheet opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, policy?.id, policy?.revision]);
   const update = (key: number, change: Partial<NormalizationRule>) => setRules((held) => held.map((rule) => (rule.key === key ? { ...rule, ...change } : rule)));
   return (
     <FormDialog

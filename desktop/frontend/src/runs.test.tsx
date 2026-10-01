@@ -178,6 +178,60 @@ test("an empty history offers Run test, and nothing sends until the review's Sen
   expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
 });
 
+test("Run review waits for its environment list before preparing against the single operation slot", async () => {
+  const user = userEvent.setup();
+  let listingPending = true;
+  const { facade } = await openRuns(user, [], {
+    PrepareAction: (request) => listingPending
+      ? { state: "busy", context: request.context, reason: "another operation is already running" }
+      : { state: "completed", context: request.context, review: review({}, { setup: [] }) },
+  });
+  const listingRead = facade.park("ListCatalog");
+  const sheet = await reviewTest(user);
+  await waitFor(() => expect(facade.callsTo("ListCatalog").at(-1)?.args[0]).toMatchObject({ kind: "environment" }));
+  expect(facade.callsTo("PrepareAction")).toHaveLength(0);
+  const query = facade.callsTo("ListCatalog").at(-1)!.args[0] as CatalogQuery;
+  listingPending = false;
+  listingRead.resolve({ state: "completed", context: query.context, page: { items: [QA], total: 1, snapshot: "environments", recorded: true, incomplete: [] } });
+  expect(await within(sheet).findByText("Scheduling QA · peer-under-test:2575")).toBeTruthy();
+  expect((within(sheet).getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(false);
+  expect(within(sheet).queryByText("another operation is already running")).toBeNull();
+  expect(facade.callsTo("PrepareAction")).toHaveLength(1);
+  expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
+});
+
+test("Run review reports a genuinely held operation after its environment list finishes without preparing again", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openRuns(user, [], {
+    PrepareAction: (request) => ({ state: "busy", context: request.context, reason: "another operation is already running" }),
+  });
+  const sheet = await reviewTest(user);
+  expect(await within(sheet).findByText("another operation is already running")).toBeTruthy();
+  expect((within(sheet).getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
+  // The binding's bounded busy retry asks once more per attempt; once the
+  // refusal is shown nothing prepares again.
+  const asked = facade.callsTo("PrepareAction").length;
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  expect(facade.callsTo("PrepareAction")).toHaveLength(asked);
+  expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
+});
+
+test("closing Run review while its environment list is pending prevents a late preparation", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openRuns(user, [], {
+    PrepareAction: (request) => ({ state: "completed", context: request.context, review: review({}, { setup: [] }) }),
+  });
+  const listingRead = facade.park("ListCatalog");
+  const sheet = await reviewTest(user);
+  const query = facade.callsTo("ListCatalog").at(-1)!.args[0] as CatalogQuery;
+  await user.click(within(sheet).getByRole("button", { name: "Cancel" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Run test" })).toBeNull());
+  listingRead.resolve({ state: "completed", context: query.context, page: { items: [QA], total: 1, snapshot: "environments", recorded: true, incomplete: [] } });
+  await waitFor(() => expect(page().getByRole("button", { name: "Run test" })).toBeTruthy());
+  expect(facade.callsTo("PrepareAction")).toHaveLength(0);
+  expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
+});
+
 test("Run test reviews the exact version, environment, messages and setup, sends once on Send and opens the running run, which Stop stops", async () => {
   const user = userEvent.setup();
   const { facade } = await openRuns(user, [FAILED], {

@@ -30,6 +30,7 @@ import {
   RequestScope,
   openNamedProject,
   listWholeCatalog,
+  openItemDraft,
   locateItem,
   projectLocation,
   chooseProjectLocation,
@@ -98,6 +99,7 @@ import {
   type WorkspaceResult,
   messageFields,
   type RequestContext,
+  type DatasetValue,
   onFileDrop,
 } from "./bindings";
 import { useVariantEditor, VARIANT_DRAFT_KIND, type VariantSource } from "./Variant";
@@ -107,8 +109,8 @@ import { useTimeline } from "./Timeline";
 import { MessageReader } from "./Inspector";
 import { MessageList, NO_QUERY, sameQuery, SearchSettingsSheet, type FilterSeed } from "./Messages";
 import { LibraryList, UseInTestSheet, importDraft, useCheckGroup, useLibraryItems, type LibraryKind } from "./Library";
-import { useProfile } from "./ProfileLibrary";
-import { useScenario } from "./ScenarioLibrary";
+import { PacksSheet, useProfile } from "./ProfileLibrary";
+import { SCENARIO_DRAFT_KIND, SCENARIO_DRAFT_SCHEMA, scenarioDraftObject, useScenario } from "./ScenarioLibrary";
 import { SampleFixture, ScenarioLibraryCheck, SyntheticFamilies } from "./SampleData";
 import { SyntheticPackets } from "./SyntheticPackets";
 import { useTests, type TestsPlace } from "./Tests";
@@ -347,6 +349,7 @@ export default function App() {
   const destination = sidebarOf(place);
   const currentRoute = useRef<Route>(route);
   currentRoute.current = route;
+  const scenarioNavigation = useRef<((exit: () => void) => void) | null>(null);
   const caseView = viewOf(route, "cases", CASE_VIEWS);
   const testsView = viewOf(route, "tests", TESTS_VIEWS);
   // Library opens on Profiles, then on the category last chosen in this project.
@@ -933,6 +936,12 @@ export default function App() {
         setRestoringSuite(draft);
         return;
       }
+      const scenarioObject = scenarioDraftObject(draft);
+      if (scenarioObject) {
+        setResumeNotice(null);
+        routeTo({ type: "go", to: { destination: "library", view: "scenarios", objectId: scenarioObject } });
+        return;
+      }
       const place = DRAFT_PLACES[draft.kind];
       if (!place) return;
       if (place.case && draft.case) {
@@ -1080,10 +1089,10 @@ export default function App() {
   // Create variant starts from the case open now and the messages chosen in
   // it; Compare from the case open now and, when named, the other case.
   const startVariant = useCallback(
-    async (entry: string, identity: string, seed: string[]) => {
+    async (entry: string, identity: string, seed: string[], protocol?: string) => {
       const object = await objectAt(entry);
       if (!object) return;
-      setVariantFlow((held) => ({ source: { ref: object.ref, name: object.name, entry, identity }, seed, serial: (held?.serial ?? 0) + 1 }));
+      setVariantFlow((held) => ({ source: { ref: object.ref, name: object.name, entry, identity, ...(protocol ? { protocol } : {}) }, seed, serial: (held?.serial ?? 0) + 1 }));
       setCaseFlow("variant");
     },
     [objectAt],
@@ -1106,7 +1115,7 @@ export default function App() {
       if ((action === "variant" || action === "compare") && root && entry) {
         void verifyCase(root, entry).then((opened) => {
           if (!opened?.case) return;
-          if (action === "variant") void startVariant(entry, opened.case.identity, []);
+          if (action === "variant") void startVariant(entry, opened.case.identity, [], opened.case.protocol);
           else void startCompare(entry, opened.case.identity, null);
         });
         return;
@@ -1323,8 +1332,12 @@ export default function App() {
   // to the page, so a keyboard user lands where the page now is.
   const go = useCallback(
     (to: Destination) => {
-      routeTo({ type: "destination", destination: to, leaving: leaving() });
-      focusRegion("evidence");
+      const exit = () => {
+        routeTo({ type: "destination", destination: to, leaving: leaving() });
+        focusRegion("evidence");
+      };
+      if (scenarioNavigation.current) scenarioNavigation.current(exit);
+      else exit();
     },
     [focusRegion, leaving, routeTo],
   );
@@ -1333,15 +1346,23 @@ export default function App() {
   // destination at one of its views.
   const open = useCallback(
     (to: Route) => {
-      routeTo({ type: "go", to, leaving: leaving() });
-      focusRegion("evidence");
+      const exit = () => {
+        routeTo({ type: "go", to, leaving: leaving() });
+        focusRegion("evidence");
+      };
+      if (scenarioNavigation.current) scenarioNavigation.current(exit);
+      else exit();
     },
     [focusRegion, leaving, routeTo],
   );
 
   const back = useCallback(() => {
-    routeTo({ type: "back" });
-    focusRegion("evidence");
+    const exit = () => {
+      routeTo({ type: "back" });
+      focusRegion("evidence");
+    };
+    if (scenarioNavigation.current) scenarioNavigation.current(exit);
+    else exit();
   }, [focusRegion, routeTo]);
 
   // Environments reads under its own request scope, so its reads never make
@@ -1787,6 +1808,7 @@ export default function App() {
   const onLibraryList = place === "library" && libraryObject === undefined;
   const [libraryImport, setLibraryImport] = useState<ItemDraftResult | null>(null);
   const [libraryNotice, setLibraryNotice] = useState<string | null>(null);
+  const [viewingPacks, setViewingPacks] = useState(false);
   const libraryLists: Record<LibraryView, ReturnType<typeof useLibraryItems>> = {
     checks: useLibraryItems("check-group", libraryContext, onLibraryList && libraryView === "checks"),
     profiles: useLibraryItems("profile", libraryContext, onLibraryList && libraryView === "profiles"),
@@ -1809,6 +1831,10 @@ export default function App() {
   const libraryRef = (kind: LibraryKind): ItemRef | null =>
     libraryKind === kind && libraryObject && libraryObject !== "new" && libraryObject !== "import" ? { kind, id: libraryObject } : null;
   const libraryImported = libraryObject === "import" ? libraryImport : null;
+  const importedLibraryDraft = (answer: ItemDraftResult) => {
+    setLibraryImport(answer);
+    openLibraryObject("import");
+  };
   const checkGroupPage = useCheckGroup({
     context: libraryContext,
     ref: libraryRef("check-group"),
@@ -1820,6 +1846,7 @@ export default function App() {
   });
   const profilePage = useProfile({
     onImport: () => void importLibrary(),
+    onImported: importedLibraryDraft,
     context: libraryContext,
     ref: libraryRef("profile"),
     imported: libraryKind === "profile" ? libraryImported : null,
@@ -1828,6 +1855,9 @@ export default function App() {
     onSaved: librarySaved,
   });
   const scenarioPage = useScenario({
+    root,
+    object: libraryObject,
+    drafts,
     context: libraryContext,
     ref: libraryRef("scenario"),
     imported: libraryKind === "scenario" ? libraryImported : null,
@@ -1838,6 +1868,7 @@ export default function App() {
       if (root) void verifyCase(root, entry);
     },
   });
+  scenarioNavigation.current = place === "library" && libraryView === "scenarios" && libraryObject !== undefined ? scenarioPage.leave : null;
   const libraryPage = libraryView === "checks" ? checkGroupPage : libraryView === "profiles" ? profilePage : scenarioPage;
   const importLibrary = async () => {
     setLibraryNotice(null);
@@ -1849,6 +1880,18 @@ export default function App() {
     }
     setLibraryImport(answer);
     openLibraryObject("import");
+  };
+
+  const newFHIRProfile = async () => {
+    const context = libraryContext();
+    const answer = await openItemDraft({ context, ref: { kind: "profile", id: "" }, protocol: "fhir-r4" });
+    if (!libraryScope.current.current(answer)) return;
+    if (answer.state !== "completed" || !answer.draft) {
+      setLibraryNotice(answer.reason ?? "The profile editor could not be opened.");
+      return;
+    }
+    setLibraryImport(answer);
+    open({ destination: "library", view: "profiles", objectId: "import" });
   };
   // Use in test: the chosen check group, until a test is picked for it.
   const [usingInTest, setUsingInTest] = useState<{ ref: ItemRef; name: string } | null>(null);
@@ -1879,13 +1922,18 @@ export default function App() {
       setCaptureBinding(null);
       if (observingFromSecurity) {
         setObservingFromSecurity(false);
+        routeTo({ type: "replace", to: { destination: "environments" } });
         returnToSecurity();
+      } else if (currentRoute.current.destination === "environments" && currentRoute.current.view === "add-observation" && currentRoute.current.objectId === undefined) {
+        routeTo({ type: "replace", to: { destination: "environments" } });
+        focusRegion("evidence");
       } else back();
     },
     onObservationSaved: (id) => {
       setCaptureBinding(null);
       if (observingFromSecurity) {
         setObservingFromSecurity(false);
+        routeTo({ type: "replace", to: { destination: "environments", objectId: `observation:${id}` } });
         returnToSecurity(`observation:${id}`);
       } else open({ destination: "environments", objectId: `observation:${id}` });
     },
@@ -2091,8 +2139,8 @@ export default function App() {
   // changes.
   const parentCase = openObject?.parent ?? null;
   const caseMenu: MenuItem[] = [
-    { label: "Create test", onSelect: () => void createTest() },
-    { label: "Create variant", onSelect: () => verified && void startVariant(verified.name, verified.identity, []) },
+    ...(verified?.protocol === "fhir-r4" ? [] : [{ label: "Create test", onSelect: () => void createTest() }]),
+    { label: "Create variant", onSelect: () => verified && void startVariant(verified.name, verified.identity, [], verified.protocol) },
     { label: "Compare", onSelect: () => verified && void startCompare(verified.name, verified.identity, null) },
     ...(parentCase
       ? [
@@ -2110,7 +2158,9 @@ export default function App() {
     drafts,
     busy,
     onSaved: (saved) => void openObjectRef(saved),
-    onOpenMessage: (occurrence) => void inspect(occurrence, "", 0, -1),
+    onOpenMessage: (occurrence) => variantFlow
+      ? void inspect(occurrence, "", 0, -1, { case: variantFlow.source.entry, identity: variantFlow.source.identity })
+      : undefined,
   });
   const caseComparison = useCaseComparison({
     root,
@@ -2325,7 +2375,7 @@ export default function App() {
             subpage !== null ? (
               <BackLink label="Cases" onBack={leaveSubpage} />
             ) : verified && caseFlow !== null ? (
-              <BackLink label={caseTitle} name={caseTitle} onBack={() => setCaseFlow(null)} />
+              <BackLink label={caseTitle} name={caseTitle} onBack={() => caseFlow === "variant" ? variantEditor.leave(() => setCaseFlow(null)) : setCaseFlow(null)} />
             ) : verified ? (
               <BackLink label="Cases" onBack={backToProject} />
             ) : null
@@ -2477,6 +2527,7 @@ export default function App() {
                     </div>
                   ) : null}
                   <MessageList
+                    {...(verified?.protocol ? { protocol: verified.protocol } : {})}
                     result={messages?.result ?? null}
                     rows={messages?.rows ?? []}
                     loading={readingMessages === "messages"}
@@ -2535,7 +2586,7 @@ export default function App() {
                       const chosen = (messages?.rows ?? []).filter((row) => checkedMessages.has(row.id) && row.kind === "message").map((row) => row.id);
                       if (caseRef && chosen.length > 0) setSendRequest({ kind: "messages", case: { kind: "case", id: caseRef.id }, messages: chosen });
                     }}
-                    onCreateVariant={() => verified && void startVariant(verified.name, verified.identity, [...checkedMessages])}
+                    onCreateVariant={() => verified && void startVariant(verified.name, verified.identity, [...checkedMessages], verified.protocol)}
                     onLoadMore={() => {
                       if (root && messages) void loadMessages(root, shownCase, messageQuery, messageSort, messages.rows.length);
                     }}
@@ -2647,6 +2698,7 @@ export default function App() {
                 <button type="button" disabled={busy} onClick={() => void importLibrary()}>
                   {libraryView === "checks" ? "Import check group" : libraryView === "profiles" ? "Import profile" : "Import scenario"}
                 </button>
+                {libraryView === "profiles" ? <Menu label="More library actions" items={[{ label: "Metadata packs", disabled: busy, onSelect: () => setViewingPacks(true) }, { label: "New FHIR profile", disabled: busy, onSelect: () => void newFHIRProfile() }]} /> : null}
                 {libraryView !== "profiles" ? (
                   <button type="button" className="primary" disabled={busy} onClick={() => openLibraryObject("new")}>
                     {libraryView === "checks" ? "New check group" : "New scenario"}
@@ -2667,6 +2719,7 @@ export default function App() {
                   {libraryNotice}
                 </div>
               ) : null}
+              {viewingPacks ? <PacksSheet context={libraryContext} onClose={() => setViewingPacks(false)} onImported={importedLibraryDraft} /> : null}
               {LIBRARY_VIEWS.map((view) => (
                 <TaskPanel key={view.key} tabs="library-views" tab={view.key} className="task-panel view-panel" shown={libraryView === view.key}>
                   <LibraryList
@@ -3157,11 +3210,31 @@ export default function App() {
             onReveal={(next) => {
               setRevealed(next);
               const at = inspectionResult?.inspection;
-              if (selectedOccurrence) void inspect(selectedOccurrence, at?.selected.path ?? "", at?.node_offset ?? 0, at?.byte_offset ?? -1, undefined, next);
+              if (selectedOccurrence) void inspect(selectedOccurrence, at?.fhir?.selected?.field.id ?? at?.selected.path ?? "", at?.node_offset ?? 0, at?.byte_offset ?? -1, undefined, next);
             }}
             onFilterByField={(selector: string, value: string | null, state: FieldState) => {
               setView("messages");
               setFilterSeed({ selector, value, state });
+            }}
+            onInspectResource={(occurrence) => inspect(occurrence, "", 0, -1)}
+            onCreateFHIRCheck={(preset) => {
+              const expected: DatasetValue = { state: "present", type: preset.value_type, ...(preset.code_system ? { code_system: preset.code_system } : {}) };
+              const check = {
+                ...preset.assertion,
+                ...(preset.repeated
+                  ? (preset.assertion.sequence === undefined ? { sequence: [expected] } : {})
+                  : (preset.assertion.expected === undefined ? { expected } : {})),
+              };
+              setLibraryImport({
+                state: "completed", context: libraryContext(), new: true,
+                draft: { name: "", check_group: {
+                  set: { schema: "readmit-assertion-set-draft/v1", name: "", assertions: [] }, unsupported: [],
+                  fhir: { schema: "readmit-fhir-check-group/v1", name: "", set: {
+                    schema: "readmit-dataset-assertion-set/v1", bindings: [preset.binding], assertions: [check],
+                  }, projections: [preset.projection] },
+                } },
+              });
+              open({ destination: "library", view: "checks", objectId: "import" });
             }}
             onClose={closeDetails}
             {...(detailOnly ? { backLabel: caseView === "timeline" ? "Timeline" : "Messages", onBack: closeDetails } : {})}
@@ -3187,7 +3260,7 @@ export default function App() {
       case "cancel-operation":
         return busy && interruptible;
       case "create-test":
-        return root !== null && verified !== null;
+        return root !== null && verified !== null && verified.protocol !== "fhir-r4";
       case "go-to-inspector":
         return detailsShown;
       case "open-project":
@@ -3316,13 +3389,16 @@ export default function App() {
                 </dd>
               </div>
               <div className="fact">
-                <dt>Messages</dt>
-                <dd>{verified.messages}</dd>
+                <dt>{verified.protocol === "fhir-r4" ? "Resources" : "Messages"}</dt>
+                <dd>{verified.protocol === "fhir-r4" ? verified.resources : verified.messages}</dd>
               </div>
-              <div className="fact">
+              {verified.protocol === "fhir-r4" ? <div className="fact">
+                <dt>Requests</dt>
+                <dd>{verified.requests}</dd>
+              </div> : <div className="fact">
                 <dt>ACKs</dt>
                 <dd>{verified.acknowledgements}</dd>
-              </div>
+              </div>}
               <div className="fact">
                 <dt>Unparsed</dt>
                 <dd>{verified.unparsed}</dd>
@@ -3657,6 +3733,7 @@ function resumable(draft: EditorDraft): boolean {
   // release's test drafts are offered for Discard.
   if (draft.kind === "test-draft") return draft.content_schema === TEST_EDITOR_DRAFT;
   if (draft.kind === "suite-editor") return draft.content_schema === SUITE_EDITOR_DRAFT;
+  if (draft.kind === SCENARIO_DRAFT_KIND) return draft.content_schema === SCENARIO_DRAFT_SCHEMA && scenarioDraftObject(draft) !== undefined;
   return draft.kind in DRAFT_PLACES;
 }
 

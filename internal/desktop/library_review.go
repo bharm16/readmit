@@ -18,6 +18,7 @@ import (
 	"github.com/bharm16/readmit/internal/localprofile"
 	"github.com/bharm16/readmit/internal/profileeval"
 	"github.com/bharm16/readmit/internal/profileversion"
+	"github.com/bharm16/readmit/internal/scenario"
 	"github.com/bharm16/readmit/internal/scenariogen"
 )
 
@@ -120,6 +121,15 @@ func (a *App) LibraryDocument(request DraftRequest) LibraryDocumentResult {
 		var document any
 		switch {
 		case request.Kind == CheckGroupItem && draft.CheckGroup != nil:
+			if draft.CheckGroup.FHIR != nil {
+				data, err := fhirCheckGroupDocument(draft.Name, *draft.CheckGroup)
+				if err != nil {
+					result.refuse(Failed, err.Error())
+					return result
+				}
+				result.State, result.Schema, result.Document = Completed, FHIRCheckGroupSchema, string(data)
+				return result
+			}
 			data, err := checkGroupDocument(draft.Name, *draft.CheckGroup)
 			if err != nil {
 				result.refuse(Failed, err.Error())
@@ -128,6 +138,19 @@ func (a *App) LibraryDocument(request DraftRequest) LibraryDocumentResult {
 			result.State, result.Schema, result.Document = Completed, assertion.Schema, string(data)
 			return result
 		case request.Kind == ProfileItem && draft.Profile != nil:
+			if draft.Profile.MetadataPack != nil {
+				pack, err := metadataPackDraftOf([]byte(draft.Profile.MetadataPack.Document))
+				if err != nil {
+					result.refuse(Failed, err.Error())
+					return result
+				}
+				result.State, result.Schema, result.Document = Completed, pack.Schema, pack.Document
+				return result
+			}
+			if draft.Profile.FHIR != nil {
+				document = draft.Profile.FHIR
+				break
+			}
 			profile := draft.Profile.Profile
 			if profile.Schema == "" {
 				profile.Schema = localprofile.Schema
@@ -140,6 +163,10 @@ func (a *App) LibraryDocument(request DraftRequest) LibraryDocumentResult {
 			}
 			document = profile
 		case request.Kind == ScenarioItem && draft.Scenario != nil:
+			if draft.Scenario.FHIR != nil {
+				document = draft.Scenario.FHIR
+				break
+			}
 			plan, err := scenarioPlanOf(draft)
 			if err != nil {
 				result.refuse(Failed, err.Error())
@@ -215,7 +242,9 @@ func scenarioPlanOf(draft ItemDraft) (scenariogen.Plan, error) {
 	}
 	plan := draft.Scenario.Plan
 	if template := draft.Scenario.Template; template != nil {
-		encoded, err := json.Marshal(*template, json.Deterministic(true))
+		// An unfinished order/result draft still carries every binding and
+		// result in Edit JSON; failing validation never removes those clauses.
+		encoded, err := json.Marshal(scenario.Workflow{Scenario: *template, Orders: draft.Scenario.Orders, Results: draft.Scenario.Results}, json.Deterministic(true))
 		if err != nil {
 			return scenariogen.Plan{}, errors.New("the workflow cannot be encoded")
 		}
@@ -248,6 +277,19 @@ func (a *App) ApplyLibraryDocument(request LibraryDocumentRequest) ItemDraftResu
 		var err error
 		switch request.Kind {
 		case CheckGroupItem:
+			if schemaOf(data) == FHIRCheckGroupSchema {
+				var group *FHIRCheckGroup
+				var unsupported []assertionauthor.UnsupportedClause
+				group, unsupported, err = readFHIRCheckGroup(data)
+				if err == nil {
+					held := &CheckGroupDraft{FHIR: group, Unsupported: unsupported}
+					if draft.CheckGroup != nil {
+						held.Names = draft.CheckGroup.Names
+					}
+					draft.CheckGroup = held
+				}
+				break
+			}
 			var set assertionauthor.Draft
 			var unsupported []assertionauthor.UnsupportedClause
 			if set, unsupported, err = assertionauthor.ReadLenient(data); err == nil {
@@ -258,6 +300,26 @@ func (a *App) ApplyLibraryDocument(request LibraryDocumentRequest) ItemDraftResu
 				draft.CheckGroup = &group
 			}
 		case ProfileItem:
+			if strings.HasPrefix(schemaOf(data), "readmit-profile-pack/") {
+				var pack *MetadataPackDraft
+				pack, err = metadataPackDraftOf(data)
+				if err == nil {
+					draft.Profile = &ProfileDraft{MetadataPack: pack}
+				}
+				break
+			}
+			if schemaOf(data) == FHIRProfileSchema {
+				var profile *FHIRProfileDefinition
+				profile, err = decodeFHIRProfile(data)
+				if err == nil {
+					held := &ProfileDraft{FHIR: profile}
+					if draft.Profile != nil {
+						held.Origin = draft.Profile.Origin
+					}
+					draft.Profile = held
+				}
+				break
+			}
 			var profile localprofile.Profile
 			if profile, err = localprofile.Decode(data); err == nil {
 				held := ProfileDraft{}
@@ -267,6 +329,14 @@ func (a *App) ApplyLibraryDocument(request LibraryDocumentRequest) ItemDraftResu
 				held.Profile, draft.Profile = profile, &held
 			}
 		case ScenarioItem:
+			if schemaOf(data) == FHIRScenarioSchema {
+				var template *FHIRScenarioTemplate
+				template, err = decodeFHIRScenario(data)
+				if err == nil {
+					draft.Scenario = &ScenarioDraft{FHIR: template}
+				}
+				break
+			}
 			var plan scenariogen.Plan
 			if schemaOf(data) != scenariogen.Schema {
 				err = errors.New("the document is a " + scenariogen.Schema + " plan")
@@ -277,6 +347,7 @@ func (a *App) ApplyLibraryDocument(request LibraryDocumentRequest) ItemDraftResu
 				held := scenarioDraftOf(plan)
 				if draft.Scenario != nil {
 					held.Profile = draft.Scenario.Profile
+					held.Generation = draft.Scenario.Generation
 				}
 				draft.Scenario = held
 			}

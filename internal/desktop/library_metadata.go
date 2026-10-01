@@ -19,13 +19,18 @@ import (
 // A library object may carry what the Library shows beside its document and
 // no reader of that document takes: the names a person gave a check group's
 // checks, and the local profile a scenario is authored for. It is saved as
-// its own readmit-library-metadata/v1 member of the same revision, so the
-// assertion set and the generator plan stay exactly the documents the
-// command line reads, and an export writes those documents alone.
+// its own metadata member of the same revision. v1 retains check names and
+// the authored profile alone; v2 also retains generation settings. The
+// assertion set and generator plan remain the command-line documents, and
+// reading either metadata version never rewrites the other.
 
 // LibraryMetadataSchema is the contract of a library object's metadata
 // member.
 const LibraryMetadataSchema = "readmit-library-metadata/v1"
+
+// LibraryMetadataSchemaV2 retains the original metadata plus the authored
+// settings the real case encoder needs. A v1 reader never accepts that field.
+const LibraryMetadataSchemaV2 = "readmit-library-metadata/v2"
 
 // metadataRole is the role a library object's metadata is saved as.
 const metadataRole = "metadata"
@@ -36,22 +41,34 @@ const maxMetadataBytes = 256 << 10
 // maxCheckNameRunes bounds one check's display name in characters.
 const maxCheckNameRunes = 200
 
-// libraryMetadata is a library object's metadata member: check names by
-// check identity, and the scenario's local profile at its exact revision.
-type libraryMetadata struct {
+// libraryMetadataV1 is the unchanged strict v1 shape.
+type libraryMetadataV1 struct {
 	Schema  string            `json:"schema"`
 	Names   map[string]string `json:"names,omitzero"`
 	Profile *ItemRef          `json:"profile,omitzero"`
 }
 
+// libraryMetadata is the caller's aggregate, and the v2 document shape.
+// Generation is held only by a document explicitly declaring v2.
+type libraryMetadata struct {
+	Schema     string                  `json:"schema"`
+	Names      map[string]string       `json:"names,omitzero"`
+	Profile    *ItemRef                `json:"profile,omitzero"`
+	Generation *CaseGenerationSettings `json:"generation,omitzero"`
+}
+
 // metadataMember is the staged metadata member, or nothing when there is
 // nothing to keep.
 func metadataMember(metadata libraryMetadata) ([]catalog.Staged, error) {
-	if len(metadata.Names) == 0 && metadata.Profile == nil {
+	if len(metadata.Names) == 0 && metadata.Profile == nil && metadata.Generation == nil {
 		return nil, nil
 	}
-	metadata.Schema = LibraryMetadataSchema
-	data, err := encodeMember(metadata)
+	var document any = libraryMetadataV1{Schema: LibraryMetadataSchema, Names: metadata.Names, Profile: metadata.Profile}
+	if metadata.Generation != nil {
+		metadata.Schema = LibraryMetadataSchemaV2
+		document = metadata
+	}
+	data, err := encodeMember(document)
 	if err != nil {
 		return nil, err
 	}
@@ -69,11 +86,23 @@ func readMetadata(paths map[string]string) (libraryMetadata, error) {
 	if err != nil {
 		return libraryMetadata{}, err
 	}
-	var metadata libraryMetadata
-	if json.Unmarshal(data, &metadata, json.RejectUnknownMembers(true)) != nil || metadata.Schema != LibraryMetadataSchema {
-		return libraryMetadata{}, errors.New("the library object's metadata cannot be read")
+	bad := errors.New("the library object's metadata cannot be read")
+	switch schemaOf(data) {
+	case LibraryMetadataSchema:
+		var metadata libraryMetadataV1
+		if json.Unmarshal(data, &metadata, json.RejectUnknownMembers(true)) != nil {
+			return libraryMetadata{}, bad
+		}
+		return libraryMetadata{Schema: metadata.Schema, Names: metadata.Names, Profile: metadata.Profile}, nil
+	case LibraryMetadataSchemaV2:
+		var metadata libraryMetadata
+		if json.Unmarshal(data, &metadata, json.RejectUnknownMembers(true)) != nil || metadata.Generation == nil {
+			return libraryMetadata{}, bad
+		}
+		return metadata, nil
+	default:
+		return libraryMetadata{}, bad
 	}
-	return metadata, nil
 }
 
 // checkNames validates the names a person gave checks: each names a check the

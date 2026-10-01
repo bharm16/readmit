@@ -94,6 +94,7 @@ type bridge struct {
 func main() {
 	root := flag.String("root", "", "absolute temporary root the journey owns")
 	license := flag.String("license", "", "provision a signed activation folder at this path inside root, then exit")
+	inactiveLicense := flag.Bool("license-inactive", false, "leave the supplied license folder for the person's Activate action")
 	var issues issueFlags
 	flag.Var(&issues, "issue", "provision an activation folder inside root for one term, as FOLDER,SEQUENCE,EXPIRES,GRACE_DAYS; repeated issues share one signing key; then exit")
 	certificates := flag.String("hub-certificates", "", "write a synthetic certificate authority and a loopback hub's server and client certificates into this folder inside root, then exit")
@@ -115,7 +116,7 @@ func main() {
 		var err error
 		if *license != "" {
 			var policy string
-			policy, err = provision(*root, *license)
+			policy, err = provisionFolder(*root, *license, !*inactiveLicense)
 			policies = []string{policy}
 		} else {
 			policies, err = provisionIssues(*root, issues)
@@ -155,11 +156,18 @@ func main() {
 // into a folder inside root, as its own process: the running application never
 // provisions anything. It returns the operation policy's path.
 func provision(root, folder string) (string, error) {
+	return provisionFolder(root, folder, true)
+}
+
+func provisionFolder(root, folder string, activate bool) (string, error) {
 	folder, err := activationFolder(root, folder)
 	if err != nil {
 		return "", err
 	}
-	return testlicense.Create(folder)
+	if activate {
+		return testlicense.Create(folder)
+	}
+	return testlicense.CreateUnactivated(folder)
 }
 
 // provisionIssues writes one activation folder per issue, each signed with

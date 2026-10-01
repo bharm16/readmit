@@ -28,6 +28,14 @@ import (
 )
 
 var identifier = regexp.MustCompile(`^[a-z][a-z0-9-]{0,63}$`)
+var catalogProjectID = regexp.MustCompile(`^[a-f0-9]{24}$`)
+
+// Project identifiers also accept the existing desktop catalog's opaque IDs.
+// Other authored names retain their own identifier grammar.
+func validProjectID(value string) bool {
+	return identifier.MatchString(value) || catalogProjectID.MatchString(value)
+}
+
 var occurrence = regexp.MustCompile(`^s[0-9]{4}-e[0-9]{6}$`)
 var hash = regexp.MustCompile(`^[0-9a-f]{64}$`)
 var invalid = errors.New("invalid connected test contract")
@@ -53,7 +61,7 @@ func compile(raw []byte, supplied map[string][]byte, generation Generation, phas
 	if d.Schema == TestSchemaV2 || intervalTest(d.Schema) {
 		operatorVersion = OperatorVersionV2
 	}
-	if (d.Schema != TestSchema && d.Schema != TestSchemaV2 && !intervalTest(d.Schema)) || !identifier.MatchString(d.Project) || !identifier.MatchString(d.ID) || !short(d.Revision) || d.OperatorVersion != operatorVersion {
+	if (d.Schema != TestSchema && d.Schema != TestSchemaV2 && !intervalTest(d.Schema)) || !validProjectID(d.Project) || !identifier.MatchString(d.ID) || !short(d.Revision) || d.OperatorVersion != operatorVersion {
 		return nil, invalid
 	}
 	if (d.Schema == TestSchemaV2 || intervalTest(d.Schema)) && (d.Checks.Schema != assertion.DatasetSchema || d.Bindings != (Bindings{})) {

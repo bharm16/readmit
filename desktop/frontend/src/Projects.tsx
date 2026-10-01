@@ -235,6 +235,7 @@ const DRAFT_OBJECTS: Record<string, string> = {
   suite: "Suite",
   "suite-editor": "Suite",
   scenario: "Scenario",
+  "scenario-editor": "Scenario",
   "generator-plan": "Scenario plan",
   "hub-revision": "Team revision",
   case: "Case details",
@@ -245,7 +246,8 @@ const DRAFT_OBJECTS: Record<string, string> = {
 function draftName(draft: EditorDraft): string {
   const content = typeof draft.content === "object" && draft.content !== null ? (draft.content as Record<string, unknown>) : {};
   const inner = typeof content.draft === "object" && content.draft !== null ? (content.draft as Record<string, unknown>) : {};
-  const named = draft.kind === "note" ? content.title : draft.kind === "case" ? content.name : draft.kind === "test-draft" ? inner.name : undefined;
+  const editing = typeof content.editing === "object" && content.editing !== null ? (content.editing as Record<string, unknown>) : {};
+  const named = draft.kind === "note" ? content.title : draft.kind === "case" ? content.name : draft.kind === "test-draft" ? inner.name : draft.kind === "scenario-editor" ? editing.name : undefined;
   if (typeof named === "string" && named.trim() !== "") return named.trim();
   return draft.case;
 }

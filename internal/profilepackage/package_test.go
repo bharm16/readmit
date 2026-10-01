@@ -28,6 +28,25 @@ func fixture(t *testing.T, name string) []byte {
 func origin() []byte {
 	return []byte(`{"schema":"readmit-profile-origin/v1","source_format":"readmit-local-profile/v1","source":"Independent fixture","revision":"1","license":"LicenseRef-Local","notice":"Local fixture permission text","mapping_limitations":"No external mapping; local rules only","review_reference":"fixture-review"}`)
 }
+
+func TestOriginAcceptsNativeFHIRProfilesWithoutChangingAttributionMeaning(t *testing.T) {
+	legacy, err := profilepackage.DecodeOrigin(origin())
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := bytes.Replace(origin(), []byte(`"source_format":"readmit-local-profile/v1"`), []byte(`"source_format":"readmit-fhir-profile/v1"`), 1)
+	fhir, err := profilepackage.DecodeOrigin(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fhir.SourceFormat != "readmit-fhir-profile/v1" {
+		t.Fatalf("native FHIR provenance was changed: %+v", fhir)
+	}
+	fhir.SourceFormat = legacy.SourceFormat
+	if fhir != legacy {
+		t.Fatalf("the new source format changed attribution or review meaning: %+v", fhir)
+	}
+}
 func TestRoundTripPreservesVersionAndProvenance(t *testing.T) {
 	b, e := profilepackage.Export(fixture(t, "local-profile.json"), fixture(t, "profile-pack.json"), fixture(t, "profile-version.json"), origin())
 	if e != nil {

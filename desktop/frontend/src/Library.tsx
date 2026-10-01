@@ -14,6 +14,7 @@ import {
   saveItem,
   type AssertionClause,
   type AssertionOperator,
+  type AssertionDatasetAssertion,
   type CatalogItem,
   type CheckGroupDraft,
   type ItemDraft,
@@ -22,7 +23,7 @@ import {
   type ItemRevision,
   type RequestContext,
 } from "./bindings";
-import { CHECK_TYPES, CheckSheet, checkExpected, checkSubject, newCheck } from "./Checks";
+import { CHECK_TYPES, CheckSheet, DATASET_CHECK_TYPES, DatasetCheckSheet, checkExpected, checkSubject, newCheck } from "./Checks";
 import { DataTable, type Column } from "./DataTable";
 import { saveProblem } from "./Environments";
 import { EmptyState, FormDialog, Menu, Modal, ValueRows, folderName, type SubmitFailure } from "./layout";
@@ -44,6 +45,7 @@ export function versionLabel(item: CatalogItem): string {
 
 function familyLabel(item: CatalogItem): string {
   const s = item.summary;
+  if (s.profile?.form === "fhir-profile" || s.scenario?.protocol === "fhir-r4") return "FHIR R4 · 4.0.1";
   if (s.profile) return [s.profile.family, s.profile.protocol_version].filter(Boolean).join(" · ") || (s.profile.form === "profile-pack" ? "Metadata pack" : "—");
   if (s.scenario) return s.scenario.family ?? "—";
   if (s.check_group) return s.check_group.assertions === 1 ? "1 check" : `${s.check_group.assertions} checks`;
@@ -271,6 +273,7 @@ export function useCheckGroup({
   const [notice, setNotice] = useState<string | null>(null);
   const [problems, setProblems] = useState<string[]>([]);
   const [removed, setRemoved] = useState<{ check: AssertionClause; at: number } | null>(null);
+  const [datasetCheck, setDatasetCheck] = useState<AssertionDatasetAssertion | null>(null);
   const reads = useLifecycle<"reading">({ background: true });
   const pending = useRef(false);
   const id = ref?.id ?? "";
@@ -319,7 +322,7 @@ export function useCheckGroup({
     if (!editing || pending.current) return;
     pending.current = true;
     try {
-      const draft: ItemDraft = { name: editing.name.trim(), check_group: editing.draft };
+      const draft: ItemDraft = { name: editing.name.trim(), check_group: { ...editing.draft, ...(editing.draft.fhir ? { fhir: { ...editing.draft.fhir, name: editing.name.trim() } } : {}) } };
       const answer = await saveItem({
         context: context(),
         kind: "check-group",
@@ -334,11 +337,33 @@ export function useCheckGroup({
       setEditing(null);
       setProblems([]);
       onSaved(answer.saved);
-      await read();
+      if (ref) await read();
     } finally {
       pending.current = false;
     }
   };
+
+  if (shownDraft?.fhir) {
+    const group = shownDraft.fhir;
+    const changeCheck = (check: AssertionDatasetAssertion) => editing && edit({ ...editing.draft, fhir: { ...group, set: { ...group.set, assertions: group.set.assertions.map((held) => held.id === check.id ? check : held) } } });
+    return { title: editing ? editing.name || "New check group" : name, actions: editing ? <SaveButtons dirty={JSON.stringify(editing.draft) !== JSON.stringify(saved) || editing.name !== name} disabled={busy || editing.name.trim() === ""} onSave={save} onCancel={() => { setEditing(null); setProblems([]); if (!ref) onSaved({ kind: "check-group", id: "" }); }} /> : <>
+      <button type="button" disabled={busy || !saved} onClick={() => saved && setEditing({ name, draft: saved })}>Edit</button>
+      <Menu label="More check group actions" items={[{ label: "History", onSelect: () => setSheet("history") }, { label: "Export check group…", onSelect: () => { if (ref) void exportItem(context(), ref).then(setNotice); } }]} />
+    </>, body: <>
+      {notice ? <p role="status">{notice}</p> : null}
+      {editing ? <div className="editor-fields"><label htmlFor="check-group-name">Name</label><input id="check-group-name" type="text" maxLength={200} value={editing.name} onChange={(event) => setEditing({ ...editing, name: event.target.value })} /></div> : null}
+      <p className="row-reason">FHIR R4 projections and typed dataset checks. Source and projection pins stay exact.</p>
+      <DataTable label="Checks" className="page-table" rows={group.set.assertions} rowId={(check) => check.id} rowLabel={(check) => check.id} selected={null} onSelect={() => {}} onOpen={(id) => { const found = group.set.assertions.find((check) => check.id === id); if (editing && found) setDatasetCheck(found); }} columns={[
+        { key: "name", header: "Check", priority: 1, minWidth: 12, flex: true, render: (check) => check.id }, { key: "type", header: "Type", priority: 2, minWidth: 10, render: (check) => DATASET_CHECK_TYPES[check.operator] ?? `Unsupported: ${check.operator}` }, { key: "field", header: "Field", priority: 3, minWidth: 9, render: (check) => [check.subject.dataset, check.subject.row, check.column].filter(Boolean).join(" · ") }, { key: "expected", header: "Expected", priority: 1, minWidth: 10, render: (check) => check.expected ? [check.expected.type, check.expected.state, check.expected.text, check.expected.precision, check.expected.timezone, check.expected.code_system].filter(Boolean).join(" · ") : check.sequence ? `${check.sequence.length} typed values` : check.count !== undefined ? String(check.count) : "Typed relation" },
+        ...(editing ? [{ key: "edit", header: "", priority: 1, minWidth: 6, render: (check: AssertionDatasetAssertion) => <button type="button" onClick={(event) => { event.stopPropagation(); setDatasetCheck(check); }}>Edit check</button> }] : []),
+      ]} />
+      <ValueRows label="Source bindings" rows={group.set.bindings.map((binding) => ({ label: binding.name, value: `${binding.namespace} · ${binding.phase} · ${binding.source_identity} · ${binding.projection_identity}` }))} />
+      {unsupported.length ? <section aria-label="Unsupported checks"><h2>Unsupported</h2><ValueRows rows={unsupported.map((clause) => ({ label: `Check ${clause.position + 1}`, value: clause.reason }))} /></section> : null}
+      {problems.length ? <ul role="alert">{problems.map((problem, at) => <li key={at}>{problem}</li>)}</ul> : null}
+      {datasetCheck && editing ? <DatasetCheckSheet check={datasetCheck} bindings={group.set.bindings} projections={group.projections} onClose={() => setDatasetCheck(null)} onSave={changeCheck} /> : null}
+      {sheet === "history" && ref ? <HistorySheet context={context} item={ref} onClose={() => setSheet(null)} /> : null}
+    </> };
+  }
 
   const rowsTable = (
     <DataTable

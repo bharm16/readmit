@@ -159,7 +159,7 @@ func (p *FlowPlan) Write(ctx context.Context, output string) error {
 }
 func CompileFlow(raw []byte, supplied map[string][]byte, g Generation) (*FlowPlan, error) {
 	var d FlowTest
-	if len(raw) > MaxBytes || json.Unmarshal(raw, &d, json.RejectUnknownMembers(true)) != nil || d.Schema != FlowTestSchema && d.Schema != FHIRFlowTestSchema && d.Schema != ScheduledFlowTestSchema || !identifier.MatchString(d.Project) || !identifier.MatchString(d.ID) || !short(d.Revision) || d.Environment.Project != d.Project || d.Environment.Classification != "nonproduction" || len(d.Phases) < 1 || len(d.Phases) > 32 || len(d.Steps) < 1 || len(d.Steps) > 256 || len(d.Steps) > d.Limits.MaxSteps || !slices.Contains([]string{"application-state", "engine-output"}, d.Boundary) {
+	if len(raw) > MaxBytes || json.Unmarshal(raw, &d, json.RejectUnknownMembers(true)) != nil || d.Schema != FlowTestSchema && d.Schema != FHIRFlowTestSchema && d.Schema != ScheduledFlowTestSchema || !validProjectID(d.Project) || !identifier.MatchString(d.ID) || !short(d.Revision) || d.Environment.Project != d.Project || d.Environment.Classification != "nonproduction" || len(d.Phases) < 1 || len(d.Phases) > 32 || len(d.Steps) < 1 || len(d.Steps) > 256 || len(d.Steps) > d.Limits.MaxSteps || !slices.Contains([]string{"application-state", "engine-output"}, d.Boundary) {
 		return nil, invalid
 	}
 	fhirFlow := d.Schema == FHIRFlowTestSchema

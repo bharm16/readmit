@@ -627,7 +627,12 @@ func (a *App) OpenItemDraft(request ItemRequest) ItemDraftResult {
 			draft := ItemDraft{}
 			switch request.Ref.Kind {
 			case CheckGroupItem, ProfileItem, ScenarioItem:
-				draft = a.newLibraryDraft(request.Ref.Kind)
+				var err error
+				draft, err = a.newProtocolLibraryDraft(request.Ref.Kind, request.Protocol)
+				if err != nil {
+					result.refuse(Failed, err.Error())
+					return result
+				}
 			case LinkRulesItem, CoverageItem:
 				draft = *newTimelineDraft(request.Ref.Kind)
 			case NormalizationPolicyItem:

@@ -15,6 +15,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/catalog"
+	"github.com/bharm16/readmit/internal/fhirevidence"
 	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/project"
 )
@@ -377,6 +378,10 @@ func readCase(c *loadedCatalog, item catalog.Item, paths map[string]string) (vie
 	c.identities[item.Entry] = facts.Identity
 	read := view{summary: ItemSummary{Case: &CaseSummary{Entry: item.Entry, Tags: []string{}, Incidents: []string{}, Evidence: state,
 		Provenance: provenanceMarker(facts.Provenance)}}}
+	if manifest, err := fhirevidence.Describe(paths[primaryRole(CaseItem)]); err == nil {
+		read.summary.Case.Protocol, read.summary.Case.ProtocolVersion, read.summary.Case.SourceKind, read.summary.Case.Resources = "fhir-r4", manifest.Declaration.Context.Version, manifest.Declaration.SourceKind, manifest.Resources
+		read.createdAt, read.updatedAt = manifest.Provenance.ImportedAt, manifest.Provenance.ImportedAt
+	}
 	if manifest, err := bundle.Describe(paths[primaryRole(CaseItem)]); err == nil {
 		read.createdAt = provenanceTime(manifest.Provenance)
 		read.updatedAt = read.createdAt

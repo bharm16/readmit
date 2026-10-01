@@ -135,14 +135,16 @@ type Reason string
 
 const (
 	// Why one trial was undecided.
-	ResetNotConfirmed  Reason = "reset_not_confirmed"
-	OracleUnavailable  Reason = "oracle_unavailable"
-	RunTimedOut        Reason = "run_timed_out"
-	RunCancelled       Reason = "run_cancelled"
-	RunInterrupted     Reason = "run_interrupted"
-	RunExecutionError  Reason = "run_execution_error"
-	RunDeliveryUnknown Reason = "run_delivery_uncertain"
-	RunNotTerminal     Reason = "run_did_not_finish"
+	ResetNotConfirmed       Reason = "reset_not_confirmed"
+	OracleUnavailable       Reason = "oracle_unavailable"
+	RunTimedOut             Reason = "run_timed_out"
+	RunCancelled            Reason = "run_cancelled"
+	RunInterrupted          Reason = "run_interrupted"
+	RunExecutionError       Reason = "run_execution_error"
+	RunDeliveryUnknown      Reason = "run_delivery_uncertain"
+	RunNotTerminal          Reason = "run_did_not_finish"
+	CleanupUnresolved       Reason = "connected_cleanup_not_complete"
+	FailureSignatureChanged Reason = "connected_failure_signature_changed"
 
 	// Why one reduction ended.
 	BaselineNotReproduced Reason = "unreduced_sequence_did_not_reproduce_the_signature"

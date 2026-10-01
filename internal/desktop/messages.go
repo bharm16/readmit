@@ -53,18 +53,21 @@ type MessagesRequest struct {
 // for the source (sourceNames), empty when nothing names it and the row reads
 // by SourceID. No field value is here.
 type MessageRow struct {
-	ID           string           `json:"id"`
-	SourceID     string           `json:"source_id"`
-	SourceName   string           `json:"source_name"`
-	Sequence     int              `json:"sequence"`
-	Offset       int              `json:"offset"`
-	Size         int              `json:"size"`
-	Kind         bundle.EventKind `json:"kind"`
-	Direction    bundle.Direction `json:"direction"`
-	ObservedAt   *time.Time       `json:"observed_at"`
-	Decoded      bool             `json:"decoded"`
-	MessageCode  string           `json:"message_code"`
-	TriggerEvent string           `json:"trigger_event"`
+	Protocol      string           `json:"protocol,omitzero"`
+	ResourceType  string           `json:"resource_type,omitzero"`
+	ResourceState string           `json:"resource_state,omitzero"`
+	ID            string           `json:"id"`
+	SourceID      string           `json:"source_id"`
+	SourceName    string           `json:"source_name"`
+	Sequence      int              `json:"sequence"`
+	Offset        int              `json:"offset"`
+	Size          int              `json:"size"`
+	Kind          bundle.EventKind `json:"kind"`
+	Direction     bundle.Direction `json:"direction"`
+	ObservedAt    *time.Time       `json:"observed_at"`
+	Decoded       bool             `json:"decoded"`
+	MessageCode   string           `json:"message_code"`
+	TriggerEvent  string           `json:"trigger_event"`
 }
 
 // MessageFacets are the choices the filter sheet offers for this case: the
@@ -102,6 +105,7 @@ const (
 // bound of this reader stops a scan short of it. SearchIndex is what the case's
 // own persistent index was to this read.
 type MessagesResult struct {
+	Protocol    string           `json:"protocol,omitzero"`
 	State       State            `json:"state"`
 	Reason      string           `json:"reason,omitzero"`
 	Rows        []MessageRow     `json:"rows"`
@@ -139,6 +143,9 @@ func (a *App) ReadMessages(request MessagesRequest) MessagesResult {
 }
 
 func readMessages(ctx context.Context, request MessagesRequest) MessagesResult {
+	if result, handled := readFHIRMessages(ctx, request); handled {
+		return result
+	}
 	limit := request.Limit
 	if limit == 0 {
 		limit = grid.MaxRows

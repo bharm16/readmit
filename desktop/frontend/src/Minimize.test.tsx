@@ -56,6 +56,7 @@ function setup(overrides: Partial<MinimizeSetup> = {}): MinimizeSetup {
     max_trials: 512,
     max_confirmations: 8,
     groupings: ["group-per-occurrence/v1", "group-by-correlation/v1"],
+    connected: [],
     ...overrides,
   };
 }
@@ -183,6 +184,52 @@ test("a failed run is minimized by one reviewed, bounded series that shows its t
   expect(within(detail).getByText("SIU · S12")).toBeTruthy();
   await user.click(screen.getByRole("button", { name: "Open variant" }));
   expect(opened).toEqual([{ kind: "variant", id: "variant-9", revision: "1" }]);
+});
+
+test("a connected minimization reviews the saved lifecycle, typed checks and isolation before Start", async () => {
+  const user = userEvent.setup();
+  const choice = { suite: { kind: "suite" as const, id: "approved-suite", revision: "2" }, test: "authored-test", environment: "saved-environment" };
+  const facade = installFacade({
+    MinimizeSetup: (request) => ({ state: "completed", context: request.context, setup: setup({ connected: [{ options: choice, name: "Approved connected lifecycle", eligible: true }] }) }),
+    ListCatalog: (query) => ({ state: "completed", context: query.context, page: { items: query.kind === "environment" ? environments() : [], total: query.kind === "environment" ? 1 : 0, snapshot: "s", recorded: true, incomplete: [] } }),
+    PrepareAction: (request) => {
+      const held = review(request.minimize?.trials ?? 0);
+      return { state: "completed", context: request.context, review: { ...held, minimize: { ...held.minimize!, connected: { suite: choice.suite, name: "Approved connected lifecycle", test: choice.test, boundary: "authoritative-application-api", checks: { schema: "readmit-dataset-assertion-set/v1", bindings: [], assertions: [{ id: "same-defect", operator: "row-count", subject: { dataset: "after", where: [] }, count: 1 }] }, observations: [{ id: "actual-state", kind: "fhir-search", phase: "after", horizon_ms: 30000 }], isolation: { name: "Owned sandbox", adapter: "saved-adapter", registered_environment: "saved-environment", environment_revision: "3", tenant: "synthetic-tenant", namespace: "synthetic-namespace", effects: [], manual: [], effect: "reset, prove empty, clean up" } } } } };
+    },
+  });
+  render(<Harness onOpenVariant={() => undefined} onOpenRun={() => undefined} />);
+  await user.selectOptions(await screen.findByLabelText("Execution service"), "0");
+  await fillAndStart(user, "16");
+  const sheet = within(await screen.findByRole("dialog", { name: "Minimize failure" }));
+  expect(await sheet.findByText("Approved connected lifecycle")).toBeTruthy();
+  expect(sheet.getByText(/same-defect/)).toBeTruthy();
+  expect(sheet.getByText(/actual-state.*30000/)).toBeTruthy();
+  expect(sheet.getByText("Owned sandbox")).toBeTruthy();
+  expect(facade.oneCall("PrepareAction")[0].minimize?.connected).toEqual(choice);
+  expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
+});
+
+test.each([
+  ["connected_cleanup_not_complete", "Isolation cleanup is not complete. No reduced reproducer was established."],
+  ["connected_failure_signature_changed", "The failure signature changed. No reduced reproducer was established."],
+] as const)("connected minimization stops honestly on %s", async (reason, message) => {
+  const user = userEvent.setup();
+  installFacade({
+    MinimizeSetup: (request) => ({ state: "completed", context: request.context, setup: setup() }),
+    ListCatalog: (query) => ({ state: "completed", context: query.context, page: { items: query.kind === "environment" ? environments() : [], total: 0, snapshot: "s", recorded: true, incomplete: [] } }),
+    PrepareAction: (request) => ({ state: "completed", context: request.context, review: review(2) }),
+    MinimizeProgress: () => ({ state: "empty" }),
+    ExecuteReviewedAction: (request) => ({ state: "completed", context: request.context, outcome: "uncertain", replayed: false, minimize: { outcome: "undecided", reason, minimality: "none", original: MESSAGES, retained: MESSAGES, groups: GROUPS, trials: [], budget: 2, variant: { kind: "variant", id: "unconfirmed-variant" } } }),
+  });
+  render(<Harness onOpenVariant={() => undefined} onOpenRun={() => undefined} />);
+  await fillAndStart(user, "2");
+  const sheet = within(await screen.findByRole("dialog", { name: "Minimize failure" }));
+  await sheet.findByText("Resets Scheduling QA and sends test messages for up to 2 trials.");
+  await user.click(sheet.getByRole("checkbox", { name: "Mark complete" }));
+  await user.click(sheet.getByRole("button", { name: "Start" }));
+  expect(await screen.findByText(message)).toBeTruthy();
+  expect(screen.getByText("Uncertain")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Open variant" })).toBeNull();
 });
 
 test("a search that ran out of trials claims no minimum and opens no variant", async () => {

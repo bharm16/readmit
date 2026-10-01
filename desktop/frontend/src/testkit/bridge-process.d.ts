@@ -44,7 +44,7 @@ export function copyFixtureInRoot(folder: string, fixture: string, root: string,
 export function makeFolderInRoot(root: string, path: string, mode?: number): string;
 export function linkInRoot(root: string, path: string, target: string): string;
 export function moveFolderInRoot(root: string, from: string, to: string): string;
-export function provisionInRoot(binary: string, root: string, path: string): string;
+export function provisionInRoot(binary: string, root: string, path: string, activated?: boolean): string;
 /** One term of the test entitlement: its issue sequence, when it expires
  * relative to now as a Go duration ("24h", "-48h") and its grace in days. */
 export interface LicenseIssue {

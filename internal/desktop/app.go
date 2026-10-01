@@ -18,6 +18,7 @@ import (
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/casegen"
+	"github.com/bharm16/readmit/internal/fhirevidence"
 	"github.com/bharm16/readmit/internal/guide"
 	"github.com/bharm16/readmit/internal/hubclient"
 	"github.com/bharm16/readmit/internal/operation"
@@ -182,6 +183,9 @@ func (r *WorkspaceResult) refuse(state State, reason string) { r.State, r.Reason
 // reader checked completion, identity, payload hashes and every record. It
 // carries no message bytes, field values, or original source paths.
 type Case struct {
+	Protocol         string      `json:"protocol,omitzero"`
+	Resources        int         `json:"resources,omitzero"`
+	Requests         int         `json:"requests,omitzero"`
 	Name             string      `json:"name"`
 	Identity         string      `json:"identity"`
 	Schema           string      `json:"schema"`
@@ -720,6 +724,20 @@ func (a *App) openCase(workspace, name string) CaseResult {
 	if err != nil {
 		return CaseResult{State: Failed, Reason: "a case must be named by one directory entry of the open workspace"}
 	}
+	if regular(filepath.Join(path, fhirevidence.ManifestName)) {
+		source, err := fhirevidence.Open(context.Background(), path)
+		if err != nil {
+			return CaseResult{State: Failed, Reason: "the retained R4 evidence cannot be verified as complete and unmodified"}
+		}
+		occurrences, requests := source.Manifest.Resources, 0
+		if source.Manifest.Declaration.SourceKind == "request" {
+			requests = 1
+			if occurrences == 0 {
+				occurrences = 1
+			}
+		}
+		return CaseResult{State: Completed, Case: &Case{Name: name, Identity: source.Identity, Schema: source.Manifest.Schema, Provenance: bundle.Mode(source.Manifest.Provenance.Mode), Sources: 1, Occurrences: occurrences, Protocol: "fhir-r4", Resources: source.Manifest.Resources, Requests: requests}}
+	}
 	opened, err := operation.OpenCase(path)
 	if err != nil {
 		return CaseResult{State: Failed, Reason: err.Error()}
@@ -940,6 +958,9 @@ func openedCase(workspace, caseName, identity string) (string, *bundle.Bundle, r
 	if err != nil {
 		return "", nil, refusal{Failed, "a case must be named by one directory entry of the open workspace"}
 	}
+	if regular(filepath.Join(path, fhirevidence.ManifestName)) {
+		return "", nil, refusal{Failed, "this workflow reads v2 case evidence; R4 evidence uses the existing typed resource reader and reviewed protocol actions"}
+	}
 	source, err := operation.OpenVerifiedCase(path, identity)
 	if err != nil {
 		return "", nil, refusal{Failed, err.Error()}
@@ -981,6 +1002,9 @@ func describe(root string, entry fs.DirEntry) Artifact {
 	}
 	path, err := artifactpath.Child(root, name)
 	if err == nil {
+		if manifest, err := fhirevidence.Describe(path); err == nil {
+			return Artifact{Name: name, Kind: CaseArtifact, Schema: manifest.Schema, Provenance: manifest.Provenance.Mode}
+		}
 		manifest, err := bundle.Describe(path)
 		if err == nil {
 			return Artifact{Name: name, Kind: CaseArtifact, Schema: manifest.Schema, Provenance: string(manifest.Provenance.Mode)}

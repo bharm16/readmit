@@ -817,6 +817,8 @@ function ObservationEditor({
   const driverSupport = database ? databaseSupport.find((row) => row.adapter === database.driver) : undefined;
   const recordKey = source.extraction?.record_key.join(".") ?? "";
   const typedKey = typedOptions?.choices?.find((choice) => source.extraction && JSON.stringify(choice.locator) === JSON.stringify(source.extraction.record_key))?.id ?? recordKey;
+  const recordKeyFields = held.connected ? (typedOptions?.choices ?? []).map((choice) => choice.id) : (fields?.fields ?? []);
+  const selectedRecordKey = held.connected ? typedKey : recordKey;
   const baselines = history.filter((row) => row.baseline);
 
   const credentialPicker = (optional: boolean) => (
@@ -935,19 +937,19 @@ function ObservationEditor({
           <label htmlFor="observation-record-key">Record key field</label>
           <select
             id="observation-record-key"
-            disabled={!fields || fields.fields.length === 0}
-            value={held.connected ? typedKey : recordKey}
+            disabled={recordKeyFields.length === 0}
+            value={selectedRecordKey}
             onChange={(event) => change((value) => { if (value.source.extraction) value.source.extraction.record_key = held.connected ? [...(typedOptions?.choices?.find((choice) => choice.id === event.target.value)?.locator ?? value.source.extraction.record_key)] : event.target.value ? event.target.value.split(".") : []; })}
           >
             {recordKey === "" ? <option value="">Choose a field</option> : null}
-            {(fields?.fields ?? []).map((field) => (
+            {recordKeyFields.map((field) => (
               <option key={field} value={field}>
                 {field}
               </option>
             ))}
-            {recordKey && !(fields?.fields ?? []).includes(recordKey) ? <option value={recordKey}>{recordKey}</option> : null}
+            {selectedRecordKey && !recordKeyFields.includes(selectedRecordKey) ? <option value={selectedRecordKey}>{selectedRecordKey}</option> : null}
           </select>
-          {fields?.reason ? <p className="field-error">{fields.reason}</p> : null}
+          {!held.connected && fields?.reason ? <p className="field-error">{fields.reason}</p> : null}
           <label htmlFor="observation-max-bytes">Maximum size (bytes)</label>
           <input id="observation-max-bytes" type="text" inputMode="numeric" value={numbers.maxBytes} onChange={(event) => typed("maxBytes", event.target.value)} />
         </>

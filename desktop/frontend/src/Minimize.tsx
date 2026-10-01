@@ -27,6 +27,9 @@ import {
   type RequestContext,
   type ReviewedActionResult,
   type TestMessage,
+  type AssertionDatasetAssertion,
+  type AssertionRowSelection,
+  type DatasetValue,
 } from "./bindings";
 import { DataTable } from "./DataTable";
 import { MINIMIZE_OUTCOMES, MINIMIZE_REASONS, RESET_OPERATORS, RESET_REASONS, TRIAL_PURPOSES, TRIAL_VERDICTS, term } from "./display";
@@ -79,9 +82,22 @@ export function useMinimizeActivity(root: string | null) {
   return { activity, running: activity !== null && activity.result === null, start, stop };
 }
 
-type Form = { checks: string[]; grouping: string; rules: string; trials: string; confirmations: string; environment: ItemRef | null };
+type Form = { checks: string[]; grouping: string; rules: string; trials: string; confirmations: string; environment: ItemRef | null; connected: string };
 
 const GROUPINGS: Record<string, string> = { "group-per-occurrence/v1": "Per message", "group-by-correlation/v1": "Linked groups" };
+const CONNECTED_REASONS: Record<string, string> = { connected_cleanup_not_complete: "Isolation cleanup is not complete. No reduced reproducer was established.", connected_failure_signature_changed: "The failure signature changed. No reduced reproducer was established." };
+
+function valueSummary(value: DatasetValue): string {
+  return [value.type, value.state, value.text, value.precision, value.timezone, value.code_system, value.items ? `[${value.items.map(valueSummary).join("; ")}]` : ""].filter((part) => part !== undefined && part !== "").join(" · ");
+}
+
+function selectionSummary(selection: AssertionRowSelection): string {
+  return [selection.dataset, selection.row || "All records", ...selection.where.map((filter) => `${filter.column} equals ${valueSummary(filter.equals)}`)].join(" · ");
+}
+
+function checkSummary(check: AssertionDatasetAssertion): string {
+  return [check.operator, selectionSummary(check.subject), check.column, check.expected ? valueSummary(check.expected) : "", check.count !== undefined ? `Count ${check.count}` : "", check.other ? selectionSummary(check.other) : "", check.other_column, check.quantifier, check.sequence ? `[${check.sequence.map(valueSummary).join("; ")}]` : "", check.when ? `When ${selectionSummary(check.when.subject)} · ${check.when.column} equals ${valueSummary(check.when.equals)}` : ""].filter((part) => part !== undefined && part !== "").join(" · ");
+}
 
 function whole(text: string, max: number): number | null {
   const value = Number(text);
@@ -117,7 +133,7 @@ export function useMinimize({
   onEditEnvironment: (environment: ItemRef) => void;
 }) {
   const [setup, setSetup] = useState<MinimizeSetupResult | null>(null);
-  const [form, setForm] = useState<Form>({ checks: [], grouping: "", rules: "", trials: "", confirmations: "", environment: null });
+  const [form, setForm] = useState<Form>({ checks: [], grouping: "", rules: "", trials: "", confirmations: "", environment: null, connected: "" });
   const [environments, setEnvironments] = useState<CatalogItem[]>([]);
   const [linkRules, setLinkRules] = useState<CatalogItem[]>([]);
   const [changing, setChanging] = useState(false);
@@ -140,7 +156,7 @@ export function useMinimize({
       if (!live) return;
       setSetup(answer);
       const found = answer.setup;
-      setForm({ checks: found?.failed.map((check) => check.id) ?? [], grouping: "", rules: "", trials: "", confirmations: "", environment: found?.environment ?? null });
+      setForm({ checks: found?.failed.map((check) => check.id) ?? [], grouping: "", rules: "", trials: "", confirmations: "", environment: found?.environment ?? null, connected: "" });
     });
     void listWholeCatalog({ context: context(), kind: "environment", filter: {} }).then((answer) => { if (live) setEnvironments((answer.page?.items ?? []).filter((item) => item.availability === "available")); });
     void listWholeCatalog({ context: context(), kind: "link-rules", filter: {} }).then((answer) => { if (live) setLinkRules((answer.page?.items ?? []).filter((item) => item.availability === "available")); });
@@ -172,14 +188,16 @@ export function useMinimize({
 
   const trials = whole(form.trials, found.max_trials);
   const confirmations = whole(form.confirmations, found.max_confirmations);
+  const connected = form.connected === "" ? null : found.connected[Number(form.connected)] ?? null;
   const ready =
-    form.checks.length > 0 && form.grouping !== "" && (form.grouping !== "group-by-correlation/v1" || form.rules !== "") && trials !== null && confirmations !== null && form.environment !== null;
+    form.checks.length > 0 && form.grouping !== "" && (form.grouping !== "group-by-correlation/v1" || form.rules !== "") && trials !== null && confirmations !== null && form.environment !== null && (form.connected === "" || connected?.eligible === true);
   const options: MinimizeOptions = {
     checks: form.checks,
     grouping: form.grouping,
     ...(form.grouping === "group-by-correlation/v1" && form.rules ? { rules: { kind: "link-rules", id: form.rules } } : {}),
     trials: trials ?? 0,
     confirmations: confirmations ?? 0,
+    ...(connected ? { connected: connected.options } : {}),
   };
   const chosenEnvironment = environments.find((item) => item.ref.id === form.environment?.id) ?? null;
   const environmentName = chosenEnvironment?.name ?? found.environment_name ?? "";
@@ -242,6 +260,7 @@ export function useMinimize({
           if (ready) setReviewing(true);
         }}
       >
+        {found.connected.length > 0 ? <label>Execution service<select value={form.connected} onChange={(event) => setForm({ ...form, connected: event.target.value })}><option value="">Saved test execution</option>{found.connected.map((choice, at) => <option key={at} value={String(at)} disabled={!choice.eligible}>{choice.name}{choice.refusal ? ` · ${choice.refusal}` : ""}</option>)}</select></label> : null}
         <fieldset>
           <legend>Checks to preserve</legend>
           {found.failed.map((check) => (
@@ -361,7 +380,8 @@ function StartReview({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
   const minimize = review?.minimize ?? null;
-  const manual = review?.reset?.actions.filter((action) => action.type === "operator_confirms") ?? [];
+  const resetManual = review?.reset?.actions.filter((action) => action.type === "operator_confirms") ?? [];
+  const manual = [...resetManual, ...(minimize?.connected?.isolation.manual ?? []).filter((action) => !resetManual.some((held) => held.id === action.id)).map((action) => ({ id: action.id, name: action.id, instructions: action.instructions, type: "operator_confirms", effect: "" }))];
   const automatic = review?.reset?.actions.filter((action) => action.type !== "operator_confirms") ?? [];
   const unmarked = manual.some((action) => !confirmed.includes(action.id));
   return (
@@ -415,6 +435,16 @@ function StartReview({
           ]}
         />
       ) : null}
+      {minimize?.connected ? <>
+        <ValueRows label="Connected lifecycle" rows={[
+          { label: "Lifecycle", value: minimize.connected.name }, { label: "Test", value: minimize.connected.test }, { label: "Boundary", value: minimize.connected.boundary },
+          { label: "Suite pin", value: `v${minimize.connected.suite.revision ?? "—"}` }, { label: "Isolation", value: minimize.connected.isolation.name }, { label: "Effects", value: minimize.connected.isolation.effect },
+          ...minimize.connected.observations.map((observation) => ({ label: "Observation", value: [observation.id, observation.kind, observation.phase, `${observation.horizon_ms} ms`, observation.boundary, observation.meaning].filter(Boolean).join(" · ") })),
+          ...minimize.connected.isolation.effects.map((effect) => ({ label: "Isolation effect", value: [effect.resource, effect.kind, effect.operation, effect.logical_id, effect.version].filter(Boolean).join(" · ") })),
+        ]} />
+        <ValueRows label="Typed checks" rows={minimize.connected.checks.assertions.map((check) => ({ label: check.id, value: checkSummary(check) }))} />
+        <p className="consequence">Each trial rechecks target authority and proves the declared isolation and cleanup. A changed signature or uncertain cleanup stops this series.</p>
+      </> : null}
       {manual.map((action) => (
         <fieldset key={action.id} className="setup-step">
           <legend>{action.name || "Reset"}</legend>
@@ -474,7 +504,7 @@ function Activity({
           { label: "Test", value: activity.review.minimize?.test_name ?? "" },
           { label: "Result", value: state },
           ...(result && !outcome && result.reason ? [{ label: "Reason", value: result.reason }] : []),
-          ...(outcome ? [{ label: "Reason", value: MINIMIZE_REASONS[outcome.reason] ?? outcome.reason }] : []),
+          ...(outcome ? [{ label: "Reason", value: CONNECTED_REASONS[outcome.reason] ?? MINIMIZE_REASONS[outcome.reason] ?? outcome.reason }] : []),
           ...(result?.outcome === "uncertain" ? [{ label: "Delivery", value: "Uncertain" }] : []),
           { label: "Trials", value: `${trials.length} of ${budget}` },
           ...(current ? [{ label: "Current", value: `${TRIAL_PURPOSES[current.purpose] ?? current.purpose} · ${candidateSize(current, groups)} messages` }] : []),
@@ -487,7 +517,7 @@ function Activity({
             Stop
           </button>
         ) : null}
-        {outcome?.variant ? (
+        {outcome?.variant && outcome.outcome === "reduced" && result?.outcome !== "uncertain" ? (
           <button type="button" className="primary" onClick={() => onOpenVariant(outcome.variant!)}>
             Open variant
           </button>

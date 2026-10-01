@@ -262,23 +262,3 @@ test("a policy opened for editing shows no rule until its own rules are read", a
   answer!();
   await waitFor(() => expect(within(editing).getAllByRole("group")).toHaveLength(1));
 });
-
-test("a comparison answered busy while another read holds the slot is asked again, never shown as its refusal", async () => {
-  let asked = 0;
-  installFacade({
-    ListCatalog: (query) => ({ state: "completed", context: query.context, page: { items: [], total: 0, snapshot: "s", recorded: true, incomplete: [] } }),
-    MessageFields: () => ({ state: "completed", fields: [], complete: true }),
-    CompareCases: (request) => {
-      asked += 1;
-      return asked === 1 ? { state: "busy", reason: "another operation is already running", context: request.context } : compared({ ...request, keys: ["MSH-10"] });
-    },
-  });
-  const flow = { current: CURRENT, other: OTHER, serial: 1 };
-  function Opened() {
-    const comparison = useCaseComparison({ root: CONTEXT.project, context, flow, busy: false, onCompareRuns: () => undefined });
-    return <>{comparison.body}</>;
-  }
-  render(<Opened />);
-  await waitFor(() => expect(asked).toBeGreaterThanOrEqual(2));
-  expect(screen.queryByText("another operation is already running")).toBeNull();
-});

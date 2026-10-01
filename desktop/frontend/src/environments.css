@@ -82,18 +82,24 @@
 
 .field-pair {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--s3);
 }
 
 .field-pair > div {
   display: flex;
-  flex: 1;
+  flex: 1 1 12rem;
   flex-direction: column;
   gap: var(--label-gap);
+  min-width: 0;
 }
 
 .field-pair > .field-narrow {
-  flex: 0 0 7rem;
+  flex: 0 1 7rem;
+}
+
+.field-pair input {
+  width: 100%;
 }
 
 .file-picker {

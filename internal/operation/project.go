@@ -8,10 +8,12 @@
 package operation
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
+	"github.com/bharm16/readmit/internal/fhirevidence"
 	"github.com/bharm16/readmit/internal/project"
 )
 
@@ -77,7 +79,11 @@ func VerifiedCase(root, name string) (Facts, string, error) {
 	}
 	opened, err := OpenCase(path)
 	if err != nil {
-		return Facts{}, "", err
+		fhir, fhirErr := fhirevidence.Open(context.Background(), path)
+		if fhirErr != nil {
+			return Facts{}, "", err
+		}
+		return Facts{Name: name, Identity: fhir.Identity, Schema: fhir.Manifest.Schema, Provenance: fhir.Manifest.Provenance.Mode}, fhir.Manifest.Provenance.Derivation, nil
 	}
 	return Facts{
 		Name:       name,
@@ -103,16 +109,15 @@ const (
 // reported exactly as recorded whatever this finds: a caller reports, and
 // never rewrites what a project recorded.
 func EvidenceState(root string, recorded Facts) string {
-	path, err := artifactpath.Child(root, recorded.Name)
+	_, err := artifactpath.Child(root, recorded.Name)
 	if err != nil {
 		return EvidenceMissing
 	}
-	opened, err := OpenCase(path)
+	verified, _, err := VerifiedCase(root, recorded.Name)
 	if err != nil {
 		return EvidenceUnreadable
 	}
-	if opened.Identity != recorded.Identity || opened.Manifest.Schema != recorded.Schema ||
-		string(opened.Manifest.Provenance.Mode) != recorded.Provenance {
+	if verified.Identity != recorded.Identity || verified.Schema != recorded.Schema || verified.Provenance != recorded.Provenance {
 		return EvidenceChanged
 	}
 	return EvidenceVerified
@@ -256,6 +261,12 @@ func RegisterRevision(path, name, parent string) (project.Revision, error) {
 	ancestor, _, err := VerifiedCase(root, parent)
 	if err != nil {
 		return project.Revision{}, err
+	}
+	if facts.Schema == fhirevidence.Schema {
+		derived, err := fhirevidence.Open(context.Background(), artifactpath.JoinReference(root, name))
+		if err != nil || derived.Manifest.Provenance.Parent != ancestor.Identity {
+			return project.Revision{}, ErrCaseIdentityChanged
+		}
 	}
 	updated, stored, err := project.AddRevision(document, revisions, project.Revision{
 		Name:       facts.Name,

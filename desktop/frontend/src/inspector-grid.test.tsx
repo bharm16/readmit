@@ -7,7 +7,7 @@ import { expect, test } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import type { GridQuery, InspectionResult, MessageRow, MessagesResult } from "./bindings";
+import type { FHIRFieldView, FHIRInspection, GridQuery, InspectionResult, MessageRow, MessagesResult } from "./bindings";
 import { MessageReader } from "./Inspector";
 import { MessageList, NO_QUERY, typeLabel, type FilterSeed } from "./Messages";
 import {
@@ -648,6 +648,26 @@ test("Create variant from checked messages opens the variant editor with exactly
   ]);
   expect(facade.callsTo("SaveEditorDraft")).toHaveLength(0);
   expect(facade.callsTo("EditReproducer")).toHaveLength(0);
+});
+
+test("FHIR reader keeps repeated typed states and uses only Go local reference targets", { timeout: 20_000 }, async () => {
+  const user = userEvent.setup();
+  const field: FHIRFieldView = { field: { id: "identifier[].value", type: "text", selector: { steps: [{ field: "identifier", each: true }, { field: "value", each: false }] }, repeated: true }, selection: { state: "present", readings: [{ datatype: "string", value: { state: "empty", type: "text" }, pointer: "/identifier/0/value" }, { datatype: "string", value: { state: "absent", type: "text" }, pointer: "/identifier/1/value" }] } };
+  const resource = { bundle: "", state: "parsed", occurrence: "r1", type: "Patient", base: "", logical_id: "", version_id: "", full_url: "", canonical_url: "", canonical_version: "", identifiers: [{ system: "", value: "" }, { system: "", value: "" }], container: "", pointer: "/entry/0/resource", projection_support: "supported" };
+  const evidence: FHIRInspection = { declaration: { source_kind: "bundle", context: { version: "4.0.1", media_type: "application/fhir+json", base: "" } }, resources: [resource, { ...resource, occurrence: "r2", pointer: "/entry/1/resource" }], fields: [field], references: [{ source: "r1", pointer: "/subject/reference", reference: "", resolution: { state: "resolved", occurrences: ["r2"] } }, { source: "r1", pointer: "/managingOrganization/reference", reference: "", resolution: { state: "external", occurrences: [] } }], findings: [] };
+  const { facade } = await renderApp({ InspectOccurrence: (request) => inspectionResult(request.occurrence, { fhir: { ...evidence, ...(request.path ? { selected: field } : {}) }, revealed: request.reveal, message_code: "Patient", trigger_event: "", notice: "Local R4 interpretation" }) });
+  await openCase(facade, user, [messageRow("r1", "message", { protocol: "fhir-r4", resource_type: "Patient", message_code: "Patient", trigger_event: "" }), messageRow("r2", "message", { protocol: "fhir-r4", resource_type: "Patient", message_code: "Patient", trigger_event: "" })]);
+  await user.click(await findMessageRow("r1"));
+  const reader = within(await screen.findByRole("region", { name: "Message details" }));
+  await user.click(await reader.findByRole("button", { name: /identifier\[\]\.value/ }));
+  expect(await reader.findByRole("list", { name: "Field readings" })).toBeTruthy();
+  expect(reader.getByText("empty")).toBeTruthy();
+  expect(reader.getByText("absent")).toBeTruthy();
+  expect(reader.queryByRole("button", { name: "Filter by this field" })).toBeNull();
+  expect(reader.queryByRole("link")).toBeNull();
+  await user.click(reader.getByRole("button", { name: "Open local resource r2" }));
+  await waitFor(() => expect(facade.callsTo("InspectOccurrence").at(-1)?.args[0]).toMatchObject({ occurrence: "r2", path: "" }));
+  expect(facade.callsTo("CheckTarget")).toHaveLength(0);
 });
 
 test("Go to field validates the path against the selected message and keeps it when it is not there", async () => {

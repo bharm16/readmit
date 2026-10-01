@@ -6,7 +6,7 @@
 import { expect, test } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { CatalogItem, ConnectionRow, ItemDraft, Preferences } from "./bindings";
+import type { CatalogItem, ConnectionRow, ItemDraft, ItemRequest, Preferences } from "./bindings";
 import { renderApp } from "./testkit/app";
 import { folderWithCase, shellResult } from "./testkit/fixtures";
 import { goTo, goToView, page } from "./testkit/navigation";
@@ -338,6 +338,13 @@ test("Add connection's Source opens Add observation, and closing it unsaved retu
   await user.click(within(sheet).getByRole("button", { name: "Cancel" }));
   await waitFor(() => expect(page().getByRole("heading", { level: 1, name: "Settings" })).toBeTruthy());
   expect(facade.callsTo("SaveItem")).toHaveLength(0);
+  const starts = facade.callsTo("OpenItemDraft").filter((call) => (call.args[0] as ItemRequest).ref.kind === "observation" && (call.args[0] as ItemRequest).ref.id === "").length;
+  await goTo(user, "Environments");
+  expect(await page().findByRole("heading", { level: 1, name: "Environments" })).toBeTruthy();
+  expect(screen.queryByRole("dialog", { name: "Add observation" })).toBeNull();
+  expect(facade.callsTo("OpenItemDraft").filter((call) => (call.args[0] as ItemRequest).ref.kind === "observation" && (call.args[0] as ItemRequest).ref.id === "")).toHaveLength(starts);
+  expect(facade.callsTo("CheckEnvironment")).toHaveLength(0);
+  expect(facade.callsTo("CollectObservation")).toHaveLength(0);
 });
 
 test("privacy Edit prefills the case's policy, offers indefinite retention and never extends an expired end", async () => {
@@ -550,6 +557,78 @@ const APPOINTMENTS_DRAFT: ItemDraft = {
     },
   },
 };
+
+test("a source saved from Security leaves Environments on its read-only saved observation", async () => {
+  const user = userEvent.setup();
+  let saved = false;
+  const { facade } = await renderApp({
+    SelectWorkspace: () => folderWithCase(),
+    ListConnections: (context) => ({ state: "completed", context, rows: saved ? [SOURCE, QA] : [QA] }),
+    ListCatalog: (query) => ({ state: "completed", context: query.context, page: { items: query.kind === "observation" && saved ? [APPOINTMENTS] : [], total: query.kind === "observation" && saved ? 1 : 0, snapshot: "s", recorded: true, incomplete: [] } }),
+    OpenItemDraft: (request) => ({ state: "completed", context: request.context, new: request.ref.id === "", ref: request.ref, draft: APPOINTMENTS_DRAFT }),
+    ObservationHistory: (request) => ({ state: "completed", context: request.context, collections: [] }),
+    ListCredentials: (request) => ({ state: "completed", context: request.context, credentials: [], referring: [] }),
+    ObservationSupport: () => ({ state: "completed", support: [] }),
+    ObservationFields: (request) => ({ state: "completed", context: request.context, fields: ["appointment", "status"] }),
+    SaveItem: (request) => {
+      saved = true;
+      return { state: "completed", context: request.context, outcome: "saved", saved: APPOINTMENTS.ref, replayed: false, problems: [] };
+    },
+  });
+  await openProject(user);
+  await openSecurity(user);
+  await user.click(page().getByRole("button", { name: "Add connection" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Source" }));
+  const editor = within(await screen.findByRole("dialog", { name: "Add observation" }));
+  await user.type(editor.getByLabelText("Name"), "Appointments");
+  await user.click(editor.getByRole("button", { name: "Save" }));
+  const selected = within(await screen.findByRole("dialog", { name: "Appointments" }));
+  await user.click(selected.getByRole("button", { name: "Close appointments" }));
+  const starts = facade.callsTo("OpenItemDraft").filter((call) => (call.args[0] as ItemRequest).ref.kind === "observation" && (call.args[0] as ItemRequest).ref.id === "").length;
+  await goTo(user, "Environments");
+  expect(await page().findByRole("heading", { level: 1, name: "Appointments" })).toBeTruthy();
+  expect(screen.queryByRole("dialog", { name: "Add observation" })).toBeNull();
+  expect(page().queryByRole("textbox", { name: "Name" })).toBeNull();
+  expect(facade.callsTo("OpenItemDraft").filter((call) => (call.args[0] as ItemRequest).ref.kind === "observation" && (call.args[0] as ItemRequest).ref.id === "")).toHaveLength(starts);
+  await user.click(page().getByRole("button", { name: "Back to environments" }));
+  expect(await page().findByRole("heading", { level: 1, name: "Environments" })).toBeTruthy();
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(facade.callsTo("SaveItem")).toHaveLength(1);
+  expect(facade.callsTo("CheckEnvironment")).toHaveLength(0);
+  expect(facade.callsTo("CollectObservation")).toHaveLength(0);
+});
+
+test("discarding a dirty source started from Security clears the remembered new-editor route", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp({
+    SelectWorkspace: () => folderWithCase(),
+    ListConnections: (context) => ({ state: "completed", context, rows: [QA] }),
+    OpenItemDraft: (request) => ({ state: "completed", context: request.context, new: true, draft: APPOINTMENTS_DRAFT }),
+    ListCredentials: (request) => ({ state: "completed", context: request.context, credentials: [], referring: [] }),
+    ObservationSupport: () => ({ state: "completed", support: [] }),
+    ObservationFields: (request) => ({ state: "completed", context: request.context, fields: ["appointment", "status"] }),
+  });
+  await openProject(user);
+  await openSecurity(user);
+  await user.click(page().getByRole("button", { name: "Add connection" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Source" }));
+  const editor = within(await screen.findByRole("dialog", { name: "Add observation" }));
+  await user.type(editor.getByLabelText("Name"), "Unsaved source");
+  await user.keyboard("{Escape}");
+  await user.click(within(await screen.findByRole("dialog", { name: "Save changes?" })).getByRole("button", { name: "Keep editing" }));
+  expect(editor.getByLabelText("Name")).toHaveProperty("value", "Unsaved source");
+  await user.keyboard("{Escape}");
+  await user.click(within(await screen.findByRole("dialog", { name: "Save changes?" })).getByRole("button", { name: "Discard" }));
+  await page().findByRole("heading", { level: 1, name: "Settings" });
+  const starts = facade.callsTo("OpenItemDraft").filter((call) => (call.args[0] as ItemRequest).ref.kind === "observation" && (call.args[0] as ItemRequest).ref.id === "").length;
+  await goTo(user, "Environments");
+  expect(await page().findByRole("heading", { level: 1, name: "Environments" })).toBeTruthy();
+  expect(screen.queryByRole("dialog", { name: "Add observation" })).toBeNull();
+  expect(facade.callsTo("OpenItemDraft").filter((call) => (call.args[0] as ItemRequest).ref.kind === "observation" && (call.args[0] as ItemRequest).ref.id === "")).toHaveLength(starts);
+  expect(facade.callsTo("SaveItem")).toHaveLength(0);
+  expect(facade.callsTo("CheckEnvironment")).toHaveLength(0);
+  expect(facade.callsTo("CollectObservation")).toHaveLength(0);
+});
 
 test("Edit on a source connection opens its observation editor and returns to it after saving", async () => {
   const user = userEvent.setup();

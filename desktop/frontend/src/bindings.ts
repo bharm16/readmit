@@ -319,6 +319,9 @@ import type {
   ItemHistoryResult,
   ProfileComparisonResult,
   ScenarioCaseResult,
+  ScenarioCasesRequest,
+  ScenarioCasesResult,
+  ScenarioCasesProgressResult,
   ProfileEvaluationResult,
   LibraryExportResult,
   LibraryDocumentResult,
@@ -2063,7 +2066,7 @@ export function itemHistory(request: ItemRequest): Promise<ItemHistoryResult> {
 }
 
 /** The host's file dialog for a check group, profile or scenario to import. */
-export function chooseLibraryFile(kind: "check-group" | "profile" | "scenario"): Promise<PathChoiceResult> {
+export function chooseLibraryFile(kind: "check-group" | "profile" | "scenario" | "metadata-pack"): Promise<PathChoiceResult> {
   return guard(() => facade().ChooseLibraryFile(kind), { state: "failed" });
 }
 
@@ -2114,6 +2117,15 @@ export function inspectScenarioPreview(request: ScenarioPreviewInspectRequest): 
 /** Generates a saved scenario's case once and adds it to the project. */
 export function createScenarioCase(request: ScenarioCaseRequest): Promise<ScenarioCaseResult> {
   return guard(() => facade().CreateScenarioCase(request), { state: "failed", context: request.context, replayed: false, streams: 0, seed: 0 });
+}
+
+/** Encodes a saved scenario through its pinned profile and registers its executable cases. */
+export function generateScenarioCases(request: ScenarioCasesRequest): Promise<ScenarioCasesResult> {
+  return guard(() => facade().GenerateScenarioCases(request), { state: "failed", context: request.context, support: [], unconvertible: [], replayed: false, seed: 0, cases: [] });
+}
+
+export function scenarioCasesProgress(): Promise<ScenarioCasesProgressResult> {
+  return guard(() => facade().ScenarioCasesProgress(), { state: "failed" });
 }
 
 /** Runs the built-in SIU fixture on loopback until it stops; Cancel("capture") stops it. */

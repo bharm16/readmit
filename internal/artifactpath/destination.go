@@ -63,7 +63,7 @@ func evidenceDirectory(path string) bool {
 	// A missing completion marker does not make retained case/run/result
 	// evidence writable. Preserve the former diff protection of raw payloads
 	// selected from incomplete artifacts, without opening pipes or devices.
-	for _, name := range []string{"manifest.json", "result.json"} {
+	for _, name := range []string{"manifest.json", "result.json", "fhir-evidence.json"} {
 		name = filepath.Join(path, name)
 		info, err := os.Stat(name)
 		if err != nil || !info.Mode().IsRegular() || info.Size() > 16<<20 {

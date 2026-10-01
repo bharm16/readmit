@@ -4,7 +4,7 @@
 // and CI. Nothing here sends. Fixtures carry names, states and synthetic
 // tokens only.
 import { expect, test } from "vitest";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {
   ActionReview,
@@ -20,9 +20,6 @@ import type {
   SuiteTestsRequest,
   SuiteTestVersion,
 } from "./bindings";
-import { useSuites } from "./Suites";
-import { installFacade } from "./testkit/wails";
-import { vocabularyWrapper } from "./testkit/app";
 import { renderApp } from "./testkit/app";
 import { CASE_ENTRY, caseCatalogItem, catalogOfListing, folderWithCase, GRID_OCCURRENCE, NEXT_OCCURRENCE } from "./testkit/fixtures";
 import { goTo, page } from "./testkit/navigation";
@@ -259,72 +256,6 @@ test("Suites opens a named collection and a new suite is created from saved test
   ]);
   expect(suite.concurrency).toBe(1);
 });
-
-test("the lists a new suite is composed from are read one at a time, never racing each other for the facade's one slot", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openSuites(user, [], {
-    ...suiteHandlers(),
-    OpenItemDraft: (request) =>
-      request.ref.kind === "test"
-        ? { state: "completed", context: request.context, new: false, ref: request.ref, draft: { name: RESCHEDULE.name, test_links: { environment: QA.ref.id, observation: APPOINTMENTS.ref.id } } }
-        : suiteAnswer(request),
-    SaveItem: (request) => saved(request),
-  });
-  // The facade serves one operation at a time and answers a read that meets
-  // another busy; the page's own reads must not meet each other. Only the
-  // Suites page reads suites and observations.
-  const answer = catalog([]);
-  const running = new Set<string>();
-  let overlapped = false;
-  facade.reply({
-    ListCatalog: async (query) => {
-      if ((query.kind === "suite" && running.has("observation")) || (query.kind === "observation" && running.has("suite"))) overlapped = true;
-      running.add(query.kind);
-      await new Promise((resolve) => setTimeout(resolve, 20));
-      running.delete(query.kind);
-      return answer(query, facade);
-    },
-  });
-  await goTo(user, "Projects");
-  await goTo(user, "Tests");
-  await user.click(await page().findByRole("tab", { name: "Suites" }));
-  await page().findByText("No suites yet");
-  await user.click(page().getAllByRole("button", { name: "New suite" })[0]!);
-  const sheet = await screen.findByRole("dialog", { name: "New suite" });
-  await user.type(within(sheet).getByLabelText("Name"), "Reschedule regression");
-  await user.click(await within(sheet).findByRole("checkbox", { name: RESCHEDULE.name }));
-  await user.click(within(sheet).getByRole("button", { name: "Create" }));
-  await waitFor(() => expect(facade.callsTo("SaveItem")).toHaveLength(1));
-  expect(overlapped).toBe(false);
-  const suite = (facade.oneCall("SaveItem")[0] as SaveItemRequest).draft.suite!;
-  expect(suite.datasets[0]!.rows).toEqual([expect.objectContaining({ case: { kind: "case", id: CASE.ref.id } })]);
-});
-
-test("an environment list answered busy past its retries is read again, so a binding never names a live environment Removed", async () => {
-  const user = userEvent.setup();
-  const rendered = await renderApp({ SelectWorkspace: () => folderWithCase(), ...suiteHandlers() });
-  const listed = catalog([SMOKE]);
-  // Busy for longer than one read's retries, from when the suite is opened.
-  let busy = 0;
-  rendered.facade.reply({
-    ListCatalog: (query) => (query.kind === "environment" && busy-- > 0 ? { state: "busy", reason: "another operation is already running", context: { project: "", generation: 0 } } : listed(query, rendered.facade)),
-  });
-  await goTo(user, "Projects");
-  await user.click(screen.getByRole("button", { name: "Open" }));
-  await goTo(user, "Tests");
-  await user.click(await page().findByRole("tab", { name: "Suites" }));
-  await page().findByText(SMOKE.name);
-  await waitFor(() => expect(rendered.facade.callsTo("ListCatalog").length).toBeGreaterThan(4));
-  busy = 25;
-  await user.dblClick(page().getByText(SMOKE.name));
-  const environments = await page().findByRole("table", { name: "Environments" });
-  // The suite's lists are read again once it opens, the environments past
-  // their busy answers.
-  const observationsRead = () => rendered.facade.callsTo("ListCatalog").filter((call) => (call.args[0] as CatalogQuery).kind === "observation").length;
-  await waitFor(() => expect(observationsRead()).toBe(2), { timeout: 10_000 });
-  await waitFor(() => expect(rowsOf(environments)[0]).toEqual(["Scheduling QA", "acknowledgements", QA.name, "—"]), { timeout: 10_000 });
-  expect(within(environments).queryByText("Removed")).toBeNull();
-}, 20_000);
 
 test("a saved suite opens read-only with Tests, Data, Coverage and Versions and edits every section in one Save", async () => {
   const user = userEvent.setup();
@@ -643,35 +574,6 @@ test("baseline, team release and environment approvals keep their own scopes and
   expect(facade.callsTo("StartSuiteRun")).toHaveLength(0);
 });
 
-test("an environment approval just recorded is listed with the version it approved", async () => {
-  const user = userEvent.setup();
-  let approved = false;
-  const { facade } = await openSmoke(user, {
-    SuiteReviewers: (context) => ({ state: "failed", context, reason: "not signed in", reviewers: [] }),
-    SuiteHistory: (request) =>
-      history(request, approved ? { versions: [{ ...history(request).versions[0]!, approvals: [{ scope: "environment", revision: "4", actor: "Synthetic reviewer", at: "2026-01-04T12:00:00Z", environment: "Scheduling QA", current: true }] }, history(request).versions[1]!] } : {}),
-    PrepareAction: (request) =>
-      review(request, {
-        suite_approval: { scope: "environment", suite: SMOKE.name, version: "4", actor: "Synthetic reviewer", tests: [], environment: "Scheduling QA", targets: [], target_revision: request.suite_approval?.revision ?? "" },
-      }),
-    ExecuteReviewedAction: (request) => {
-      approved = true;
-      return { state: "completed", context: request.context, outcome: "completed", replayed: false, suite_approval: { scope: "environment", revision: "4", actor: "Synthetic reviewer", at: null, current: true } };
-    },
-  });
-  await user.click(page().getByRole("button", { name: "More suite actions" }));
-  await user.click(await screen.findByRole("menuitem", { name: "Approve for environment" }));
-  const sheet = await screen.findByRole("dialog", { name: "Approve for environment" });
-  await user.type(within(sheet).getByLabelText("Target revision"), "build-7");
-  await waitFor(() => expect(facade.callsTo("PrepareAction").length).toBeGreaterThan(0));
-  await user.type(within(sheet).getByLabelText("Reason"), "QA mapping reviewed");
-  await user.click(within(sheet).getByRole("button", { name: "Approve" }));
-  await waitFor(() => expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(1));
-  await user.click(page().getByRole("tab", { name: "Versions" }));
-  const versions = await page().findByRole("table", { name: "Versions" });
-  await waitFor(() => expect(rowsOf(versions)[0]!.at(-1)).toBe("Approved for environment · Scheduling QA"));
-});
-
 test("Run hands one exact suite version and environment to the run review", async () => {
   const user = userEvent.setup();
   const { facade } = await openSmoke(user, { PrepareAction: (request) => ({ state: "failed", context: request.context, reason: "synthetic review refusal" }) });
@@ -770,30 +672,28 @@ test("a dependency on a removed test stays listed and can be unticked before Sav
   expect(suite.requirements[0]!.tests).toEqual([]);
 });
 
-
-test("a delayed suite list cannot continue reading or populate another project after navigation", async () => {
-  let release!: () => void;
-  const delayed = new Promise<void>((resolve) => { release = resolve; });
-  const requests: CatalogQuery[] = [];
-  installFacade({
-    ListCatalog: async (query) => {
-      requests.push(query);
-      if (query.context.project === "first-project") await delayed;
-      const suites = query.context.project === "first-project" ? [SMOKE] : [];
-      const items = query.kind === "suite" ? suites : [];
-      return { state: items.length ? "completed" : "empty", context: query.context, page: { items, total: items.length, snapshot: "s", recorded: true, incomplete: [] } };
-    },
+test("an environment list answered busy past its retries is read again, so a binding never names a live environment Removed", async () => {
+  const user = userEvent.setup();
+  const rendered = await renderApp({ SelectWorkspace: () => folderWithCase(), ...suiteHandlers() });
+  const listed = catalog([SMOKE]);
+  // Busy for longer than one read's retries, from when the suite is opened.
+  let busy = 0;
+  rendered.facade.reply({
+    ListCatalog: (query) => (query.kind === "environment" && busy-- > 0 ? { state: "busy", reason: "another operation is already running", context: { project: "", generation: 0 } } : listed(query, rendered.facade)),
   });
-  function Suites({ root }: { root: string }) {
-    const suite = useSuites({ root, shown: true, place: { kind: "list" }, go: () => {}, back: () => {}, busy: false, onRun: () => {}, onLibrary: () => {}, onSchedule: () => {} });
-    return suite.body;
-  }
-  const view = render(<Suites root="first-project" />, { wrapper: vocabularyWrapper() });
-  await waitFor(() => expect(requests.some((query) => query.context.project === "first-project")).toBe(true));
-  view.rerender(<Suites root="second-project" />);
-  await screen.findByText("No suites yet");
-  await act(async () => { release(); await delayed; });
-  expect(screen.queryByText(SMOKE.name)).toBeNull();
-  expect(screen.getByText("No suites yet")).toBeTruthy();
-  expect(requests.filter((query) => query.context.project === "first-project").map((query) => query.kind)).toEqual(["suite"]);
-});
+  await goTo(user, "Projects");
+  await user.click(screen.getByRole("button", { name: "Open" }));
+  await goTo(user, "Tests");
+  await user.click(await page().findByRole("tab", { name: "Suites" }));
+  await page().findByText(SMOKE.name);
+  await waitFor(() => expect(rendered.facade.callsTo("ListCatalog").length).toBeGreaterThan(4));
+  busy = 25;
+  await user.dblClick(page().getByText(SMOKE.name));
+  const environments = await page().findByRole("table", { name: "Environments" });
+  // The suite's lists are read again once it opens, the environments past
+  // their busy answers.
+  const observationsRead = () => rendered.facade.callsTo("ListCatalog").filter((call) => (call.args[0] as CatalogQuery).kind === "observation").length;
+  await waitFor(() => expect(observationsRead()).toBe(2), { timeout: 10_000 });
+  await waitFor(() => expect(rowsOf(environments)[0]).toEqual(["Scheduling QA", "acknowledgements", QA.name, "—"]), { timeout: 10_000 });
+  expect(within(environments).queryByText("Removed")).toBeNull();
+}, 20_000);

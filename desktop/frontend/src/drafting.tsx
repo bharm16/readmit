@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   discardEditorDraft,
   saveEditorDraft,
@@ -51,7 +51,20 @@ function notify(result: EditorDraftsResult, outcome: "save" | "discard"): void {
   }
 }
 
-export function useRetainer(): {
+type RetentionBuffer = {
+  knownId: { current: string };
+  mintedFor: { current: string | null };
+  last: { current: EditorDraft | null };
+  conflicted: { current: boolean };
+  pending: { current: number };
+  generation: { current: number };
+  retention: Retention;
+};
+
+/** owner is an optional editor-flow identity. Earlier owners' queued work is
+ * retained, while their answers can neither adopt nor discard the new owner's
+ * draft. Callers without an owner retain one buffer for the mounted editor. */
+export function useRetainer(owner?: string, { reuseOwners = false }: { reuseOwners?: boolean } = {}): {
   retention: Retention;
   save: (draft: EditorDraft) => void;
   drop: (id: string) => void;
@@ -63,27 +76,32 @@ export function useRetainer(): {
   keepId: (id: string) => void;
   chain: (work: () => Promise<void>) => void;
 } {
-  const [retention, setRetention] = useState<Retention>({ state: "idle" });
+  // Ordinary flows replace their owner buffer. An editor which can return to
+  // an earlier object opts into keeping unresolved buffers, so queued writes
+  // and a returned object use the same minted identity and status.
+  const owners = useRef(new Map<string, RetentionBuffer>());
+  const buffer = useMemo<RetentionBuffer>(() => {
+    const held = reuseOwners && owner !== undefined ? owners.current.get(owner) : undefined;
+    if (held) return held;
+    const fresh: RetentionBuffer = {
+      knownId: { current: "" }, mintedFor: { current: null }, last: { current: null },
+      conflicted: { current: false }, pending: { current: 0 }, generation: { current: 0 }, retention: { state: "idle" },
+    };
+    if (reuseOwners && owner !== undefined) owners.current.set(owner, fresh);
+    return fresh;
+  }, [owner, reuseOwners]);
+  const current = useRef(buffer);
+  current.current = buffer;
+  const [shown, setShown] = useState<{ buffer: RetentionBuffer; retention: Retention }>(() => ({ buffer, retention: { state: "idle" } }));
+  const retention: Retention = shown.buffer === buffer ? shown.retention : buffer.retention;
+  const setRetention = useCallback((next: Retention) => {
+    buffer.retention = next;
+    if (current.current === buffer) setShown({ buffer, retention: next });
+  }, [buffer]);
+  // All owners keep the same write ordering and bounded current-store census.
   const chainRef = useRef<Promise<void>>(Promise.resolve());
-  const knownId = useRef("");
-  // The kind and workspace the known identity was minted for, or null when an
-  // editor adopted it from a draft it restored. One retainer can serve more
-  // than one kind of draft, and an edit of one never continues another's.
-  const mintedFor = useRef<string | null>(null);
   const seenIds = useRef(new Set<string>());
-  const last = useRef<EditorDraft | null>(null);
-  // Once the store has said the identity this editor was writing under is
-  // gone, nothing is written until the person decides: every keystroke while
-  // conflicted only updates the text that "keep as new" would write, so no
-  // save races that decision or overwrites it with a lesser refusal.
-  const conflicted = useRef(false);
-  // Retentions sent or queued and not yet answered. An answer to an earlier
-  // one says nothing about the text typed since, so "saved" waits for the
-  // newest to be answered.
-  const pending = useRef(0);
-  // Advanced when the editor's work is stored where it belongs: a retention
-  // queued before then holds that same work, and is not written.
-  const generation = useRef(0);
+  const { knownId, mintedFor, last, conflicted, pending, generation } = buffer;
 
   const apply = useCallback((saved: EditorDraft, result: EditorDraftsResult) => {
     notify(result, "save");
@@ -95,15 +113,13 @@ export function useRetainer(): {
       const mine = saved.id === ""
         ? drafts.find(
             (held) =>
-              held.kind === saved.kind && held.workspace === saved.workspace && !seenIds.current.has(held.id),
+              scope(held, owner !== undefined) === scope(saved, owner !== undefined) && !seenIds.current.has(held.id),
           )
         : undefined;
-      for (const held of drafts) {
-        seenIds.current.add(held.id);
-      }
+      seenIds.current = new Set(drafts.map((held) => held.id));
       if (mine) {
         knownId.current = mine.id;
-        mintedFor.current = scope(saved);
+        mintedFor.current = scope(saved, owner !== undefined);
       }
       if (pending.current > 1) {
         // A newer edit is still in flight; what is on screen is not kept yet.
@@ -133,7 +149,7 @@ export function useRetainer(): {
     setRetention(
       result.reason ? { state: "not-retained", reason: result.reason } : { state: "not-retained" },
     );
-  }, []);
+  }, [buffer, owner, setRetention]);
 
   // id null means "the identity this editor holds when the write is sent":
   // keystrokes arrive faster than a retention answers, and an identity read
@@ -164,7 +180,7 @@ export function useRetainer(): {
         // The identity held when the write is sent continues this editor's
         // draft only for a draft of the same kind and workspace: one retainer
         // can serve several, and one never continues another's.
-        const continued = mintedFor.current === null || mintedFor.current === scope(saved) ? knownId.current : "";
+        const continued = mintedFor.current === null || mintedFor.current === scope(saved, owner !== undefined) ? knownId.current : "";
         const sent = { ...saved, id: id ?? continued };
         try {
           apply(sent, await saveEditorDraft(sent));
@@ -175,9 +191,12 @@ export function useRetainer(): {
         }
       } finally {
         pending.current -= 1;
+        // The facade's bounded store now owns an acknowledged inactive draft.
+        // Only pending or refused owners need their identity kept in memory.
+        if (reuseOwners && owner !== undefined && current.current !== buffer && pending.current === 0 && buffer.retention.state === "saved" && owners.current.get(owner) === buffer) owners.current.delete(owner);
       }
     });
-  }, [apply]);
+  }, [apply, buffer, owner, reuseOwners, setRetention]);
 
   const save = useCallback((draft: EditorDraft) => {
     enqueue(draft, draft.id === "" ? null : draft.id);
@@ -204,7 +223,7 @@ export function useRetainer(): {
       setRetention({ state: "not-retained", reason: "the application did not answer" });
       return false;
     }
-  }, []);
+  }, [buffer, setRetention]);
 
   const drop = useCallback((id: string) => {
     chainRef.current = chainRef.current.then(async () => { await discard(id); });
@@ -228,11 +247,12 @@ export function useRetainer(): {
       }
       last.current = null;
       conflicted.current = false;
+      if (reuseOwners && owner !== undefined && owners.current.get(owner) === buffer) owners.current.delete(owner);
       return true;
     });
     chainRef.current = dropped.then(() => {});
     return dropped;
-  }, [discard]);
+  }, [discard, buffer, owner, reuseOwners, setRetention]);
 
   // The person says the refused text is still theirs: write it again, under the
   // identity it was retained under.
@@ -241,7 +261,7 @@ export function useRetainer(): {
     if (last.current) {
       enqueue(last.current, knownId.current);
     }
-  }, [enqueue]);
+  }, [enqueue, buffer]);
 
   // The identity this editor was writing under is no longer held. Keeping the
   // text means writing it as the new draft it now has to be, never silently —
@@ -251,7 +271,7 @@ export function useRetainer(): {
     if (last.current) {
       enqueue(last.current, "");
     }
-  }, [enqueue]);
+  }, [enqueue, buffer]);
 
   const clear = useCallback(() => {
     knownId.current = "";
@@ -259,11 +279,11 @@ export function useRetainer(): {
     last.current = null;
     conflicted.current = false;
     setRetention({ state: "idle" });
-  }, []);
+  }, [buffer, setRetention]);
 
   // The identity the last retained edit is held under, so the editor that
   // stored its work can ask for exactly its own draft to be dropped.
-  const currentId = useCallback(() => knownId.current, []);
+  const currentId = useCallback(() => knownId.current, [buffer]);
 
   // Adopts the identity of a draft this editor has just restored from the
   // store, so its first edit replaces that draft instead of minting a second.
@@ -271,7 +291,7 @@ export function useRetainer(): {
     knownId.current = id;
     mintedFor.current = null;
     seenIds.current.add(id);
-  }, []);
+  }, [buffer]);
 
   // Chains work after the retentions already in flight, so a step that must
   // wait for a write — dropping the working-session copy the edit just moved
@@ -284,8 +304,9 @@ export function useRetainer(): {
 }
 
 /** The kind and workspace a draft belongs to: the scope one identity serves. */
-function scope(draft: EditorDraft): string {
-  return `${draft.kind}\u0000${draft.workspace}`;
+function scope(draft: EditorDraft, owned = false): string {
+  const base = `${draft.kind}\u0000${draft.workspace}`;
+  return owned ? `${base}\u0000${draft.case}\u0000${draft.identity}` : base;
 }
 
 const WORDS: Record<Retention["state"], string> = {

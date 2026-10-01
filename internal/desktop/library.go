@@ -47,6 +47,7 @@ type CheckGroupDraft struct {
 	Set         assertionauthor.Draft               `json:"set"`
 	Unsupported []assertionauthor.UnsupportedClause `json:"unsupported"`
 	Names       map[string]string                   `json:"names,omitzero"`
+	FHIR        *FHIRCheckGroup                     `json:"fhir,omitzero"`
 }
 
 // ScenarioDraft is a generator plan as its editor holds it. Template, when
@@ -60,6 +61,12 @@ type ScenarioDraft struct {
 	Plan     scenariogen.Plan   `json:"plan"`
 	Template *scenario.Scenario `json:"template,omitzero"`
 	Profile  *ItemRef           `json:"profile,omitzero"`
+	// Generation holds the wire form and business facts explicitly authored
+	// for the real case encoder, beside the unchanged generator plan.
+	Generation *CaseGenerationSettings `json:"generation,omitzero"`
+	FHIR       *FHIRScenarioTemplate   `json:"fhir,omitzero"`
+	Orders     []scenario.Order        `json:"orders,omitzero"`
+	Results    []scenario.Result       `json:"results,omitzero"`
 }
 
 // maxWindowSeed is the largest seed the window carries exactly: a JSON number
@@ -80,6 +87,18 @@ func readCheckGroup(c *loadedCatalog, item catalog.Item, paths map[string]string
 	data, err := boundedFile(paths[primaryRole(CheckGroupItem)], 1<<20)
 	if err != nil {
 		return view{}, err
+	}
+	if schemaOf(data) == FHIRCheckGroupSchema {
+		group, unsupported, err := readFHIRCheckGroup(data)
+		if err != nil {
+			return view{}, err
+		}
+		read := view{name: group.Name, summary: ItemSummary{CheckGroup: &CheckGroupSummary{
+			Assertions: len(group.Set.Assertions) + len(unsupported), Revision: item.RevisionLabel(), Unsupported: len(unsupported)}}}
+		if len(unsupported) > 0 {
+			return read, &unsupportedClauses{count: len(unsupported)}
+		}
+		return read, nil
 	}
 	set, unsupported, err := assertionauthor.ReadLenient(data)
 	if err != nil {
@@ -111,6 +130,15 @@ func readProfile(c *loadedCatalog, item catalog.Item, paths map[string]string) (
 		return view{}, err
 	}
 	schema, _ := sniffSchema(path)
+	if schema == FHIRProfileSchema || schema == FHIRProfilePackageSchema {
+		profile, _, err := readFHIRProfile(paths)
+		if err != nil {
+			return view{}, err
+		}
+		availability := c.fhirProfileAvailability(*profile)
+		return view{name: profile.Identity.ID, summary: ItemSummary{Profile: &ProfileSummary{Form: "fhir-profile", Family: profile.ResourceType,
+			ProtocolVersion: "4.0.1", PublishedVersion: profile.Identity.Version, FHIR: &availability}}}, nil
+	}
 	switch {
 	case strings.HasPrefix(schema, "readmit-local-profile/"):
 		profile, err := profileeval.DecodeProfile(data)
@@ -118,8 +146,10 @@ func readProfile(c *loadedCatalog, item catalog.Item, paths map[string]string) (
 			return view{}, err
 		}
 		definition := profile.Definition
+		_, pack := c.pinnedPack(definition.Base.Pack)
+		levels := pack.Outcomes(definition.Base.HL7Version, definition.Base.Family)
 		return view{name: definition.Identity.ID, summary: ItemSummary{Profile: &ProfileSummary{Form: "local-profile", Family: definition.Base.Family,
-			ProtocolVersion: definition.Base.HL7Version, PublishedVersion: definition.Identity.Version}}}, nil
+			ProtocolVersion: definition.Base.HL7Version, PublishedVersion: definition.Identity.Version, Levels: &levels}}}, nil
 	case strings.HasPrefix(schema, "readmit-profile-pack/"):
 		pack, err := profileeval.DecodePack(data)
 		if err != nil {
@@ -129,6 +159,8 @@ func readProfile(c *loadedCatalog, item catalog.Item, paths map[string]string) (
 		summary := &ProfileSummary{Form: "profile-pack", PublishedVersion: metadata.Identity.Version}
 		if len(metadata.Coverage) == 1 {
 			summary.Family, summary.ProtocolVersion = metadata.Coverage[0].Family, metadata.Coverage[0].HL7Version
+			levels := metadata.Outcomes(summary.ProtocolVersion, summary.Family)
+			summary.Levels = &levels
 		}
 		return view{name: metadata.Identity.ID, summary: ItemSummary{Profile: summary}}, nil
 	}
@@ -143,6 +175,16 @@ func readScenario(c *loadedCatalog, item catalog.Item, paths map[string]string) 
 	data, err := boundedFile(path, 4<<20)
 	if err != nil {
 		return view{}, err
+	}
+	if schemaOf(data) == FHIRScenarioSchema {
+		template, err := decodeFHIRScenario(data)
+		if err != nil {
+			return view{}, err
+		}
+		seed, base := template.Seed, template.BaseTime
+		return view{name: template.Identity.ID, summary: ItemSummary{Scenario: &ScenarioSummary{
+			Version: template.Identity.Version, Profile: "fhir-r4", Protocol: "fhir-r4", Family: "FHIR", Plan: true,
+			Seed: &seed, BaseTime: &base, GeneratorVersion: "readmit-fhir-template-v1"}}}, nil
 	}
 	if declares(path, scenariogen.Schema) {
 		plan, err := scenariogen.Decode(data)
@@ -195,6 +237,9 @@ func lifecycleFamily(profile scenario.ProfileName) string {
 // is held, every check reads on its own and the group reads as one set.
 // A check with no identity is given a stable one; an existing one keeps its.
 func validateCheckGroupDraft(draft ItemDraft) ([]catalog.Staged, *CheckGroupDraft, []FieldProblem) {
+	if draft.CheckGroup.FHIR != nil {
+		return validateFHIRCheckGroupDraft(draft)
+	}
 	problems := []FieldProblem{}
 	group := *draft.CheckGroup
 	if len(group.Unsupported) > 0 {
@@ -274,6 +319,9 @@ func (c *loadedCatalog) pinnedPack(pin profilepack.Identity) (*ItemRef, profilep
 // written into the plan, the plan read by the generator's own reader, and a
 // seed the window carries exactly.
 func validateScenarioDraft(draft ItemDraft, version string) ([]catalog.Staged, *ScenarioDraft, []FieldProblem) {
+	if draft.Scenario.FHIR != nil {
+		return validateFHIRScenarioDraft(draft, version)
+	}
 	plan := draft.Scenario.Plan
 	if plan.Schema == "" {
 		plan.Schema = scenariogen.Schema
@@ -296,11 +344,28 @@ func validateScenarioDraft(draft ItemDraft, version string) ([]catalog.Staged, *
 		} else if workflow.Scenario.Version == "" {
 			workflow.Scenario.Version = "1"
 		}
-		encoded, err := json.Marshal(workflow, json.Deterministic(true))
+		var document any = workflow
+		if workflow.Schema == scenario.OrderSchema {
+			document = scenario.OrderScenario{Schema: workflow.Schema, Scenario: workflow.Scenario, Profile: workflow.Profile, BaseTime: workflow.BaseTime,
+				Subjects: workflow.Subjects, Steps: workflow.Steps, Orders: draft.Scenario.Orders, Results: draft.Scenario.Results}
+		} else if len(draft.Scenario.Orders) > 0 || len(draft.Scenario.Results) > 0 {
+			return nil, nil, []FieldProblem{{Field: "scenario.template", Problem: "only an order/result workflow retains order and result clauses; none is removed for you"}}
+		}
+		encoded, err := json.Marshal(document, json.Deterministic(true))
 		if err != nil {
 			return nil, nil, []FieldProblem{{Field: "scenario.template", Problem: "the workflow cannot be encoded"}}
 		}
 		plan.Template = encoded
+	} else if version != "" {
+		// Raw order plans retain every member while their saved revision
+		// becomes the declared workflow version, just as typed plans do.
+		var document map[string]jsontext.Value
+		var identity scenario.Identity
+		if json.Unmarshal(plan.Template, &document) == nil && json.Unmarshal(document["scenario"], &identity) == nil {
+			identity.Version = version
+			document["scenario"], _ = json.Marshal(identity, json.Deterministic(true))
+			plan.Template, _ = json.Marshal(document, json.Deterministic(true))
+		}
 	}
 	if plan.Seed > maxWindowSeed {
 		return nil, nil, []FieldProblem{{Field: "scenario.plan.seed", Problem: "a seed is a whole number from 0 to " + strconv.FormatUint(maxWindowSeed, 10)}}
@@ -323,6 +388,10 @@ func scenarioDraftOf(plan scenariogen.Plan) *ScenarioDraft {
 	held := &ScenarioDraft{Plan: plan}
 	if declared, err := scenario.Decode(plan.Template); err == nil {
 		held.Template = &declared
+	} else if ordered, err := scenario.DecodeOrders(plan.Template); err == nil {
+		held.Template = &scenario.Scenario{Schema: ordered.Schema, Scenario: ordered.Scenario, Profile: ordered.Profile, BaseTime: ordered.BaseTime,
+			Subjects: ordered.Subjects, Steps: ordered.Steps}
+		held.Orders, held.Results = ordered.Orders, ordered.Results
 	}
 	return held
 }
@@ -332,7 +401,16 @@ func verifyCheckGroup(files map[string]string) error {
 	if err != nil {
 		return err
 	}
-	if _, err = assertion.Decode(data); err != nil {
+	if schemaOf(data) == FHIRCheckGroupSchema {
+		_, unsupported, readErr := readFHIRCheckGroup(data)
+		err = readErr
+		if err == nil && len(unsupported) > 0 {
+			err = &unsupportedClauses{count: len(unsupported)}
+		}
+	} else {
+		_, err = assertion.Decode(data)
+	}
+	if err != nil {
 		return err
 	}
 	_, err = readMetadata(files)
@@ -340,11 +418,16 @@ func verifyCheckGroup(files map[string]string) error {
 }
 
 func verifyScenario(files map[string]string) error {
-	data, err := boundedFile(files[scenarioRole], scenariogen.MaxBytes)
+	data, err := boundedFile(files[scenarioRole], maxProtocolLibraryBytes)
 	if err != nil {
 		return err
 	}
-	if _, err = scenariogen.Decode(data); err != nil {
+	if schemaOf(data) == FHIRScenarioSchema {
+		_, err = decodeFHIRScenario(data)
+	} else {
+		_, err = scenariogen.Decode(data)
+	}
+	if err != nil {
 		return err
 	}
 	_, err = readMetadata(files)
@@ -380,6 +463,18 @@ func (a *App) libraryDraftOf(c *loadedCatalog, record catalog.Item, name string)
 		if err != nil {
 			return ItemDraft{}, err
 		}
+		if schemaOf(data) == FHIRCheckGroupSchema {
+			group, unsupported, err := readFHIRCheckGroup(data)
+			if err != nil {
+				return ItemDraft{}, err
+			}
+			metadata, err := readMetadata(paths)
+			if err != nil {
+				return ItemDraft{}, err
+			}
+			draft.CheckGroup = &CheckGroupDraft{FHIR: group, Unsupported: unsupported, Names: metadata.Names}
+			break
+		}
 		set, unsupported, err := assertionauthor.ReadLenient(data)
 		if err != nil {
 			return ItemDraft{}, err
@@ -390,6 +485,26 @@ func (a *App) libraryDraftOf(c *loadedCatalog, record catalog.Item, name string)
 		}
 		draft.CheckGroup = &CheckGroupDraft{Set: set, Unsupported: unsupported, Names: metadata.Names}
 	case ProfileItem:
+		if schema, _ := sniffSchema(paths[profileRole]); strings.HasPrefix(schema, "readmit-profile-pack/") {
+			raw, err := boundedFile(paths[profileRole], profilepack.MaxPackBytes)
+			if err != nil {
+				return ItemDraft{}, err
+			}
+			pack, err := metadataPackDraftOf(raw)
+			if err != nil {
+				return ItemDraft{}, err
+			}
+			draft.Profile = &ProfileDraft{MetadataPack: pack}
+			break
+		}
+		if schema, _ := sniffSchema(paths[profileRole]); schema == FHIRProfileSchema || schema == FHIRProfilePackageSchema {
+			profile, origin, err := readFHIRProfile(paths)
+			if err != nil {
+				return ItemDraft{}, err
+			}
+			draft.Profile = &ProfileDraft{FHIR: profile, Origin: origin}
+			break
+		}
 		profile, origin, err := readLocalProfile(paths)
 		if err != nil {
 			return ItemDraft{}, err
@@ -397,7 +512,7 @@ func (a *App) libraryDraftOf(c *loadedCatalog, record catalog.Item, name string)
 		pack, _ := c.pinnedPack(profile.Base.Pack)
 		draft.Profile = &ProfileDraft{Profile: profile, Pack: pack, Origin: origin}
 	case ScenarioItem:
-		data, err := boundedFile(paths[scenarioRole], scenariogen.MaxBytes)
+		data, err := boundedFile(paths[scenarioRole], maxProtocolLibraryBytes)
 		if err != nil {
 			return ItemDraft{}, err
 		}
@@ -409,7 +524,7 @@ func (a *App) libraryDraftOf(c *loadedCatalog, record catalog.Item, name string)
 		if err != nil {
 			return ItemDraft{}, err
 		}
-		held.Profile, draft.Scenario = metadata.Profile, held
+		held.Profile, held.Generation, draft.Scenario = metadata.Profile, metadata.Generation, held
 	}
 	return draft, nil
 }
@@ -424,6 +539,10 @@ func (a *App) scenarioFromDocument(data []byte) (*ScenarioDraft, error) {
 	}
 	if json.Unmarshal(data, &declared) != nil {
 		return nil, errors.New("the scenario cannot be read")
+	}
+	if declared.Schema == FHIRScenarioSchema {
+		template, err := decodeFHIRScenario(data)
+		return &ScenarioDraft{FHIR: template}, err
 	}
 	if declared.Schema == scenariogen.Schema {
 		plan, err := scenariogen.Decode(data)
@@ -442,7 +561,7 @@ func (a *App) scenarioFromDocument(data []byte) (*ScenarioDraft, error) {
 	// The plan generator writes no resource workflow, so a draft of one could
 	// never be saved; its cases come from a case generation request.
 	if workflow.Schema == scenario.ResourceSchema {
-		return nil, errors.New("a resource workflow is not edited here; generate its cases from a case generation request")
+		return nil, errors.New("this scenario editor cannot retain every clause of this resource workflow; the source remains unchanged")
 	}
 	template, err := json.Marshal(workflow, json.Deterministic(true))
 	if err != nil {
@@ -480,6 +599,9 @@ type ScenarioTemplate struct {
 	Family   string               `json:"family"`
 	Subjects []scenario.Subject   `json:"subjects"`
 	Steps    []scenario.Step      `json:"steps"`
+	Schema   string               `json:"schema,omitzero"`
+	Orders   []scenario.Order     `json:"orders,omitzero"`
+	Results  []scenario.Result    `json:"results,omitzero"`
 }
 
 // scenarioTemplates are the named workflows this release starts a scenario
@@ -488,6 +610,7 @@ func scenarioTemplates() []ScenarioTemplate {
 	patient := scenario.Subject{ID: "patient-a", Kind: scenario.PatientSubject, Namespace: "READMIT", Identifier: "SYNTH-PATIENT-A", InitialState: scenario.PatientActive}
 	return []ScenarioTemplate{
 		{ID: "siu-basic", Name: "Booking and reschedule", Profile: scenario.SIULifecycle, Family: "SIU",
+			Schema: scenario.Schema,
 			Subjects: []scenario.Subject{patient, {ID: "appointment-a", Kind: scenario.AppointmentSubject, Namespace: "READMIT", Identifier: "SYNTH-APPOINTMENT-A",
 				Patient: "patient-a", InitialState: scenario.AppointmentNone}},
 			Steps: []scenario.Step{
@@ -495,12 +618,30 @@ func scenarioTemplates() []ScenarioTemplate {
 				{ID: "reschedule", Event: "S13", Subject: "appointment-a", After: "10m", Expect: scenario.Accepted},
 			}},
 		{ID: "adt-basic", Name: "Admission and discharge", Profile: scenario.ADTLifecycle, Family: "ADT",
+			Schema: scenario.Schema,
 			Subjects: []scenario.Subject{patient, {ID: "visit-a", Kind: scenario.VisitSubject, Namespace: "READMIT", Identifier: "SYNTH-VISIT-A",
 				Patient: "patient-a", InitialState: scenario.VisitNone}},
 			Steps: []scenario.Step{
 				{ID: "admit", Event: "A01", Subject: "visit-a", After: "0s", Expect: scenario.Accepted},
 				{ID: "discharge", Event: "A03", Subject: "visit-a", After: "4h", Expect: scenario.Accepted},
 			}},
+		{ID: "orm-basic", Name: "Order, change and cancel", Profile: scenario.ORMLifecycle, Family: "ORM", Schema: scenario.OrderSchema,
+			Subjects: []scenario.Subject{patient, {ID: "order-a", Kind: scenario.OrderSubject, Namespace: "READMIT", Identifier: "SYNTH-ORDER-A", Patient: "patient-a", InitialState: "none"}},
+			Steps: []scenario.Step{{ID: "new-order", Event: "ORM-NW", Subject: "order-a", After: "0s", Expect: scenario.Accepted},
+				{ID: "change-order", Event: "ORM-XO", Subject: "order-a", After: "1m", Expect: scenario.Accepted},
+				{ID: "cancel-order", Event: "ORM-CA", Subject: "order-a", After: "2m", Expect: scenario.Accepted}},
+			Orders: []scenario.Order{{Subject: "order-a", Placer: scenario.OrderIdentifier{Namespace: "READMIT", Identifier: "SYNTH-PLACER-A"},
+				Filler: scenario.OrderIdentifier{Namespace: "READMIT", Identifier: "SYNTH-FILLER-A"}}}, Results: []scenario.Result{}},
+		{ID: "oru-basic", Name: "Preliminary, final and corrected result", Profile: scenario.ORULifecycle, Family: "ORU", Schema: scenario.OrderSchema,
+			Subjects: []scenario.Subject{patient, {ID: "order-a", Kind: scenario.OrderSubject, Namespace: "READMIT", Identifier: "SYNTH-ORDER-A", Patient: "patient-a", InitialState: "ordered"}},
+			Steps: []scenario.Step{{ID: "preliminary", Event: "ORU-P", Subject: "order-a", After: "0s", Expect: scenario.Accepted},
+				{ID: "final", Event: "ORU-F", Subject: "order-a", After: "1m", Expect: scenario.Accepted},
+				{ID: "corrected", Event: "ORU-C", Subject: "order-a", After: "2m", Expect: scenario.Accepted}},
+			Orders: []scenario.Order{{Subject: "order-a", Placer: scenario.OrderIdentifier{Namespace: "READMIT", Identifier: "SYNTH-PLACER-A"},
+				Filler: scenario.OrderIdentifier{Namespace: "READMIT", Identifier: "SYNTH-FILLER-A"}}},
+			Results: []scenario.Result{{Step: "preliminary", Observations: []scenario.Observation{{Code: "SYNTH", SubID: "1", Value: "PRELIMINARY", Status: "P"}}},
+				{Step: "final", Observations: []scenario.Observation{{Code: "SYNTH", SubID: "1", Value: "FINAL", Status: "F"}}},
+				{Step: "corrected", Observations: []scenario.Observation{{Code: "SYNTH", SubID: "1", Value: "CORRECTED", Status: "C"}}}}},
 	}
 }
 
@@ -539,6 +680,7 @@ type ProfileResolutionResult struct {
 	Resolution *localprofile.Resolution `json:"resolution,omitzero"`
 	Support    *profilepack.Outcomes    `json:"support,omitzero"`
 	Seal       *profileversion.Version  `json:"seal,omitzero"`
+	FHIR       *FHIRProfileAvailability `json:"fhir,omitzero"`
 }
 
 func (r *ProfileResolutionResult) refuse(state State, reason string) {
@@ -561,6 +703,11 @@ func (a *App) ResolveProfileDraft(request DraftRequest) ProfileResolutionResult 
 			return result
 		}
 		scope := draftScope{root: loaded.root, loaded: loaded, item: request.Item}
+		if request.Draft.Profile.FHIR != nil {
+			availability := loaded.fhirProfileAvailability(*request.Draft.Profile.FHIR)
+			result.State, result.FHIR = Completed, &availability
+			return result
+		}
 		profile, ref, problems := scope.profileWithPack(request.Draft.Name, *request.Draft.Profile)
 		result.State, result.Problems = Completed, problems
 		if err := profile.Validate(); err != nil {
@@ -806,6 +953,8 @@ func (a *App) ChooseLibraryFile(kind string) PathChoiceResult {
 	return run(a, true, false, func(ctx context.Context) PathChoiceResult {
 		title := ""
 		switch ItemKind(kind) {
+		case "metadata-pack":
+			title = "Import metadata pack"
 		case CheckGroupItem:
 			title = "Import check group"
 		case ProfileItem:
@@ -859,6 +1008,15 @@ func (a *App) ImportLibraryItem(request LibraryImportRequest) ItemDraftResult {
 		draft := ItemDraft{}
 		switch request.Kind {
 		case CheckGroupItem:
+			if schemaOf(data) == FHIRCheckGroupSchema {
+				group, unsupported, err := readFHIRCheckGroup(data)
+				if err != nil {
+					result.refuse(Failed, err.Error())
+					return result
+				}
+				draft.Name, draft.CheckGroup = group.Name, &CheckGroupDraft{FHIR: group, Unsupported: unsupported}
+				break
+			}
 			set, unsupported, err := assertionauthor.ReadLenient(data)
 			if err != nil {
 				result.refuse(Failed, err.Error())
@@ -866,6 +1024,30 @@ func (a *App) ImportLibraryItem(request LibraryImportRequest) ItemDraftResult {
 			}
 			draft.Name, draft.CheckGroup = set.Name, &CheckGroupDraft{Set: set, Unsupported: unsupported}
 		case ProfileItem:
+			if strings.HasPrefix(schemaOf(data), "readmit-profile-pack/") {
+				pack, err := metadataPackDraftOf(data)
+				if err != nil {
+					result.refuse(Failed, err.Error())
+					return result
+				}
+				draft.Name, draft.Profile = pack.Metadata.Identity.ID, &ProfileDraft{MetadataPack: pack}
+				break
+			}
+			if schema := schemaOf(data); schema == FHIRProfileSchema || schema == FHIRProfilePackageSchema {
+				var profile *FHIRProfileDefinition
+				var origin *profilepackage.Origin
+				if schema == FHIRProfilePackageSchema {
+					profile, origin, err = decodeFHIRProfilePackage(data)
+				} else {
+					profile, err = decodeFHIRProfile(data)
+				}
+				if err != nil {
+					result.refuse(Failed, err.Error())
+					return result
+				}
+				draft.Name, draft.Profile = profile.Identity.ID, &ProfileDraft{FHIR: profile, Origin: origin}
+				break
+			}
 			profile, origin, carried, err := importedProfile(data)
 			if err != nil {
 				result.refuse(Failed, err.Error())
@@ -889,6 +1071,9 @@ func (a *App) ImportLibraryItem(request LibraryImportRequest) ItemDraftResult {
 			}
 			_ = json.Unmarshal(held.Plan.Template, &identity)
 			draft.Name, draft.Scenario = identity.Scenario.ID, held
+			if held.FHIR != nil {
+				draft.Name = held.FHIR.Identity.ID
+			}
 		default:
 			result.refuse(Failed, "a check group, a profile or a scenario is imported")
 			return result
@@ -1026,12 +1211,27 @@ func (c *loadedCatalog) exported(kind ItemKind, paths map[string]string) ([]byte
 		data, err := boundedFile(paths[checkGroupRole], assertion.MaxSetBytes)
 		return data, "checks", err
 	case ScenarioItem:
-		data, err := boundedFile(paths[scenarioRole], scenariogen.MaxBytes)
+		data, err := boundedFile(paths[scenarioRole], maxProtocolLibraryBytes)
 		return data, "scenario", err
 	}
 	data, err := boundedFile(paths[profileRole], profilepackage.MaxBytes)
 	if err != nil {
 		return nil, "", err
+	}
+	if schema := schemaOf(data); schema == FHIRProfileSchema || schema == FHIRProfilePackageSchema {
+		profile, origin, err := readFHIRProfile(paths)
+		if err != nil {
+			return nil, "", err
+		}
+		if origin == nil {
+			return nil, "", errors.New("record the profile's origin and attribution before exporting its package")
+		}
+		seal, _, err := fhirProfileSeal(*profile)
+		if err != nil {
+			return nil, "", err
+		}
+		raw, err := encodeMember(fhirProfilePackage{Schema: FHIRProfilePackageSchema, Profile: *profile, Seal: seal, Origin: *origin})
+		return raw, "profile", err
 	}
 	switch schema, _ := sniffSchema(paths[profileRole]); {
 	case schema == profilepackage.Schema:

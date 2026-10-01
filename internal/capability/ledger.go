@@ -215,9 +215,12 @@ var (
 	contractPattern = regexp.MustCompile(`^readmit-[a-z0-9]+(-[a-z0-9]+)*/v[0-9]+$`)
 )
 
-// RawHL7 is the one canonical input or output that is not a readmit
+// RawHL7 is original HL7 v2 input or output that is not a readmit
 // contract: HL7 message bytes as a source delivered them.
 const RawHL7 = "hl7"
+
+// RawFHIR is explicitly declared FHIR R4 JSON, before or after retention.
+const RawFHIR = "fhir-r4-json"
 
 // prerequisites is the closed set a row's prerequisites are drawn from. An
 // empty list means the capability runs with no activation and no authority.
@@ -369,8 +372,10 @@ func validateV2(row Row) error {
 		return errors.New("row " + row.ID + " names its backend operation as a package directory and a function or Type.Method")
 	}
 	for _, list := range [][]string{row.Inputs, row.Outputs} {
-		if !distinct(list, func(document string) bool { return document == RawHL7 || contractPattern.MatchString(document) }) {
-			return errors.New("row " + row.ID + " names each canonical input and output once, as a readmit contract or hl7")
+		if !distinct(list, func(document string) bool {
+			return document == RawHL7 || document == RawFHIR || contractPattern.MatchString(document)
+		}) {
+			return errors.New("row " + row.ID + " names each canonical input and output once, as a readmit contract, hl7 or fhir-r4-json")
 		}
 	}
 	if !distinct(row.Prerequisites, func(prerequisite string) bool { return slices.Contains(prerequisites, prerequisite) }) {

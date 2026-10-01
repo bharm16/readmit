@@ -123,9 +123,11 @@ export function linkInRoot(root, path, target) {
 
 /** Provisions a signed activation folder inside root with a one-shot run of
  * the bridge executable, separate from any running application. */
-export function provisionInRoot(binary, root, path) {
+export function provisionInRoot(binary, root, path, activated = true) {
   const target = inside(root, path);
-  execFileSync(binary, ["--root", root, "--license", target], { env: isolated(root), stdio: ["ignore", "pipe", "pipe"] });
+  const args = ["--root", root, "--license", target];
+  if (!activated) args.push("--license-inactive");
+  execFileSync(binary, args, { env: isolated(root), stdio: ["ignore", "pipe", "pipe"] });
   return target;
 }
 

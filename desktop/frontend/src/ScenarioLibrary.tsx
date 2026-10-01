@@ -4,7 +4,9 @@
 // once. Nothing here starts a receiver, sends or runs a test.
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
-  createScenarioCase,
+  generateScenarioCases,
+  cancel,
+  scenarioCasesProgress,
   inspectScenarioPreview,
   listWholeCatalog,
   newIntentId,
@@ -12,6 +14,10 @@ import {
   previewScenarioDraft,
   saveItem,
   type CatalogItem,
+  type EditorDraft,
+  type CaseGenerationSettings,
+  type GeneratedCase,
+  type FHIRScenarioStep,
   type InspectionResult,
   type ItemDraft,
   type ItemDraftResult,
@@ -22,6 +28,8 @@ import {
   type ScenarioPlanPreviewResult,
   type ScenarioScenario,
   type ScenarioStep,
+  type ScenarioCasesResult,
+  type CasegenProgress,
 } from "./bindings";
 import { DataTable } from "./DataTable";
 import { IconButton } from "./IconButton";
@@ -33,10 +41,41 @@ import { HistorySheet, SaveButtons, exportItem, type LibraryPage } from "./Libra
 import { useLifecycle } from "./lifecycle";
 import { typeLabel } from "./Messages";
 import { useVocabulary } from "./vocabulary";
+import { GenerationFields, initialGeneration, ProfilePin } from "./ScenarioGeneration";
+import { FHIRStepSheet } from "./FHIRScenarioFields";
+import { ScenarioOrderFields } from "./ScenarioOrderFields";
+import { RetentionStatus, useRetainer } from "./drafting";
 
 const EXPECTATIONS: Record<ScenarioExpectation, string> = { accepted: "Accepted", refused: "Refused" };
 
-type Draft = ScenarioDraft & { profile?: ItemRef };
+type Draft = ScenarioDraft;
+type EditingScenario = { name: string; draft: Draft };
+type ScenarioSubmission = { intent: string; item?: string; base_revision?: string; saved?: ItemRef; cleanup_failed?: boolean };
+type HeldScenario = { object: string; opened: ItemDraftResult | null; editing: EditingScenario; problems: string[]; submission?: ScenarioSubmission | undefined };
+type CurrentSubmission = { owner: string; whole: string; submission: ScenarioSubmission };
+
+function itemDraftOf(editing: EditingScenario): ItemDraft {
+  return { name: editing.name.trim(), scenario: editing.draft };
+}
+
+export const SCENARIO_DRAFT_KIND = "scenario-editor";
+export const SCENARIO_DRAFT_SCHEMA = "readmit-desktop-scenario-editor/v1";
+
+/** The route of the whole scenario this editor retained. Its clauses remain
+ * opaque to the window; the ordinary Go Save validates them when requested. */
+export function scenarioDraftObject(draft: EditorDraft): string | undefined {
+  if (draft.kind !== SCENARIO_DRAFT_KIND || draft.content_schema !== SCENARIO_DRAFT_SCHEMA || typeof draft.content !== "object" || draft.content === null) return;
+  const held = draft.content as Partial<HeldScenario>;
+  if (typeof held.object === "string" && held.object !== "" && typeof held.editing?.name === "string" && held.editing.draft?.plan) return held.object;
+}
+
+// The generator reads the complete saved settings when no request override
+// is named. These empty carriers grant no default wire or business meaning.
+const SAVED_GENERATION: CaseGenerationSettings = {
+  wire: { delimiters: "", precision: "", offset: "", processing_id: "", sending: { application: "", facility: "" }, receiving: { application: "", facility: "" }, resource_updates: "" },
+  bindings: { patients: [], visits: [], appointments: [], resources: [], orders: [], edits: [] },
+  variants: [],
+};
 
 /** The scenario a draft generates: its template, as the editor holds it. */
 function scenarioOf(draft: Draft): ScenarioScenario | null {
@@ -53,6 +92,9 @@ function eventName(event: string, catalog: { event: string; description: string 
 
 /** A scenario: its saved detail, its editor, and its preview. */
 export function useScenario({
+  root,
+  object,
+  drafts,
   context,
   ref,
   imported,
@@ -61,6 +103,9 @@ export function useScenario({
   onSaved,
   onOpenCase,
 }: {
+  root: string | null;
+  object: string | undefined;
+  drafts: EditorDraft[] | null;
   context: () => RequestContext;
   /** The scenario, or null for a new or imported one. */
   ref: ItemRef | null;
@@ -69,43 +114,126 @@ export function useScenario({
   busy: boolean;
   onSaved: (ref: ItemRef) => void;
   onOpenCase: (caseRef: ItemRef, entry: string) => void;
-}): LibraryPage {
+}): LibraryPage & { leave: (exit: () => void) => void } {
   const vocabulary = useVocabulary()?.scenarios;
   const [opened, setOpened] = useState<ItemDraftResult | null>(null);
-  const [editing, setEditing] = useState<{ name: string; draft: Draft } | null>(null);
+  const [editing, setEditing] = useState<EditingScenario | null>(null);
   const [creating, setCreating] = useState(false);
   const [sheet, setSheet] = useState<null | { step: ScenarioStep; at: number | null } | "settings" | "history" | "details" | "json">(null);
   const [preview, setPreview] = useState<ScenarioPlanPreviewResult | null>(null);
+  const [generated, setGenerated] = useState<ScenarioCasesResult | null>(null);
+  const [fhirStep, setFHIRStep] = useState<{ step: FHIRScenarioStep; at: number | null } | null>(null);
+  const [generationProgress, setGenerationProgress] = useState<CasegenProgress | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [problems, setProblems] = useState<string[]>([]);
   const [profiles, setProfiles] = useState<CatalogItem[]>([]);
   const reads = useLifecycle<"reading">({ background: true });
   const work = useLifecycle<"preview" | "create">({ window: true });
+  const submission = useLifecycle<"saving">();
   const pending = useRef(false);
+  const [flow, setFlow] = useState<string | undefined>(undefined);
+  const [submitted, setSubmitted] = useState<CurrentSubmission | null>(null);
+  const [finishing, setFinishing] = useState(false);
+  const finishingOwner = useRef<string | null>(null);
+  const owner = useRef<{ key: string; root: string; object: string; imported: ItemDraftResult | null } | null>(null);
+  const buffers = useRef(new Map<string, { content: HeldScenario; id: string }>());
+  const restoredId = useRef("");
+  const retainer = useRetainer(flow, { reuseOwners: true });
+  const retainedDrafts = useRef(drafts);
+  retainedDrafts.current = drafts;
+  const snapshot = useRef<{ flow: string; content: HeldScenario } | null>(null);
+  const retainedFlow = useRef<string | null>(null);
+  const [leaving, setLeaving] = useState<(() => void) | null>(null);
+  const [discarding, setDiscarding] = useState(false);
+  const visible = useRef(shown);
+  visible.current = shown;
   const id = ref?.id ?? "";
 
-  const read = useCallback(async () => {
-    if (!ref) return;
+  useEffect(() => {
+    if (work.running !== "create") return;
+    let live = true;
+    let reading = false;
+    const readProgress = async () => {
+      if (reading) return;
+      reading = true;
+      try {
+        const answer = await scenarioCasesProgress();
+        if (live && answer.progress) setGenerationProgress(answer.progress);
+      } finally { reading = false; }
+    };
+    void readProgress();
+    const timer = window.setInterval(() => void readProgress(), 500);
+    return () => { live = false; window.clearInterval(timer); };
+  }, [work.running]);
+
+  const read = useCallback(async (candidate: ItemRef | null = ref) => {
+    if (!candidate) return;
     await reads.run("reading", async (current) => {
-      const answer = await openItemDraft({ context: context(), ref });
-      if (current()) setOpened(answer);
+      const answer = await openItemDraft({ context: context(), ref: candidate });
+      if (current() && visible.current) setOpened(answer);
     });
-  }, [id, context]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [id, context, reads.run]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    if (!shown) {
+      reads.withdraw();
+      work.withdraw();
+      submission.withdraw();
+      return;
+    }
+    if (!root || !object) return;
+    const key = `${root}\u0000${object}`;
+    if (owner.current?.key === key && owner.current.imported === imported) {
+      if (ref && !opened && !editing) void read();
+      return;
+    }
+    reads.withdraw();
+    work.withdraw();
+    submission.withdraw();
+    owner.current = { key, root, object, imported };
+    setFlow(key);
     setOpened(null);
     setEditing(null);
     setPreview(null);
+    setGenerated(null);
     setNotice(null);
     setProblems([]);
-    if (!shown) return;
-    void listWholeCatalog({ context: context(), kind: "profile", filter: {} }).then((answer) => setProfiles((answer.page?.items ?? []).filter((item) => item.availability === "available")));
-    if (imported?.draft?.scenario) {
+    setSheet(null);
+    setFHIRStep(null);
+    setLeaving(null);
+    setCreating(false);
+    setSubmitted(null);
+    const retained = drafts?.find((entry) => entry.workspace === root && scenarioDraftObject(entry) === object);
+    const buffered = buffers.current.get(key);
+    const held = buffered?.content ?? (retained?.content as HeldScenario | undefined);
+    restoredId.current = buffered?.id || retained?.id || "";
+    if (held) {
+      setOpened(held.opened);
+      setEditing(held.editing);
+      setProblems(held.problems ?? []);
+      if (held.submission) setSubmitted({ owner: key, whole: JSON.stringify(itemDraftOf(held.editing)), submission: held.submission });
+      setCreating(false);
+    } else if (imported?.draft?.scenario) {
       setOpened(imported);
       setEditing({ name: imported.draft.name ?? "", draft: imported.draft.scenario });
+      setCreating(false);
     } else if (ref) void read();
     else setCreating(true);
-  }, [id, shown, imported]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [root, object, shown, imported]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (restoredId.current) retainer.keepId(restoredId.current);
+  }, [flow, retainer.keepId]);
+
+  useEffect(() => {
+    if (!shown || !root) return;
+    let current = true;
+    const requested = context();
+    void listWholeCatalog({ context: requested, kind: "profile", filter: {} }).then((answer) => {
+      if (current) setProfiles((answer.page?.items ?? []).filter((item) => item.availability === "available"));
+    });
+    return () => { current = false; };
+  }, [shown, root, context]);
 
   const saved = opened?.draft?.scenario as Draft | undefined;
   const draft = editing?.draft ?? saved;
@@ -114,6 +242,66 @@ export function useScenario({
   const family = vocabulary?.templates.find((template) => template.profile === scenario?.profile)?.family ?? "";
   const events = vocabulary?.catalog.profiles.find((entry) => entry.name === scenario?.profile)?.events.filter((event) => event.available) ?? [];
   const profileName = draft?.profile ? profiles.find((item) => item.ref.id === draft.profile!.id)?.name : undefined;
+  const whole = editing ? JSON.stringify(itemDraftOf(editing)) : "";
+  const attempt = submitted && submitted.owner === flow && submitted.whole === whole ? submitted.submission : undefined;
+  const dirty = Boolean(editing && (attempt?.saved || !opened?.ref || JSON.stringify(editing.draft) !== JSON.stringify(saved) || editing.name !== (opened?.draft?.name ?? "")));
+  const serialized = JSON.stringify(editing);
+  snapshot.current = editing && flow && owner.current?.key === flow ? { flow, content: { object: owner.current.object, opened, editing, problems, ...(attempt ? { submission: attempt } : {}) } } : null;
+
+  useEffect(() => {
+    const current = owner.current;
+    if (!editing || !current || current.key !== flow) return;
+    if (!dirty) {
+      buffers.current.delete(current.key);
+      // Edits reverted to the saved scenario leave nothing to restore.
+      if (retainedFlow.current === current.key) { retainedFlow.current = null; void retainer.dropCurrent(); }
+      return;
+    }
+    const content: HeldScenario = { object: current.object, opened, editing, problems, ...(attempt ? { submission: attempt } : {}) };
+    buffers.current.set(current.key, { content, id: retainer.currentId() });
+    retainedFlow.current = current.key;
+    retainer.save({ id: "", kind: SCENARIO_DRAFT_KIND, workspace: current.root, case: "", identity: current.object, content_schema: SCENARIO_DRAFT_SCHEMA, content });
+  }, [flow, serialized, opened, problems, submitted, dirty, retainer.save]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Once an inactive buffer is durably acknowledged, the existing bounded
+  // draft store owns it. Only unresolved text needs a second copy in memory.
+  useEffect(() => {
+    for (const [key, buffer] of buffers.current) {
+      if (key === flow) continue;
+      const held = drafts?.find((entry) => `${entry.workspace}\u0000${scenarioDraftObject(entry)}` === key);
+      if (held && JSON.stringify(held.content) === JSON.stringify(buffer.content)) buffers.current.delete(key);
+    }
+  }, [drafts, flow]);
+
+  const leave = (exit: () => void) => {
+    if (discarding || finishingOwner.current !== null) return;
+    if (dirty) setLeaving(() => exit);
+    else exit();
+  };
+  const discard = async (exit?: () => void) => {
+    if (finishingOwner.current !== null || pending.current) return;
+    setDiscarding(true);
+    try {
+      if (!await retainer.dropCurrent()) return;
+      if (flow) buffers.current.delete(flow);
+      if (!ref) {
+        owner.current = null;
+        setFlow(undefined);
+      }
+      setEditing(null);
+      setProblems([]);
+      setPreview(null);
+      setLeaving(null);
+      if (!ref) onSaved({ kind: "scenario", id: "" });
+      exit?.();
+    } finally { setDiscarding(false); }
+  };
+  const guard = <Modal open={leaving !== null} title="Leave scenario?" size="small" onClose={() => setLeaving(null)} footer={<div className="dialog-footer">
+    <button type="button" data-autofocus disabled={discarding} onClick={() => setLeaving(null)}>Keep editing</button>
+    <button type="button" disabled={discarding || pending.current || finishing} onClick={() => void discard(leaving ?? undefined)}>Discard</button>
+    <button type="button" className="primary" disabled={discarding || finishing} onClick={() => { const exit = leaving; setLeaving(null); exit?.(); }}>Keep draft and leave</button>
+  </div>}><p>This scenario has unsaved changes. Keep the whole draft to return to it after leaving.</p><RetentionStatus retention={retainer.retention} onRetry={retainer.retry} onKeepAsNew={retainer.keepAsNew} /></Modal>;
+  const retention = dirty ? <RetentionStatus retention={retainer.retention} onRetry={retainer.retry} onKeepAsNew={retainer.keepAsNew} /> : null;
 
   const edit = (next: ScenarioScenario) => {
     if (!editing) return;
@@ -129,38 +317,130 @@ export function useScenario({
     });
   };
 
+  const contentOf = (initiated: { key: string; root: string; object: string }, fallback: HeldScenario): HeldScenario => {
+    if (snapshot.current?.flow === initiated.key) return snapshot.current.content;
+    return buffers.current.get(initiated.key)?.content ?? (retainedDrafts.current?.find((entry) => entry.workspace === initiated.root && scenarioDraftObject(entry) === initiated.object)?.content as HeldScenario | undefined) ?? fallback;
+  };
+  const keepOwned = (initiated: { key: string; root: string; object: string }, content: HeldScenario, retentionOwner: typeof retainer) => {
+    buffers.current.set(initiated.key, { content, id: retentionOwner.currentId() });
+    retentionOwner.save({ id: "", kind: SCENARIO_DRAFT_KIND, workspace: initiated.root, case: "", identity: initiated.object, content_schema: SCENARIO_DRAFT_SCHEMA, content });
+  };
+  const flushOwned = (retentionOwner: typeof retainer) => new Promise<void>((resolve) => retentionOwner.chain(async () => { resolve(); }));
+  const finishPublished = async (initiated: { key: string; root: string; object: string }, original: HeldScenario, published: ScenarioSubmission, payload: string, retentionOwner: typeof retainer): Promise<SubmitFailure | void> => {
+    if (!published.saved || finishingOwner.current === initiated.key) return;
+    const latest = contentOf(initiated, original);
+    if (JSON.stringify(itemDraftOf(latest.editing)) !== payload) return;
+    finishingOwner.current = initiated.key;
+    if (owner.current?.key === initiated.key) setFinishing(true);
+    try {
+      if (!await retentionOwner.dropCurrent()) {
+        const reason = "The scenario was saved, but its retained editor draft could not be discarded. Retry Save to finish it.";
+        const held = contentOf(initiated, original);
+        const failed: ScenarioSubmission = { ...published, cleanup_failed: true };
+        const same = JSON.stringify(itemDraftOf(held.editing)) === payload;
+        const content: HeldScenario = { ...held, opened: original.opened, ...(same ? { submission: failed } : { submission: undefined }), problems: [reason] };
+        keepOwned(initiated, content, retentionOwner);
+        if (owner.current?.key === initiated.key) {
+          setOpened(original.opened);
+          setSubmitted(same ? { owner: initiated.key, whole: payload, submission: failed } : null);
+          setProblems([reason]);
+        }
+        return { reason };
+      }
+      const held = contentOf(initiated, original);
+      if (JSON.stringify(itemDraftOf(held.editing)) !== payload) {
+        // Text entered while cleanup waited belongs to the next revision.
+        // It is retained again rather than cleared with the published one.
+        const { submission: _published, ...heldContent } = held;
+        const content: HeldScenario = { ...heldContent, opened: original.opened };
+        keepOwned(initiated, content, retentionOwner);
+        if (owner.current?.key === initiated.key) { setOpened(original.opened); setSubmitted(null); }
+        return;
+      }
+      if (owner.current?.key !== initiated.key || !visible.current) return;
+      buffers.current.delete(initiated.key);
+      setEditing(null);
+      setSubmitted(null);
+      setProblems([]);
+      onSaved(published.saved);
+      await read(published.saved);
+    } finally {
+      if (finishingOwner.current === initiated.key) finishingOwner.current = null;
+      if (owner.current?.key === initiated.key) setFinishing(false);
+    }
+  };
+
   const save = async (): Promise<SubmitFailure | void> => {
-    if (!editing || pending.current) return;
+    const initiated = owner.current;
+    if (!editing || !initiated || pending.current || finishingOwner.current === initiated.key) return;
+    if (!dirty && opened?.ref) {
+      setEditing(null);
+      onSaved(opened.ref);
+      return;
+    }
     pending.current = true;
     try {
-      const itemDraft: ItemDraft = { name: editing.name.trim(), scenario: editing.draft };
-      const answer = await saveItem({
-        context: context(),
-        kind: "scenario",
-        ...(ref ? { item: ref.id, ...(opened?.ref?.revision ? { base_revision: opened.ref.revision } : {}) } : {}),
-        draft: itemDraft,
-        intent_id: newIntentId(),
+      const itemDraft = itemDraftOf(editing);
+      const payload = JSON.stringify(itemDraft);
+      const target = opened?.ref ?? ref;
+      const requested = context();
+      const next: ScenarioSubmission = attempt ?? { intent: newIntentId(), ...(target ? { item: target.id, ...(target.revision ? { base_revision: target.revision } : {}) } : {}) };
+      const original: HeldScenario = { object: initiated.object, opened, editing, problems, submission: next };
+      setSubmitted({ owner: initiated.key, whole: payload, submission: next });
+      keepOwned(initiated, original, retainer);
+      if (next.saved) return await finishPublished(initiated, original, next, payload, retainer);
+      // The stable submission token is part of this owner's complete retained
+      // draft before publication; interruption retries that same whole Save.
+      await flushOwned(retainer);
+      return await submission.run("saving", async (current) => {
+        const answer = await saveItem({
+          context: requested,
+          kind: "scenario",
+          ...(next.item ? { item: next.item, ...(next.base_revision ? { base_revision: next.base_revision } : {}) } : {}),
+          draft: itemDraft,
+          intent_id: next.intent,
+        });
+        if (answer.outcome !== "saved" || !answer.saved) {
+          if (!current() || !visible.current || owner.current?.key !== initiated.key) return;
+          setProblems(answer.problems.map((problem) => problem.problem));
+          return saveProblem(answer, { name: "scenario-name" });
+        }
+        // Publication is an acknowledged fact even when the editor was left.
+        // Record it under the initiating owner; it grants no navigation of the
+        // panel now shown, and later edits pin this actual saved revision.
+        const latest = contentOf(initiated, original);
+        const unchanged = JSON.stringify(itemDraftOf(latest.editing)) === payload;
+        const published: ScenarioSubmission = { ...next, saved: answer.saved };
+        const nextOpened: ItemDraftResult = { state: "completed", context: requested, new: false, ref: answer.saved, draft: itemDraft };
+        const content: HeldScenario = { ...latest, opened: nextOpened, problems: [], ...(unchanged ? { submission: published } : { submission: undefined }) };
+        keepOwned(initiated, content, retainer);
+        if (owner.current?.key === initiated.key) {
+          setOpened(nextOpened);
+          setSubmitted(unchanged ? { owner: initiated.key, whole: payload, submission: published } : null);
+          setProblems([]);
+        }
+        if (!current() || !visible.current || owner.current?.key !== initiated.key || !unchanged) return;
+        return await finishPublished(initiated, content, published, payload, retainer);
       });
-      if (answer.outcome !== "saved" || !answer.saved) {
-        setProblems(answer.problems.map((problem) => problem.problem));
-        return saveProblem(answer, { name: "scenario-name" });
-      }
-      setEditing(null);
-      setProblems([]);
-      onSaved(answer.saved);
-      if (ref) await read();
     } finally {
       pending.current = false;
     }
   };
 
+  useEffect(() => {
+    if (!shown || !attempt?.saved || attempt.cleanup_failed || pending.current || finishingOwner.current !== null || !owner.current || !snapshot.current) return;
+    void finishPublished(owner.current, snapshot.current.content, attempt, whole, retainer);
+  }, [shown, flow, submitted, serialized]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const createCase = async () => {
     if (!ref) return;
+    setGenerationProgress(null);
+    setGenerated(null);
     await work.run("create", async (current) => {
-      const answer = await createScenarioCase({ context: context(), scenario: { ...ref, ...(opened?.ref?.revision ? { revision: opened.ref.revision } : {}) }, intent_id: newIntentId() });
+      const answer = await generateScenarioCases({ context: context(), scenario: { ...ref, ...(opened?.ref?.revision ? { revision: opened.ref.revision } : {}) }, profile: { kind: "profile", id: "" }, settings: SAVED_GENERATION, intent_id: newIntentId() });
       if (!current()) return;
-      if (answer.state === "completed" && answer.case && answer.entry) onOpenCase(answer.case, answer.entry);
-      else setNotice(answer.reason ?? "No case was created.");
+      if (answer.state === "completed" && answer.cases.length > 0) setGenerated(answer);
+      else setNotice([answer.reason, ...answer.unconvertible.map((clause) => `${clause.path}: ${clause.reason}`), ...answer.support.filter((event) => event.status !== "supported").map((event) => `${event.event}: ${event.reason ?? event.status}`)].filter(Boolean).join(" ") || "No case was created.");
     });
   };
 
@@ -170,7 +450,11 @@ export function useScenario({
       profiles={profiles}
       onClose={() => {
         setCreating(false);
-        if (!editing) onSaved({ kind: "scenario", id: "" });
+        if (!editing) {
+          owner.current = null;
+          setFlow(undefined);
+          onSaved({ kind: "scenario", id: "" });
+        }
       }}
       onCreate={(title, next) => {
         setOpened({ state: "completed", context: context(), new: true, draft: { name: title, scenario: next } });
@@ -180,12 +464,42 @@ export function useScenario({
     />
   ) : null;
 
+  const activeGeneration = work.running === "create" ? <div className="notice" aria-label="Case generation"><p role="status">{generationProgress ? `Generated ${generationProgress.done} of ${generationProgress.cases} cases · ${generationProgress.messages} messages` : "Generating cases…"}</p><button type="button" onClick={() => cancel("scenario-cases")}>Stop</button></div> : null;
+
+  if (draft?.fhir) {
+    const template = draft.fhir;
+    const change = (steps: FHIRScenarioStep[]) => editing && setEditing({ ...editing, draft: { ...editing.draft, fhir: { ...template, steps } } });
+    return { leave, title: `${name || "New scenario"} · Synthetic`, actions: editing ? <>
+      <button type="button" disabled={busy} onClick={() => setFHIRStep({ step: { id: nextStepId(template.steps), after: "0s", source_kind: "resource", document: "" }, at: null })}>Add event</button>
+      <SaveButtons dirty={dirty} disabled={busy || work.running !== null || !editing.name.trim() || template.steps.length === 0} onSave={save} onCancel={() => void discard()} />
+    </> : <>
+      <button type="button" disabled={busy || !saved} onClick={() => saved && setEditing({ name, draft: saved })}>Edit</button>
+      <button type="button" className="primary" disabled={busy || work.running !== null || !ref} onClick={() => void createCase()}>Create case</button>
+      <Menu label="More scenario actions" items={[{ label: "History", onSelect: () => setSheet("history") }, { label: "Export scenario…", onSelect: () => { if (ref) void exportItem(context(), ref).then(setNotice); } }]} />
+    </>, body: <>
+      {guard}{retention}
+      {activeGeneration}
+      {notice ? <p role="status">{notice}</p> : null}{problems.length ? <ul role="alert">{problems.map((problem, at) => <li key={at}>{problem}</li>)}</ul> : null}
+      <ValueRows rows={[{ label: "Protocol", value: "FHIR R4 · 4.0.1" }, { label: "Origin", value: "Synthetic" }, { label: "Seed", value: String(template.seed) }, { label: "Base time", value: template.base_time }]} />
+      {editing ? <div className="editor-fields"><label htmlFor="scenario-name">Name</label><input id="scenario-name" type="text" value={editing.name} onChange={(event) => setEditing({ ...editing, name: event.target.value })} /><label>Seed<input type="number" min={0} max={Number.MAX_SAFE_INTEGER} step={1} required value={template.seed} onChange={(event) => setEditing({ ...editing, draft: { ...editing.draft, fhir: { ...template, seed: event.target.valueAsNumber } } })} /></label><label>Base time<input type="text" value={template.base_time} onChange={(event) => setEditing({ ...editing, draft: { ...editing.draft, fhir: { ...template, base_time: event.target.value } } })} /></label></div> : null}
+      <DataTable label="Events" className="page-table" rows={template.steps} rowId={(step) => step.id} rowLabel={(step) => step.id} selected={null} onSelect={() => {}} onOpen={(id) => { const at = template.steps.findIndex((step) => step.id === id); if (editing && at >= 0) setFHIRStep({ step: template.steps[at]!, at }); }} columns={[
+        { key: "name", header: "Event", priority: 1, minWidth: 12, flex: true, render: (step) => step.id }, { key: "source", header: "Source type", priority: 1, minWidth: 9, render: (step) => step.source_kind }, { key: "after", header: "After", priority: 2, minWidth: 6, render: (step) => step.after },
+        ...(editing ? [{ key: "actions", header: "", priority: 1, minWidth: 6, render: (step: FHIRScenarioStep) => { const at = template.steps.indexOf(step); return <span className="row-actions" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}><IconButton icon="up" label={`Move ${step.id} up`} disabled={at === 0} onClick={() => { const next = [...template.steps]; next.splice(at, 1); next.splice(at - 1, 0, step); change(next); }} /><IconButton icon="down" label={`Move ${step.id} down`} disabled={at === template.steps.length - 1} onClick={() => { const next = [...template.steps]; next.splice(at, 1); next.splice(at + 1, 0, step); change(next); }} /><button type="button" onClick={() => setFHIRStep({ step, at })}>Edit event</button><button type="button" onClick={() => change(template.steps.filter((_, i) => i !== at))}>Remove event</button></span>; } }] : []),
+      ]} />
+      {fhirStep && editing ? <FHIRStepSheet step={fhirStep.step} isNew={fhirStep.at === null} onClose={() => setFHIRStep(null)} onSave={(step) => change(fhirStep.at === null ? [...template.steps, step] : template.steps.map((held, at) => at === fhirStep.at ? step : held))} /> : null}
+      {generated ? <GeneratedCases name={name} result={generated} onOpen={onOpenCase} /> : null}
+      {sheet === "history" && ref ? <HistorySheet context={context} item={ref} onClose={() => setSheet(null)} /> : null}
+    </> };
+  }
+
   if (!draft || !scenario) {
     return {
+      leave,
       title: "Scenario",
       actions: null,
       body: (
         <>
+          {guard}{retention}
           {opened && !creating ? (
             <EmptyState
               title={opened.reason ?? "This scenario cannot be read."}
@@ -212,6 +526,7 @@ export function useScenario({
 
   let body: ReactNode = (
     <>
+      {activeGeneration}
       {notice ? (
         <div className="notice" role="status">
           {notice}
@@ -282,12 +597,14 @@ export function useScenario({
             : []),
         ]}
       />
+      {generated ? <GeneratedCases name={name} result={generated} onOpen={onOpenCase} /> : null}
     </>
   );
   if (preview) body = <PreviewBody preview={preview} busy={busy} onClose={() => setPreview(null)} />;
 
   body = (
     <>
+      {guard}{retention}
       {body}
       {newSheet}
       {editing && sheet && typeof sheet === "object" ? (
@@ -305,6 +622,8 @@ export function useScenario({
           draft={editing.draft}
           generator={vocabulary?.generator_version ?? draft.plan.generator_version}
           maxSeed={vocabulary?.max_seed ?? Number.MAX_SAFE_INTEGER}
+          profiles={profiles}
+          family={family}
           onClose={() => setSheet(null)}
           onApply={(next) => {
             setEditing({ ...editing, draft: next });
@@ -361,15 +680,10 @@ export function useScenario({
         ]}
       />
       <SaveButtons
-        dirty={JSON.stringify(editing.draft) !== JSON.stringify(saved) || editing.name !== (opened?.draft?.name ?? "")}
+        dirty={dirty}
         disabled={busy || running || editing.name.trim() === "" || steps.length === 0}
         onSave={save}
-        onCancel={() => {
-          setEditing(null);
-          setProblems([]);
-          setPreview(null);
-          if (!ref) onSaved({ kind: "scenario", id: "" });
-        }}
+        onCancel={() => void discard()}
       />
     </>
   ) : (
@@ -399,10 +713,10 @@ export function useScenario({
       />
     </>
   );
-  return { title, actions, body };
+  return { title, actions, body, leave };
 }
 
-function nextStepId(steps: ScenarioStep[]): string {
+function nextStepId(steps: { id: string }[]): string {
   let n = steps.length + 1;
   const taken = new Set(steps.map((step) => step.id));
   while (taken.has(`step-${n}`)) n += 1;
@@ -419,6 +733,7 @@ function NewScenarioSheet({ context, profiles, onClose, onCreate }: { context: (
   const templates = vocabulary?.templates ?? [];
   const families = [...new Set(templates.map((template) => template.family))];
   const [name, setName] = useState("");
+  const [protocol, setProtocol] = useState("hl7-v2");
   const [family, setFamily] = useState(families[0] ?? "");
   const [template, setTemplate] = useState(templates.find((entry) => entry.family === family)?.id ?? "");
   const [profile, setProfile] = useState("");
@@ -436,27 +751,31 @@ function NewScenarioSheet({ context, profiles, onClose, onCreate }: { context: (
       title="New scenario"
       size="small"
       submitLabel="Create"
-      submitDisabled={name.trim() === "" || template === ""}
+      submitDisabled={name.trim() === "" || protocol !== "fhir-r4" && template === ""}
       dirty={name.trim() !== ""}
       onClose={onClose}
       onSubmit={async () => {
         // The backend allocates the seed and base time once, for this draft.
-        const answer = await openItemDraft({ context: context(), ref: { kind: "scenario", id: "" } });
+        const answer = await openItemDraft({ context: context(), ref: { kind: "scenario", id: "" }, ...(protocol === "fhir-r4" ? { protocol } : {}) });
         const base = answer.draft?.scenario as Draft | undefined;
+        if (base?.fhir && protocol === "fhir-r4") { onCreate(name.trim(), base); return; }
         const chosen = templates.find((entry) => entry.id === template);
         if (!base || !chosen) return { reason: answer.reason ?? "The scenario cannot be started." };
         const scenario: ScenarioScenario = {
           ...(scenarioOf(base) as ScenarioScenario),
+          schema: chosen.schema ?? scenarioOf(base)!.schema,
           profile: chosen.profile,
           subjects: chosen.subjects,
           steps: chosen.steps,
         };
         const picked = offered.find((item) => item.ref.id === profile);
-        onCreate(name.trim(), { ...withScenario(base, scenario), ...(picked ? { profile: picked.ref } : {}) });
+        onCreate(name.trim(), { ...withScenario(base, scenario), ...(chosen.orders ? { orders: chosen.orders } : {}), ...(chosen.results ? { results: chosen.results } : {}), ...(picked ? { profile: picked.ref } : {}) });
       }}
     >
       <label htmlFor="scenario-new-name">Name</label>
       <input id="scenario-new-name" type="text" maxLength={200} value={name} onChange={(event) => setName(event.target.value)} />
+      <label htmlFor="scenario-protocol">Protocol</label><select id="scenario-protocol" value={protocol} onChange={(event) => setProtocol(event.target.value)}><option value="hl7-v2">HL7 v2</option><option value="fhir-r4">FHIR R4 · 4.0.1</option></select>
+      {protocol === "hl7-v2" ? <>
       <label htmlFor="scenario-family">Family</label>
       <select
         id="scenario-family"
@@ -494,8 +813,18 @@ function NewScenarioSheet({ context, profiles, onClose, onCreate }: { context: (
           </select>
         </>
       ) : null}
+      </> : <p className="row-reason">Add complete resource, Bundle or request evidence as events after creating this draft.</p>}
     </FormDialog>
   );
+}
+
+function GeneratedCases({ name, result, onOpen }: { name: string; result: ScenarioCasesResult; onOpen: (ref: ItemRef, entry: string) => void }) {
+  const label = (item: GeneratedCase) => `${name} · ${item.row} · ${item.variant}`;
+  return <section aria-label="Generated cases"><h2>Generated cases</h2>
+    <DataTable label="Generated cases" className="page-table" rows={result.cases} rowId={(item) => item.case.id} rowLabel={label} selected={null} onSelect={() => {}} onOpen={(id) => { const item = result.cases.find((held) => held.case.id === id); if (item) onOpen(item.case, item.entry); }} columns={[
+      { key: "name", header: "Name", priority: 1, minWidth: 12, flex: true, render: label }, { key: "messages", header: "Messages", priority: 2, minWidth: 6, render: (item) => String(item.messages) }, { key: "mapping", header: "Step mapping", priority: 1, minWidth: 14, render: (item) => item.phases.map((phase) => `${phase.id} → ${phase.occurrences.join(", ")}`).join(" · ") }, { key: "validation", header: "Profile evaluation", priority: 3, minWidth: 9, render: (item) => item.evaluated ? item.verdict || "Undecided" : "Not evaluated" }, { key: "open", header: "", priority: 1, minWidth: 6, render: (item) => <button type="button" aria-label={`Open generated case ${label(item)}`} onClick={(event) => { event.stopPropagation(); onOpen(item.case, item.entry); }}>Open case</button> },
+    ]} />
+  </section>;
 }
 
 /** One event: its type from the family's supported events, its subject, when it follows the one before, and what it expects. */
@@ -569,23 +898,27 @@ function EventSheet({
 }
 
 /** The seed, base time and pinned versions a scenario generates under. */
-function SettingsSheet({ draft, generator, maxSeed, onClose, onApply }: { draft: Draft; generator: string; maxSeed: number; onClose: () => void; onApply: (draft: Draft) => void }) {
+function SettingsSheet({ draft, generator, maxSeed, profiles, family, onClose, onApply }: { draft: Draft; generator: string; maxSeed: number; profiles: CatalogItem[]; family: string; onClose: () => void; onApply: (draft: Draft) => void }) {
   const scenario = scenarioOf(draft)!;
   const templateName = useVocabulary()?.scenarios.templates.find((template) => template.id === scenario.scenario.id)?.name ?? "Scenario template";
   const [seed, setSeed] = useState(String(draft.plan.seed));
   const [base, setBase] = useState(scenario.base_time);
+  const [profile, setProfile] = useState(draft.profile);
+  const [generation, setGeneration] = useState(draft.generation ?? initialGeneration(scenario));
+  const [orders, setOrders] = useState(draft.orders ?? []);
+  const [results, setResults] = useState(draft.results ?? []);
   const valid = /^(0|[1-9]\d*)$/.test(seed) && Number(seed) <= maxSeed && base.trim() !== "";
   return (
     <FormDialog
       open
       title="Generation settings"
-      size="small"
       submitLabel="Done"
       submitDisabled={!valid}
-      dirty={seed !== String(draft.plan.seed) || base !== scenario.base_time}
+      dirty={seed !== String(draft.plan.seed) || base !== scenario.base_time || JSON.stringify(generation) !== JSON.stringify(draft.generation) || JSON.stringify(profile) !== JSON.stringify(draft.profile) || JSON.stringify(orders) !== JSON.stringify(draft.orders ?? []) || JSON.stringify(results) !== JSON.stringify(draft.results ?? [])}
       onClose={onClose}
       onSubmit={() => {
-        onApply(withScenario({ ...draft, plan: { ...draft.plan, seed: Number(seed) } }, { ...scenario, base_time: base.trim() }));
+        const { profile: _profile, ...held } = draft;
+        onApply(withScenario({ ...held, ...(profile ? { profile } : {}), generation, ...(draft.orders ? { orders } : {}), ...(draft.results ? { results } : {}), plan: { ...draft.plan, seed: Number(seed) } }, { ...scenario, base_time: base.trim() }));
         onClose();
       }}
     >
@@ -593,6 +926,9 @@ function SettingsSheet({ draft, generator, maxSeed, onClose, onApply }: { draft:
       <input id="scenario-seed" type="text" inputMode="numeric" value={seed} aria-invalid={!valid} onChange={(event) => setSeed(event.target.value.trim())} />
       <label htmlFor="scenario-base">Base time</label>
       <input id="scenario-base" type="text" value={base} onChange={(event) => setBase(event.target.value)} />
+      <ProfilePin value={profile} profiles={profiles} family={family} onChange={setProfile} />
+      <GenerationFields value={generation} scenario={scenario} onChange={setGeneration} />
+      <ScenarioOrderFields orders={orders} results={results} steps={scenario.steps} onOrders={setOrders} onResults={setResults} />
       <ValueRows
         rows={[
           { label: "Generator", value: `v${generator}` },

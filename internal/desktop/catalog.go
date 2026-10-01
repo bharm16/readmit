@@ -18,6 +18,7 @@ import (
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/catalog"
 	"github.com/bharm16/readmit/internal/operation"
+	"github.com/bharm16/readmit/internal/profilepack"
 	"github.com/bharm16/readmit/internal/project"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
@@ -229,6 +230,10 @@ type InterfaceRevision struct {
 // as InterfaceVersion. Provenance is a marker, present only for a case whose
 // evidence is not a person's own: synthetic (generated) or variant (derived).
 type CaseSummary struct {
+	Protocol          string         `json:"protocol,omitzero"`
+	ProtocolVersion   string         `json:"protocol_version,omitzero"`
+	SourceKind        string         `json:"source_kind,omitzero"`
+	Resources         int            `json:"resources,omitzero"`
 	Registered        bool           `json:"registered"`
 	Entry             string         `json:"entry"`
 	Status            project.Status `json:"status,omitzero"`
@@ -422,10 +427,12 @@ type CheckGroupSummary struct {
 // ProfileSummary is the family and protocol version a profile covers and the
 // version it publishes.
 type ProfileSummary struct {
-	Form             string `json:"form"`
-	Family           string `json:"family,omitzero"`
-	ProtocolVersion  string `json:"protocol_version,omitzero"`
-	PublishedVersion string `json:"published_version,omitzero"`
+	Form             string                   `json:"form"`
+	Family           string                   `json:"family,omitzero"`
+	ProtocolVersion  string                   `json:"protocol_version,omitzero"`
+	PublishedVersion string                   `json:"published_version,omitzero"`
+	Levels           *profilepack.Outcomes    `json:"levels,omitzero"`
+	FHIR             *FHIRProfileAvailability `json:"fhir,omitzero"`
 }
 
 // ScenarioSummary is a scenario's declared version and lifecycle profile, the
@@ -443,6 +450,7 @@ type ScenarioSummary struct {
 	// LocalProfile is the saved local profile, at its exact revision, a
 	// Library scenario is authored for.
 	LocalProfile *ItemRef `json:"local_profile,omitzero"`
+	Protocol     string   `json:"protocol,omitzero"`
 }
 
 // AnalysisSummary is one retained analysis. A diagnosis ("diagnosis") names
@@ -743,9 +751,10 @@ func queryKey(query CatalogQuery) string {
 // ItemRequest names one object of the open project. From is where a new
 // test starts from, read by OpenItemDraft alone.
 type ItemRequest struct {
-	Context RequestContext `json:"context"`
-	Ref     ItemRef        `json:"ref"`
-	From    *TestOrigin    `json:"from,omitzero"`
+	Context  RequestContext `json:"context"`
+	Ref      ItemRef        `json:"ref"`
+	From     *TestOrigin    `json:"from,omitzero"`
+	Protocol string         `json:"protocol,omitzero"`
 	// Capture starts a new observation from a retained capture: a
 	// downstream-capture source over the case the capture retained in the
 	// project, and a window over that source.

@@ -23,6 +23,16 @@ func Create(dir string) (string, error) {
 	return paths[0], nil
 }
 
+// CreateUnactivated writes the signed folder a person still needs to activate.
+// Existing fixtures that need an active policy continue to use Create.
+func CreateUnactivated(dir string) (string, error) {
+	paths, err := createIssues([]Issue{{Dir: dir, Term: Term{Sequence: 1, Expires: 24 * time.Hour}}}, false)
+	if err != nil {
+		return "", err
+	}
+	return paths[0], nil
+}
+
 // Term is what a test varies about one issue of the test entitlement: its
 // issue sequence, when it expires relative to now (negative for a term that is
 // already over) and its grace period in days.
@@ -45,6 +55,10 @@ type Issue struct {
 // one; the key is discarded when CreateIssues returns. It returns each
 // folder's operation policy path, in order.
 func CreateIssues(issues []Issue) ([]string, error) {
+	return createIssues(issues, true)
+}
+
+func createIssues(issues []Issue, activate bool) ([]string, error) {
 	public, private, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		return nil, err
@@ -78,8 +92,10 @@ func CreateIssues(issues []Issue) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		if err := operationguard.Activate(path); err != nil {
-			return nil, err
+		if activate {
+			if err := operationguard.Activate(path); err != nil {
+				return nil, err
+			}
 		}
 		paths = append(paths, path)
 	}

@@ -8,12 +8,41 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bharm16/readmit/internal/correlate"
 	"github.com/bharm16/readmit/internal/desktop"
 	"github.com/bharm16/readmit/internal/diff"
 	"github.com/bharm16/readmit/internal/project"
 	"github.com/bharm16/readmit/internal/reproducer"
 	"github.com/bharm16/readmit/internal/transform"
 )
+
+// A review may select link rules before adding a sequence change. That is
+// still a complete stage: its rules are applied, retained by Save and used
+// when the derived case is verified, rather than silently discarded.
+func TestAVariantSaveRetainsAReviewedStageWithoutSequenceChanges(t *testing.T) {
+	app, context, incident, plan := variantProject(t)
+	rules := saveLinkRules(t, app, context, "", "", "variant-rules", &correlate.Rules{
+		Rules: []correlate.Rule{{ID: "acks", Operator: correlate.Acknowledges, Scope: correlate.SourceScope}},
+	})
+	draft := desktop.VariantDraft{Source: incident, Plan: plan,
+		Transform: &desktop.VariantTransform{Rules: &rules, Steps: []desktop.VariantSequenceStep{}}}
+	resolved := app.ResolveVariant(desktop.VariantRequest{Context: context, Draft: draft})
+	if resolved.State != desktop.Completed || resolved.Variant == nil || resolved.Variant.RulesName != "Interface links" {
+		t.Fatalf("the reviewed rules were not applied: %+v", resolved)
+	}
+	saved := app.SaveItem(desktop.SaveItemRequest{Context: context, Kind: desktop.VariantItem,
+		Draft: desktop.ItemDraft{Name: "Reviewed reschedule", Variant: &draft}, IntentID: "variant-reviewed-stage"})
+	if saved.Outcome != desktop.SavedOutcome || saved.Saved == nil || saved.Projection == nil || saved.Projection.Variant == nil ||
+		saved.Projection.Variant.Transform == nil || saved.Projection.Variant.Transform.Rules == nil ||
+		*saved.Projection.Variant.Transform.Rules != rules {
+		t.Fatalf("the complete stage was lost by Save: %+v", saved)
+	}
+	opened := app.OpenItem(desktop.ItemRequest{Context: context, Ref: *saved.Saved})
+	if opened.Item == nil || opened.Item.Summary.Variant == nil || opened.Item.Summary.Variant.Operation != transform.Derivation ||
+		opened.Item.Summary.Variant.Parent == nil || opened.Item.Summary.Variant.Parent.ID != incident.ID {
+		t.Fatalf("the saved stage did not reopen with its derived lineage: %+v", opened)
+	}
+}
 
 // bookingVariant is the incident's booking and its acknowledgement, whose
 // entries are t000001 (booking) and t000002 (acknowledgement).

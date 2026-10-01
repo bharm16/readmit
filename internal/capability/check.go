@@ -36,7 +36,7 @@ func (l Ledger) Check(repository fs.FS) error {
 	var problems []error
 	for _, row := range l.Rows {
 		for _, document := range append(slices.Clone(row.Inputs), row.Outputs...) {
-			if document != RawHL7 && !contracts[document] {
+			if document != RawHL7 && document != RawFHIR && !contracts[document] {
 				problems = append(problems, errors.New("row "+row.ID+": canonical document "+document+" is not a contract any Go source spells"))
 			}
 		}

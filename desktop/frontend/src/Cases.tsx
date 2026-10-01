@@ -392,6 +392,7 @@ export function CaseFacts({ item, revisions, onClose }: { item: CatalogItem | nu
       <ValueRows
         rows={[
           { label: "Name", value: item?.name ?? "" },
+          ...(f.protocol === "fhir-r4" ? [{ label: "Protocol", value: `FHIR R4 · ${f.protocol_version || "Unavailable"}` }, { label: "Source type", value: f.source_kind || "Unavailable" }, { label: "Resources", value: String(f.resources ?? 0) }] : []),
           { label: "Status", value: statusLabel(f.status) },
           { label: "Owner", value: f.owner || "Unassigned" },
           { label: "Updated", value: listDate(item?.updated_at) },

@@ -243,6 +243,44 @@ export interface AssertionCondition {
   equals: AssertionFieldValue;
 }
 
+/** internal/assertion.DatasetAssertion */
+export interface AssertionDatasetAssertion {
+  id: string;
+  operator: string;
+  subject: AssertionRowSelection;
+  column?: string;
+  expected?: DatasetValue;
+  other?: AssertionRowSelection;
+  other_column?: string;
+  count?: number;
+  quantifier?: string;
+  sequence?: DatasetValue[];
+  when?: AssertionDatasetCondition;
+}
+
+/** internal/assertion.DatasetBinding */
+export interface AssertionDatasetBinding {
+  projection_identity: string;
+  name: string;
+  namespace: string;
+  phase: string;
+  source_identity: string;
+}
+
+/** internal/assertion.DatasetCondition */
+export interface AssertionDatasetCondition {
+  subject: AssertionRowSelection;
+  column: string;
+  equals: DatasetValue;
+}
+
+/** internal/assertion.DatasetSetDocument */
+export interface AssertionDatasetSetDocument {
+  schema: string;
+  bindings: AssertionDatasetBinding[];
+  assertions: AssertionDatasetAssertion[];
+}
+
 /** internal/assertion.EachRef */
 export interface AssertionEachRef {
   scope: AssertionRecordScope;
@@ -357,6 +395,19 @@ export interface AssertionResult {
   Operator: AssertionOperator;
   Outcome: AssertionOutcome;
   Observed: AssertionReading;
+}
+
+/** internal/assertion.RowFilter */
+export interface AssertionRowFilter {
+  column: string;
+  equals: DatasetValue;
+}
+
+/** internal/assertion.RowSelection */
+export interface AssertionRowSelection {
+  dataset: string;
+  row?: string;
+  where: AssertionRowFilter[];
 }
 
 /** internal/assertionauthor.Draft */
@@ -959,6 +1010,9 @@ export interface CaseDraft {
 
 /** internal/desktop.Case */
 export interface CaseEvidence {
+  protocol?: string;
+  resources?: number;
+  requests?: number;
   name: string;
   identity: string;
   schema: string;
@@ -1011,6 +1065,10 @@ export type CaseStatus = "open" | "investigating" | "resolved" | "closed";
 
 /** internal/desktop.CaseSummary */
 export interface CaseSummary {
+  protocol?: string;
+  protocol_version?: string;
+  source_kind?: string;
+  resources?: number;
   registered: boolean;
   entry: string;
   status?: CaseStatus;
@@ -1279,6 +1337,7 @@ export interface CheckGroupDraft {
   set: AssertionSetDraftDocument;
   unsupported: AssertionAuthorUnsupportedClause[];
   names?: Record<string, string>;
+  fhir?: FHIRCheckGroup;
 }
 
 /** internal/desktop.CheckGroupSummary */
@@ -1568,6 +1627,42 @@ export interface ConnectedActionOptions {
   plan: string;
   policy: string;
   credential?: string;
+}
+
+/** internal/desktop.ConnectedMinimizeChoice */
+export interface ConnectedMinimizeChoice {
+  options: ConnectedMinimizeOptions;
+  name: string;
+  eligible: boolean;
+  refusal?: string;
+}
+
+/** internal/desktop.ConnectedMinimizeObservation */
+export interface ConnectedMinimizeObservation {
+  id: string;
+  kind: string;
+  phase: string;
+  horizon_ms: number;
+  boundary?: string;
+  meaning?: string;
+}
+
+/** internal/desktop.ConnectedMinimizeOptions */
+export interface ConnectedMinimizeOptions {
+  suite: ItemRef;
+  test: string;
+  environment: string;
+}
+
+/** internal/desktop.ConnectedMinimizeReview */
+export interface ConnectedMinimizeReview {
+  suite: ItemRef;
+  name: string;
+  test: string;
+  boundary: string;
+  checks: AssertionDatasetSetDocument;
+  observations: ConnectedMinimizeObservation[];
+  isolation: IsolationActionReview;
 }
 
 /** internal/desktop.ConnectedObservation */
@@ -3041,6 +3136,24 @@ export interface FHIRCapabilityCheck {
   claims?: Fhirr4Capabilities;
 }
 
+/** internal/desktop.FHIRCheckGroup */
+export interface FHIRCheckGroup {
+  schema: string;
+  name: string;
+  set: AssertionDatasetSetDocument;
+  projections: Fhirr4Projection[];
+}
+
+/** internal/desktop.FHIRCheckPreset */
+export interface FHIRCheckPreset {
+  value_type: string;
+  code_system?: string;
+  repeated: boolean;
+  projection: Fhirr4Projection;
+  binding: AssertionDatasetBinding;
+  assertion: AssertionDatasetAssertion;
+}
+
 /** internal/desktop.FHIRConnection */
 export interface FHIRConnection {
   validation?: ConnectionValidation;
@@ -3086,10 +3199,75 @@ export interface FHIRFieldProjection {
   required: boolean;
 }
 
+/** internal/desktop.FHIRFieldView */
+export interface FHIRFieldView {
+  field: Fhirr4ProjectionField;
+  selection: Fhirr4Selection;
+  preset?: FHIRCheckPreset;
+}
+
+/** internal/desktop.FHIRInspection */
+export interface FHIRInspection {
+  fields_limited?: boolean;
+  declaration: FhirevidenceDeclaration;
+  resources: Fhirr4Resource[];
+  fields: FHIRFieldView[];
+  selected?: FHIRFieldView;
+  references: Fhirr4Relationship[];
+  findings: Fhirr4Finding[];
+}
+
+/** internal/desktop.FHIRProfileAvailability */
+export interface FHIRProfileAvailability {
+  state: string;
+  reason?: string;
+  capability?: string;
+  packages: FhirvalidatorPackage[];
+  profiles: FhirvalidatorCanonical[];
+}
+
+/** internal/desktop.FHIRProfileDefinition */
+export interface FHIRProfileDefinition {
+  schema: string;
+  identity: LocalProfileIdentity;
+  resource_type: string;
+  profiles: FhirvalidatorCanonical[];
+  packages: FhirvalidatorPackageRef[];
+  requirements: FhirvalidatorRequirements;
+  validator?: ItemRef;
+  capability?: string;
+}
+
 /** internal/desktop.FHIRProjectionChoice */
 export interface FHIRProjectionChoice {
   resource: string;
   fields: Fhirr4ProjectionField[];
+}
+
+/** internal/desktop.FHIRScenarioRequest */
+export interface FHIRScenarioRequest {
+  base: string;
+  method: string;
+  url: string;
+  headers: FhirrequestHeaders;
+}
+
+/** internal/desktop.FHIRScenarioStep */
+export interface FHIRScenarioStep {
+  id: string;
+  after: string;
+  source_kind: string;
+  document: string;
+  request?: FHIRScenarioRequest;
+}
+
+/** internal/desktop.FHIRScenarioTemplate */
+export interface FHIRScenarioTemplate {
+  schema: string;
+  identity: LocalProfileIdentity;
+  seed: number;
+  base_time: string;
+  steps: FHIRScenarioStep[];
 }
 
 /** internal/desktop.FHIRSearchDraft */
@@ -3101,6 +3279,63 @@ export interface FHIRSearchDraft {
   budget: FhirrestBudget;
 }
 
+/** internal/desktop.FHIRVariantView */
+export interface FHIRVariantView {
+  parent: string;
+  resources: Fhirr4Resource[];
+  changes: FhirevidenceChange[];
+}
+
+/** internal/fhirevidence.Change */
+export interface FhirevidenceChange {
+  field: string;
+  edit: FhirevidenceVariantEdit;
+  before: Fhirr4Selection;
+  after: Fhirr4Selection;
+}
+
+/** internal/fhirevidence.Declaration */
+export interface FhirevidenceDeclaration {
+  source_kind: string;
+  context: Fhirr4Context;
+  request?: FhirevidenceRequestDeclaration;
+}
+
+/** internal/fhirevidence.RequestDeclaration */
+export interface FhirevidenceRequestDeclaration {
+  method: string;
+  url: string;
+  headers: FhirrequestHeaders;
+}
+
+/** internal/fhirevidence.VariantEdit */
+export interface FhirevidenceVariantEdit {
+  occurrence: string;
+  selector: Fhirr4Selector;
+  operator: string;
+  value?: DatasetValue;
+}
+
+/** internal/fhirevidence.VariantPlan */
+export interface FhirevidenceVariantPlan {
+  schema: string;
+  parent: string;
+  steps: FhirevidenceVariantEdit[];
+}
+
+/** internal/fhirr4.BusinessID */
+export interface Fhirr4BusinessID {
+  system: string;
+  value: string;
+}
+
+/** internal/fhirr4.Canonical */
+export interface Fhirr4Canonical {
+  url: string;
+  version: string;
+  fragment: string;
+}
+
 /** internal/fhirr4.Capabilities */
 export interface Fhirr4Capabilities {
   source_identity: string;
@@ -3110,6 +3345,38 @@ export interface Fhirr4Capabilities {
   formats: string[];
   patch_formats: string[];
   rest: Fhirr4RESTClaims[];
+}
+
+/** internal/fhirr4.Column */
+export interface Fhirr4Column {
+  name: string;
+  selector: Fhirr4Selector;
+  required: boolean;
+  repeated: boolean;
+}
+
+/** internal/fhirr4.Context */
+export interface Fhirr4Context {
+  version: string;
+  base: string;
+  media_type: string;
+}
+
+/** internal/fhirr4.Finding */
+export interface Fhirr4Finding {
+  code: string;
+  state: string;
+  pointer: string;
+  occurrence?: string;
+}
+
+/** internal/fhirr4.Projection */
+export interface Fhirr4Projection {
+  schema: string;
+  resource_type: string;
+  columns: Fhirr4Column[];
+  max_rows: number;
+  max_values: number;
 }
 
 /** internal/fhirr4.ProjectionField */
@@ -3126,6 +3393,48 @@ export interface Fhirr4RESTClaims {
   mode: string;
   resources: Fhirr4ResourceClaims[];
   interactions: string[];
+}
+
+/** internal/fhirr4.Reading */
+export interface Fhirr4Reading {
+  canonical?: Fhirr4Canonical;
+  datatype: string;
+  value: DatasetValue;
+  pointer: string;
+  companion?: string;
+  raw?: string;
+}
+
+/** internal/fhirr4.Relationship */
+export interface Fhirr4Relationship {
+  source: string;
+  pointer: string;
+  reference: string;
+  resolution: Fhirr4Resolution;
+}
+
+/** internal/fhirr4.Resolution */
+export interface Fhirr4Resolution {
+  state: string;
+  occurrences: string[];
+}
+
+/** internal/fhirr4.Resource */
+export interface Fhirr4Resource {
+  bundle: string;
+  state: string;
+  occurrence: string;
+  type: string;
+  base: string;
+  logical_id: string;
+  version_id: string;
+  full_url: string;
+  canonical_url: string;
+  canonical_version: string;
+  identifiers: Fhirr4BusinessID[];
+  container: string;
+  pointer: string;
+  projection_support: string;
 }
 
 /** internal/fhirr4.ResourceClaims */
@@ -3149,6 +3458,12 @@ export interface Fhirr4SearchParameter {
   definition: string;
 }
 
+/** internal/fhirr4.Selection */
+export interface Fhirr4Selection {
+  state: string;
+  readings: Fhirr4Reading[];
+}
+
 /** internal/fhirr4.Selector */
 export interface Fhirr4Selector {
   steps: Fhirr4Step[];
@@ -3161,12 +3476,52 @@ export interface Fhirr4Step {
   each: boolean;
 }
 
+/** internal/fhirrequest.Headers */
+export interface FhirrequestHeaders {
+  if_match?: string;
+  if_none_match?: string;
+  if_modified_since?: string;
+  if_none_exist?: string;
+  prefer?: string;
+}
+
 /** internal/fhirrest.Budget */
 export interface FhirrestBudget {
   pages: number;
   rows: number;
   bytes: number;
   timeout_ms: number;
+}
+
+/** internal/fhirvalidator.Canonical */
+export interface FhirvalidatorCanonical {
+  url: string;
+  version: string;
+  sha256: string;
+  package: FhirvalidatorPackageRef;
+}
+
+/** internal/fhirvalidator.Package */
+export interface FhirvalidatorPackage {
+  fhir_versions: string[];
+  id: string;
+  version: string;
+  sha256: string;
+  license: string;
+  dependencies: FhirvalidatorPackageRef[];
+}
+
+/** internal/fhirvalidator.PackageRef */
+export interface FhirvalidatorPackageRef {
+  id: string;
+  version: string;
+}
+
+/** internal/fhirvalidator.Requirements */
+export interface FhirvalidatorRequirements {
+  terminology: string;
+  invariants: string;
+  fail_severities: string[];
 }
 
 /** internal/localprofile.Field */
@@ -3522,6 +3877,9 @@ export interface GeneratedCase {
   phases: CasegenPhase[];
   evaluated: boolean;
   verdict?: string;
+  step?: string;
+  after?: string;
+  source_kind?: string;
 }
 
 /** internal/desktop.Grid */
@@ -4531,6 +4889,7 @@ export interface ImportRequest {
   plan?: ImportPlan;
   recipe?: MappingRecipe;
   engine_plan?: EnginePlan;
+  fhir?: FhirevidenceDeclaration;
   staged?: string[];
 }
 
@@ -4665,6 +5024,7 @@ export type InspectTerminator = "auto" | "cr" | "lf" | "crlf";
 
 /** internal/desktop.Inspection */
 export interface Inspection {
+  fhir?: FHIRInspection;
   metadata: FieldMetadata;
   identity: string;
   occurrence: string;
@@ -4762,7 +5122,7 @@ export interface InterfaceRevision {
   default: boolean;
 }
 
-/** internal/desktop.analysisOperation, internal/desktop.captureOperation, internal/desktop.ciGateVerifyOperation, internal/desktop.corpusOperation, internal/desktop.explanationOperation, internal/desktop.hubSignInOperation, internal/desktop.importOperation, internal/desktop.practiceOperation, internal/desktop.privacyOperation, internal/desktop.protectOperation, internal/desktop.reductionOperation, internal/desktop.reexecutionOperation, internal/desktop.replayOperation, internal/desktop.replayPreviewOperation, internal/desktop.runComparisonOperation, internal/desktop.runOperation, internal/desktop.runnerOperation, internal/desktop.scenarioCheckOperation, internal/desktop.suiteCoverageOperation, internal/desktop.syntheticPacketOperation */
+/** internal/desktop.analysisOperation, internal/desktop.captureOperation, internal/desktop.ciGateVerifyOperation, internal/desktop.corpusOperation, internal/desktop.explanationOperation, internal/desktop.hubSignInOperation, internal/desktop.importOperation, internal/desktop.practiceOperation, internal/desktop.privacyOperation, internal/desktop.protectOperation, internal/desktop.reductionOperation, internal/desktop.reexecutionOperation, internal/desktop.replayOperation, internal/desktop.replayPreviewOperation, internal/desktop.runComparisonOperation, internal/desktop.runOperation, internal/desktop.runnerOperation, internal/desktop.scenarioCheckOperation, internal/desktop.scenarioCasesOperation, internal/desktop.suiteCoverageOperation, internal/desktop.syntheticPacketOperation */
 export type InterruptibleOperation =
   | "analysis"
   | "capture"
@@ -4782,6 +5142,7 @@ export type InterruptibleOperation =
   | "durable-run"
   | "runner"
   | "scenario-check"
+  | "scenario-cases"
   | "suite-coverage-assessment"
   | "synthetic-packet";
 
@@ -4972,6 +5333,7 @@ export interface ItemRequest {
   context: RequestContext;
   ref: ItemRef;
   from?: TestOrigin;
+  protocol?: string;
   capture?: CaptureObservationBinding;
 }
 
@@ -5540,6 +5902,9 @@ export type MessageOutcome =
 
 /** internal/desktop.MessageRow */
 export interface MessageRow {
+  protocol?: string;
+  resource_type?: string;
+  resource_state?: string;
   id: string;
   source_id: string;
   source_name: string;
@@ -5568,6 +5933,7 @@ export interface MessagesRequest {
 
 /** internal/desktop.MessagesResult */
 export interface MessagesResult {
+  protocol?: string;
   state: State;
   reason?: string;
   rows: MessageRow[];
@@ -5590,6 +5956,13 @@ export interface MetadataPack {
   matrix: ProfileLibraryRow[];
 }
 
+/** internal/desktop.MetadataPackDraft */
+export interface MetadataPackDraft {
+  document: string;
+  metadata: ProfilePackPack;
+  schema: string;
+}
+
 /** internal/desktop.MetadataPacksResult */
 export interface MetadataPacksResult {
   state: State;
@@ -5608,6 +5981,7 @@ export interface MigrationPreviewResult {
 
 /** internal/desktop.MinimizeOptions */
 export interface MinimizeOptions {
+  connected?: ConnectedMinimizeOptions;
   checks: string[];
   grouping: string;
   rules?: ItemRef;
@@ -5648,6 +6022,7 @@ export interface MinimizeProgressResult {
 
 /** internal/desktop.MinimizeReview */
 export interface MinimizeReview {
+  connected?: ConnectedMinimizeReview;
   run: ItemRef;
   test?: ItemRef;
   test_name: string;
@@ -5673,6 +6048,7 @@ export interface MinimizeReview {
 
 /** internal/desktop.MinimizeSetup */
 export interface MinimizeSetup {
+  connected: ConnectedMinimizeChoice[];
   run: ItemRef;
   run_name: string;
   eligible: boolean;
@@ -6603,6 +6979,8 @@ export interface ProfileDraft {
   pack?: ItemRef;
   origin?: ProfilePackageOrigin;
   pack_document?: string;
+  fhir?: FHIRProfileDefinition;
+  metadata_pack?: MetadataPackDraft;
 }
 
 /** internal/desktop.ProfileEvaluationRequest */
@@ -6633,6 +7011,16 @@ export interface ProfileLibraryRow {
   pack: ProfilePackIdentity;
 }
 
+/** internal/profilepack.Coverage */
+export interface ProfilePackCoverage {
+  hl7_version: string;
+  family: string;
+  parse: ProfilePackSupport;
+  labels: ProfilePackSupport;
+  structural: ProfilePackSupport;
+  workflow: ProfilePackSupport;
+}
+
 /** internal/profilepack.Extraction */
 export interface ProfilePackExtraction {
   method: string;
@@ -6643,6 +7031,12 @@ export interface ProfilePackExtraction {
 export interface ProfilePackIdentity {
   id: string;
   version: string;
+}
+
+/** internal/profilepack.Labels */
+export interface ProfilePackLabels {
+  hl7_version: string;
+  segments: Record<string, Record<string, string>>;
 }
 
 /** internal/profilepack.License */
@@ -6660,6 +7054,15 @@ export interface ProfilePackOutcomes {
   labels: ProfilePackOutcome;
   structural: ProfilePackOutcome;
   workflow: ProfilePackOutcome;
+}
+
+/** internal/profilepack.Pack */
+export interface ProfilePackPack {
+  schema: string;
+  pack: ProfilePackIdentity;
+  provenance: ProfilePackProvenance;
+  coverage: ProfilePackCoverage[];
+  labels?: ProfilePackLabels[];
 }
 
 /** internal/profilepack.Provenance */
@@ -6685,6 +7088,9 @@ export interface ProfilePackSource {
   location: string;
   revision: string;
 }
+
+/** internal/profilepack.Support */
+export type ProfilePackSupport = "supported" | "untested" | "unsupported";
 
 /** internal/profilepackage.Origin */
 export interface ProfilePackageOrigin {
@@ -6724,6 +7130,7 @@ export interface ProfileResolutionResult {
   resolution?: LocalProfileResolution;
   support?: ProfilePackOutcomes;
   seal?: ProfileVersion;
+  fhir?: FHIRProfileAvailability;
 }
 
 /** internal/desktop.ProfileSummary */
@@ -6732,6 +7139,8 @@ export interface ProfileSummary {
   family?: string;
   protocol_version?: string;
   published_version?: string;
+  levels?: ProfilePackOutcomes;
+  fhir?: FHIRProfileAvailability;
 }
 
 /** internal/profileversion.Version */
@@ -7446,6 +7855,8 @@ export type ReductionReason =
   | "run_execution_error"
   | "run_delivery_uncertain"
   | "run_did_not_finish"
+  | "connected_cleanup_not_complete"
+  | "connected_failure_signature_changed"
   | "unreduced_sequence_did_not_reproduce_the_signature"
   | "oracle_disagreed_with_itself"
   | "trial_budget_spent"
@@ -9632,6 +10043,8 @@ export interface ScenarioCasesResult {
   base_time?: string;
   generator_version?: string;
   cases: GeneratedCase[];
+  protocol?: string;
+  fhir_version?: string;
 }
 
 /** internal/scenario.Catalog */
@@ -9646,6 +10059,10 @@ export interface ScenarioDraft {
   plan: ScenariogenPlan;
   template?: ScenarioScenario;
   profile?: ItemRef;
+  generation?: CaseGenerationSettings;
+  fhir?: FHIRScenarioTemplate;
+  orders?: ScenarioOrder[];
+  results?: ScenarioResult[];
 }
 
 /** internal/scenario.EventAvailability */
@@ -9701,6 +10118,27 @@ export interface ScenarioLibraryTemplateView {
   profile: string;
   coverage: string[];
   plan_sha256: string;
+}
+
+/** internal/scenario.Observation */
+export interface ScenarioObservation {
+  code: string;
+  sub_id: string;
+  value: string;
+  status: string;
+}
+
+/** internal/scenario.Order */
+export interface ScenarioOrder {
+  subject: string;
+  placer: ScenarioOrderIdentifier;
+  filler: ScenarioOrderIdentifier;
+}
+
+/** internal/scenario.OrderIdentifier */
+export interface ScenarioOrderIdentifier {
+  namespace: string;
+  identifier: string;
 }
 
 /** internal/desktop.ScenarioPlanPreviewResult */
@@ -9762,6 +10200,12 @@ export type ScenarioProfileName =
   | "readmit-oru-lifecycle-v1"
   | "readmit-siu-lifecycle-v2";
 
+/** internal/scenario.Result */
+export interface ScenarioResult {
+  step: string;
+  observations: ScenarioObservation[];
+}
+
 /** internal/scenario.Scenario */
 export interface ScenarioScenario {
   schema: string;
@@ -9815,6 +10259,7 @@ export interface ScenarioSummary {
   base_time: string | null;
   generator_version?: string;
   local_profile?: ItemRef;
+  protocol?: string;
 }
 
 /** internal/desktop.ScenarioTemplate */
@@ -9825,6 +10270,9 @@ export interface ScenarioTemplate {
   family: string;
   subjects: ScenarioSubject[];
   steps: ScenarioStep[];
+  schema?: string;
+  orders?: ScenarioOrder[];
+  results?: ScenarioResult[];
 }
 
 /** internal/desktop.ScenarioVocabulary */
@@ -12285,6 +12733,7 @@ export interface VariantDraft {
   source: ItemRef;
   plan: ReproducerPlan;
   transform?: VariantTransform;
+  fhir?: FhirevidenceVariantPlan;
 }
 
 /** internal/desktop.VariantEntry */
@@ -12384,6 +12833,7 @@ export interface VariantTransform {
 
 /** internal/desktop.VariantView */
 export interface VariantView {
+  fhir?: FHIRVariantView;
   messages: VariantMessage[];
   sequence: VariantEntry[];
   changes: VariantChange[];

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { FieldState, InspectionResult, InspectorNode, RawWindow } from "./bindings";
+import type { DatasetValue, FHIRCheckPreset, FHIRInspection, FieldState, Inspection, InspectionResult, InspectorNode, RawWindow } from "./bindings";
 import { FIELD_STATES, HIDDEN_VALUE } from "./display";
 import { TaskPanel, TaskTabs } from "./TaskTabs";
 import { BackLink, FormDialog, Menu, Modal, Reveal, ValueRows, type SubmitFailure } from "./layout";
@@ -45,6 +45,8 @@ export function MessageReader({
   onInspect,
   onReveal,
   onFilterByField,
+  onInspectResource,
+  onCreateFHIRCheck,
   onClose,
   backLabel,
   onBack,
@@ -60,6 +62,10 @@ export function MessageReader({
   onReveal: (revealed: boolean) => void;
   /** Opens Filter with a rule for the selected field; absent where there is no list to filter. */
   onFilterByField?: ((selector: string, value: string | null, state: FieldState) => void) | undefined;
+  /** Navigation to an occurrence Go resolved inside this retained source. */
+  onInspectResource?: ((occurrence: string) => void) | undefined;
+  /** A typed dataset check over the exact Go projection and source binding. */
+  onCreateFHIRCheck?: ((preset: FHIRCheckPreset) => void) | undefined;
   onClose?: (() => void) | undefined;
   backLabel?: string | undefined;
   onBack?: (() => void) | undefined;
@@ -89,6 +95,8 @@ export function MessageReader({
   const field = selected && selected.kind !== "segment" && selected.kind !== "message" && selected.kind !== "occurrence";
 
   const go = (target: string) => void onInspect(target, 0, -1);
+
+  if (inspection?.fhir) return <FHIRReader inspection={inspection} fhir={inspection.fhir} busy={busy} onInspect={onInspect} onReveal={onReveal} onInspectResource={onInspectResource} onCreateCheck={onCreateFHIRCheck} onClose={onClose} backLabel={backLabel} onBack={onBack} />;
 
   return (
     <section className="message-reader" aria-label="Message details">
@@ -300,6 +308,72 @@ export function MessageReader({
       </Modal>
     </section>
   );
+}
+
+/** The same Fields, Raw and Hex views for typed R4 evidence. Narratives,
+ * attachment URLs and extensions appear only as escaped original JSON. */
+function FHIRReader({ inspection, fhir, busy, onInspect, onReveal, onInspectResource, onCreateCheck, onClose, backLabel, onBack }: {
+  inspection: Inspection; fhir: FHIRInspection; busy: boolean;
+  onInspect: (path: string, nodeOffset: number, byteOffset: number, rawOffset?: number) => Promise<InspectionResult | null>;
+  onReveal: (revealed: boolean) => void;
+  onInspectResource?: ((occurrence: string) => void) | undefined;
+  onCreateCheck?: ((preset: FHIRCheckPreset) => void) | undefined;
+  onClose?: (() => void) | undefined; backLabel?: string | undefined; onBack?: (() => void) | undefined;
+}) {
+  const [view, setView] = useState<ReaderView>("fields");
+  const [goingTo, setGoingTo] = useState(false);
+  const [goPath, setGoPath] = useState("");
+  const [info, setInfo] = useState(false);
+  const current = fhir.resources.find((resource) => resource.occurrence === inspection.occurrence);
+  const selected = fhir.selected;
+  const path = selected?.field.id ?? "";
+  const revealed = inspection.revealed;
+  const value = (text: string) => revealed ? text || "Unavailable" : HIDDEN_VALUE;
+  return <section className="message-reader" aria-label="Message details">
+    <header className="reader-header">
+      {backLabel && onBack ? <BackLink label={backLabel} onBack={onBack} /> : null}
+      <div className="reader-heading"><h2>{current?.type ?? inspection.message_code ?? "FHIR request"}</h2><p className="reader-facts">FHIR R4 · {fhir.declaration.context.version} · {fhir.declaration.source_kind}</p></div>
+      <Menu label="More message actions" items={[{ label: "Go to field…", disabled: busy || fhir.fields.length === 0, onSelect: () => { setGoPath(""); setGoingTo(true); } }, { label: "Info", onSelect: () => setInfo(true) }]} />
+      {onClose ? <IconButton icon="close" label="Close message details" onClick={onClose} /> : null}
+    </header>
+    {inspection.notice ? <p className="row-reason" role="note">{inspection.notice}</p> : null}
+    <TaskTabs label="Message views" id="reader-views" tabs={VIEWS} selected={view} onSelect={setView} panels>
+      <TaskPanel tabs="reader-views" tab="fields" shown={view === "fields"}>
+        {current ? <ValueRows label="Resource identity" rows={[
+          { label: "Occurrence", value: current.occurrence }, { label: "Interpretation", value: current.state },
+          { label: "Logical ID", value: value(current.logical_id) }, { label: "Resource version", value: value(current.version_id) },
+          { label: "Full URL", value: value(current.full_url) }, { label: "Canonical URL", value: value(current.canonical_url) }, { label: "Business version", value: value(current.canonical_version) },
+          ...current.identifiers.map((identifier, at) => ({ label: `Identifier ${at + 1}`, value: revealed ? `${identifier.system || "System unavailable"} · ${identifier.value || "Value unavailable"}` : HIDDEN_VALUE })),
+        ]} /> : null}
+        {selected ? <div className="selected-field">
+          <button type="button" className="quiet" disabled={busy} onClick={() => void onInspect("", inspection.node_offset, -1)}>Back to fields</button>
+          <p className="selected-field-name"><strong>{selected.field.id}</strong><span className="selector">{selected.field.type}{selected.field.repeated ? " · Repeated" : ""}</span></p>
+          <p>{selected.selection.state}</p>
+          <ul aria-label="Field readings">{selected.selection.readings.map((reading, at) => <li key={`${reading.pointer}-${at}`}><code>{reading.pointer}</code> · {reading.datatype} · <span>{reading.value.state}</span>{reading.value.state === "present" ? ` · ${datasetText(reading.value, revealed)}` : ""}{revealed && reading.canonical ? ` · ${reading.canonical.url} · ${reading.canonical.version}` : ""}</li>)}</ul>
+          {selected.preset && onCreateCheck ? <button type="button" disabled={busy} onClick={() => onCreateCheck(selected.preset!)}>Create check from this field</button> : null}
+        </div> : <ul className="outline" aria-label="FHIR fields">{fhir.fields.map((field) => <li key={field.field.id}><button type="button" className="outline-row" disabled={busy} onClick={() => void onInspect(field.field.id, inspection.node_offset, -1)}><span className="outline-name"><span>{field.field.id}</span><span className="selector">{field.field.type}{field.field.repeated ? " · Repeated" : ""}</span></span><span className="outline-state">{field.selection.state} · {field.selection.readings.length} readings</span></button></li>)}</ul>}
+        {inspection.child_count > fhir.fields.length ? <nav aria-label="Parts pages" className="pager"><IconButton icon="previous" label="Previous fields" disabled={busy || inspection.node_offset === 0} onClick={() => void onInspect(path, Math.max(0, inspection.node_offset - 100), -1)} /><span>{inspection.node_offset + 1}–{inspection.node_offset + fhir.fields.length} of {inspection.child_count}</span><IconButton icon="next" label="Next fields" disabled={busy || inspection.node_offset + fhir.fields.length >= inspection.child_count} onClick={() => void onInspect(path, inspection.node_offset + fhir.fields.length, -1)} /></nav> : null}
+        {fhir.references.length > 0 ? <section aria-label="FHIR references"><h3>References</h3><ul>{fhir.references.map((reference, at) => <li key={at}><code>{reference.pointer}</code> · {revealed ? reference.reference || "Absent reference" : HIDDEN_VALUE} · {reference.resolution.state}{reference.resolution.occurrences.map((occurrence) => onInspectResource ? <button key={occurrence} type="button" className="quiet" disabled={busy} onClick={() => onInspectResource(occurrence)}>Open local resource {occurrence}</button> : <span key={occurrence}> · {occurrence}</span>)}</li>)}</ul></section> : null}
+        {fhir.findings.length > 0 ? <ValueRows label="FHIR findings" rows={fhir.findings.map((finding, at) => ({ label: finding.pointer || `Finding ${at + 1}`, value: `${finding.state} · ${finding.code}` }))} /> : null}
+      </TaskPanel>
+      <TaskPanel tabs="reader-views" tab="raw" shown={view === "raw"}>{revealed && inspection.raw_window ? <RawText window={inspection.raw_window} busy={busy} onPage={(offset) => void onInspect(path, inspection.node_offset, inspection.byte_offset, offset)} /> : <p className="reader-hidden">{HIDDEN_VALUE}</p>}</TaskPanel>
+      <TaskPanel tabs="reader-views" tab="hex" shown={view === "hex"}>{revealed ? <HexTable rows={inspection.bytes} selection={null} total={inspection.size} offset={inspection.byte_offset} busy={busy} onPage={(offset) => void onInspect(path, inspection.node_offset, offset)} /> : <p className="reader-hidden">{HIDDEN_VALUE}</p>}</TaskPanel>
+    </TaskTabs>
+    <Reveal revealed={revealed} disabled={busy} onToggle={onReveal} />
+    <FormDialog open={goingTo} title="Go to field" size="small" submitLabel="Go" submitDisabled={goPath.trim() === ""} busy={busy} onClose={() => setGoingTo(false)} onSubmit={async () => {
+      const answer = await onInspect(goPath.trim(), inspection.node_offset, -1);
+      if (answer?.state !== "completed") return { reason: answer?.reason ?? "This is not a supported typed R4 field.", field: "go-to-fhir-field" };
+      setView("fields"); setGoingTo(false); return null;
+    }}><label htmlFor="go-to-fhir-field">Field path</label><input id="go-to-fhir-field" type="text" autoFocus spellCheck={false} value={goPath} onChange={(event) => setGoPath(event.target.value)} /></FormDialog>
+    <Modal open={info} title="Info" onClose={() => setInfo(false)}><ValueRows rows={[{ label: "Protocol", value: `FHIR R4 · ${fhir.declaration.context.version}` }, { label: "Media type", value: fhir.declaration.context.media_type }, { label: "Source type", value: fhir.declaration.source_kind }, { label: "Bytes", value: String(inspection.size) }, { label: "In the source", value: `From byte ${inspection.source_offset}` }, { label: "Encoding", value: inspection.encoding }, { label: "Occurrence", value: inspection.occurrence }, { label: "Evidence", value: inspection.identity }]} /></Modal>
+  </section>;
+}
+
+function datasetText(value: DatasetValue, revealed: boolean): string {
+  if (value.state !== "present") return value.state;
+  if (!revealed) return HIDDEN_VALUE;
+  if (value.items) return value.items.map((item) => datasetText(item, true)).join(" · ");
+  return [value.text ?? "", value.code_system, value.precision, value.timezone].filter((held) => held !== undefined).join(" · ");
 }
 
 /** Original bytes, 16 to a row: the offset, grouped hex and the printable

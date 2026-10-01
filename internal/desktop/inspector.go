@@ -116,6 +116,7 @@ const InspectorChildValueLimit = 128
 // Direction the direction the case recorded for it; a standalone file has
 // neither.
 type Inspection struct {
+	FHIR         *FHIRInspection  `json:"fhir,omitzero"`
 	Metadata     FieldMetadata    `json:"metadata"`
 	Identity     string           `json:"identity"`
 	Occurrence   string           `json:"occurrence"`
@@ -164,6 +165,12 @@ func (a *App) InspectOccurrence(request InspectRequest) InspectionResult {
 }
 
 func (a *App) inspectOccurrence(request InspectRequest) InspectionResult {
+	if root, source, handled, declined := openedFHIRCase(context.Background(), request.Workspace, request.Case, request.Identity); handled {
+		if root == "" {
+			return InspectionResult{State: declined.state, Reason: declined.reason}
+		}
+		return inspectFHIR(context.Background(), source.Identity, request.Occurrence, source.Manifest.Declaration, source.Raw(), source.Document, inspectorWindow{Path: request.Path, NodeOffset: request.NodeOffset, ByteOffset: request.ByteOffset, RawOffset: request.RawOffset, Reveal: request.Reveal})
+	}
 	fail := func(reason string) InspectionResult { return InspectionResult{State: Failed, Reason: reason} }
 	if request.NodeOffset < 0 || request.ByteOffset < -1 || request.RawOffset < -1 {
 		return fail("inspector offsets must be in range")
