@@ -1,0 +1,90 @@
+{
+  "schema": "readmit-connection-example/v1",
+  "topology": "v2-engine-v2-capture",
+  "name": "Engine input and downstream v2 capture",
+  "placeholders": [
+    {"token": "<ENGINE_HOST>", "label": "Engine host", "kind": "text"},
+    {"token": "<ENGINE_PORT>", "label": "Engine port", "kind": "text"},
+    {"token": "<ENGINE_SERVER_NAME>", "label": "Engine certificate name", "kind": "text"},
+    {"token": "<ENGINE_CA_FILE>", "label": "Engine CA certificate file", "kind": "file"},
+    {"token": "<ENGINE_RANGE>", "label": "Engine address range", "kind": "text"},
+    {"token": "<LISTENER_ADDRESS>", "label": "Listener address", "kind": "text"},
+    {"token": "<LISTENER_PORT>", "label": "Listener port", "kind": "number"},
+    {"token": "<LISTENER_CERTIFICATE_FILE>", "label": "Listener certificate file", "kind": "file"},
+    {"token": "<LISTENER_KEY_REFERENCE>", "label": "Listener key reference", "kind": "text"}
+  ],
+  "objects": [
+    {
+      "id": "engine",
+      "kind": "environment",
+      "draft": {
+        "name": "Example engine input",
+        "environment": {
+          "schema": "readmit-target/v3",
+          "test_endpoint": true,
+          "address": "<ENGINE_HOST>:<ENGINE_PORT>",
+          "transport": "tls",
+          "approved_transport": false,
+          "ca_file": "<ENGINE_CA_FILE>",
+          "server_name": "<ENGINE_SERVER_NAME>",
+          "classification": "nonproduction",
+          "connect_timeout": "5s",
+          "message_timeout": "30s",
+          "max_ack_bytes": 65536
+        },
+        "policy": {
+          "schema": "readmit-send-policy/v1",
+          "approved_destinations": ["<ENGINE_RANGE>"]
+        },
+        "reset": {
+          "schema": "readmit-reset-plan/v1",
+          "environment": "",
+          "actions": [
+            {
+              "id": "isolated-channel",
+              "operator": "operator_confirms",
+              "authority": "none",
+              "instructions": "Confirm that the engine's test inbound channel routes only to the test receiver listed below, that its outbound queue is empty and that no other sender uses this channel during the run.",
+              "observation": ""
+            },
+            {
+              "id": "engine-quiet",
+              "operator": "endpoint_quiet",
+              "authority": "connect_approved_target",
+              "instructions": "Readmit opens one connection to the engine input and confirms it accepts it and sends nothing unprompted.",
+              "observation": ""
+            }
+          ]
+        },
+        "links": {
+          "schema": "readmit-environment-links/v1",
+          "reset_name": "Isolated engine channel",
+          "action_names": ["Channel isolated", "Engine quiet"]
+        }
+      }
+    },
+    {
+      "id": "receiver",
+      "kind": "source",
+      "draft": {
+        "name": "Example engine output receiver",
+        "source": {
+          "type": "mllp-listener",
+          "listener": {
+            "schema": "readmit-capture-listener/v1",
+            "bind_address": "<LISTENER_ADDRESS>",
+            "port": "<LISTENER_PORT>",
+            "transport": "tls",
+            "message_limit": 1000,
+            "connection_limit": 1,
+            "idle_timeout": "5m",
+            "ack_code": "AA",
+            "allow_remote": true,
+            "tls_certificate": "<LISTENER_CERTIFICATE_FILE>",
+            "tls_key_reference": "<LISTENER_KEY_REFERENCE>"
+          }
+        }
+      }
+    }
+  ]
+}

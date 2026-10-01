@@ -14,8 +14,11 @@ is not downstream workflow success or clinical correctness. Nothing is sent to
 a public validator or terminology service. A v5 connected lifecycle can ask it
 to check a step's returned resource; the configuration's optional `validation`
 selection names the staged capability ([connected FHIR lifecycle
-tests](connected-fhir.md)). IG21 delivers the administrator deployment recipe.
-There is no desktop screen or runner step for it yet.
+tests](connected-fhir.md)). A FHIR environment selects an installed capability
+in Edit connection or installs one with **Install package…**, and **Check
+validator…** in its menu answers the state a validation would meet.
+[Deploying the capability](#deploying-the-capability)
+moves it to the Desktop and runner machines that run tests.
 
 ## The pinned capability
 
@@ -91,6 +94,133 @@ The qualification build supplies `--package testdata/fhir-validation/package`.
 No build stages it otherwise. The four implicit packages are required roots. A capability that lacks one is `package-unavailable` before any resource
 is read.
 
+## Deploying the capability
+
+A build machine stages the capability once; every Desktop or runner host that
+runs validations installs the same bytes offline. The transfer form is a
+`readmit-fhir-validator-package/v1` directory:
+
+- `capability/`: the sealed capability, whose manifest names the validator,
+  Java runtime, adapter, base image, every FHIR package (core, terminology and
+  implementation guides) with its version, digest and dependencies, every
+  profile and terminology resource by digest, and every SBOM and license;
+- `image.tar`: the worker image exactly as the container engine saves it;
+- `package.json`: the capability identity, the image ID, the platform and the
+  archive's size and SHA-256.
+
+The package identity is the SHA-256 of `package.json`. The administrator
+publishes it through a channel the receiving hosts already trust, as a runner
+update's deployment key is published. Installation compares it first, so a
+package that is not the published one is refused before anything is read
+further.
+
+The build machine exports the package with the program that stages it, from
+this repository; it prints the package identity:
+
+```
+go run ./tools/fhir_validator/export --capability /absolute/new-build/capability --output /absolute/new-package
+```
+
+Each receiving host installs it with the shipped `readmit` executable, or, on a
+Desktop computer, from a FHIR environment's menu: **Check validator…** opens
+the Validator sheet, whose **Install package…** chooses the package folder and
+takes the published identity, installs the validator into the application's
+own storage and saves the connection selecting it (`InstallValidator`), and
+whose **Remove** removes the validator the application installed for that
+connection (`RemoveValidator`).
+
+```
+readmit validator verify /absolute/new-package --identity PUBLISHED_IDENTITY
+readmit validator install /absolute/new-package --identity PUBLISHED_IDENTITY --output /absolute/installed/validator-6.10.4
+readmit validator check /absolute/installed/validator-6.10.4
+readmit validator remove /absolute/installed/validator-6.10.4 [--keep /absolute/installed/OTHER]
+```
+
+`--socket` selects a container engine socket other than the default, as the
+FHIR environment's Container engine socket does. A refusal exits nonzero naming
+the state and what to do. `verify` answers a strict
+`readmit-fhir-validator-package-check/v1` document naming the package and
+capability identities, the platform and the pinned versions:
+
+```json
+{"schema":"readmit-fhir-validator-package-check/v1","package":"PACKAGE_SHA256","capability":"CAPABILITY_SHA256","platform":"linux/arm64","validator":"6.10.4","runtime":"21.0.12.1+1","packages":[{"id":"hl7.fhir.r4.core","version":"4.0.1"}]}
+```
+
+`install`, `check` and `remove` answer `readmit-fhir-validator-state/v1`: the
+capability identity and its state, `ready` or `removed`:
+
+```json
+{"schema":"readmit-fhir-validator-state/v1","capability":"CAPABILITY_SHA256","state":"ready"}
+```
+
+- `export` runs on the build machine. It requires the capability's pins and the
+  engine's image to check ready, saves the image and copies the sealed
+  capability.
+- `verify` is offline and starts no program. It refuses an identity that is not
+  the published one (`untrusted-package`); a changed or missing manifest,
+  capability or archive, or an archive whose configuration blob is not the
+  image ID the capability names (`package-invalid`); and a capability whose
+  validator, Java or package roots this release does not run
+  (`unsupported-runtime`, `package-unavailable`).
+- `install` verifies, refuses an engine that is unreachable
+  (`worker-unavailable`) or not the qualified platform
+  (`unsupported-runtime`), loads the image from the package only, checks the
+  engine holds that exact image, and only then writes the capability folder,
+  which must be new (`capability-exists`). It downloads nothing.
+- `check` is the same check as Desktop's **Check validator…**.
+- `remove` removes the capability's image, unless a capability named with
+  `--keep` uses the same image, and then its folder.
+
+An upgrade installs the next package beside the current capability, selects the
+new folder in each FHIR environment, and then removes the old one with `--keep`
+naming the new one. A retained validation result holds its own copy of the
+capability it ran with (`capability/` in the result), so it reopens offline
+after the capability it used is upgraded or removed. Validations requested by
+an approved connected suite pin the exact capability identity, so a runner with
+another capability refuses the job before any effect rather than validating
+with it.
+
+On a runner host the service account runs the same check during execution
+preflight. It needs the container engine's command line at one of the fixed
+paths and access to the engine's socket. Access to a root-owned Docker socket is
+equivalent to root on that host: prefer a rootless engine owned by the service
+account, or a dedicated runner host. The shipped container image of the runner
+has no container engine inside it, so validations requested there report
+`worker-missing` and stay undecided; run validations from the native service.
+
+`TestFHIRValidatorPackageInstallsOfflineOnAMachineWithoutTheImage`,
+`TestFHIRValidatorPackageRefusesUntrustedChangedOrIncompletePackages`,
+`TestFHIRValidatorPackageRefusesUnqualifiedPinsAndPlatforms` and
+`TestFHIRValidatorUpgradeAndRemovalKeepTheCurrentCapabilityAndRetainedCopies`
+run every deployment step through the installed container command line against
+`internal/connectedlab`'s engine, which saves, loads and removes images as the
+engine API describes. `TestValidatorCommandsInstallAPackageOfflineAndRemoveIt`
+runs the `readmit validator` commands above in order, and
+`TestInstallValidatorInstallsAPackageAsTheCommandLineDoesAndRemoveTakesItAway`
+installs and removes through the Desktop facade and checks the result with the
+command line. The opt-in
+`TestFHIRValidatorLiveDeployment` repeats export, offline installation on an
+engine without the image, an untrusted identity, upgrade and removal against
+the actual local engine with throwaway images it builds offline:
+
+```
+READMIT_FHIR_VALIDATOR_DEPLOYMENT=1 go test -tags readmit_nosync -run TestFHIRValidatorLiveDeployment ./internal/fhirvalidator
+```
+
+`testdata/fhir-validation/qualification/deployment-linux-arm64.json` is its
+receipt from an Apple-silicon macOS Desktop host (darwin/arm64) whose Docker
+Engine 29.8.0 runs linux/aarch64 with overlay2 storage. The worker image itself
+is qualified only by `TestFHIRValidatorLiveQualification`.
+
+The worker image is linux/arm64, so the supported deployment targets are hosts
+whose container engine runs linux/arm64: an Apple-silicon Mac's Docker engine,
+as recorded above, and a Linux arm64 runner host, which runs the same commands
+against its own engine but has no retained receipt of its own. Engines on
+x86-64 (Intel Macs, Windows, Linux amd64) are refused as `unsupported-runtime`
+before anything is loaded, which
+`TestFHIRValidatorPackageRefusesUnqualifiedPinsAndPlatforms` exercises; they
+need their own pinned image and qualification.
+
 ## Preparing a validation
 
 A `readmit-fhir-validation-request/v1` names:
@@ -110,7 +240,8 @@ A `readmit-fhir-validation-request/v1` names:
 - input that is not bounded R4 JSON (`invalid-input`).
 
 `Engine.PrepareInstalled` also runs `Engine.Check`, the typed local capability
-check that Desktop and runner setup will call. It reports `worker-missing` when no
+check that Desktop's **Check validator…**, `readmit validator check` and a
+connected runner's execution preflight make. It reports `worker-missing` when no
 container engine or staged image is present, `worker-unavailable` when the
 engine cannot be reached, and `unsupported-runtime` for a non-Linux or
 non-arm64 engine. Each state carries an actionable requirement. A test that

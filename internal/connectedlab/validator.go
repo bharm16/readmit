@@ -21,11 +21,18 @@ var ValidatorImage = "sha256:" + networkaction.Digest([]byte("readmit-lab-valida
 // validator. It returns the capability's directory.
 func StageValidatorCapability(t testing.TB, root, name, variant string) string {
 	t.Helper()
+	return StageValidatorImageCapability(t, root, name, variant, ValidatorImage)
+}
+
+// StageValidatorImageCapability stages the same synthetic capability naming
+// another worker image, such as one LabImage describes.
+func StageValidatorImageCapability(t testing.TB, root, name, variant, image string) string {
+	t.Helper()
 	assets := map[string][]byte{"metadata/sbom.json": []byte(`{"bomFormat":"CycloneDX","specVersion":"1.6","version":1,"components":[{"type":"application","name":"synthetic-fixture","version":"1"}]}`), "licenses/fixture.txt": []byte("Synthetic fixture, CC0-1.0"), "metadata/OfflineValidator.java": []byte("synthetic adapter source"), "metadata/adapter.jar": []byte("synthetic adapter binary")}
 	pinned := func(id, version, sha string) fhirvalidator.Package {
 		return fhirvalidator.Package{ID: id, Version: version, SHA256: sha, License: "CC0-1.0", Dependencies: []fhirvalidator.PackageRef{{ID: "hl7.fhir.r4.core", Version: "4.0.1"}}}
 	}
-	m := fhirvalidator.Manifest{Schema: fhirvalidator.CapabilitySchema, Platform: "linux/arm64", Image: ValidatorImage, BaseImage: "debian@sha256:" + networkaction.Digest([]byte("base")), LauncherSHA256: networkaction.Digest([]byte("launcher")),
+	m := fhirvalidator.Manifest{Schema: fhirvalidator.CapabilitySchema, Platform: "linux/arm64", Image: image, BaseImage: "debian@sha256:" + networkaction.Digest([]byte("base")), LauncherSHA256: networkaction.Digest([]byte("launcher")),
 		Validator:         fhirvalidator.Component{Name: "org.hl7.fhir.validation.cli", Version: "6.10.4", SHA256: "1106b9d58f9e363e47bea7c4fc065841e5fc91fe9d062775c3bfdd212bd653cc", License: "Apache-2.0", SBOM: "metadata/sbom.json"},
 		Runtime:           fhirvalidator.Component{Name: "Eclipse Temurin", Version: "21.0.12.1+1", SHA256: "14be1f35ebdbd1f6e8d57eb911a3ffb74d6d9aa255abc5daf2b1302002cf2cf2", License: "GPL-2.0-with-classpath-exception", SBOM: "metadata/sbom.json"},
 		Base:              fhirvalidator.Component{Name: "Debian bookworm-slim", Version: "12.12", SHA256: networkaction.Digest([]byte("base")), License: "Debian package licenses", SBOM: "metadata/sbom.json"},

@@ -32,6 +32,25 @@ const INVESTIGATE: HelpArticle = {
   related: [{ id: "message-timestamps", title: "Message timestamps" }],
 };
 
+const CONNECT: HelpArticle = {
+  id: "connect-a-test-system",
+  title: "Connect a test system",
+  kind: "task",
+  steps: ["Open Environments and choose Add environment."],
+  body: [],
+  action: { id: "add-environment", label: "Add environment" },
+  related: [{ id: "connection-examples", title: "Connection examples" }, { id: "local-validator", title: "Local validator" }],
+};
+
+const EXAMPLES: HelpArticle = {
+  id: "connection-examples",
+  title: "Connection examples",
+  kind: "troubleshooting",
+  steps: [],
+  body: ["In Environments, choose Import example and the example file."],
+  related: [{ id: "connect-a-test-system", title: "Connect a test system" }],
+};
+
 const helpHandlers = {
   HelpTopics: () => ({ state: "completed" as const, topics: TOPICS }),
   HelpArticle: (id: string) =>
@@ -195,4 +214,22 @@ test("closing demo guidance leaves Cases usable and starts nothing", async () =>
   expect(await page().findByRole("button", { name: "Import" })).toBeTruthy();
   expect(facade.callsTo("RunPractice")).toHaveLength(0);
   expect(facade.callsTo("OpenCase")).toHaveLength(0);
+});
+
+test("Connect a test system opens its connection examples article on its own page and checks nothing", async () => {
+  const user = userEvent.setup();
+  const articles: Record<string, HelpArticle> = { [CONNECT.id]: CONNECT, [EXAMPLES.id]: EXAMPLES };
+  const { facade } = await renderApp({
+    ...helpHandlers,
+    HelpArticle: (id: string) => (articles[id] ? { state: "completed" as const, article: articles[id] } : { state: "failed" as const, reason: "this help article is not in this version" }),
+  });
+  await goTo(user, "Help");
+  await user.click(within(await page().findByRole("list", { name: "Help topics" })).getByRole("button", { name: "Connect a test system" }));
+  expect(await screen.findByRole("heading", { level: 1, name: "Connect a test system" })).toBeTruthy();
+  await user.click(page().getByRole("button", { name: "Connection examples" }));
+  expect(await screen.findByRole("heading", { level: 1, name: "Connection examples" })).toBeTruthy();
+  expect(page().getByText("In Environments, choose Import example and the example file.")).toBeTruthy();
+  for (const reaching of ["CheckValidator", "InstallValidator", "RemoveValidator", "ImportConnectionExample", "ChooseEnvironmentFile", "CheckEnvironment", "PrepareAction"] as const) {
+    expect(facade.callsTo(reaching)).toHaveLength(0);
+  }
 });

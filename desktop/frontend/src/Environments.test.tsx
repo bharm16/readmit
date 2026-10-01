@@ -3,7 +3,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 import { useEnvironments, type EnvironmentPlace } from "./Environments";
-import type { CatalogItem, FHIRConnection, ItemDraft, RequestContext, SaveItemRequest } from "./bindings";
+import type { CatalogItem, ConnectionExampleRequest, FHIRConnection, ItemDraft, RequestContext, SaveItemRequest } from "./bindings";
 import { installFacade } from "./testkit/wails";
 import { vocabularyWrapper } from "./testkit/app";
 
@@ -222,4 +222,112 @@ test("Set up isolation reviews its actual effects and requires each current manu
   expect(within(result).getByText("Retained resources")).toBeTruthy();
   expect(within(result).getByText("Operator asserted")).toBeTruthy();
   expect(facade.callsTo("CheckEnvironment")).toHaveLength(0);
+});
+
+test("Import example asks for each placeholder's value, keeps them through a refusal and opens the environment the one Import saved", async () => {
+  const user = userEvent.setup();
+  const facade = installFacade({
+    ...fhirHandlers(),
+    ChooseEnvironmentFile: (kind) => ({ state: "completed", kind, paths: [kind === "example-file" ? "/certificates-under-test/engine-ca.pem" : "/examples-under-test/connection.json"] }),
+    ImportConnectionExample: (request) => {
+      const summary = { name: "Engine input and application FHIR observation", topology: "v2-application-fhir", placeholders: [{ token: "<ENGINE_HOST>", label: "Engine host", kind: "text" as const }, { token: "<ENGINE_CA_FILE>", label: "Engine CA certificate file", kind: "file" as const }, { token: "<LISTENER_PORT>", label: "Listener port", kind: "number" as const }], objects: [{ id: "application", kind: "environment" as const, name: "Example application FHIR API" }] };
+      if (!request.import) return { state: "completed", context: request.context, example: summary, saved: [], problems: [] };
+      const refused = (field: string, problem: string) => ({ state: "failed" as const, reason: "enter every value the example needs; nothing was saved", context: request.context, example: summary, saved: [], problems: [{ field, problem }] });
+      if (!request.values["<ENGINE_HOST>"]) return refused("values.<ENGINE_HOST>", "Enter engine host");
+      if (!/^[0-9]+$/.test(request.values["<LISTENER_PORT>"] ?? "")) return refused("values.<LISTENER_PORT>", "Enter listener port as a whole number");
+      return { state: "completed", context: request.context, example: summary, saved: [FHIR_ENVIRONMENT.ref], problems: [] };
+    },
+  });
+  render(<EnvironmentsWindow />, { wrapper: vocabularyWrapper() });
+  await screen.findByRole("table", { name: "Environments" });
+  await user.click(screen.getByRole("button", { name: "Import example" }));
+  const sheet = await screen.findByRole("dialog", { name: "Import example" });
+  expect(facade.oneCall("ChooseEnvironmentFile")[0]).toBe("connection-example");
+  expect(await within(sheet).findByText("Engine input and application FHIR observation")).toBeTruthy();
+  // Import with nothing entered names the first missing value and saves nothing.
+  await user.click(within(sheet).getByRole("button", { name: "Import" }));
+  expect((await within(sheet).findByRole("alert")).textContent).toBe("Enter engine host");
+  await user.type(within(sheet).getByRole("textbox", { name: "Engine host" }), "engine-peer");
+  await user.click(within(sheet).getByRole("button", { name: "Choose engine ca certificate file" }));
+  expect(await within(sheet).findByText("engine-ca.pem")).toBeTruthy();
+  await user.type(within(sheet).getByRole("textbox", { name: "Listener port" }), "next");
+  await user.click(within(sheet).getByRole("button", { name: "Import" }));
+  expect((await within(sheet).findByRole("alert")).textContent).toBe("Enter listener port as a whole number");
+  expect((within(sheet).getByRole("textbox", { name: "Engine host" }) as HTMLInputElement).value).toBe("engine-peer");
+  await user.clear(within(sheet).getByRole("textbox", { name: "Listener port" }));
+  await user.type(within(sheet).getByRole("textbox", { name: "Listener port" }), "2575");
+  await user.click(within(sheet).getByRole("button", { name: "Import" }));
+  expect(await screen.findByRole("heading", { name: "FHIR QA" })).toBeTruthy();
+  const calls = facade.callsTo("ImportConnectionExample").map((call) => call.args[0] as ConnectionExampleRequest);
+  expect(calls).toHaveLength(4);
+  expect(calls[0]).toMatchObject({ import: false });
+  expect(calls[1]).toMatchObject({ import: true, values: { "<ENGINE_HOST>": "", "<ENGINE_CA_FILE>": "", "<LISTENER_PORT>": "" } });
+  expect(calls[3]).toMatchObject({ path: "/examples-under-test/connection.json", import: true, values: { "<ENGINE_HOST>": "engine-peer", "<ENGINE_CA_FILE>": "/certificates-under-test/engine-ca.pem", "<LISTENER_PORT>": "2575" } });
+  expect(calls[3]!.intent_id).toBeTruthy();
+  expect(calls[3]!.intent_id).toBe(calls[1]!.intent_id);
+  expect(facade.callsTo("SaveItem")).toHaveLength(0);
+});
+
+test("Check validator runs only when chosen and shows the local worker state and what to do", async () => {
+  const user = userEvent.setup();
+  const validated: CatalogItem = { ...FHIR_ENVIRONMENT, summary: { environment: { ...FHIR_ENVIRONMENT.summary!.environment!, validator: "capability-installed-worker-not-checked" } } };
+  const facade = installFacade({
+    ...fhirHandlers(),
+    ListCatalog: (query) => ({ state: "completed", context: query.context, page: { items: query.kind === "environment" ? [validated] : [], total: query.kind === "environment" ? 1 : 0, snapshot: "s", recorded: true, incomplete: [] } }),
+    OpenItemDraft: (request) => ({ state: "completed", context: request.context, new: false, draft: { name: "FHIR QA", fhir: { ...FHIR_CONNECTION, validation: { capability: "/validator-under-test", engine: "local" } } } }),
+    CheckValidator: (request) => ({ state: "completed", context: request.context, check: { state: "worker-missing", requirement: "stage the exact offline worker image", validator: "6.10.4", runtime: "21.0.12.1+1", packages: ["hl7.fhir.r4.core#4.0.1"] } }),
+  });
+  render(<EnvironmentsWindow initial={{ kind: "environment", id: "fhir-env" }} />, { wrapper: vocabularyWrapper() });
+  await screen.findByText(FHIR_CONNECTION.base);
+  expect(await screen.findByText("Local, offline · Worker not checked")).toBeTruthy();
+  expect(facade.callsTo("CheckValidator")).toHaveLength(0);
+  await user.click(screen.getByRole("button", { name: "More environment actions" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Check validator…" }));
+  const sheet = await screen.findByRole("dialog", { name: "Validator" });
+  expect(await within(sheet).findByText("Image missing")).toBeTruthy();
+  expect(within(sheet).getByText("Install the validator package on this computer.")).toBeTruthy();
+  expect(within(sheet).getByText("6.10.4")).toBeTruthy();
+  expect(facade.oneCall("CheckValidator")[0]).toMatchObject({ ref: FHIR_ENVIRONMENT.ref });
+  expect(facade.callsTo("PrepareAction")).toHaveLength(0);
+});
+
+test("Install package verifies the published identity, installs the validator for the connection and Remove takes it away", async () => {
+  const user = userEvent.setup();
+  let installed = false;
+  const facade = installFacade({
+    ...fhirHandlers(),
+    ChooseEnvironmentFile: (kind) => ({ state: "completed", kind, paths: ["/packages-under-test/validator-6.10.4"] }),
+    CheckValidator: (request) => ({ state: "completed", context: request.context, check: { state: "not-configured", requirement: "choose the installed validator folder in Edit connection", packages: [] } }),
+    InstallValidator: (request) => {
+      if (request.identity !== "a".repeat(64)) return { state: "completed", context: request.context, check: { state: "untrusted-package", requirement: "obtain the published package again", packages: [] } };
+      installed = true;
+      return { state: "completed", context: request.context, saved: { ...FHIR_ENVIRONMENT.ref, revision: "rev-3" }, check: { state: "ready", validator: "6.10.4", runtime: "21.0.12.1+1", packages: ["hl7.fhir.r4.core#4.0.1"] } };
+    },
+    RemoveValidator: (request) => ({ state: "completed", context: request.context, saved: { ...FHIR_ENVIRONMENT.ref, revision: "rev-4" }, check: { state: "not-configured", requirement: "choose the installed validator folder in Edit connection", packages: [] } }),
+  });
+  render(<EnvironmentsWindow initial={{ kind: "environment", id: "fhir-env" }} />, { wrapper: vocabularyWrapper() });
+  await screen.findByText(FHIR_CONNECTION.base);
+  expect(facade.callsTo("CheckValidator")).toHaveLength(0);
+  await user.click(screen.getByRole("button", { name: "More environment actions" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Check validator…" }));
+  const sheet = await screen.findByRole("dialog", { name: "Validator" });
+  expect(await within(sheet).findByText("Not selected")).toBeTruthy();
+  expect(within(sheet).queryByRole("button", { name: "Remove" })).toBeNull();
+  await user.click(within(sheet).getByRole("button", { name: "Install package…" }));
+  const install = await screen.findByRole("dialog", { name: "Install validator" });
+  await user.click(within(install).getByRole("button", { name: "Choose package" }));
+  expect(facade.oneCall("ChooseEnvironmentFile")[0]).toBe("validator-package");
+  await user.type(within(install).getByRole("textbox", { name: "Identity" }), "b".repeat(64));
+  await user.click(within(install).getByRole("button", { name: "Install" }));
+  expect((await within(install).findByRole("alert")).textContent).toContain("not the published one");
+  expect(installed).toBe(false);
+  await user.clear(within(install).getByRole("textbox", { name: "Identity" }));
+  await user.type(within(install).getByRole("textbox", { name: "Identity" }), "a".repeat(64));
+  await user.click(within(install).getByRole("button", { name: "Install" }));
+  const ready = await screen.findByRole("dialog", { name: "Validator" });
+  expect(await within(ready).findByText("Ready")).toBeTruthy();
+  expect(facade.callsTo("InstallValidator").map((call) => call.args[0])).toMatchObject([{ package: "/packages-under-test/validator-6.10.4", ref: FHIR_ENVIRONMENT.ref }, { identity: "a".repeat(64) }]);
+  await user.click(within(ready).getByRole("button", { name: "Remove" }));
+  expect(await within(ready).findByText("Not selected")).toBeTruthy();
+  expect(facade.oneCall("RemoveValidator")[0]).toMatchObject({ ref: FHIR_ENVIRONMENT.ref });
 });

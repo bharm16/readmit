@@ -8,6 +8,10 @@ import {
   checkCredential,
   checkEnvironment,
   checkEnvironmentDestination,
+  checkValidator,
+  importConnectionExample,
+  installValidator,
+  removeValidator,
   listWholeCatalog,
   listCredentials,
   getIsolationEditor,
@@ -21,6 +25,7 @@ import {
   saveItem,
   type CaptureObservationBinding,
   type CatalogItem,
+  type ConnectionExampleSummary,
   type CredentialRow,
   type EnvironmentCheckResult,
   type EnvironmentReport,
@@ -41,6 +46,8 @@ import {
   type SendPolicyDecision,
   type Target,
   type TargetClassification,
+  type ValidatorCheck,
+  type ValidatorState,
 } from "./bindings";
 import { DataTable, type Column } from "./DataTable";
 import { BackLink, EmptyState, FormDialog, Menu, Modal, ValueRows, type MenuItem, type SubmitFailure } from "./layout";
@@ -81,6 +88,21 @@ const ROTATIONS: Record<string, string> = { current: "Current", overdue: "Overdu
 export function authenticationText(mode: string | undefined): string {
   return mode === "smart" ? "SMART Backend Services" : mode === "none" ? "None" : "Not selected";
 }
+
+/** What a validator check, installation or removal found, and what to do
+ * about it. */
+const VALIDATOR_STATES: Record<ValidatorState, { status: string; required?: string }> = {
+  ready: { status: "Ready" },
+  "not-configured": { status: "Not selected", required: "Choose the validator folder in Edit connection, or install a package." },
+  "capability-unavailable": { status: "Not installed", required: "Install the validator package, then choose its folder in Edit connection." },
+  "capability-exists": { status: "Already present", required: "Remove the validator, then install the package again." },
+  "untrusted-package": { status: "Untrusted package", required: "The package is not the published one. Compare its identity with your administrator's." },
+  "package-invalid": { status: "Incomplete package", required: "Copy the complete package again." },
+  "package-unavailable": { status: "Package missing", required: "Install the validator package again." },
+  "unsupported-runtime": { status: "Unsupported", required: "Install the validator package on a Linux arm64 container engine." },
+  "worker-missing": { status: "Image missing", required: "Install the validator package on this computer." },
+  "worker-unavailable": { status: "Engine stopped", required: "Start the container engine." },
+};
 
 export function validatorText(state: string | undefined): string {
   return ({ "not-configured": "Local, offline · No worker selected", "capability-unavailable": "Local, offline · Capability unavailable", "capability-installed-worker-not-checked": "Local, offline · Worker not checked" } as Record<string, string>)[state ?? ""] ?? "Local, offline · Unavailable";
@@ -206,6 +228,8 @@ export function useEnvironments({ root, context, place, go, back, busy, onAdded,
   const [listSelected, setListSelected] = useState<string | null>(null);
   const [listFailure, setListFailure] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [example, setExample] = useState<{ path: string; summary: ConnectionExampleSummary } | null>(null);
+  const [exampleFailure, setExampleFailure] = useState<string | null>(null);
   const addRequested = place.kind === "list" && place.adding === true;
   const observationRequested = place.kind === "list" && place.addingObservation === true;
   useEffect(() => {
@@ -241,6 +265,19 @@ export function useEnvironments({ root, context, place, go, back, busy, onAdded,
     editing: place.kind === "observation" && place.editing === true,
     onEdited: onAdded,
   });
+
+  const chooseExample = async () => {
+    setExampleFailure(null);
+    const chosen = await chooseEnvironmentFile("connection-example");
+    const path = chosen.state === "completed" ? chosen.paths?.[0] : undefined;
+    if (!path) {
+      if (chosen.state !== "cancelled") setExampleFailure(chosen.reason ?? "The example was not chosen.");
+      return;
+    }
+    const read = await importConnectionExample({ context: context(), path, import: false, values: {} });
+    if (read.state === "completed" && read.example) setExample({ path, summary: read.example });
+    else setExampleFailure(read.reason ?? "The example cannot be read.");
+  };
 
   if (!root) return { title: "Environments", back: null, actions: null, body: null };
 
@@ -332,15 +369,32 @@ export function useEnvironments({ root, context, place, go, back, busy, onAdded,
   return {
     title: "Environments",
     back: null,
-    actions:
-      items && items.length > 0 ? (
-        <button type="button" className="primary" disabled={busy} onClick={() => setAdding(true)}>
-          Add environment
+    actions: (
+      <>
+        <button type="button" disabled={busy} onClick={() => void chooseExample()}>
+          Import example
         </button>
-      ) : null,
+        {items && items.length > 0 ? (
+          <button type="button" className="primary" disabled={busy} onClick={() => setAdding(true)}>
+            Add environment
+          </button>
+        ) : null}
+      </>
+    ),
     body: (
       <>
+        {exampleFailure ? <p role="alert" className="object-problem">{exampleFailure}</p> : null}
         {body}
+        <ImportExampleSheet
+          example={example}
+          context={context}
+          onClose={() => setExample(null)}
+          onImported={async (first) => {
+            setExample(null);
+            await refresh();
+            if (first) go(first);
+          }}
+        />
         <ConnectionSheet
           open={adding}
           mode="add"
@@ -369,6 +423,141 @@ export function useEnvironments({ root, context, place, go, back, busy, onAdded,
   };
 }
 
+/** Install package: the validator package folder and the identity its
+ * administrator published; Install verifies, installs and selects it. */
+function InstallValidatorSheet({
+  open,
+  context,
+  environment,
+  onClose,
+  onInstalled,
+}: {
+  open: boolean;
+  context: () => RequestContext;
+  environment: ItemRef;
+  onClose: () => void;
+  onInstalled: (check: ValidatorCheck) => void | Promise<void>;
+}) {
+  const [folder, setFolder] = useState("");
+  const [identity, setIdentity] = useState("");
+  const intent = useRef("");
+  useEffect(() => {
+    if (!open) return;
+    setFolder("");
+    setIdentity("");
+    intent.current = newIntentId();
+  }, [open]);
+  return (
+    <FormDialog
+      open={open}
+      title="Install validator"
+      submitLabel="Install"
+      dirty={folder !== "" || identity !== ""}
+      onClose={onClose}
+      onSubmit={async () => {
+        if (!folder) return { reason: "Choose the validator package.", field: "validator-package" };
+        const answer = await installValidator({ context: context(), ref: environment, package: folder, identity: identity.trim(), intent_id: intent.current });
+        if (answer.state !== "completed" || !answer.check) return { reason: answer.reason ?? "The validator was not installed." };
+        if (!answer.saved) {
+          const field = answer.check.state === "untrusted-package" ? "validator-identity" : "validator-package";
+          return { reason: VALIDATOR_STATES[answer.check.state].required ?? "The validator was not installed.", field };
+        }
+        await onInstalled(answer.check);
+        return null;
+      }}
+    >
+      <FilePicker id="validator-package" label="Package" path={folder} onChoose={() => void chooseEnvironmentFile("validator-package").then((answer) => {
+        const chosen = answer.state === "completed" ? answer.paths?.[0] : undefined;
+        if (chosen) setFolder(chosen);
+      })} />
+      <label htmlFor="validator-identity">Identity</label>
+      <input id="validator-identity" type="text" spellCheck={false} value={identity} onChange={(event) => setIdentity(event.target.value)} />
+    </FormDialog>
+  );
+}
+
+/** Import example: the values a chosen connection example needs, one field
+ * each, then one Import that saves its environments, receiver and
+ * observations as the editors' Save would. */
+function ImportExampleSheet({
+  example,
+  context,
+  onClose,
+  onImported,
+}: {
+  example: { path: string; summary: ConnectionExampleSummary } | null;
+  context: () => RequestContext;
+  onClose: () => void;
+  onImported: (first: string | null) => void | Promise<void>;
+}) {
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [cases, setCases] = useState<CatalogItem[]>([]);
+  const intent = useRef("");
+  useEffect(() => {
+    setValues({});
+    intent.current = newIntentId();
+    if (example?.summary.placeholders.some((placeholder) => placeholder.kind === "case")) {
+      void listWholeCatalog({ context: context(), kind: "case", filter: {} }).then((answer) => setCases(answer.page?.items ?? []));
+    }
+  }, [example, context]);
+  const placeholders = example?.summary.placeholders ?? [];
+  return (
+    <FormDialog
+      open={example !== null}
+      title="Import example"
+      submitLabel="Import"
+      dirty={Object.values(values).some((value) => value !== "")}
+      onClose={onClose}
+      onSubmit={async () => {
+        if (!example) return null;
+        const given = Object.fromEntries(placeholders.map((placeholder) => [placeholder.token, values[placeholder.token] ?? ""]));
+        const answer = await importConnectionExample({ context: context(), path: example.path, import: true, values: given, intent_id: intent.current });
+        if (answer.state !== "completed") {
+          const at = answer.problems.find((problem) => problem.field.startsWith("values."));
+          const index = at ? placeholders.findIndex((placeholder) => `values.${placeholder.token}` === at.field) : -1;
+          return { reason: at?.problem ?? answer.reason ?? "The example was not imported.", ...(index >= 0 ? { field: `example-value-${index}` } : {}) };
+        }
+        const environment = answer.saved.find((ref) => ref.kind === "environment");
+        const observation = answer.saved.find((ref) => ref.kind === "observation");
+        await onImported(environment ? environment.id : observation ? `observation:${observation.id}` : null);
+        return null;
+      }}
+    >
+      <ValueRows rows={[{ label: "Example", value: example?.summary.name ?? "" }]} />
+      {placeholders.map((placeholder, index) => (
+        <div key={placeholder.token}>
+          {placeholder.kind === "file" ? null : <label htmlFor={`example-value-${index}`}>{placeholder.label}</label>}
+          {placeholder.kind === "file" ? (
+            <FilePicker
+              id={`example-value-${index}`}
+              label={placeholder.label}
+              path={values[placeholder.token] ?? ""}
+              onChoose={() => void chooseEnvironmentFile("example-file").then((answer) => {
+                const chosen = answer.state === "completed" ? answer.paths?.[0] : undefined;
+                if (chosen) setValues((held) => ({ ...held, [placeholder.token]: chosen }));
+              })}
+            />
+          ) : placeholder.kind === "case" ? (
+            <select id={`example-value-${index}`} value={values[placeholder.token] ?? ""} onChange={(event) => setValues((held) => ({ ...held, [placeholder.token]: event.target.value }))}>
+              <option value="">Choose a case</option>
+              {cases.map((item) => <option key={item.ref.id} value={item.ref.id}>{item.name}</option>)}
+            </select>
+          ) : (
+            <input
+              id={`example-value-${index}`}
+              type="text"
+              spellCheck={false}
+              inputMode={placeholder.kind === "number" ? "numeric" : undefined}
+              value={values[placeholder.token] ?? ""}
+              onChange={(event) => setValues((held) => ({ ...held, [placeholder.token]: event.target.value }))}
+            />
+          )}
+        </div>
+      ))}
+    </FormDialog>
+  );
+}
+
 // ---------- One environment ----------
 
 function useEnvironmentDetail({
@@ -394,8 +583,10 @@ function useEnvironmentDetail({
   const [draft, setDraft] = useState<ItemDraft | null>(null);
   const [draftFailure, setDraftFailure] = useState<string | null>(null);
   const [sheet, setSheet] = useState<
-    null | "connection" | "approve" | "check" | "check-authorization" | "check-capabilities" | "isolation-preflight" | "isolation-setup" | "isolation-reconcile" | "isolation-cleanup" | "ranges" | "destinations" | "check-destination" | "reset-edit" | "reset" | "remove" | "details" | "observation" | "observation-link"
+    null | "connection" | "approve" | "check" | "check-authorization" | "check-capabilities" | "isolation-preflight" | "isolation-setup" | "isolation-reconcile" | "isolation-cleanup" | "ranges" | "destinations" | "check-destination" | "reset-edit" | "reset" | "remove" | "details" | "observation" | "observation-link" | "validator" | "validator-install"
   >(null);
+  const [validator, setValidator] = useState<ValidatorCheck | null>(null);
+  const [validatorFailure, setValidatorFailure] = useState<string | null>(null);
   // The project's named observations, which the Observation group and the
   // reset's observation checks name.
   const [observations, setObservations] = useState<CatalogItem[]>([]);
@@ -914,6 +1105,54 @@ function useEnvironmentDetail({
         )}
       />
       <RemoveEnvironmentSheet open={sheet === "remove"} context={context} item={item} onClose={() => setSheet(null)} onRemoved={async () => { setSheet(null); await refresh(); back(); }} />
+      <Modal
+        open={sheet === "validator"}
+        title="Validator"
+        onClose={() => setSheet(null)}
+        footer={validator ? (
+          <>
+            {validator.state === "not-configured" ? null : (
+              <button type="button" disabled={busy} onClick={() => {
+                setValidatorFailure(null);
+                void removeValidator({ context: context(), ref, intent_id: newIntentId() }).then(async (answer) => {
+                  if (answer.state === "completed" && answer.check) setValidator(answer.check);
+                  else setValidatorFailure(answer.reason ?? "The validator was not removed.");
+                  await refresh();
+                });
+              }}>
+                Remove
+              </button>
+            )}
+            <button type="button" className="primary" disabled={busy} onClick={() => setSheet("validator-install")}>
+              Install package…
+            </button>
+          </>
+        ) : null}
+      >
+        {validatorFailure ? <p role="alert">{validatorFailure}</p> : validator ? (
+          <ValueRows
+            rows={[
+              { label: "Status", value: VALIDATOR_STATES[validator.state].status },
+              ...(VALIDATOR_STATES[validator.state].required ? [{ label: "Required", value: VALIDATOR_STATES[validator.state].required }] : []),
+              ...(validator.validator ? [{ label: "Validator", value: validator.validator }] : []),
+              ...(validator.runtime ? [{ label: "Java", value: validator.runtime }] : []),
+              ...(validator.packages.length > 0 ? [{ label: "Packages", value: validator.packages.join(", ") }] : []),
+            ]}
+          />
+        ) : <p>Checking…</p>}
+      </Modal>
+      <InstallValidatorSheet
+        open={sheet === "validator-install"}
+        context={context}
+        environment={ref}
+        onClose={() => setSheet("validator")}
+        onInstalled={async (check) => {
+          setValidator(check);
+          setValidatorFailure(null);
+          setSheet("validator");
+          await refresh();
+        }}
+      />
       <Modal open={sheet === "details"} title="Details" onClose={() => setSheet(null)}>
         <ValueRows
           rows={[
@@ -957,6 +1196,17 @@ function useEnvironmentDetail({
     { label: "Credentials", onSelect: () => go(ref.id, "credentials") },
     { label: "Allowed destinations", onSelect: () => setSheet("ranges"), disabled: !draft },
     { label: "Check destination…", onSelect: () => setSheet("check-destination") },
+    ...(fhir
+      ? [{ label: "Check validator…", onSelect: () => {
+          setValidator(null);
+          setValidatorFailure(null);
+          setSheet("validator");
+          void checkValidator({ context: context(), ref }).then((answer) => {
+            if (answer.state === "completed" && answer.check) setValidator(answer.check);
+            else setValidatorFailure(answer.reason ?? "The validator could not be checked.");
+          });
+        } }]
+      : []),
     {
       label: "Duplicate",
       disabled: !draft,

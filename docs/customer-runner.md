@@ -195,3 +195,67 @@ policy before starting the service. Its clock/admission paths must be on the
 persistent writable runner volume (`/var/lib/readmit-runner` or `/data`), while
 the signed entitlement/trust may remain in the read-only configuration mount.
 New jobs fail closed without activation; status and retained evidence stay readable.
+
+## Operating procedures
+
+These are the customer administrator's procedures for a runner already
+deployed as above. None of them resends work, and none needs the vendor.
+
+**Rotation.** Replace a key, token or certificate in its own store first, then
+record the rotation of a referenced credential with `readmit secret rotate`
+([secret references](secret.md#rotation)); a recorded rotation is the
+operator's assertion, not proof the old value stopped working. Rotate the
+runner's client certificate through the customer's PKI and re-register its
+certificate-bound token hash in the hub's access policy
+([security operations](security-operations.md#secrets-encryption-and-revocation)).
+A connected runner's installed authority names its actor and generation:
+rotating that actor means installing a new authority naming the next
+generation ([connected suites](connected-suites.md#install-finite-runtime-authority)).
+
+**Revocation.** Remove the runner's token, grant or runner policy entry at the
+hub; the next renewal is refused, within the ten-second lease. Remove or narrow
+the installed connected authority to stop connected work before its next
+effect. Revoke the read-only and setup clients of each FHIR system at that
+system's authorization server, and remove their references from the project.
+
+**Restart.** The shipped unit does not restart on its own (`Restart=no`). After
+a stop or crash, follow the lease recovery above: inspect each claimed job's
+evidence, confirm the receiver's state, remove only the stale `.active`
+directory, and start the service. A restarted hub waits ten seconds before
+issuing leases, so a predecessor's grants cannot overlap.
+
+**Incomplete-run reconciliation.** Read an interrupted single-test job with
+`readmit run status ROOT/ID/run --recovery` and an interrupted connected suite
+occurrence with `readmit suite inspect PRIVATE_RUN`; neither sends, resets or
+resolves a credential. An uncertain delivery stays uncertain. Once the operator
+has established from the receiving system whether another execution is safe,
+authorize it under a new job ID or dispatch identity; never delete a claimed
+job or a consumed dispatch to make the runner repeat it.
+
+**Backup and restore.** Stop the service and copy the private runner root, its
+configuration and the installed authority to the customer's backup volume, with
+the same access restrictions; [hub backups](../hub/README.md#backup-restore-and-upgrades)
+hold the hub's records and never its leases. Restore the root to the same path
+on a stopped runner. Operate one hub per runner population: a restored copy of
+the hub running beside the original would be a second authority.
+
+**Teardown.** Stop and disable the service, then revoke its hub token and grant
+and remove its installed authority. Reconcile every claimed job before
+archiving the runner root under the customer's retention policy. Remove the
+optional validator with `readmit validator remove`
+([deploying the capability](fhir-validation.md#deploying-the-capability)), and
+remove the service account, its credential references and its private volume.
+Retained evidence stays readable offline wherever it is archived.
+
+The commands these procedures rely on are exercised by
+`TestSecretRotateRecordsAGenerationOnlyWhenTheStoreAnswers` (rotation),
+`TestRunStopsWhenTheHubRevokesOrNarrowsItsLease`,
+`TestCustomerRunnerActualTLSExecutionRevocationAndRecovery` and
+`TestConnectedHubRefusesPinChangesRevocationAndRepeatedEffects` (revocation and
+restart), `TestOfflineCLIStatusAndInterruptedClaimNeverResend` and
+`TestPromotedSuiteCancellationRetainsApprovalAndUncertainRecovery` (incomplete
+runs), `TestConnectedHubBackupRefusesToDiscardDispatchAndInterruptedClaims`
+(backup) and `TestValidatorCommandsInstallAPackageOfflineAndRemoveIt`
+(validator removal). The procedures' order on a customer's own host, service
+manager and backup volume is the administrator's to rehearse; no test stands
+in for that installation.

@@ -62,7 +62,7 @@ var articles = index(
 			"Add an observation when the test needs downstream records.",
 		},
 		action:  &Action{ID: AddEnvironment, Label: "Add environment"},
-		related: []string{"tls-certificates", "credential-references", "production-refusal"},
+		related: []string{"tls-certificates", "credential-references", "production-refusal", "connection-examples", "network-placement", "local-validator", "what-a-pass-shows", "connection-problems"},
 	},
 	article{
 		id: "share-a-report", title: "Share a report", kind: Task,
@@ -175,6 +175,57 @@ var articles = index(
 			"Check credential runs the store's own program to confirm the credential can be read, without showing it. Record the rotation when you change the credential in its store.",
 		},
 		related: []string{"connect-a-test-system", "tls-certificates"},
+	},
+	article{
+		id: "connection-examples", title: "Connection examples", kind: Troubleshooting,
+		body: []string{
+			"Readmit ships synthetic connection examples for three test topologies: HL7 v2 sent through an integration engine and captured downstream as v2; HL7 v2 sent through an engine and observed in the receiving application's FHIR API; and FHIR requests sent to an application whose declared downstream records are observed.",
+			"Each example holds the named environments, approved destination ranges, reset confirmation, capture listener and observations its topology needs, with the observation's fields, business key and completion horizon. Every value that belongs to your systems, such as a host, a certificate file, a client ID or an identifier system, is a marked placeholder such as <ENGINE_HOST>. No example holds a password, key, token, patient value or real address.",
+			"In Environments, choose Import example and the example file. Readmit asks for each placeholder's value and then saves the example's objects as their editors would save them. A missing value saves nothing. Importing connects to nothing, approves no transport and reads no credential.",
+			"Register each credential reference an example names before you import it. Afterwards approve the transport, then use Test connection, Test authorization or Check capabilities as you would for any environment. An example engine capture observes a case the receiver captured, so import its observation once that capture exists.",
+		},
+		related: []string{"connect-a-test-system", "network-placement", "credential-references"},
+	},
+	article{
+		id: "network-placement", title: "Network placement", kind: Troubleshooting,
+		body: []string{
+			"Run Readmit, or a runner, inside the network that already reaches your test systems. It connects out to the engine's input, the application's FHIR API, its token endpoint and any database view an observation reads. A capture listener is the only inbound connection, and only for a topology that captures the engine's output.",
+			"Every connection verifies TLS. Name your organization's CA certificate where the system uses a private CA, the certificate name the system presents, and a client certificate where the system requires mutual TLS. Allowed destinations list the address ranges a send, check or reset may reach; a name that resolves outside them is refused.",
+			"Nothing needs to be reachable from the internet. Do not publish a clinical test endpoint publicly. Nothing is relayed through a vendor service; a runner connects to your own hub and your test systems only.",
+			"A reference FHIR server is a store you control. A pass against one shows what that store holds, not that an EHR or a scheduling system did the same.",
+		},
+		related: []string{"connect-a-test-system", "tls-certificates", "connection-examples"},
+	},
+	article{
+		id: "local-validator", title: "Local validator", kind: Troubleshooting,
+		body: []string{
+			"FHIR profile validation is optional. It runs the pinned HL7 validator in a container on this computer or runner, with no network. Everything else in Readmit runs without Java or a container engine.",
+			"An administrator installs the validator from a package and the identity published for it. In a FHIR environment's menu, Check validator opens the Validator sheet; Install package installs the package on this computer and selects it for the connection. Installing downloads nothing, and a package that is not the published one is refused.",
+			"Check validator reports Ready, or what is missing: the validator itself, a container engine that is not running, the worker image, or a platform or version this release does not run. It runs only when you choose it.",
+			"A validation that could not run is undecided, never a pass. A result keeps its own copy of the validator's pins, so it reopens after the validator is upgraded or removed.",
+		},
+		related: []string{"connect-a-test-system", "what-a-pass-shows", "connection-problems"},
+	},
+	article{
+		id: "what-a-pass-shows", title: "What a pass shows", kind: Troubleshooting,
+		body: []string{
+			"Each check shows one boundary. An AA acknowledgement or an HTTP success shows the receiver accepted the message or request. Profile conformance shows the returned resource met its profiles. An engine output check shows what the engine sent downstream. An observation shows the receiving application's records, read from the source and window it declares.",
+			"A check that no output arrived holds only for the declared horizon and source. A delayed replica can lag, a search reads every page within its budget or is unusable, and records created before the run stay in the store unless a reset removes them.",
+			"Setup the test system needs, such as reference patients, practitioners or channel configuration, is a prerequisite the reset confirms. A captured message replays one message; it does not recreate the system's state.",
+		},
+		related: []string{"connect-a-test-system", "observation-results", "ack-checks"},
+	},
+	article{
+		id: "connection-problems", title: "Connection problems", kind: Troubleshooting,
+		body: []string{
+			"Certificate not trusted or name mismatch: choose the CA certificate that issued the system's certificate and the name it presents, then use Test connection again. Verification cannot be turned off.",
+			"Authorization refused: the client ID, key or token endpoint is not the one registered, or the key reference no longer resolves. Use Check reference in Credentials, then Test authorization.",
+			"Insufficient scope: a read or search the read-only client is not granted is refused, not read as empty. Ask the system's administrator to grant that resource's read and search scope, and keep write scopes on the separate setup client.",
+			"Database view unavailable: an observation reading a view the account cannot read, or that no longer exists, is unusable, never empty. Grant the read-only account that view, or choose another.",
+			"Validator missing or wrong version: Check validator names what is missing. Install the validator package again from the Validator sheet.",
+			"Wrong pack version: a test pinned to a profile pack or validator package that is not installed is refused before anything is sent. Install the pinned version; a newer one is not substituted.",
+		},
+		related: []string{"connect-a-test-system", "tls-certificates", "local-validator"},
 	},
 	article{
 		id: "production-refusal", title: "Production refusal", kind: Troubleshooting,

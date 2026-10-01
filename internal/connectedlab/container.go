@@ -1,7 +1,9 @@
 package connectedlab
 
 import (
+	"archive/tar"
 	"bufio"
+	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
@@ -30,7 +32,8 @@ import (
 // real container would see at /input/resource.json.
 //
 // It stands in for a Linux arm64 engine holding the staged validator image; it
-// is not the qualified validator. That image is qualified only by the opt-in
+// is not the qualified validator. It also saves, loads and removes images as
+// the engine's image API describes, for installing a capability offline. That image is qualified only by the opt-in
 // live test (READMIT_FHIR_VALIDATOR_CAPABILITY). It shares no readmit code.
 type ContainerEngine struct {
 	Socket string
@@ -38,6 +41,9 @@ type ContainerEngine struct {
 	Image string
 
 	mu         sync.Mutex
+	images     map[string][]byte
+	arch       string
+	serverless bool
 	containers map[string]*labContainer
 	runs       []WorkerRun
 	validate   func(Validation) Outcome
@@ -101,7 +107,10 @@ func StartContainerEngine(t testing.TB, image string) *ContainerEngine {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := &ContainerEngine{Socket: socket, Image: image, containers: map[string]*labContainer{}, validate: LabValidator(""), isolation: true}
+	e := &ContainerEngine{Socket: socket, Image: image, images: map[string][]byte{}, arch: "aarch64", containers: map[string]*labContainer{}, validate: LabValidator(""), isolation: true}
+	if image != "" {
+		e.images[image] = nil
+	}
 	server := &http.Server{Handler: http.HandlerFunc(e.serve), ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = server.Serve(listener) }()
 	t.Cleanup(func() { _ = server.Close() })
@@ -118,6 +127,60 @@ func (e *ContainerEngine) SetValidator(v func(Validation) Outcome) {
 // DropIsolation makes the engine report every container without the network
 // and filesystem isolation it was asked for, as a misconfigured engine would.
 func (e *ContainerEngine) DropIsolation() { e.mu.Lock(); e.isolation = false; e.mu.Unlock() }
+
+// Hold makes the engine hold one more image, with the archive a save of it
+// answers.
+func (e *ContainerEngine) Hold(id string, archive []byte) {
+	e.mu.Lock()
+	e.images[id] = archive
+	e.mu.Unlock()
+}
+
+// Holds reports whether the engine holds the image now.
+func (e *ContainerEngine) Holds(id string) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	_, ok := e.images[id]
+	return ok
+}
+
+// AnswerWithoutServer makes the engine's information carry no server, as a
+// command line prints only its own half when it reaches no engine.
+func (e *ContainerEngine) AnswerWithoutServer() {
+	e.mu.Lock()
+	e.serverless = true
+	e.mu.Unlock()
+}
+
+// SetArchitecture makes the engine report another machine architecture, as
+// an engine on an unqualified platform does.
+func (e *ContainerEngine) SetArchitecture(arch string) {
+	e.mu.Lock()
+	e.arch = arch
+	e.mu.Unlock()
+}
+
+// LabImage is an image as an engine saves it, written from the image layout
+// description: an archive whose manifest names one configuration blob, with
+// no layers, and whose ID is that blob's digest. Distinct names are distinct
+// images.
+func LabImage(name string) (string, []byte) {
+	config, _ := json.Marshal(map[string]any{"architecture": "arm64", "os": "linux", "config": map[string]any{"Labels": map[string]string{"readmit.lab.image": name}}, "rootfs": map[string]any{"type": "layers", "diff_ids": []string{}}})
+	sum := sha256.Sum256(config)
+	id := hex.EncodeToString(sum[:])
+	manifest, _ := json.Marshal([]map[string]any{{"Config": "blobs/sha256/" + id, "RepoTags": nil, "Layers": []string{}}})
+	var archive bytes.Buffer
+	w := tar.NewWriter(&archive)
+	for _, member := range []struct {
+		name string
+		data []byte
+	}{{"blobs/sha256/" + id, config}, {"manifest.json", manifest}} {
+		_ = w.WriteHeader(&tar.Header{Name: member.name, Mode: 0o444, Size: int64(len(member.data)), Typeflag: tar.TypeReg})
+		_, _ = w.Write(member.data)
+	}
+	_ = w.Close()
+	return "sha256:" + id, archive.Bytes()
+}
 
 // Runs lists every worker that executed.
 func (e *ContainerEngine) Runs() []WorkerRun {
@@ -193,14 +256,27 @@ func (e *ContainerEngine) serve(w http.ResponseWriter, r *http.Request) {
 	case path == "/version":
 		reply(w, 200, map[string]any{"Version": "27.3.1", "ApiVersion": "1.47", "MinAPIVersion": "1.24", "Os": "linux", "Arch": "arm64"})
 	case path == "/info":
-		reply(w, 200, map[string]any{"ID": "readmit-lab-engine", "ServerVersion": "27.3.1", "OSType": "linux", "Architecture": "aarch64", "OperatingSystem": "readmit lab engine", "NCPU": 2, "Containers": 0, "Images": 1})
+		e.mu.Lock()
+		arch, held, serverless := e.arch, len(e.images), e.serverless
+		e.mu.Unlock()
+		if serverless {
+			reply(w, 200, map[string]any{"ID": "", "ServerVersion": "", "OSType": "", "Architecture": "", "NCPU": 0, "Containers": 0, "Images": 0})
+			return
+		}
+		reply(w, 200, map[string]any{"ID": "readmit-lab-engine", "ServerVersion": "27.3.1", "OSType": "linux", "Architecture": arch, "OperatingSystem": "readmit lab engine", "NCPU": 2, "Containers": 0, "Images": held})
+	case path == "/images/get" && r.Method == http.MethodGet:
+		e.save(w, r.URL.Query()["names"])
+	case path == "/images/load" && r.Method == http.MethodPost:
+		e.load(w, r)
 	case strings.HasPrefix(path, "/images/") && strings.HasSuffix(path, "/json"):
 		name := strings.TrimSuffix(strings.TrimPrefix(path, "/images/"), "/json")
-		if name != e.Image {
+		if !e.Holds(name) {
 			reply(w, 404, map[string]string{"message": "No such image: " + name})
 			return
 		}
-		reply(w, 200, map[string]any{"Id": e.Image, "RepoTags": []string{}, "Os": "linux", "Architecture": "arm64", "Config": map[string]any{}})
+		reply(w, 200, map[string]any{"Id": name, "RepoTags": []string{}, "Os": "linux", "Architecture": "arm64", "Config": map[string]any{}})
+	case strings.HasPrefix(path, "/images/") && r.Method == http.MethodDelete:
+		e.removeImage(w, strings.TrimPrefix(path, "/images/"))
 	case path == "/containers/create" && r.Method == http.MethodPost:
 		e.create(w, r)
 	case path == "/containers/json":
@@ -241,6 +317,88 @@ func (e *ContainerEngine) serve(w http.ResponseWriter, r *http.Request) {
 		}
 	default:
 		reply(w, 404, map[string]string{"message": "page not found"})
+	}
+}
+
+// save answers one held image's archive, as the engine's save does.
+func (e *ContainerEngine) save(w http.ResponseWriter, names []string) {
+	e.mu.Lock()
+	var archive []byte
+	held := false
+	if len(names) == 1 {
+		archive, held = e.images[names[0]]
+	}
+	e.mu.Unlock()
+	if !held || archive == nil {
+		reply(w, 404, map[string]string{"message": "No such image"})
+		return
+	}
+	w.Header().Set("Content-Type", "application/x-tar")
+	w.WriteHeader(200)
+	_, _ = w.Write(archive)
+}
+
+// load reads an image archive and holds the image its manifest names when
+// the named configuration blob's digest is that image's ID.
+func (e *ContainerEngine) load(w http.ResponseWriter, r *http.Request) {
+	raw, err := io.ReadAll(io.LimitReader(r.Body, 64<<20))
+	if err != nil {
+		reply(w, 400, map[string]string{"message": "unreadable archive"})
+		return
+	}
+	members := map[string][]byte{}
+	reader := tar.NewReader(bytes.NewReader(raw))
+	for {
+		header, err := reader.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			reply(w, 400, map[string]string{"message": "invalid archive"})
+			return
+		}
+		data, _ := io.ReadAll(reader)
+		members[header.Name] = data
+	}
+	var manifest []struct {
+		Config string `json:"Config"`
+	}
+	if json.Unmarshal(members["manifest.json"], &manifest) != nil || len(manifest) != 1 {
+		reply(w, 400, map[string]string{"message": "invalid archive manifest"})
+		return
+	}
+	config, ok := members[manifest[0].Config]
+	sum := sha256.Sum256(config)
+	id := hex.EncodeToString(sum[:])
+	if !ok || manifest[0].Config != "blobs/sha256/"+id {
+		reply(w, 400, map[string]string{"message": "invalid image configuration"})
+		return
+	}
+	e.Hold("sha256:"+id, raw)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_ = json.NewEncoder(w).Encode(map[string]string{"stream": "Loaded image ID: sha256:" + id + "\n"})
+}
+
+// removeImage removes one held image unless a container still uses it.
+func (e *ContainerEngine) removeImage(w http.ResponseWriter, name string) {
+	e.mu.Lock()
+	_, held := e.images[name]
+	used := false
+	for _, c := range e.containers {
+		used = used || c.image == name
+	}
+	if held && !used {
+		delete(e.images, name)
+	}
+	e.mu.Unlock()
+	switch {
+	case !held:
+		reply(w, 404, map[string]string{"message": "No such image: " + name})
+	case used:
+		reply(w, 409, map[string]string{"message": "image is being used by a container"})
+	default:
+		reply(w, 200, []map[string]string{{"Deleted": name}})
 	}
 }
 
@@ -285,7 +443,7 @@ func (e *ContainerEngine) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	image, _ := body["Image"].(string)
-	if image != e.Image {
+	if !e.Holds(image) {
 		reply(w, 404, map[string]string{"message": "No such image: " + image})
 		return
 	}

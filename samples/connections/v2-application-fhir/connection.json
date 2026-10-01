@@ -1,0 +1,145 @@
+{
+  "schema": "readmit-connection-example/v1",
+  "topology": "v2-application-fhir",
+  "name": "Engine input and application FHIR observation",
+  "placeholders": [
+    {"token": "<ENGINE_HOST>", "label": "Engine host", "kind": "text"},
+    {"token": "<ENGINE_PORT>", "label": "Engine port", "kind": "text"},
+    {"token": "<ENGINE_SERVER_NAME>", "label": "Engine certificate name", "kind": "text"},
+    {"token": "<ENGINE_CA_FILE>", "label": "Engine CA certificate file", "kind": "file"},
+    {"token": "<ENGINE_RANGE>", "label": "Engine address range", "kind": "text"},
+    {"token": "<FHIR_BASE>", "label": "FHIR base address", "kind": "text"},
+    {"token": "<FHIR_SERVER_NAME>", "label": "FHIR certificate name", "kind": "text"},
+    {"token": "<FHIR_CA_FILE>", "label": "FHIR CA certificate file", "kind": "file"},
+    {"token": "<FHIR_RANGE>", "label": "FHIR address range", "kind": "text"},
+    {"token": "<TOKEN_ENDPOINT>", "label": "Token endpoint", "kind": "text"},
+    {"token": "<OBSERVER_CLIENT_ID>", "label": "Read-only client ID", "kind": "text"},
+    {"token": "<OBSERVER_KEY_REFERENCE>", "label": "Read-only signing key reference", "kind": "text"},
+    {"token": "<OBSERVER_KEY_ID>", "label": "Read-only signing key ID", "kind": "text"},
+    {"token": "<SIGNING_ALGORITHM>", "label": "Signing algorithm", "kind": "text"},
+    {"token": "<OBSERVER_PUBLIC_KEYS_FILE>", "label": "Read-only public keys file", "kind": "file"},
+    {"token": "<APPOINTMENT_ID_SYSTEM>", "label": "Appointment identifier system", "kind": "text"}
+  ],
+  "objects": [
+    {
+      "id": "engine",
+      "kind": "environment",
+      "draft": {
+        "name": "Example engine input",
+        "environment": {
+          "schema": "readmit-target/v3",
+          "test_endpoint": true,
+          "address": "<ENGINE_HOST>:<ENGINE_PORT>",
+          "transport": "tls",
+          "approved_transport": false,
+          "ca_file": "<ENGINE_CA_FILE>",
+          "server_name": "<ENGINE_SERVER_NAME>",
+          "classification": "nonproduction",
+          "connect_timeout": "5s",
+          "message_timeout": "30s",
+          "max_ack_bytes": 65536
+        },
+        "policy": {
+          "schema": "readmit-send-policy/v1",
+          "approved_destinations": ["<ENGINE_RANGE>"]
+        },
+        "reset": {
+          "schema": "readmit-reset-plan/v1",
+          "environment": "",
+          "actions": [
+            {
+              "id": "isolated-tenant",
+              "operator": "operator_confirms",
+              "authority": "none",
+              "instructions": "Confirm that the engine's test channel writes only to the isolated test tenant of the application, and that no other sender or scheduled job writes appointments there during the run.",
+              "observation": ""
+            },
+            {
+              "id": "engine-quiet",
+              "operator": "endpoint_quiet",
+              "authority": "connect_approved_target",
+              "instructions": "Readmit opens one connection to the engine input and confirms it accepts it and sends nothing unprompted.",
+              "observation": ""
+            }
+          ]
+        },
+        "links": {
+          "schema": "readmit-environment-links/v1",
+          "observation": "appointments",
+          "reset_name": "Isolated application tenant",
+          "action_names": ["Tenant isolated", "Engine quiet"]
+        }
+      }
+    },
+    {
+      "id": "application",
+      "kind": "environment",
+      "draft": {
+        "name": "Example application FHIR API",
+        "fhir": {
+          "schema": "readmit-fhir-connection/v1",
+          "base": "<FHIR_BASE>",
+          "version": "4.0.1",
+          "classification": "nonproduction",
+          "authentication": "smart",
+          "server_name": "<FHIR_SERVER_NAME>",
+          "ca_file": "<FHIR_CA_FILE>",
+          "client_id": "<OBSERVER_CLIENT_ID>",
+          "token_endpoint": "<TOKEN_ENDPOINT>",
+          "algorithm": "<SIGNING_ALGORITHM>",
+          "scopes": ["system/Appointment.rs"],
+          "key_reference": "<OBSERVER_KEY_REFERENCE>",
+          "key_id": "<OBSERVER_KEY_ID>",
+          "public_keys_file": "<OBSERVER_PUBLIC_KEYS_FILE>"
+        },
+        "policy": {
+          "schema": "readmit-send-policy/v1",
+          "approved_destinations": ["<FHIR_RANGE>"]
+        }
+      }
+    },
+    {
+      "id": "appointments",
+      "kind": "observation",
+      "draft": {
+        "name": "Example application appointments",
+        "observation": {
+          "connected": {
+            "schema": "readmit-connected-observation-setup/v1",
+            "environment": "application",
+            "namespace": "appointments",
+            "phase": "both",
+            "business_keys": [{"field": "appointment", "variable": "appointment-id"}],
+            "baseline": "before-run",
+            "completion": {
+              "schema": "readmit-observation-interval/v1",
+              "source": "",
+              "namespace": "",
+              "enabled": true,
+              "mode": "snapshots",
+              "freshness": "snapshot-only",
+              "horizon_ms": 30000,
+              "sample_ms": 1000,
+              "max_gap_ms": 3000,
+              "max_samples": 64,
+              "max_records": 1000,
+              "max_bytes": 16777216
+            },
+            "fhir": {
+              "resource": "Appointment",
+              "boundary": "authoritative-application-api",
+              "criteria": [{"parameter": "identifier", "type": "token", "system": "<APPOINTMENT_ID_SYSTEM>", "value": "{appointment-id}"}],
+              "fields": [
+                {"name": "appointment", "field": "identifier[0].value", "key": true, "required": true},
+                {"name": "status", "field": "status", "key": false, "required": true},
+                {"name": "start", "field": "start", "key": false, "required": false},
+                {"name": "identity", "field": "resource-identity", "key": false, "required": true}
+              ],
+              "budget": {"pages": 16, "rows": 1000, "bytes": 16777216, "timeout_ms": 30000}
+            }
+          }
+        }
+      }
+    }
+  ]
+}

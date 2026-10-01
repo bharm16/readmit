@@ -339,7 +339,7 @@ For `readmit-suite/v2`, provision the customer-local `RUNNER_CONFIG`,
 `RUNNER_AUTHORITY`, `PROMOTION_FILE`, `PROMOTION_IDENTITY`, `TARGET_REVISION`
 and `DISPATCH_ID` alongside the installed binary, activated policy, suite,
 environment and private run directory. Install the exact packs and optional
-validator offline; configure private-network reachability and verified TLS
+validator offline ([deploying the validator](fhir-validation.md#deploying-the-capability)); configure private-network reachability and verified TLS
 before execution. [Connected suites](connected-suites.md) describes the finite
 authority and capability handshake. Do not put keys or tokens in these variables.
 

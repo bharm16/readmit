@@ -1808,6 +1808,33 @@ export interface ConnectionDetail {
   operation?: string;
 }
 
+/** internal/desktop.ConnectionExampleRequest */
+export interface ConnectionExampleRequest {
+  context: RequestContext;
+  path: string;
+  import: boolean;
+  values: Record<string, string>;
+  intent_id?: string;
+}
+
+/** internal/desktop.ConnectionExampleResult */
+export interface ConnectionExampleResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  example?: ConnectionExampleSummary;
+  saved: ItemRef[];
+  problems: FieldProblem[];
+}
+
+/** internal/desktop.ConnectionExampleSummary */
+export interface ConnectionExampleSummary {
+  name: string;
+  topology: string;
+  placeholders: ExamplePlaceholder[];
+  objects: ExampleObjectSummary[];
+}
+
 /** internal/desktop.ConnectionKind */
 export type ConnectionKind =
   | "environment"
@@ -2869,7 +2896,10 @@ export type EnvironmentFileKind =
   | "observation-input"
   | "public-keys"
   | "validator-capability"
-  | "isolation-registry";
+  | "isolation-registry"
+  | "connection-example"
+  | "example-file"
+  | "validator-package";
 
 /** internal/desktop.EnvironmentIsolation */
 export interface EnvironmentIsolation {
@@ -3003,6 +3033,20 @@ export interface EvidenceSourceQuota {
 export interface EvidenceSourceRetry {
   attempts: number;
   backoff: string;
+}
+
+/** internal/desktop.ExampleObjectSummary */
+export interface ExampleObjectSummary {
+  id: string;
+  kind: ItemKind;
+  name: string;
+}
+
+/** internal/desktop.ExamplePlaceholder */
+export interface ExamplePlaceholder {
+  token: string;
+  label: string;
+  kind: PlaceholderKind;
 }
 
 /** internal/desktop.ExecuteActionRequest */
@@ -6821,6 +6865,9 @@ export interface PathChoiceResult {
   kind?: string;
   paths?: string[];
 }
+
+/** internal/desktop.PlaceholderKind */
+export type PlaceholderKind = "text" | "file" | "number" | "case";
 
 /** internal/desktop.Practice */
 export interface Practice {
@@ -12715,6 +12762,53 @@ export interface UpgradeStagedPackage {
 /** internal/upgrade.Staging */
 export type UpgradeStaging = "intact" | "altered" | "absent";
 
+/** internal/desktop.ValidatorCheck */
+export interface ValidatorCheck {
+  state: ValidatorState;
+  requirement?: string;
+  validator?: string;
+  runtime?: string;
+  packages: string[];
+}
+
+/** internal/desktop.ValidatorCheckResult */
+export interface ValidatorCheckResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  check?: ValidatorCheck;
+  saved?: ItemRef;
+}
+
+/** internal/desktop.ValidatorInstallRequest */
+export interface ValidatorInstallRequest {
+  context: RequestContext;
+  ref: ItemRef;
+  package: string;
+  identity: string;
+  intent_id: string;
+}
+
+/** internal/desktop.ValidatorRemoveRequest */
+export interface ValidatorRemoveRequest {
+  context: RequestContext;
+  ref: ItemRef;
+  intent_id: string;
+}
+
+/** internal/desktop.ValidatorState */
+export type ValidatorState =
+  | "ready"
+  | "not-configured"
+  | "capability-unavailable"
+  | "capability-exists"
+  | "untrusted-package"
+  | "package-invalid"
+  | "package-unavailable"
+  | "unsupported-runtime"
+  | "worker-missing"
+  | "worker-unavailable";
+
 /** internal/desktop.VariantChange */
 export interface VariantChange {
   operator: string;
@@ -12937,6 +13031,7 @@ export interface Facade {
   CheckScenarioLibrary(request: ScenarioLibraryRequest): Promise<ScenarioLibraryResult>;
   CheckStagedUpgrade(request: UpgradeCheckRequest): Promise<UpgradeResult>;
   CheckTarget(request: TargetCheckRequest): Promise<TargetCheckResult>;
+  CheckValidator(request: ItemRequest): Promise<ValidatorCheckResult>;
   ChooseBackup(): Promise<StorageBackupResult>;
   ChooseBackupLocation(): Promise<ProjectLocationResult>;
   ChooseCapturePath(kind: CapturePathKind): Promise<PathChoiceResult>;
@@ -13043,6 +13138,7 @@ export interface Facade {
   HubStatus(): Promise<HubResult>;
   ImportAnalysisSettings(request: RequestContext): Promise<ItemDraftResult>;
   ImportCase(request: ImportCaseRequest): Promise<ImportCaseResult>;
+  ImportConnectionExample(request: ConnectionExampleRequest): Promise<ConnectionExampleResult>;
   ImportLibraryItem(request: LibraryImportRequest): Promise<ItemDraftResult>;
   ImportSuiteItem(request: RequestContext): Promise<ItemDraftResult>;
   ImportTest(workspace: string, entry: string): Promise<CanonicalTestResult>;
@@ -13059,6 +13155,7 @@ export interface Facade {
   InspectRecoveryCopy(request: RecoveryCopyRequest): Promise<RecoveryCopyResult>;
   InspectRunnerJob(configPath: string, jobPath: string): Promise<RunnerJobPreviewResult>;
   InspectScenarioPreview(request: ScenarioPreviewInspectRequest): Promise<InspectionResult>;
+  InstallValidator(request: ValidatorInstallRequest): Promise<ValidatorCheckResult>;
   ItemHistory(request: ItemRequest): Promise<ItemHistoryResult>;
   LibraryDocument(request: DraftRequest): Promise<LibraryDocumentResult>;
   LicenseStatus(): Promise<InstalledLicenseResult>;
@@ -13190,6 +13287,7 @@ export interface Facade {
   RemoveCredential(request: CredentialRequest): Promise<CredentialsResult>;
   RemoveItem(request: ItemRequest): Promise<RemoveItemResult>;
   RemoveSecretReference(workspace: string, secretsFile: string, name: string): Promise<SecretsResult>;
+  RemoveValidator(request: ValidatorRemoveRequest): Promise<ValidatorCheckResult>;
   RemoveView(workspace: string, name: string): Promise<ViewsResult>;
   RenameItem(request: RenameRequest): Promise<ItemResult>;
   RenameView(workspace: string, from: string, to: string): Promise<ViewsResult>;
