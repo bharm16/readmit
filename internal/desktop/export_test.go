@@ -2,6 +2,7 @@ package desktop
 
 import (
 	"context"
+	"errors"
 	"maps"
 	"time"
 
@@ -189,4 +190,19 @@ func SetSeedsForTest(a *App, seeds func() uint64) {
 // none when fault is nil, so a test states what an interrupted save leaves.
 func SetSaveFaultForTest(a *App, fault func(point string) error) {
 	a.saveFault = fault
+}
+
+// WriteConnectedLifecycleForTest compiles a connected test draft against the
+// environment it links, exactly as a save checks it, and writes its sealed
+// lifecycle plan into folder.
+func WriteConnectedLifecycleForTest(a *App, request RequestContext, d ConnectedTestDraft, environment, folder string) error {
+	loaded, declined := a.loadCatalog(context.Background(), request, false)
+	if loaded == nil {
+		return errors.New(declined.reason)
+	}
+	compiled, problems := loaded.compileConnected(d, connectedLifecycleID(""), "1", connectedEnvironments{environment: environment, server: d.Server})
+	if compiled == nil {
+		return errors.New(firstProblem(problems))
+	}
+	return compiled.plan.Write(context.Background(), folder)
 }

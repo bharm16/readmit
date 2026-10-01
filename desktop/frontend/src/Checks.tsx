@@ -15,11 +15,13 @@ import type {
   FieldState,
   AssertionDatasetAssertion,
   AssertionDatasetBinding,
+  AssertionRowFilter,
   DatasetValue,
   Fhirr4Projection,
 } from "./bindings";
 import { ChipsInput } from "./CaseSheets";
-import { FormDialog } from "./layout";
+import { FormDialog, ValueRows } from "./layout";
+import { useVocabulary } from "./vocabulary";
 
 export const CHECK_TYPES: Record<AssertionOperator, string> = {
   field_equals: "Field equals",
@@ -40,39 +42,190 @@ export const CHECK_TYPES: Record<AssertionOperator, string> = {
   records_changed: "Changed keys",
 };
 
+/** The typed check operators by what an author chooses them as. */
+export const CONNECTED_CHECK_TYPES: Record<string, string> = { "value-equals": "Value", "decimal-equals": "Number", "instant-equals": "Date and time", "value-related": "Related value", "value-changed": "Changed value", "row-count": "Record count", "unique-keys": "Unique keys", "each-equals": "Every record", "sequence-equals": "Values in order" };
+
 export const DATASET_CHECK_TYPES: Record<string, string> = { "value-equals": "Value equals", "decimal-equals": "Number equals", "instant-equals": "Instant equals", "value-related": "Values related", "value-changed": "Value changed", "row-count": "Record count", "unique-keys": "Unique keys", "each-equals": "Each value equals", "sequence-equals": "Sequence equals" };
 
+/** The expected states a typed value can take, by what they read as. */
+const VALUE_STATES: Record<string, string> = { present: "Present", empty: "Empty", null: "Null", absent: "Not present" };
+
+/** A typed field a check reads: its type, code system, whether it is a
+ * business key or repeated, and the states its source can represent. */
+export type TypedField = { name: string; type: string; code_system?: string; key?: boolean; repeated?: boolean; states?: string[] };
+
+/** An empty expected value of a field, of its type and code system. */
+export function emptyValue(field?: TypedField): DatasetValue {
+  const type = field?.type ?? "text";
+  if (field?.repeated) return { state: "present", type, items: [] };
+  return { state: "present", type, text: "", ...(field?.code_system ? { code_system: field.code_system } : {}), ...(type === "datetime" ? { precision: "second", timezone: "+00:00" } : {}) };
+}
+
 /** Shared typed primitive inputs. Type and source selectors are supplied by
- * Go; decimal precision and partial-date meaning stay explicit authored facts. */
-export function TypedValueFields({ value, onChange }: { value: DatasetValue; onChange: (value: DatasetValue) => void }) {
-  return <fieldset><legend>Expected value</legend>
-    <p>{value.type}</p>
-    <label>State<select value={value.state} onChange={(event) => onChange(event.target.value === "present" ? { ...value, state: "present" } : { state: event.target.value, type: value.type })}>{["present", "empty", "null", "absent"].map((state) => <option key={state}>{state}</option>)}</select></label>
-    {value.state === "present" ? <>
-      <label>Value<input type="text" value={value.text ?? ""} onChange={(event) => onChange({ ...value, text: event.target.value })} /></label>
-      {value.type === "decimal" || value.type === "date" || value.type === "datetime" ? <label>Precision<input type="text" value={value.precision ?? ""} onChange={(event) => onChange({ ...value, precision: event.target.value })} /></label> : null}
-      {value.type === "date" || value.type === "datetime" ? <label>Time zone meaning<input type="text" value={value.timezone ?? ""} onChange={(event) => onChange({ ...value, timezone: event.target.value })} /></label> : null}
-      {value.type === "code" ? <label>Code system<input type="text" value={value.code_system ?? ""} onChange={(event) => onChange({ ...value, code_system: event.target.value })} /></label> : null}
+ * Go; decimal precision and partial-date meaning stay explicit authored facts.
+ * Given the field it is expected of, only the states its source represents are
+ * offered and its code system is the field's own. */
+export function TypedValueFields({ value, onChange, field, id = "typed-value", label = "Expected value" }: { value: DatasetValue; onChange: (value: DatasetValue) => void; field?: TypedField | undefined; id?: string; label?: string }) {
+  const states = field?.states ?? ["present", "empty", "null", "absent"];
+  const item = (held: DatasetValue, at: number) => (
+    <div key={at} className="inline-fields">
+      <span>
+        <label htmlFor={`${id}-item-${at}`}>Value {at + 1}</label>
+        <input id={`${id}-item-${at}`} type="text" value={held.text ?? ""} onChange={(event) => onChange({ ...value, items: value.items!.map((entry, i) => (i === at ? { ...entry, text: event.target.value } : entry)) })} />
+      </span>
+      <button type="button" className="quiet" onClick={() => onChange({ ...value, items: value.items!.filter((_, i) => i !== at) })}>
+        Remove value {at + 1}
+      </button>
+    </div>
+  );
+  return <fieldset><legend>{label}</legend>
+    {field ? null : <p>{value.type}</p>}
+    <label htmlFor={`${id}-state`}>State</label>
+    <select id={`${id}-state`} value={value.state} onChange={(event) => onChange(event.target.value === "present" ? (field ? emptyValue(field) : { ...value, state: "present" }) : { state: event.target.value, type: value.type })}>{states.map((state) => <option key={state} value={state}>{VALUE_STATES[state] ?? state}</option>)}</select>
+    {value.state === "present" && !value.items ? <>
+      <label htmlFor={`${id}-value`}>Value</label>
+      <input id={`${id}-value`} type="text" value={value.text ?? ""} onChange={(event) => onChange({ ...value, text: event.target.value })} />
+      {value.type === "decimal" || value.type === "date" || value.type === "datetime" ? <><label htmlFor={`${id}-precision`}>Precision</label><input id={`${id}-precision`} type="text" value={value.precision ?? ""} onChange={(event) => onChange({ ...value, precision: event.target.value.trim() })} /></> : null}
+      {value.type === "date" || value.type === "datetime" ? <><label htmlFor={`${id}-zone`}>Time zone</label><input id={`${id}-zone`} type="text" value={value.timezone ?? ""} onChange={(event) => onChange({ ...value, timezone: event.target.value.trim() })} /></> : null}
+      {value.type === "code" && field?.code_system ? <ValueRows rows={[{ label: "Code system", value: field.code_system }]} /> : null}
+      {value.type === "code" && !field?.code_system ? <><label htmlFor={`${id}-system`}>Code system</label><input id={`${id}-system`} type="text" value={value.code_system ?? ""} onChange={(event) => onChange({ ...value, code_system: event.target.value })} /></> : null}
+    </> : null}
+    {value.state === "present" && value.items ? <>
+      {value.items.map(item)}
+      <button type="button" onClick={() => onChange({ ...value, items: [...value.items!, { state: "present", type: value.type, text: "", ...(field?.code_system ? { code_system: field.code_system } : {}) }] })}>Add value</button>
     </> : null}
   </fieldset>;
 }
 
-export function DatasetCheckSheet({ check, bindings, projections, onClose, onSave }: { check: AssertionDatasetAssertion; bindings: AssertionDatasetBinding[]; projections: Fhirr4Projection[]; onClose: () => void; onSave: (check: AssertionDatasetAssertion) => void }) {
+/** Which records a check reads: those whose business key fields hold the
+ * values given, never a position in an earlier output. */
+function RecordsBy({ id, fields, where, onChange }: { id: string; fields: TypedField[]; where: AssertionRowFilter[]; onChange: (where: AssertionRowFilter[]) => void }) {
+  const keys = fields.filter((field) => field.key);
+  return <fieldset>
+    <legend>Records</legend>
+    {keys.length === 0 ? <p>All records</p> : null}
+    {keys.map((key) => {
+      const filter = where.find((held) => held.column === key.name);
+      return <div key={key.name}>
+        <label className="check"><input type="checkbox" checked={!!filter} onChange={() => onChange(filter ? where.filter((held) => held.column !== key.name) : [...where, { column: key.name, equals: emptyValue({ ...key, repeated: false }) }])} />{key.name}</label>
+        {filter ? <input aria-label={`${key.name} value`} id={`${id}-${key.name}`} type="text" value={filter.equals.text ?? ""} onChange={(event) => onChange(where.map((held) => held.column === key.name ? { ...held, equals: { ...held.equals, state: "present", text: event.target.value } } : held))} /> : null}
+      </div>;
+    })}
+  </fieldset>;
+}
+
+/** One observation a check can read, by its dataset, with its typed fields. */
+export type CheckSource = { dataset: string; label: string; fields: TypedField[] };
+
+/** Authoring a named check of one of several phases, each reading its own
+ * observations: the operators' field types and where the check is applied. */
+export type CheckAuthoring = {
+  name: string;
+  adding: boolean;
+  phase: string;
+  phases: { id: string; name: string; sources: CheckSource[] }[];
+  onApply: (phase: string, name: string, check: AssertionDatasetAssertion) => void;
+};
+
+const DATASET_QUANTIFIERS: Record<string, string> = { every: "Every record", any: "At least one record", none: "No records" };
+
+/** A typed dataset check. Opened from a check group it edits the expected
+ * values of one check whose subject stays as imported; given authoring, it
+ * names the check, chooses its phase and observation, selects records by
+ * business identity and offers every operator's own fields: counts,
+ * quantifiers, related fields, values in order and conditions. */
+export function DatasetCheckSheet({ check, bindings = [], projections = [], onClose, onSave, authoring }: { check: AssertionDatasetAssertion; bindings?: AssertionDatasetBinding[]; projections?: Fhirr4Projection[]; onClose: () => void; onSave?: (check: AssertionDatasetAssertion) => void; authoring?: CheckAuthoring }) {
+  const operators = useVocabulary()?.connected_tests.operators;
   const [draft, setDraft] = useState(check);
-  const binding = bindings.find((held) => held.name === draft.subject.dataset);
-  return <FormDialog open title="Edit check" submitLabel="Done" dirty={JSON.stringify(draft) !== JSON.stringify(check)} onClose={onClose} onSubmit={() => { onSave(draft); onClose(); }}>
-    <p>{DATASET_CHECK_TYPES[draft.operator] ?? `Unsupported: ${draft.operator}`}</p>
-    <p>{binding?.namespace ?? draft.subject.dataset} · {binding?.phase} · {draft.subject.row || "All records"}</p>
-    {draft.column ? <p>Field {draft.column}{projections.map((p) => p.columns.find((c) => c.name === draft.column) ? ` · ${p.resource_type}` : "").join("")}</p> : null}
-    {draft.expected ? <TypedValueFields value={draft.expected} onChange={(expected) => setDraft({ ...draft, expected })} /> : null}
-    {draft.sequence ? <>
-      {draft.sequence.map((value, at) => <fieldset key={at}><legend>Value {at + 1}</legend><TypedValueFields value={value} onChange={(next) => setDraft({ ...draft, sequence: draft.sequence!.map((held, i) => i === at ? next : held) })} /><button type="button" onClick={() => setDraft({ ...draft, sequence: draft.sequence!.filter((_, i) => i !== at) })}>Remove value {at + 1}</button></fieldset>)}
-      <button type="button" onClick={() => setDraft({ ...draft, sequence: [...draft.sequence!, { state: "present", type: draft.sequence![0]?.type ?? "text", ...(draft.sequence![0]?.code_system ? { code_system: draft.sequence![0].code_system } : {}) }] })}>Add expected value</button>
+  const [name, setName] = useState(authoring?.name ?? "");
+  const [phaseId, setPhaseId] = useState(authoring?.phase ?? "");
+  if (!authoring) {
+    const binding = bindings.find((held) => held.name === draft.subject.dataset);
+    return <FormDialog open title="Edit check" submitLabel="Done" dirty={JSON.stringify(draft) !== JSON.stringify(check)} onClose={onClose} onSubmit={() => { onSave?.(draft); onClose(); }}>
+      <p>{DATASET_CHECK_TYPES[draft.operator] ?? `Unsupported: ${draft.operator}`}</p>
+      <p>{binding?.namespace ?? draft.subject.dataset} · {binding?.phase} · {draft.subject.row || "All records"}</p>
+      {draft.column ? <p>Field {draft.column}{projections.map((p) => p.columns.find((c) => c.name === draft.column) ? ` · ${p.resource_type}` : "").join("")}</p> : null}
+      {draft.expected ? <TypedValueFields value={draft.expected} onChange={(expected) => setDraft({ ...draft, expected })} /> : null}
+      {draft.sequence ? <>
+        {draft.sequence.map((value, at) => <fieldset key={at}><legend>Value {at + 1}</legend><TypedValueFields value={value} onChange={(next) => setDraft({ ...draft, sequence: draft.sequence!.map((held, i) => i === at ? next : held) })} /><button type="button" onClick={() => setDraft({ ...draft, sequence: draft.sequence!.filter((_, i) => i !== at) })}>Remove value {at + 1}</button></fieldset>)}
+        <button type="button" onClick={() => setDraft({ ...draft, sequence: [...draft.sequence!, { state: "present", type: draft.sequence![0]?.type ?? "text", ...(draft.sequence![0]?.code_system ? { code_system: draft.sequence![0].code_system } : {}) }] })}>Add expected value</button>
+      </> : null}
+      {draft.count !== undefined ? <label>Count<input type="number" min={0} max={10000} step={1} required value={draft.count} onChange={(event) => setDraft({ ...draft, count: event.target.valueAsNumber })} /></label> : null}
+      {draft.quantifier ? <label>Records<select value={draft.quantifier} onChange={(event) => setDraft({ ...draft, quantifier: event.target.value })}>{["every", "any", "none"].map((value) => <option key={value}>{value}</option>)}</select></label> : null}
+      {draft.other ? <p>Compared with {draft.other.dataset} · {draft.other.row || "All records"} · {draft.other_column}</p> : null}
+      {draft.when ? <p>Conditional on {draft.when.subject.dataset} · {draft.when.column} · {draft.when.equals.state}</p> : null}
+    </FormDialog>;
+  }
+  const a = draft;
+  const setA = setDraft;
+  const phase = authoring.phases.find((entry) => entry.id === phaseId) ?? authoring.phases[0]!;
+  const fieldsOf = (dataset: string): TypedField[] => phase.sources.find((source) => source.dataset === dataset)?.fields ?? [];
+  const types = operators?.find((choice) => choice.operator === a.operator)?.types ?? [];
+  const related = a.operator === "value-related" || a.operator === "value-changed";
+  const fields = fieldsOf(a.subject.dataset).filter((field) => (!field.key || related) && (types.length === 0 || types.includes(field.type)));
+  const field = fieldsOf(a.subject.dataset).find((entry) => entry.name === a.column);
+  const needsField = !["row-count", "unique-keys"].includes(a.operator);
+  const needsExpected = ["value-equals", "decimal-equals", "instant-equals", "each-equals"].includes(a.operator);
+  const single = field ? { ...field, repeated: false } : undefined;
+  const sourceChoice = (id: string, value: string, onPick: (dataset: string) => void) => <>
+    <label htmlFor={id}>Observation</label>
+    <select id={id} value={value} onChange={(event) => onPick(event.target.value)}>{phase.sources.map((source) => <option key={source.dataset} value={source.dataset}>{source.label}</option>)}</select>
+  </>;
+  const fieldChoice = (id: string, value: string, choices: TypedField[], onPick: (picked: TypedField | undefined, name: string) => void) => <>
+    <label htmlFor={id}>Field</label>
+    <select id={id} value={value} onChange={(event) => onPick(choices.find((entry) => entry.name === event.target.value), event.target.value)}>
+      <option value="">Choose a field</option>
+      {choices.map((entry) => <option key={entry.name} value={entry.name}>{entry.name}</option>)}
+    </select>
+  </>;
+  const complete = name.trim() !== "" && a.subject.dataset !== "" && (!needsField || !!a.column) && (!needsExpected || !!a.expected) && (!related || (!!a.other && !!a.other_column));
+  return <FormDialog
+    open
+    title={authoring.adding ? `Add ${(CONNECTED_CHECK_TYPES[a.operator] ?? "check").toLowerCase()} check` : "Edit check"}
+    submitLabel={authoring.adding ? "Add" : "Done"}
+    submitDisabled={!complete}
+    size="wide"
+    dirty={JSON.stringify(a) !== JSON.stringify(check) || name !== authoring.name || phaseId !== authoring.phase}
+    onClose={onClose}
+    onSubmit={() => { authoring.onApply(phase.id, name.trim(), a); return null; }}
+  >
+    <label htmlFor="dataset-check-name">Name</label>
+    <input id="dataset-check-name" type="text" maxLength={200} value={name} onChange={(event) => setName(event.target.value)} />
+    <label htmlFor="dataset-check-phase">Phase</label>
+    <select id="dataset-check-phase" value={phase.id} onChange={(event) => {
+      const next = authoring.phases.find((entry) => entry.id === event.target.value);
+      const dataset = next?.sources[0]?.dataset ?? "";
+      setPhaseId(event.target.value);
+      setA({ ...a, subject: { dataset, where: [] }, ...(a.other ? { other: { dataset, where: [] } } : {}) });
+    }}>{authoring.phases.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select>
+    <p>{CONNECTED_CHECK_TYPES[a.operator] ?? "Unsupported"}</p>
+    {sourceChoice("dataset-check-dataset", a.subject.dataset, (dataset) => { const { column: _column, expected: _expected, ...rest } = a; setA({ ...rest, subject: { dataset, where: [] } }); })}
+    <RecordsBy id="dataset-check-records" fields={fieldsOf(a.subject.dataset)} where={a.subject.where} onChange={(where) => setA({ ...a, subject: { ...a.subject, where } })} />
+    {needsField ? fieldChoice("dataset-check-field", a.column ?? "", fields, (picked, column) => setA({ ...a, column, ...(needsExpected ? { expected: emptyValue(picked) } : {}), ...(a.operator === "sequence-equals" ? { sequence: [] } : {}) })) : null}
+    {a.operator === "row-count" ? <><label htmlFor="dataset-check-count">Count</label><input id="dataset-check-count" type="number" min={0} max={10000} step={1} value={a.count ?? 0} onChange={(event) => setA({ ...a, count: Math.max(0, Math.trunc(Number(event.target.value) || 0)) })} /></> : null}
+    {a.operator === "each-equals" ? <><label htmlFor="dataset-check-quantifier">Records</label><select id="dataset-check-quantifier" value={a.quantifier ?? "every"} onChange={(event) => setA({ ...a, quantifier: event.target.value })}>{Object.entries(DATASET_QUANTIFIERS).map(([value, text]) => <option key={value} value={value}>{text}</option>)}</select></> : null}
+    {needsExpected && a.column && a.expected ? <TypedValueFields id="dataset-check-expected" field={field} value={a.expected} onChange={(expected) => setA({ ...a, expected })} /> : null}
+    {a.operator === "sequence-equals" && a.column ? <>
+      {(a.sequence ?? []).map((value, at) => <TypedValueFields key={at} id={`dataset-check-sequence-${at}`} label={`Value ${at + 1}`} field={single} value={value} onChange={(next) => setA({ ...a, sequence: (a.sequence ?? []).map((held, i) => (i === at ? next : held)) })} />)}
+      <button type="button" onClick={() => setA({ ...a, sequence: [...(a.sequence ?? []), emptyValue(single)] })}>Add expected value</button>
     </> : null}
-    {draft.count !== undefined ? <label>Count<input type="number" min={0} max={10000} step={1} required value={draft.count} onChange={(event) => setDraft({ ...draft, count: event.target.valueAsNumber })} /></label> : null}
-    {draft.quantifier ? <label>Records<select value={draft.quantifier} onChange={(event) => setDraft({ ...draft, quantifier: event.target.value })}>{["every", "any", "none"].map((value) => <option key={value}>{value}</option>)}</select></label> : null}
-    {draft.other ? <p>Compared with {draft.other.dataset} · {draft.other.row || "All records"} · {draft.other_column}</p> : null}
-    {draft.when ? <p>Conditional on {draft.when.subject.dataset} · {draft.when.column} · {draft.when.equals.state}</p> : null}
+    {related ? <fieldset>
+      <legend>Compared with</legend>
+      {sourceChoice("dataset-check-other-dataset", a.other?.dataset ?? "", (dataset) => { const { other_column: _column, ...rest } = a; setA({ ...rest, other: { dataset, where: [] } }); })}
+      <RecordsBy id="dataset-check-other-records" fields={fieldsOf(a.other?.dataset ?? "")} where={a.other?.where ?? []} onChange={(where) => setA({ ...a, other: { dataset: a.other?.dataset ?? "", where } })} />
+      {fieldChoice("dataset-check-other-field", a.other_column ?? "", fieldsOf(a.other?.dataset ?? ""), (_, column) => setA({ ...a, other: a.other ?? { dataset: phase.sources[0]?.dataset ?? "", where: [] }, other_column: column }))}
+    </fieldset> : null}
+    <label className="check">
+      <input type="checkbox" checked={!!a.when} onChange={(event) => { const { when: _when, ...rest } = a; setA(event.target.checked ? { ...rest, when: { subject: { dataset: a.subject.dataset, where: a.subject.where }, column: "", equals: { state: "present", type: "text", text: "" } } } : rest); }} />
+      Only when another field holds a value
+    </label>
+    {a.when ? <fieldset>
+      <legend>Condition</legend>
+      {sourceChoice("dataset-check-when-dataset", a.when.subject.dataset, (dataset) => setA({ ...a, when: { ...a.when!, subject: { dataset, where: [] }, column: "" } }))}
+      <RecordsBy id="dataset-check-when-records" fields={fieldsOf(a.when.subject.dataset)} where={a.when.subject.where} onChange={(where) => setA({ ...a, when: { ...a.when!, subject: { ...a.when!.subject, where } } })} />
+      {fieldChoice("dataset-check-when-field", a.when.column, fieldsOf(a.when.subject.dataset), (picked, column) => setA({ ...a, when: { ...a.when!, column, equals: emptyValue(picked ? { ...picked, repeated: false } : undefined) } }))}
+      {a.when.column ? <TypedValueFields id="dataset-check-when-value" label="Holds" field={fieldsOf(a.when.subject.dataset).find((entry) => entry.name === a.when!.column)} value={a.when.equals} onChange={(equals) => setA({ ...a, when: { ...a.when!, equals } })} /> : null}
+    </fieldset> : null}
   </FormDialog>;
 }
 

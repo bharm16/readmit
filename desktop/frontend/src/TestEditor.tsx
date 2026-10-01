@@ -38,11 +38,20 @@ import { DataTable, type Column } from "./DataTable";
 import { FormDialog, Menu, Modal, ValueRows, type SubmitFailure } from "./layout";
 import { typeLabel } from "./Messages";
 import { useVocabulary } from "./vocabulary";
+import { CONNECTED_BOUNDARIES, CONNECTED_CHECKS, connectedExpected, useConnectedSections } from "./ConnectedTest";
+import { applyProposals, connectedFromMessages, type ConnectedBoundary } from "./connected-model";
+import { suggestConnectedChecks, type ConnectedProposal, type ConnectedTestDraft } from "./bindings";
 import "./tests.css";
 
 /** Everything one Save publishes: the test's name, its whole draft and the
  * named objects it links to. */
-export type TestWork = { name: string; test: TestDraftDocument; links: TestLinks };
+export type TestWork = { name: string; test: TestDraftDocument; links: TestLinks; connected?: ConnectedTestDraft };
+
+/** A test draft of no case yet: what a connected test started from FHIR
+ * evidence holds in place of an acknowledgement or ledger test. */
+export function emptyTestDraft(name = ""): TestDraftDocument {
+  return { schema: "readmit-test-draft/v1", case: { entry: "", identity: "" }, name, messages: [], target: "", boundary: "", observation: "", reset: "", expectations: [] };
+}
 
 export type EditorStart = {
   mode: "new" | "edit";
@@ -61,12 +70,14 @@ export type EditorStart = {
 /** A test editor's unsaved work as the drafts store keeps it: the whole
  * draft and where the editor was, and nothing about a run or a send. */
 export const TEST_EDITOR_DRAFT = "readmit-desktop-test-editor/v1";
+/** The same retained work holding a connected test's draft. */
+export const CONNECTED_EDITOR_DRAFT = "readmit-desktop-test-editor/v2";
 export type TestEditorContent = {
-  schema: typeof TEST_EDITOR_DRAFT;
+  schema: typeof TEST_EDITOR_DRAFT | typeof CONNECTED_EDITOR_DRAFT;
   mode: "new" | "edit";
   step: "setup" | "checks" | "review";
   case?: ItemRef;
-  draft: { name: string; test: TestDraftDocument; test_links: TestLinks };
+  draft: { name: string; test?: TestDraftDocument; test_links: TestLinks; connected_test?: ConnectedTestDraft };
 };
 
 type Step = "setup" | "checks" | "review";
@@ -135,6 +146,8 @@ function nextRecordId(records: ObservationRecord[]): string {
 
 /** Where a problem's field is edited. */
 function stepOf(field: string): Step | null {
+  if (/^connected\.phases\.\d+\.(checks|responses|validations|acknowledgements)/.test(field)) return "checks";
+  if (field.startsWith("connected")) return "setup";
   if (field.startsWith("test.expectations")) return "checks";
   if (field === "name" || field.startsWith("test.") || field.startsWith("test_links")) return "setup";
   return null;
@@ -203,6 +216,7 @@ export function useTestEditor({
     | { kind: "reset" }
     | { kind: "check"; index: number | null; operator: TestExpectationOperator }
     | { kind: "boundary"; next: TestBoundary }
+    | { kind: "outcome"; next: TestBoundary | ConnectedBoundary }
     | { kind: "suggest" }
     | { kind: "leave" }
     | { kind: "run" }
@@ -222,11 +236,14 @@ export function useTestEditor({
     // A reopened draft differs from what is saved, so it reads as unsaved.
     setOriginal(start?.retained ? JSON.stringify(start.baseline ?? null) : start?.work ? JSON.stringify(start.work) : "");
     setTestContext(start?.context ?? null);
-    setNotices(start?.notices ?? []);
+    // A connected test's problems found on opening — what changed outside it
+    // since it was authored — are shown where they are, not as notices.
+    const opening = start?.work?.connected ? (start.notices ?? []) : [];
+    setNotices(start?.work?.connected ? [] : (start?.notices ?? []));
     setStep(start?.retained ? ((start.retained.content as TestEditorContent).step ?? "setup") : "setup");
     if (start?.retained) retainer.keepId(start.retained.id);
     else retainer.clear();
-    setProblems([]);
+    setProblems(opening);
     setFailure(null);
     setSheet(null);
     setRemoved(null);
@@ -251,11 +268,11 @@ export function useTestEditor({
       return;
     }
     const content: TestEditorContent = {
-      schema: TEST_EDITOR_DRAFT,
+      schema: work.connected ? CONNECTED_EDITOR_DRAFT : TEST_EDITOR_DRAFT,
       mode: start.mode,
       step,
       ...(testContext?.case ? { case: testContext.case } : {}),
-      draft: { name: work.name, test: work.test, test_links: work.links },
+      draft: work.connected ? { name: work.name, connected_test: work.connected, test_links: work.links } : { name: work.name, test: work.test, test_links: work.links },
     };
     retainer.save({
       id: "",
@@ -263,7 +280,7 @@ export function useTestEditor({
       workspace: scope.project,
       case: "",
       identity: "",
-      content_schema: TEST_EDITOR_DRAFT,
+      content_schema: content.schema,
       content,
       ...(start.mode === "edit" && start.ref && scope.project_id ? { item: { project_id: scope.project_id, ref: start.ref } } : {}),
     });
@@ -285,7 +302,36 @@ export function useTestEditor({
     setWork(next);
     setIntent(null);
   };
+  // The test's outcome becomes what the systems recorded: its chosen messages
+  // become inputs; acknowledgement and ledger checks and linked groups go.
+  const toConnected = (boundary: ConnectedBoundary) => {
+    if (!work) return;
+    const { observation: _observation, checks: _groups, ...links } = work.links;
+    const source = { case: testContext?.case ?? { kind: "case" as const, id: "" }, identity: work.test.case.identity };
+    const draft = connectedFromMessages(boundary, source, work.test.messages, "Messages", new Date().toISOString().replace(/\.\d+Z$/, "Z"));
+    change({ ...work, links: links.environment ? { ...links, reset: "environment" } : links, test: { ...work.test, expectations: [], boundary: "", observation: "" }, connected: draft });
+  };
   const changeTest = (patch: Partial<TestDraftDocument>) => work && change({ ...work, test: { ...work.test, ...patch } });
+  // What one Save or Review sends: a connected test's draft in place of a test draft.
+  const payload = (held: TestWork) =>
+    held.connected
+      ? { name: held.name.trim(), connected_test: held.connected, test_links: held.links }
+      : { name: held.name.trim(), test: { ...held.test, name: held.name.trim() }, test_links: held.links };
+  const connected = useConnectedSections({
+    draft: work?.connected ?? null,
+    onChange: (next) => work && change({ ...work, connected: next }),
+    names: { cases, context: testContext?.connected ?? null },
+    problems,
+    readOnly: testContext?.read_only === true,
+    context,
+    onSuggest: start?.mode === "edit" && start.ref ? () => setSheet({ kind: "suggest" }) : null,
+    environment: work?.links.environment ?? "",
+    onEnvironment: (next) => {
+      if (!work) return;
+      const { reset: _dropped, ...links } = work.links;
+      change({ ...work, links: next ? { ...links, environment: next, reset: "environment" } : links });
+    },
+  });
 
   const save = async (): Promise<boolean> => {
     if (!work || saving) return false;
@@ -298,7 +344,7 @@ export function useTestEditor({
         kind: "test",
         ...(start?.ref?.id ? { item: start.ref.id } : {}),
         ...(start?.ref?.revision ? { base_revision: start.ref.revision } : {}),
-        draft: { name: work.name.trim(), test: { ...work.test, name: work.name.trim() }, test_links: work.links },
+        draft: payload(work),
         intent_id: id,
       });
       if (answer.outcome === "saved" && answer.saved) {
@@ -326,7 +372,7 @@ export function useTestEditor({
       context: context(),
       kind: "test",
       ...(start?.ref?.id ? { item: start.ref.id } : {}),
-      draft: { name: work.name.trim(), test: { ...work.test, name: work.name.trim() }, test_links: work.links },
+      draft: payload(work),
     });
     setProblems(answer.problems ?? []);
   };
@@ -341,7 +387,67 @@ export function useTestEditor({
   // ---------- Setup ----------
   const caseItem = cases.find((item) => item.ref.id === testContext?.case?.id) ?? null;
   const selected = work?.test.messages ?? [];
-  const setup: ReactNode = work ? (
+  const legacyCase = work !== null && work.test.case.entry !== "";
+  const outcomeChoices: ReactNode = work ? (
+    <fieldset>
+      <legend>Outcome</legend>
+      {(Object.keys(TEST_BOUNDARIES) as TestBoundary[]).map((choice) => (
+        <label key={choice} className="check">
+          <input
+            type="radio"
+            name="test-outcome"
+            checked={!work.connected && boundary === choice}
+            disabled={readOnly || (!!work.connected && !legacyCase)}
+            onChange={() => {
+              if (work.connected) {
+                setSheet({ kind: "outcome", next: choice });
+                return;
+              }
+              const affected = checks.filter(recordCheck);
+              if (choice === "ack-contract" && affected.length > 0) setSheet({ kind: "boundary", next: choice });
+              else if (choice === "ack-contract") withoutObservation({ ...work.test, boundary: choice, observation: "" });
+              else changeTest({ boundary: choice });
+            }}
+          />
+          {TEST_BOUNDARIES[choice]}
+        </label>
+      ))}
+      {(Object.keys(CONNECTED_BOUNDARIES) as ConnectedBoundary[]).map((choice) => (
+        <label key={choice} className="check">
+          <input
+            type="radio"
+            name="test-outcome"
+            checked={work.connected?.boundary === choice}
+            disabled={readOnly}
+            onChange={() => {
+              if (work.connected) change({ ...work, connected: { ...work.connected, boundary: choice } });
+              else if (checks.length > 0 || (work.links.checks ?? []).length > 0) setSheet({ kind: "outcome", next: choice });
+              else toConnected(choice);
+            }}
+          />
+          {CONNECTED_BOUNDARIES[choice]}
+        </label>
+      ))}
+    </fieldset>
+  ) : null;
+  const setup: ReactNode = work?.connected ? (
+    <div className="flow-fields">
+      <label htmlFor="test-name">Name</label>
+      <input
+        id="test-name"
+        type="text"
+        maxLength={200}
+        value={work.name}
+        disabled={readOnly}
+        aria-invalid={problemsAt(problems, "name").length > 0 || undefined}
+        onChange={(event) => change({ ...work, name: event.target.value })}
+      />
+      <FieldProblems problems={problems} field="name" />
+      {outcomeChoices}
+      <FieldProblems problems={problems} field="connected.boundary" />
+      {connected?.setup}
+    </div>
+  ) : work ? (
     <div className="flow-fields">
       <label htmlFor="test-name">Name</label>
       <input
@@ -402,26 +508,7 @@ export function useTestEditor({
       </select>
       <FieldProblems problems={problems} field="test.environment" />
 
-      <fieldset>
-        <legend>Outcome</legend>
-        {(Object.keys(TEST_BOUNDARIES) as TestBoundary[]).map((choice) => (
-          <label key={choice} className="check">
-            <input
-              type="radio"
-              name="test-outcome"
-              checked={boundary === choice}
-              disabled={readOnly}
-              onChange={() => {
-                const affected = checks.filter(recordCheck);
-                if (choice === "ack-contract" && affected.length > 0) setSheet({ kind: "boundary", next: choice });
-                else if (choice === "ack-contract") withoutObservation({ ...work.test, boundary: choice, observation: "" });
-                else changeTest({ boundary: choice });
-              }}
-            />
-            {TEST_BOUNDARIES[choice]}
-          </label>
-        ))}
-      </fieldset>
+      {outcomeChoices}
       <FieldProblems problems={problems} field="test.boundary" />
 
       {ledger ? (
@@ -530,7 +617,9 @@ export function useTestEditor({
     },
   ];
   const checkRows = checks.map((check, index) => ({ ...check, index }));
-  const checksBody: ReactNode = (
+  const checksBody: ReactNode = work?.connected ? (
+    connected?.checks
+  ) : (
     <>
       <div className="section-header">
         <h2>Checks</h2>
@@ -638,7 +727,33 @@ export function useTestEditor({
   // ---------- Review ----------
   const resetValue =
     work?.links.reset === "environment" ? (environment?.summary.environment?.reset_name ?? "Environment reset") : work?.links.reset === "manual" ? work.test.reset || "Manual instructions" : "—";
-  const reviewBody: ReactNode = work ? (
+  const reviewBody: ReactNode = work?.connected ? (
+    <>
+      <div className="section-header">
+        <h2>Setup</h2>
+        <button type="button" onClick={() => setStep("setup")}>
+          Edit setup
+        </button>
+      </div>
+      <ValueRows label="Setup" rows={[{ label: "Name", value: work.name || "—" }]} />
+      {connected?.review}
+      <div className="section-header">
+        <h2>Checks</h2>
+        <button type="button" onClick={() => setStep("checks")}>
+          Edit checks
+        </button>
+      </div>
+      {problems.length > 0 ? (
+        <ul className="problem-list" aria-label="Problems">
+          {problems.map((problem) => (
+            <li key={problem.field + problem.problem} role="alert">
+              {problem.problem}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </>
+  ) : work ? (
     <>
       <div className="section-header">
         <h2>Setup</h2>
@@ -699,7 +814,7 @@ export function useTestEditor({
           { key: "setup", label: "Setup" },
           { key: "checks", label: "Checks" },
         ];
-  const canContinue = work !== null && work.name.trim() !== "" && selected.length > 0;
+  const canContinue = work !== null && work.name.trim() !== "" && (work.connected ? work.connected.steps.length > 0 : selected.length > 0);
   const footer =
     mode === "new" ? (
       <div className="flow-footer">
@@ -882,8 +997,73 @@ export function useTestEditor({
             changeTest({ expectations });
             setSheet(null);
           }}
+          {...(work.connected && start?.ref
+            ? {
+                connected: {
+                  test: start.ref,
+                  draft: work.connected,
+                  onApply: (next: ConnectedTestDraft) => {
+                    change({ ...work, connected: next });
+                    setSheet(null);
+                  },
+                },
+              }
+            : {})}
         />
       ) : null}
+      {connected?.sheets}
+      <Modal
+        open={sheet?.kind === "outcome"}
+        title="Change the outcome?"
+        size="small"
+        onClose={() => setSheet(null)}
+        footer={
+          <div className="dialog-footer">
+            <button type="button" data-autofocus onClick={() => setSheet(null)}>
+              Keep editing
+            </button>
+            <button
+              type="button"
+              className="primary"
+              onClick={() => {
+                if (sheet?.kind !== "outcome" || !work) return;
+                if (work.connected) {
+                  const { connected: _dropped, ...rest } = work;
+                  change({ ...rest, test: { ...rest.test, boundary: sheet.next as TestBoundary } });
+                } else toConnected(sheet.next as ConnectedBoundary);
+                setSheet(null);
+              }}
+            >
+              Change outcome
+            </button>
+          </div>
+        }
+      >
+        {work?.connected ? (
+          <>
+            <h3>Removed</h3>
+            <ul>
+              <li>Inputs</li>
+              <li>Observations</li>
+              <li>{work.connected.phases.reduce((n, p) => n + p.checks.length + p.responses.length + p.validations.length + p.acknowledgements.length, 0)} checks</li>
+            </ul>
+          </>
+        ) : (
+          <>
+            <h3>Removed</h3>
+            <ul>
+              {checks.map((check) => (
+                <li key={check.id}>
+                  {checkTitle(check, messages)} · {checkExpected(check)}
+                </li>
+              ))}
+              {(work?.links.checks ?? []).map((ref) => (
+                <li key={ref.id}>{checkGroups.find((group) => group.ref.id === ref.id)?.name ?? "Check group"}</li>
+              ))}
+            </ul>
+          </>
+        )}
+      </Modal>
       <Modal
         open={sheet?.kind === "leave"}
         title="Save changes?"
@@ -1339,6 +1519,7 @@ function SuggestSheet({
   messages,
   onClose,
   onApply,
+  connected,
 }: {
   open: boolean;
   context: () => RequestContext;
@@ -1348,8 +1529,11 @@ function SuggestSheet({
   messages: TestMessage[];
   onClose: () => void;
   onApply: (expectations: TestExpectation[]) => void;
+  /** A connected test's own runs and proposals, which Apply adds to its draft. */
+  connected?: { test: ItemRef; draft: ConnectedTestDraft; onApply: (draft: ConnectedTestDraft) => void };
 }) {
   const [runs, setRuns] = useState<CatalogItem[] | null>(null);
+  const [connectedProposals, setConnectedProposals] = useState<ConnectedProposal[]>([]);
   const [run, setRun] = useState("");
   const [proposals, setProposals] = useState<TestProposal[]>(originProposals);
   const [identity, setIdentity] = useState("");
@@ -1363,6 +1547,17 @@ function SuggestSheet({
 
   useEffect(() => {
     let live = true;
+    if (connected) {
+      // The runs that completed exactly this connected test's definition.
+      void suggestConnectedChecks({ context: context(), test: connected.test }).then((answer) => {
+        if (!live) return;
+        if (answer.state !== "completed") setProblem(answer.reason ?? "No runs can be read.");
+        setRuns(answer.runs.map((entry) => ({ ref: entry.run, name: entry.name, created_at: null, updated_at: null, last_opened_at: null, availability: "available", capabilities: [], summary: {} })));
+      });
+      return () => {
+        live = false;
+      };
+    }
     void listWholeCatalog({ context: context(), kind: "run", filter: {} }).then((answer) => {
       if (!live) return;
       const eligible = (answer.page?.items ?? []).filter((item) => {
@@ -1383,6 +1578,19 @@ function SuggestSheet({
   const preview = async () => {
     if (!byRef) return;
     setProblem(null);
+    if (connected) {
+      const answer = await suggestConnectedChecks({ context: context(), test: connected.test, run: byRef.ref });
+      if (answer.state !== "completed") {
+        setProblem(answer.reason ?? "No checks were suggested.");
+        return;
+      }
+      setPreviewed(byRef);
+      setConnectedProposals(answer.proposals);
+      setProposals(answer.proposals.map((proposal) => ({ id: proposal.id, source: "run", check: { id: proposal.id, operator: "ledger_count" }, ...(proposal.reason ? { reason: proposal.reason } : {}) })));
+      setDecisions({});
+      setEdits({});
+      return;
+    }
     const answer = await suggestExpectations({ workspace: "", case: "", identity: "", context: context(), run: byRef.ref, draft: work.test });
     if (answer.state !== "completed" || !answer.test) {
       setProblem(answer.reason ?? "No checks were suggested.");
@@ -1404,6 +1612,10 @@ function SuggestSheet({
       submitDisabled={accepted.length === 0}
       onClose={onClose}
       onSubmit={async (): Promise<SubmitFailure | null> => {
+        if (connected) {
+          connected.onApply(applyProposals(connected.draft, connectedProposals, new Set(accepted.map((proposal) => proposal.id))));
+          return null;
+        }
         const existing = work.test.expectations;
         if (!fromRun) {
           const added = accepted.map((proposal, index) => ({ ...(edits[proposal.id] ?? proposal.check), id: nextId([...existing, ...accepted.slice(0, index).map((entry) => entry.check)]) }));
@@ -1457,15 +1669,26 @@ function SuggestSheet({
         <ul className="proposal-list" aria-label="Proposed checks">
           {proposals.map((proposal) => {
             const shown = edits[proposal.id] ?? proposal.check;
-            const title = checkTitle(shown, messages);
+            const typed = connectedProposals.find((entry) => entry.id === proposal.id);
+            const title = typed ? typed.check.name : checkTitle(shown, messages);
+            const phase = typed ? connected?.draft.phases.find((entry) => entry.id === typed.phase) : undefined;
             return (
               <li key={proposal.id}>
                 <span>
                   {title}
-                  {proposal.reason ? <span className="row-reason">{proposal.reason}</span> : <span className="row-reason">{checkExpected(shown)}{edits[proposal.id] ? " · Edited" : ""}</span>}
+                  {proposal.reason ? (
+                    <span className="row-reason">{proposal.reason}</span>
+                  ) : typed ? (
+                    <span className="row-reason">{`${phase?.name ?? ""} · ${CONNECTED_CHECKS[typed.check.check.operator] ?? ""} · ${connectedExpected(typed.check.check)}`}</span>
+                  ) : (
+                    <span className="row-reason">
+                      {checkExpected(shown)}
+                      {edits[proposal.id] ? " · Edited" : ""}
+                    </span>
+                  )}
                   <span className="row-reason">{proposal.source === "run" ? `From run ${previewed?.name ?? ""}` : "From the finding"}</span>
                 </span>
-                {proposal.reason ? null : (
+                {proposal.reason || typed ? null : (
                   <button type="button" className="quiet" onClick={() => setEditing(proposal)}>
                     Edit
                   </button>

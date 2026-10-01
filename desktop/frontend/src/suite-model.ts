@@ -58,6 +58,23 @@ function parameterOf(added: AddedTest, draft: SuiteDraft): string {
 export function addTests(draft: SuiteDraft, added: AddedTest[]): SuiteDraft {
   let next: SuiteDraft = { ...draft, tests: [...draft.tests], datasets: [...draft.datasets], environments: draft.environments.map((env) => ({ ...env, bindings: [...env.bindings] })) };
   for (const entry of added) {
+    const connected = entry.version.connected;
+    if (connected) {
+      // A connected test sends its own inputs: it runs over no dataset, and
+      // is bound through one parameter per named environment it names.
+      const bound = next.environments.flatMap((env) => env.bindings).find((b) => b.target.id === connected.environment && (b.server?.id ?? "") === (connected.server ?? ""));
+      const parameter = bound?.parameter ?? identifier(entry.environment?.name ?? "environment", [...next.tests.map((t) => t.parameter), ...next.environments.flatMap((env) => env.bindings.map((b) => b.parameter))], "environment");
+      next.tests.push({ id: identifier(entry.item.name, next.tests.map((t) => t.id), "test"), test: entry.version.ref, dataset: "", parameter, after: [], isolation: "shared", sequence: [], tags: [] });
+      if (entry.environment && !bound) {
+        let env = next.environments[0];
+        if (!env) {
+          env = { id: identifier(entry.environment.name, [], "environment"), name: entry.environment.name, site: entry.environment.name, bindings: [] };
+          next.environments.push(env);
+        }
+        env.bindings.push({ parameter, target: { kind: "environment", id: entry.environment.ref.id }, ...(connected.server ? { server: { kind: "environment", id: connected.server } } : {}) });
+      }
+      continue;
+    }
     let dataset = entry.caseItem ? next.datasets.find((set) => set.rows.length === 1 && set.rows[0]!.case.id === entry.caseItem!.ref.id) : undefined;
     if (!dataset) {
       const name = entry.caseItem?.name ?? entry.item.name;
@@ -119,7 +136,7 @@ export function cycleOf(draft: SuiteDraft, start: string): string[] {
  * test, dependency cycles, a test's dataset or parameter missing, partial
  * requirements and exclusions. Each is at the member it is about, with the
  * same field names the facade reports. */
-export function draftProblems(draft: SuiteDraft, name: string, testName: (id: string) => string): FieldProblem[] {
+export function draftProblems(draft: SuiteDraft, name: string, testName: (id: string) => string, connected: (id: string) => boolean = () => false): FieldProblem[] {
   const problems: FieldProblem[] = [];
   const ids = new Set(draft.tests.map((test) => test.id));
   if (name.trim() === "") problems.push({ field: "name", problem: "Enter a name." });
@@ -129,7 +146,7 @@ export function draftProblems(draft: SuiteDraft, name: string, testName: (id: st
       else if (dependency === test.id) problems.push({ field: `tests.${index}.after`, problem: "A test cannot depend on itself." });
     }
     if (cycleOf(draft, test.id).length > 0) problems.push({ field: `tests.${index}.after`, problem: "These dependencies form a cycle." });
-    if (!draft.datasets.some((set) => set.id === test.dataset)) problems.push({ field: `tests.${index}.dataset`, problem: "Choose a dataset." });
+    if (!connected(test.id) && !draft.datasets.some((set) => set.id === test.dataset)) problems.push({ field: `tests.${index}.dataset`, problem: "Choose a dataset." });
     if (test.parameter.trim() === "") problems.push({ field: `tests.${index}.parameter`, problem: "Choose an environment parameter." });
     if (!test.test.id) problems.push({ field: `tests.${index}.test`, problem: `${test.source ? test.source : testName(test.id)} is not a saved test of this project.` });
   });

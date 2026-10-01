@@ -19,6 +19,7 @@ import (
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/catalog"
 	"github.com/bharm16/readmit/internal/expectation"
+	"github.com/bharm16/readmit/internal/fhirevidence"
 	"github.com/bharm16/readmit/internal/guide"
 	"github.com/bharm16/readmit/internal/observation"
 	"github.com/bharm16/readmit/internal/observesource"
@@ -159,6 +160,8 @@ type TestContext struct {
 	Proposals    []TestProposal    `json:"proposals"`
 	Document     string            `json:"document,omitzero"`
 	ReadOnly     bool              `json:"read_only"`
+	// Connected is what a connected test's editor shows beside its draft.
+	Connected *ConnectedTestContext `json:"connected,omitzero"`
 }
 
 // TestObservation is one named observation of the project, by its current
@@ -206,6 +209,9 @@ func testField(stage string, index int) string {
 // and the draft through the same rules Generate holds it to, or its exact
 // document through the reader and preparation a run makes of it.
 func validateTestDraft(scope draftScope, draft ItemDraft) ([]catalog.Staged, ItemDraft, []FieldProblem) {
+	if draft.ConnectedTest != nil || declaresDocument(draft.TestDocument, ConnectedTestSchema) {
+		return validateConnectedTestDraft(scope, draft)
+	}
 	problems := []FieldProblem{}
 	normalized := ItemDraft{Name: draft.Name}
 	switch {
@@ -418,6 +424,9 @@ func readTestLinks(path string) (TestLinks, error) {
 // verifyTest reads a staged test revision through the readers the command
 // line reads its spec with, and its links.
 func verifyTest(files map[string]string) error {
+	if declares(files["test"], ConnectedTestSchema) {
+		return verifyConnectedTest(files)
+	}
 	if declares(files["test"], expectation.Schema) {
 		// An approved test release, as an upgrade of its profile pin
 		// publishes it, is read by the release reader.
@@ -613,7 +622,7 @@ func (s draftScope) lossyEdit() bool {
 	}
 	saved, err := s.loaded.testOf(s.loaded.document.Items[index], "")
 	if err != nil {
-		return false
+		return !s.loaded.isConnectedTest(s.loaded.document.Items[index])
 	}
 	_, clauses, err := testauthor.FromSpec(saved.spec, "")
 	return saved.release || err != nil || len(clauses) > 0
@@ -665,6 +674,9 @@ func (c *loadedCatalog) revisionBacking(item catalog.Item, revision string) (map
 
 func readTest(c *loadedCatalog, item catalog.Item, paths map[string]string) (view, error) {
 	path := paths[primaryRole(TestItem)]
+	if declares(path, ConnectedTestSchema) {
+		return readConnectedTest(c, item, paths)
+	}
 	var spec testrunner.Spec
 	version := item.RevisionLabel()
 	if declares(path, expectation.Schema) {
@@ -802,6 +814,9 @@ func (c *loadedCatalog) testOf(item catalog.Item, revision string) (*savedTest, 
 		return nil, errors.New(reason)
 	}
 	path := paths[primaryRole(TestItem)]
+	if declares(path, ConnectedTestSchema) {
+		return nil, errConnectedTest
+	}
 	data, err := boundedFile(path, testrunner.MaxSpecBytes)
 	if err != nil {
 		return nil, err
@@ -910,6 +925,9 @@ func (a *App) openTestDraft(ctx context.Context, request ItemRequest) ItemDraftR
 	}
 	record := loaded.document.Items[index]
 	saved, err := loaded.testOf(record, request.Ref.Revision)
+	if errors.Is(err, errConnectedTest) {
+		return loaded.openConnectedDraft(result, record, request.Ref.Revision)
+	}
 	if err != nil {
 		result.refuse(Failed, "this test cannot be read: "+err.Error())
 		return result
@@ -942,7 +960,7 @@ func (a *App) openTestDraft(ctx context.Context, request ItemRequest) ItemDraftR
 // testDraftOf is the draft a saved spec reopens as, over the project's case
 // it names, and what the editor shows beside it.
 func (c *loadedCatalog) testDraftOf(saved *savedTest) (*testauthor.Draft, *TestContext) {
-	context := &TestContext{Messages: []TestMessage{}, Observations: c.testObservations(), Unsupported: []TestClause{}, Proposals: []TestProposal{}, Document: string(saved.data)}
+	context := &TestContext{Messages: []TestMessage{}, Observations: c.testObservations(), Unsupported: []TestClause{}, Proposals: []TestProposal{}, Document: string(saved.data), Connected: c.connectedContext(nil)}
 	identity := ""
 	if artifactpath.EntryName(saved.spec.Input.Case) == nil {
 		ref, name, source := c.caseOf(saved.spec.Input.Case)
@@ -970,6 +988,7 @@ func (c *loadedCatalog) newTestDraft(result ItemDraftResult, origin *TestOrigin)
 	result.New, result.Ref = true, &ItemRef{Kind: TestItem}
 	if origin == nil {
 		result.State, result.Draft = Completed, &ItemDraft{}
+		result.Test = &TestContext{Messages: []TestMessage{}, Observations: c.testObservations(), Unsupported: []TestClause{}, Proposals: []TestProposal{}, Connected: c.connectedContext(nil)}
 		return result
 	}
 	index := c.document.Find(origin.Case.ID)
@@ -983,6 +1002,9 @@ func (c *loadedCatalog) newTestDraft(result ItemDraftResult, origin *TestOrigin)
 	entry := c.document.Items[index].Entry
 	_, _, source := c.caseOf(entry)
 	ref, name := &ItemRef{Kind: origin.Case.Kind, ID: origin.Case.ID}, c.read(c.document.Items[index]).Name
+	if source == nil && regular(filepath.Join(c.root, entry, fhirevidence.ManifestName)) {
+		return c.newConnectedFromEvidence(result, *ref, name, entry, origin)
+	}
 	if source == nil {
 		result.refuse(Failed, "the case this test sends cannot be verified")
 		return result
@@ -996,7 +1018,7 @@ func (c *loadedCatalog) newTestDraft(result ItemDraftResult, origin *TestOrigin)
 	for _, id := range origin.Messages {
 		selected[id] = true
 	}
-	context := &TestContext{Case: ref, CaseName: name, Messages: caseMessages(source), Observations: c.testObservations(), Unsupported: []TestClause{}, Proposals: []TestProposal{}}
+	context := &TestContext{Case: ref, CaseName: name, Messages: caseMessages(source), Observations: c.testObservations(), Unsupported: []TestClause{}, Proposals: []TestProposal{}, Connected: c.connectedContext(nil)}
 	all := len(origin.Messages) == 0
 	for _, message := range context.Messages {
 		if (all || selected[message.ID]) && message.Sendable {
@@ -1071,6 +1093,9 @@ func (a *App) TestHistory(request ItemRequest) TestHistoryResult {
 			return result
 		}
 		record := loaded.document.Items[loaded.document.Find(item.Ref.ID)]
+		if loaded.isConnectedTest(record) {
+			return loaded.connectedHistory(result, record)
+		}
 		labels := []string{""}
 		if len(record.Revisions) > 0 {
 			labels = labels[:0]
@@ -1322,6 +1347,13 @@ func (a *App) ImportTestDraft(request RequestContext) ItemDraftResult {
 		if len(files) == 0 {
 			result.refuse(declined.state, declined.reason)
 			return result
+		}
+		if plan, lifecycle, err := importedLifecycle(files[0]); lifecycle {
+			if err != nil {
+				result.refuse(Failed, err.Error())
+				return result
+			}
+			return loaded.importedConnected(result, plan)
 		}
 		data, err := boundedFile(files[0], testrunner.MaxSpecBytes)
 		if err != nil {

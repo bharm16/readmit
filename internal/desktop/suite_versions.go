@@ -62,20 +62,51 @@ type suiteDefinition struct {
 	Draft  SuiteDraft `json:"draft"`
 }
 
-// decodeSuiteDefinition reads one definition member exactly as written.
-func decodeSuiteDefinition(data []byte) (SuiteDraft, error) {
+// decodeSuiteDefinition reads one definition member exactly as written, and
+// answers the contract it declares.
+func decodeSuiteDefinition(data []byte) (SuiteDraft, string, error) {
 	var definition suiteDefinition
 	if len(data) > suite.MaxBytes || json.Unmarshal(data, &definition, json.RejectUnknownMembers(true)) != nil {
-		return SuiteDraft{}, errors.New("the suite's definition cannot be read")
+		return SuiteDraft{}, "", errors.New("the suite's definition cannot be read")
 	}
-	if definition.Schema == ConnectedSuiteDefinitionSchema {
-		if err := verifyConnectedDefinition(definition.Draft); err != nil {
-			return SuiteDraft{}, err
+	switch {
+	case definition.Schema == AuthoredSuiteDefinitionSchema:
+		if err := verifyAuthoredDefinition(definition.Draft); err != nil {
+			return SuiteDraft{}, "", err
 		}
-	} else if definition.Schema != SuiteDefinitionSchema || definition.Draft.Connected != nil {
-		return SuiteDraft{}, errors.New("the suite's definition cannot be read")
+	case connectedMembers(definition.Draft):
+		// Only a suite of connected tests binds a FHIR server or overrides
+		// a connected check.
+		return SuiteDraft{}, "", errors.New("the suite's definition cannot be read")
+	case definition.Schema == ConnectedSuiteDefinitionSchema:
+		if err := verifyConnectedDefinition(definition.Draft); err != nil {
+			return SuiteDraft{}, "", err
+		}
+	case definition.Schema != SuiteDefinitionSchema || definition.Draft.Connected != nil:
+		return SuiteDraft{}, "", errors.New("the suite's definition cannot be read")
 	}
-	return normalizedSuite(definition.Draft), nil
+	return normalizedSuite(definition.Draft), definition.Schema, nil
+}
+
+// connectedMembers reports whether a suite draft declares a member only a
+// suite of connected tests declares: a binding's FHIR server or a row's
+// connected expected value.
+func connectedMembers(draft SuiteDraft) bool {
+	for _, environment := range draft.Environments {
+		for _, binding := range environment.Bindings {
+			if binding.Server != nil {
+				return true
+			}
+		}
+	}
+	for _, set := range draft.Datasets {
+		for _, row := range set.Rows {
+			if row.ConnectedExpected != nil {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // verifySuite reads a staged suite version through the readers its members
@@ -86,7 +117,7 @@ func verifySuite(files map[string]string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := decodeSuiteDefinition(data); err != nil {
+	if _, _, err := decodeSuiteDefinition(data); err != nil {
 		return err
 	}
 	if path, held := files["suite"]; held {
@@ -144,6 +175,11 @@ type suiteVersion struct {
 	entry     string
 	document  *suite.Document
 	connected *suite.ConnectedDocument
+	// authored says the version is a suite of saved connected tests, whose
+	// definition is held in full; it runs the connected document its latest
+	// baseline approved, once it has one.
+	authored   bool
+	definition []byte
 }
 
 func (v *suiteVersion) original() bool { return v.revision == nil }
@@ -225,11 +261,22 @@ func (c *loadedCatalog) suiteVersion(item catalog.Item, label string) (*suiteVer
 	if err != nil {
 		return nil, err
 	}
-	draft, err := decodeSuiteDefinition(data)
+	draft, schema, err := decodeSuiteDefinition(data)
 	if err != nil {
 		return nil, err
 	}
 	version := &suiteVersion{item: item, label: label, revision: &item.Revisions[at], draft: draft}
+	if schema == AuthoredSuiteDefinitionSchema {
+		version.authored, version.definition = true, data
+		if baseline := latestBaseline(c.suiteApprovals(item.ID), label); baseline != nil {
+			document, err := suite.DecodeConnected(baseline.Connected)
+			if err != nil {
+				return nil, err
+			}
+			version.data, version.connected = baseline.Connected, &document
+		}
+		return version, nil
+	}
 	if path, held := paths["suite"]; held {
 		compiled, err := boundedFile(path, suite.MaxBytes)
 		if err != nil {
@@ -1034,6 +1081,12 @@ func validateSuiteItem(scope draftScope, draft ItemDraft) ([]catalog.Staged, Ite
 	if draft.Suite.Connected != nil {
 		return validateConnectedSuiteItem(scope, draft)
 	}
+	if scope.loaded != nil && scope.loaded.isConnectedSuiteDraft(*draft.Suite) {
+		return validateAuthoredConnectedSuite(scope, draft)
+	}
+	if connectedMembers(*draft.Suite) {
+		return nil, ItemDraft{Name: draft.Name, Suite: draft.Suite}, []FieldProblem{{Field: "suite", Problem: "only a suite of connected tests binds a FHIR server or overrides a connected check"}}
+	}
 	problems := []FieldProblem{}
 	if draft.Name == "" {
 		problems = append(problems, FieldProblem{Field: "name", Problem: nameRule})
@@ -1096,7 +1149,7 @@ func readSuite(c *loadedCatalog, item catalog.Item, _ map[string]string) (view, 
 		environments = append(environments, environment.Name)
 	}
 	summary := &SuiteSummary{Tests: len(version.draft.Tests), Environments: environments, Entry: version.entry, Runnable: version.runnable()}
-	if version.connected != nil {
+	if version.connected != nil && !version.authored {
 		summary.Tests = len(version.connected.Tests)
 		for _, environment := range version.connected.Environments {
 			summary.Environments = append(summary.Environments, environment.ID)

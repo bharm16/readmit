@@ -68,9 +68,12 @@ type ItemDraft struct {
 	Test         *testauthor.Draft     `json:"test,omitzero"`
 	TestLinks    *TestLinks            `json:"test_links,omitzero"`
 	TestDocument string                `json:"test_document,omitzero"`
-	Observation  *ObservationDraft     `json:"observation,omitzero"`
-	Case         *CaseDraft            `json:"case,omitzero"`
-	Project      *ProjectDraft         `json:"project,omitzero"`
+	// ConnectedTest is a connected test: its readmit-connected-test-authoring/v1
+	// document, in place of Test.
+	ConnectedTest *ConnectedTestDraft `json:"connected_test,omitzero"`
+	Observation   *ObservationDraft   `json:"observation,omitzero"`
+	Case          *CaseDraft          `json:"case,omitzero"`
+	Project       *ProjectDraft       `json:"project,omitzero"`
 	// AnalysisSettings is a named diagnosis configuration, saved as the
 	// readmit-diagnose-config/v1 document `readmit diagnose --config` reads.
 	AnalysisSettings *diagnose.Config `json:"analysis_settings,omitzero"`
@@ -457,7 +460,7 @@ func validateItemDraft(scope draftScope, kind ItemKind, draft ItemDraft) ([]cata
 	if kind != EnvironmentItem && (draft.FHIR != nil || draft.Isolation != nil) {
 		problems = append(problems, FieldProblem{Field: "kind", Problem: "Only an environment carries protocol connections or isolation"})
 	}
-	if kind != TestItem && (draft.TestLinks != nil || draft.TestDocument != "") {
+	if kind != TestItem && (draft.TestLinks != nil || draft.TestDocument != "" || draft.ConnectedTest != nil) {
 		problems = append(problems, FieldProblem{Field: "kind", Problem: "only a test carries test links or a test document"})
 	}
 	var staged []catalog.Staged

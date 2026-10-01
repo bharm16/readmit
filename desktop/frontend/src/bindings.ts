@@ -353,6 +353,10 @@ import type {
   ImportProbeResult,
   SuiteTestsRequest,
   SuiteTestsResult,
+  ConnectedSourcesRequest,
+  ConnectedSourcesResult,
+  ConnectedSuggestRequest,
+  ConnectedSuggestResult,
   SuiteHistoryResult,
   SuiteCompareRequest,
   SuiteComparison,
@@ -2022,6 +2026,16 @@ export function exportProtectionControl(workspace: string, entry: string, name: 
 // a test through the native dialogs.
 
 /** A saved test's versions, newest first, and the runs of each. */
+/** Reads one case's verified evidence as a connected test's inputs; nothing is sent. */
+export function connectedTestSources(request: ConnectedSourcesRequest): Promise<ConnectedSourcesResult> {
+  return retryingRead(() => facade().ConnectedTestSources(request), { state: "failed", context: request.context, sources: [] });
+}
+
+/** Lists a connected test's eligible retained runs and proposes checks from one; nothing is recorded. */
+export function suggestConnectedChecks(request: ConnectedSuggestRequest): Promise<ConnectedSuggestResult> {
+  return retryingRead(() => facade().SuggestConnectedChecks(request), { state: "failed", context: request.context, runs: [], proposals: [] });
+}
+
 export function testHistory(request: ItemRequest): Promise<TestHistoryResult> {
   return retryingRead(() => facade().TestHistory(request), { state: "failed", context: request.context, versions: [], runs: [] });
 }

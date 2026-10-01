@@ -162,3 +162,22 @@ uploads raw proof. The generated POSIX, GitHub Actions and Azure DevOps examples
 use the single suite command on customer-controlled agents. Local reference
 fixtures establish the tested boundary, not a customer's external interface or
 EHR qualification.
+
+## Suites of saved connected tests
+
+The desktop's suite editor builds a suite of saved connected tests at exact
+versions, each run once or once per row of a dataset whose rows may override
+its expected values. Each suite environment binds each test to named
+environments at pinned versions; saving checks that the release review of
+every environment's lifecycle is the same, so a promotion changes the binding
+and never the expectations. Approving the version's baseline approves each
+job's expectations and records the `readmit-suite/v2` document that pins
+them, placing its lifecycles and runtime selections in the project's
+`.readmit/connected` folder. The suite command above runs that document
+unchanged. Each selection names its runner grant files under its
+`grants` folder by binding; the operator provisions them as for any other
+connected suite.
+Coverage of a version is assessed over one of its retained connected
+executions with a `readmit-suite-coverage/v2` declaration built from the
+version's requirements and exclusions and the plans and approvals that
+execution pinned.

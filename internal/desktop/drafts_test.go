@@ -284,13 +284,20 @@ func TestASuiteEditorDraftRetainsAPartialSuiteWhole(t *testing.T) {
 		t.Fatalf("the partial suite did not come back whole: %+v %v", held, err)
 	}
 	for name, draft := range map[string]string{
-		"unknown member":     `{"schema":"readmit-suite-editor/v1","name":"","suite":{},"pins":[]}`,
-		"another object":     `{"schema":"readmit-suite-editor/v1","item":{"kind":"test","id":"0123456789abcdef01234567"},"name":"","suite":{}}`,
-		"the earlier schema": `{"schema":"readmit-suite-draft/v1","name":"","suite":{}}`,
+		"unknown member":      `{"schema":"readmit-suite-editor/v1","name":"","suite":{},"pins":[]}`,
+		"another object":      `{"schema":"readmit-suite-editor/v1","item":{"kind":"test","id":"0123456789abcdef01234567"},"name":"","suite":{}}`,
+		"the earlier schema":  `{"schema":"readmit-suite-draft/v1","name":"","suite":{}}`,
+		"a FHIR server in v1": `{"schema":"readmit-suite-editor/v1","name":"","suite":{"environments":[{"id":"qa","name":"QA","site":"","bindings":[{"parameter":"engine","target":{"kind":"environment","id":""},"server":{"kind":"environment","id":""}}]}]}}`,
 	} {
 		if result := app.SaveEditorDraft(editorDraft("suite-editor", desktop.SuiteEditorDraftSchema, draft)); result.State != desktop.Failed {
 			t.Fatalf("the store retained a suite draft with %s: %+v", name, result)
 		}
+	}
+	// A suite of connected tests is retained under its own contract.
+	connected := `{"schema":"readmit-suite-editor/v2","name":"","suite":{"datasets":[{"id":"rows","name":"Rows","rows":[{"id":"late","case":{"kind":"case","id":""},"connected_expected":{"phase/check":{"state":"absent","type":"text"}}}]}],` +
+		`"environments":[{"id":"qa","name":"QA","site":"","bindings":[{"parameter":"engine","target":{"kind":"environment","id":""},"server":{"kind":"environment","id":""}}]}]}}`
+	if result := app.SaveEditorDraft(editorDraft("suite-editor", desktop.SuiteEditorDraftSchemaV2, connected)); result.State != desktop.Completed {
+		t.Fatalf("a connected suite draft was not retained: %+v", result)
 	}
 }
 

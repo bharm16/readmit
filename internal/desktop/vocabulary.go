@@ -31,6 +31,8 @@ import (
 // answers.
 type Vocabulary struct {
 	Connected ConnectedVocabulary `json:"connected"`
+	// ConnectedTests are the finite choices a connected test's editor offers.
+	ConnectedTests ConnectedTestVocabulary `json:"connected_tests"`
 	// DiagnosisBuiltins are the built-in configurations a diagnosis can run
 	// under, each named by the selection a diagnosis request makes.
 	DiagnosisBuiltins []DiagnosisBuiltin `json:"diagnosis_builtins"`
@@ -199,6 +201,7 @@ func vocabulary() Vocabulary {
 	}
 	return Vocabulary{
 		Connected:           connectedVocabulary(),
+		ConnectedTests:      connectedTestVocabulary(),
 		DiagnosisBuiltins:   builtins,
 		ImportPlan:          importer.Vocabulary(),
 		ImportEngines:       engineexport.Supported(),
