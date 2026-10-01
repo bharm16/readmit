@@ -3,6 +3,18 @@
   "program": "bharm16/readmit#244",
   "rows": [
     {
+      "id": "tooling.tools.demo-acceptance",
+      "source": "tools/demo_acceptance.py",
+      "kind": "tooling",
+      "capability": "Read authored demo acceptance obligations and verify retained comparison outcomes",
+      "owner": "bharm16/readmit#661",
+      "inputs": [],
+      "outputs": [],
+      "prerequisites": [],
+      "implemented": false,
+      "disposition": {"kind": "developer-tooling", "reason": "shared DOM/native acceptance scenario and independent fixture expectations; not a customer command or native qualification claim"}
+    },
+    {
       "id": "tooling.tools.validator-capability",
       "source": "tools/validator_capability.py",
       "kind": "tooling",

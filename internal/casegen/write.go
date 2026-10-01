@@ -122,18 +122,14 @@ func (g *Generation) Write(ctx context.Context, dir string, placement Placement)
 		return Written{}, errors.New("cannot open the generation folder; written cases are retained")
 	}
 	defer root.Close()
-	partial := "." + record + ".incomplete"
-	if err := artifactdir.WriteFile(root, partial, encoded); err != nil {
-		return Written{}, errors.New("cannot write the generation record; written cases are retained")
-	}
-	if _, err := root.Lstat(record); err == nil {
-		return Written{}, errors.New("the generation record's entry already exists; written cases are retained")
-	}
-	if err := root.Rename(partial, record); err != nil {
-		return Written{}, errors.New("cannot finish the generation record; written cases are retained")
-	}
-	if err := artifactdir.SyncDirectory(root, "."); err != nil {
-		return Written{}, errors.New("cannot sync the generation folder; a power loss could still lose it")
+	document := artifactdir.Document{MaxBytes: MaxRecordBytes, CreateByLink: true, Staging: artifactdir.StagingName("." + record + ".incomplete"), Errors: artifactdir.DocumentErrors{
+		Create:  errors.New("cannot write the generation record; written cases are retained"),
+		Write:   errors.New("cannot write the generation record; written cases are retained"),
+		Install: errors.New("cannot finish the generation record; written cases are retained"),
+		Sync:    errors.New("cannot sync the generation folder; a power loss could still lose it"),
+	}}
+	if err := document.CreateIn(root, record, encoded); err != nil {
+		return Written{}, err
 	}
 	return Written{Record: encoded, Cases: r.Cases}, nil
 }
@@ -152,7 +148,21 @@ func (g *Generation) WriteDirectory(ctx context.Context, path string) (Written, 
 	if err := os.Mkdir(path, 0o700); err != nil {
 		return Written{}, errors.New("the generation destination must be new with an existing writable parent")
 	}
-	return g.Write(ctx, path, Placement{Record: "generation.json", Entry: func(c Case) string { return c.Row + "-" + c.Variant }})
+	written, err := g.Write(ctx, path, Placement{Record: "generation.json", Entry: func(c Case) string { return c.Row + "-" + c.Variant }})
+	if err != nil {
+		return Written{}, err
+	}
+	// The record anchors each member in the generation folder; the parent
+	// must also anchor the newly created generation folder before success.
+	parent, err := os.OpenRoot(filepath.Dir(path))
+	if err != nil {
+		return Written{}, errors.New("cannot sync the generation's parent folder; a power loss could still lose it")
+	}
+	defer parent.Close()
+	if err := artifactdir.SyncDirectory(parent, "."); err != nil {
+		return Written{}, errors.New("cannot sync the generation's parent folder; a power loss could still lose it")
+	}
+	return written, nil
 }
 
 // validEntry is one plain entry name of a folder.

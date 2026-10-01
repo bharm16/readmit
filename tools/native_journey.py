@@ -35,6 +35,7 @@ import threading
 import time
 from pathlib import Path
 
+from demo_acceptance import load_scenario, verify_comparison
 from package_desktop import MANIFEST_NAME
 from release_candidate import MACHINES
 
@@ -52,6 +53,7 @@ NATIVE = ROOT / "tools" / "native"
 # is what tells two controls apart.
 CATCHALL_ROLES = {"unknown"}
 ROLES = {
+    "menuitem": {"darwin": {"AXMenuItem"}, "windows": {"MenuItem"}, "linux": {"menu item"}},
     "button": {"darwin": {"AXButton", "AXDisclosureTriangle"}, "windows": {"Button", "DisclosureTriangle"}, "linux": {"push button", "button", "toggle button"} | CATCHALL_ROLES},
     "tab": {"darwin": {"AXRadioButton", "AXTab"}, "windows": {"TabItem"}, "linux": {"page tab"}},
     "checkbox": {"darwin": {"AXCheckBox"}, "windows": {"CheckBox"}, "linux": {"check box"}},
@@ -253,7 +255,7 @@ class Application:
         self.steps = []
         self.began = time.monotonic()
 
-    def launch(self):
+    def environment(self):
         environment = dict(os.environ)
         # Every folder the shell keeps its state in is inside this journey.
         environment["HOME"] = str(self.state)
@@ -266,6 +268,10 @@ class Application:
             environment["XDG_DATA_HOME"] = str(self.state / ".local" / "share")
             environment["XDG_CACHE_HOME"] = str(self.state / ".cache")
             environment["GNOME_ACCESSIBILITY"] = "1"
+        return environment
+
+    def launch(self):
+        environment = self.environment()
         for folder in ("Roaming", "Local", ".config", ".local/share", ".cache"):
             (self.state / folder).mkdir(parents=True, exist_ok=True)
         self.evidence.mkdir(parents=True, exist_ok=True)
@@ -447,10 +453,10 @@ def machine():
     return MACHINES.get(arch, arch)
 
 
-def command_line(executable, *arguments, cwd):
+def command_line(executable, *arguments, cwd, environment=None):
     try:
         result = subprocess.run([str(executable), *map(str, arguments)], capture_output=True, text=True,
-                                encoding="utf-8", timeout=300, cwd=cwd)
+                                encoding="utf-8", timeout=300, cwd=cwd, env=environment)
     except subprocess.TimeoutExpired as error:
         raise Refused(f"readmit {' '.join(map(str, arguments[:2]))} did not finish in 300s") from error
     return result.returncode, result.stdout, result.stderr
@@ -464,104 +470,117 @@ def document(text, what):
         raise Refused(f"{what} answered {text.strip()[:200]!r}, not a JSON document") from error
 
 
-def guided_sample(app, work, command, record):
-    """The documented interactive journey, through the installed window."""
+def demo_root(app):
+    """The isolated native account's managed demo, as DefaultShellDocuments names it."""
+    folders = {"darwin": app.state / "Library" / "Application Support", "windows": app.state / "Roaming", "linux": app.state / ".config"}
+    return folders[app.system] / "readmit" / "demo" / "readmit-sample"
+
+
+def guided_sample(app, work, command, record, bridge=None):
+    """Walk the same authored demo obligations as the DOM driver, using native UI."""
+    scenario = load_scenario()
+    expected = scenario["expected"]
+    region = scenario["region"]
+    titles = {step["id"]: step["title"] for step in scenario["steps"]}
+    completed = lambda title: app.read_out(re.escape(title) + r", done", timeout=120)
     app.launch()
     app.checkpoint("first-run")
     work.mkdir()
-    app.press("Explore sample")
-    app.choose_folder("Choose sample location", work)
-    app.press("Open case", within="Guided sample", timeout=120)
-    app.read_out(r"regression · regression\.index\.json · verified [0-9a-f]{64}", timeout=120)
-
-    # Several editors share these short labels; select the task's region,
-    # not a position among unrelated controls in the inspector's tree.
-    app.fill("Name", "reschedule-regression", within="Test authoring")
-    app.press("Save name", within="Test authoring")
-    app.press("Send s0001-e000001")
-    app.find("button", "Do not send s0001-e000001")
-    app.press("Send s0001-e000002")
-    app.read_out(r"Sent in the order the case records them: s0001-e000001, s0001-e000002\.")
-    app.press("Send to practice-target.json")
-    app.press("appointment-ledger")
-    app.read_out(r"Initial state: empty-ledger\.")
-    app.press("Read the observation from this entry")
-    app.fill("Reset", "Restart the practice receiver with an empty appointment ledger.")
-    app.press("Save instructions")
-    app.fill("Expectation name", "one-appointment")
-    app.fill("Expected records", "1")
-    app.press("Expect count")
-    app.read_out(r"ledger_count · 1 records")
-    app.checkpoint("test-authoring")
-    app.fill("New entry in this workspace", "reschedule-test.json")
-    app.press("Save test")
-    app.read_out(r"Written to reschedule-test\.json.*spec identity [0-9a-f]{64}\.")
-
-    # The fixture as it misbehaves fails the saved expectation; the corrected
-    # fixture passes it.
-    app.press("Run failing example", timeout=120)
-    app.read_out(r"baseline-run: assertion_failure", timeout=120)
-    app.press("Run fixed example", timeout=120)
-    app.read_out(r"post-fix-run: pass", timeout=120)
-    app.read_out(r"Every step is done")
-    app.checkpoint("practice-results")
+    app.press(scenario["entry"])
+    app.find("region", region, enabled=False, timeout=120)
+    for step in scenario["steps"]:
+        kind, title = step["id"], step["title"]
+        if kind != "view-failed-check":
+            app.press(title, within=region, timeout=120)
+        if kind == "create-test":
+            app.read_out(re.escape(scenario["test_name"]))
+            app.press("Next")
+            app.press("Review")
+            app.press("Create test", timeout=120)
+        completed(title)
+        if kind == "run-defective":
+            app.read_out(re.escape(expected["defective_label"]) + r" ·", timeout=120)
+        elif kind == "view-failed-check":
+            app.read_out(re.escape(expected["check"]) + rf"\s+{expected['required_count']}\s+{expected['defective_count']}\s+" + re.escape(expected["defective_label"]))
+        elif kind == "run-fixed":
+            app.read_out(re.escape(expected["fixed_label"]) + r" ·", timeout=120)
+        elif kind == "compare":
+            app.read_out(r"Compare runs")
+            app.read_out(re.escape(expected["check"]) + rf"\s+{expected['defective_count']} / " + re.escape(expected["defective_label"]) + rf"\s+{expected['fixed_count']} / " + re.escape(expected["fixed_label"]))
+        app.checkpoint("demo-" + kind)
     record["closed"] = app.close()
-
-    # While the window is closed, the command line assembles the two practice
-    # runs into a sealed packet, as a person does with readmit report assemble.
-    sample = work / "readmit-sample"
-    code, out, err = command_line(command, "report", "assemble", "--case", sample / "regression",
-                                  "--spec", sample / "post-fix-run" / "spec.json", "--current", sample / "post-fix-run" / "result",
-                                  "--baseline", sample / "baseline-run" / "result", "--output", sample / "practice-packet", cwd=work)
-    assembled = re.match(r"Retained packet complete: ([0-9a-f]{64})\n", out)
-    if code != 0 or not assembled:
-        raise Refused(f"readmit report assemble over the practice runs answered {code}: {out.strip()} {err.strip()}")
-    packet = assembled.group(1)
-
-    # Reopened, the window reads both verdicts back from the folder.
+    sample = demo_root(app)
     app.launch()
-    app.press("Reopen session", timeout=90)
-    app.read_out(r"Every step is done", timeout=120)
-    app.read_out(r"baseline-run ?assertion_failure")
-    app.read_out(r"post-fix-run ?pass")
+    app.press(scenario["entry"], timeout=120)
+    for kind in ("create-test", "run-defective", "run-fixed"):
+        completed(titles[kind])
+    app.press("Runs")
+    app.read_out(re.escape(expected["defective_label"]))
+    app.read_out(re.escape(expected["fixed_label"]))
     app.checkpoint("reopened")
+    app.close()
 
-    # The packet is verified read-only and exported as a portable review into
-    # a new folder named in the host's save dialog, which the export creates.
-    review = sample / "practice-review"
-    app.select("Packets", "practice-packet", within="Investigation packets")
-    app.press("Verify packet", within="Investigation packets")
-    # A shortened identity and its ellipsis are two text elements, which some
-    # platforms read out with a space between them.
-    app.read_out(rf"Verified: identity {packet[:12]} ?… · contract readmit-retained-packet/v1 · state complete")
-    app.press("Choose destination…", within="Investigation packets")
-    app.name_new_folder("Choose a new folder for the portable review", review)
-    app.read_out(re.escape(str(review)))
-    app.press("Export review", within="Investigation packets", timeout=120)
-    record["native_review"] = app.read_out(rf"Review ?practice-review ?sealed: identity [0-9a-f]{{12}} ?… · packet {packet[:12]} ?…",
-                                           timeout=120)
+    # The free demo remains free. A separate synthetic vendor delivery enables
+    # the ordinary report authoring/export obligation; no real account is used.
+    if bridge is None:
+        raise Refused("portable review requires the native synthetic provisioning bridge")
+    activation = work / "vendor-delivered-license"
+    environment = app.environment()
+    code, _, err = command_line(bridge, "-root", work, "-license", activation, cwd=work, environment=environment)
+    if code != 0:
+        raise Refused("the synthetic vendor delivery could not be provisioned: " + err.strip())
+    app.launch()
+    app.press("Settings")
+    app.press("License")
+    app.press("More license actions")
+    app.press("Administrator setup", role="menuitem")
+    app.press("Choose folder", within="Activation folder")
+    app.press("Choose folder", within="Activation folder")
+    app.choose_folder("Choose the license activation folder", activation)
+    app.find("button", "Replace", within="Activation folder")
+    app.press("Activate", within="Activation folder")
+    app.read_out(r"\btest-organization\b")
+    app.read_out(r"^Active$")
+    # Return to the first page, which offers the managed demo entry again.
+    app.press("Projects")
+    app.press(scenario["entry"])
+    app.press(titles["open-messages"], within=region)
+    completed(titles["open-messages"])
+    app.press(titles["view-failed-check"], within=region)
+    completed(titles["view-failed-check"])
+    app.press("Create report")
+    app.fill("Name", scenario["retained"]["review_title"], within="New report")
+    # The other actual run is selected by its announced label, including time.
+    app.press("Compare with", role="select", within="New report")
+    option = app.read_out(re.escape(scenario["test_name"]) + r"[^\n]{0,120} · " + re.escape(expected["fixed_label"]) + r"$")
+    app.select("Compare with", option, within="New report")
+    app.press("Create", within="New report", timeout=120)
+    app.read_out(re.escape(scenario["retained"]["review_title"]), timeout=120)
+    app.press("Share")
+    app.press("Original evidence", role="checkbox")
+    app.press("Redaction")
+    app.press("Preview")
+    exported = work / scenario["retained"]["export_name"]
+    app.read_out(r"Folder.*Not chosen", timeout=120)
+    app.press("Choose")
+    app.name_new_folder("Export package", exported)
+    app.press("Export", timeout=120)
+    record["native_review"] = app.read_out(r"Exported " + re.escape(exported.name), timeout=120)
     app.checkpoint("portable-review")
     app.close()
 
-    # The command line reads the same two retained results and agrees.
-    code, out, err = command_line(command, "diff", sample / "baseline-run" / "result", sample / "post-fix-run" / "result",
-                                  "--format", "json", cwd=work)
+    code, out, err = command_line(command, "diff", sample / scenario["retained"]["defective"], sample / scenario["retained"]["fixed"], "--format", "json", cwd=work, environment=environment)
     if code != 0 or err:
-        raise Refused(f"readmit diff over the retained results failed: {code} {err.strip()}")
-    report = document(out, "readmit diff")
-    expected = {"left": ("assertion_failure", 2), "right": ("pass", 2)}
-    for side, (status, occurrences) in expected.items():
-        if (report[side]["result_status"], report[side]["occurrences"]) != (status, occurrences):
-            raise Refused(f"readmit diff reads the {side} result as {report[side]}")
-    if report["summary"]["paired"] != 2 or report["summary"]["unchanged"] != 2:
-        raise Refused(f"readmit diff pairs the two runs as {report['summary']}")
-    # It reads the portable review the window exported, offline, as the
-    # review of the packet it assembled.
-    code, out, err = command_line(command, "report", "review", review, "--format", "json", cwd=work)
-    if code != 0 or document(out, "readmit report review").get("packet_identity") != packet:
-        raise Refused(f"readmit report review over the exported review answered {code}: {out.strip()[:200]} {err.strip()}")
-    record["cli"] = ("readmit diff: assertion_failure then pass over two unchanged paired messages; "
-                     "readmit report review: the exported review of the assembled packet")
+        raise Refused("retained demo comparison failed: " + err.strip())
+    verify_comparison(document(out, "readmit diff"), scenario)
+    review = exported / scenario["retained"]["original_review"]
+    code, out, err = command_line(command, "report", "review", review, "--format", "json", cwd=work, environment=environment)
+    reviewed = document(out, "readmit report review") if code == 0 else {}
+    if code != 0 or err or reviewed.get("schema") != "readmit-portable-report/v3":
+        raise Refused("the native portable review did not verify offline: " + err.strip())
+    if reviewed.get("result", {}).get("outcome") != "failed" or len(reviewed.get("runs", [])) != 2:
+        raise Refused("the native review lost its actual failed run and comparison")
+    record["cli"] = "authored demo comparison and the native portable review independently verified offline"
 
 
 def staged_upgrade(app, work, command, bridge, candidate, version, record):
@@ -679,7 +698,7 @@ def run_journey(journey, system, base, args):
     began = time.monotonic()
     try:
         if journey == "guided-sample":
-            guided_sample(app, root / "work", args.command_line.resolve(), record)
+            guided_sample(app, root / "work", args.command_line.resolve(), record, args.bridge.resolve())
         else:
             staged_upgrade(app, root / "work", args.command_line.resolve(), args.bridge.resolve(),
                            args.candidate.resolve(), args.version, record)

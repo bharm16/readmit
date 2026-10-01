@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json/v2"
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -18,14 +17,19 @@ import (
 )
 
 func evaluateFlowPhase(ctx context.Context, plan *connectedtest.FlowPlan, phase connectedtest.FlowPhase, run Result, path string) (FlowPhaseResult, error) {
-	r := unexecutedPhase(plan, phase, run.State)
-	evidence, e := OpenEvidence(ctx, path)
-	r.RunIdentity = evidence.Identity
-	if e != nil || !bytes.Equal(canonicalFlow(evidence.Result), canonicalFlow(run)) {
-		return r, invalid
+	evidence, err := OpenEvidence(ctx, path)
+	if err != nil || !bytes.Equal(canonicalFlow(evidence.Result), canonicalFlow(run)) {
+		return FlowPhaseResult{}, invalid
 	}
+	return evaluateOwnedPhase(ctx, plan, phase, evidence)
+}
+func evaluateOwnedPhase(ctx context.Context, plan *connectedtest.FlowPlan, phase connectedtest.FlowPhase, evidence Evidence) (FlowPhaseResult, error) {
+	run := evidence.Result
+	files := evidence.files
+	r := unexecutedPhase(plan, phase, run.State)
+	r.RunIdentity = evidence.Identity
 	if run.Transport != "" {
-		transport, e := replay.Open(filepath.Join(path, "transport", "run"))
+		transport, e := replay.Verify(artifactdir.Subtree(files, "transport/run"))
 		if e != nil || transport.Identity != run.Transport || len(transport.Events) != len(r.Steps) {
 			return r, invalid
 		}
@@ -54,7 +58,7 @@ func evaluateFlowPhase(ctx context.Context, plan *connectedtest.FlowPlan, phase 
 	if run.Evaluation == "" {
 		return r, nil
 	}
-	typed, err := connectedtest.OpenDatasetResult(ctx, filepath.Join(path, "evaluation"))
+	typed, err := connectedtest.VerifyDatasetResult(ctx, artifactdir.Subtree(files, "evaluation"))
 	if err != nil || flowDigest(typed) != run.Evaluation {
 		return r, invalid
 	}
@@ -65,7 +69,7 @@ func evaluateFlowPhase(ctx context.Context, plan *connectedtest.FlowPlan, phase 
 		r.Checks[i].Outcome = c.Outcome
 	}
 	if phase.Wire != nil {
-		evidence, err := flowWireEvidence(ctx, plan, phase, run, path)
+		evidence, err := flowWireEvidence(ctx, plan, phase, run, files)
 		if err != nil {
 			r.EvaluationError = "evidence_unavailable"
 		} else {
@@ -110,13 +114,13 @@ func phaseVerdict(checks []FlowCheck, state string) assertion.Verdict {
 	}
 	return assertion.VerdictUndecided
 }
-func flowWireEvidence(ctx context.Context, plan *connectedtest.FlowPlan, phase connectedtest.FlowPhase, result Result, path string) (assertion.Evidence, error) {
+func flowWireEvidence(ctx context.Context, plan *connectedtest.FlowPlan, phase connectedtest.FlowPhase, result Result, files map[string][]byte) (assertion.Evidence, error) {
 	evidence := assertion.Evidence{Input: map[string]assertion.Message{}, Observed: map[string]assertion.Message{}}
-	run, err := replay.Open(filepath.Join(path, "transport", "run"))
+	run, err := replay.Verify(artifactdir.Subtree(files, "transport/run"))
 	if err != nil || run.Identity != result.Transport {
 		return evidence, invalid
 	}
-	evaluated, e := connectedtest.OpenDatasetResult(ctx, filepath.Join(path, "evaluation"))
+	evaluated, e := connectedtest.VerifyDatasetResult(ctx, artifactdir.Subtree(files, "evaluation"))
 	if e != nil || flowDigest(evaluated) != result.Evaluation {
 		return evidence, invalid
 	}
@@ -166,14 +170,14 @@ func flowWireEvidence(ctx context.Context, plan *connectedtest.FlowPlan, phase c
 		if !ok {
 			return nil, "", invalid
 		}
-		dir := filepath.Join(path, "observations", name)
+		dir := "observations/" + name
 		var snap *dataset.Snapshot
 		var e error
 		if strings.HasPrefix(name, "intervals/") {
-			dir = filepath.Join(path, name)
-			snap, e = dataset.Open(ctx, dir)
+			dir = name
+			snap, e = dataset.Verify(ctx, artifactdir.Subtree(files, dir))
 		} else {
-			snap, e = observesource.OpenDataset(ctx, dir)
+			snap, e = observesource.VerifyDataset(ctx, artifactdir.Subtree(files, dir))
 		}
 		if e != nil || snap.Identity() != evaluated.Report.Evidence[id] {
 			return nil, "", invalid
@@ -187,11 +191,11 @@ func flowWireEvidence(ctx context.Context, plan *connectedtest.FlowPlan, phase c
 			return evidence, e
 		}
 		material := snap.Document().Material
-		raw, e := (artifactdir.Document{MaxBytes: 64 << 20}).Read(filepath.Join(dir, "dataset", material.Path))
-		if e != nil {
-			raw, e = (artifactdir.Document{MaxBytes: 64 << 20}).Read(filepath.Join(dir, material.Path))
+		raw, ok := files[dir+"/dataset/"+material.Path]
+		if !ok {
+			raw, ok = files[dir+"/"+material.Path]
 		}
-		if e != nil || dataset.Digest(raw) != material.SHA256 || len(raw) != material.Size {
+		if !ok || dataset.Digest(raw) != material.SHA256 || len(raw) != material.Size {
 			return evidence, invalid
 		}
 		var capture dataset.CaptureRead

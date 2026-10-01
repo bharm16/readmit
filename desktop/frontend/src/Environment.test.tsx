@@ -3,9 +3,9 @@
 // fixtures name peers by synthetic tokens, never a network address, and
 // credentials by reference, never a value.
 import { expect, test } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { CatalogItem, CredentialRow, ItemDraft, ItemRequest, SaveItemRequest, SaveItemResult } from "./bindings";
+import type { CatalogItem, CredentialRow, ItemDraft, ItemDraftResult, ItemRequest, SaveItemRequest, SaveItemResult } from "./bindings";
 import { renderApp } from "./testkit/app";
 import { catalogOfListing, folderWithCase, WORKSPACE_ROOT } from "./testkit/fixtures";
 import { goTo, page } from "./testkit/navigation";
@@ -900,4 +900,34 @@ test("an environment that changed since it was opened keeps what was typed and s
   await user.click(within(ask).getByRole("button", { name: "Keep editing" }));
   expect((within(sheet).getByRole("textbox", { name: "Host" }) as HTMLInputElement).value).toBe("renamed-peer");
   expect(facade.callsTo("SaveItem")).toHaveLength(1);
+});
+
+
+test.each(["completed", "failed"] as const)("switching environment details ignores an older %s reply", async (lateState) => {
+  const pending: { request: ItemRequest; resolve: (answer: ItemDraftResult) => void }[] = [];
+  const user = userEvent.setup();
+  const { facade } = await renderApp(handlers({
+    OpenItemDraft: request => new Promise<ItemDraftResult>(resolve => pending.push({ request, resolve })),
+  }));
+  await openEnvironments(user, facade);
+  const environments = await page().findByRole("table", { name: "Environments" });
+  await user.click(environments.querySelector<HTMLElement>('[data-row-id="env-qa"]')!);
+  await waitFor(() => expect(pending).toHaveLength(1));
+  await user.click(page().getByRole("button", { name: "Back to environments" }));
+  const listed = await page().findByRole("table", { name: "Environments" });
+  await user.click(listed.querySelector<HTMLElement>('[data-row-id="env-local"]')!);
+  await waitFor(() => expect(pending).toHaveLength(2));
+  pending[1]!.resolve({ state: "completed", context: pending[1]!.request.context, new: false, ref: pending[1]!.request.ref, draft: { name: "Local fixture", environment: { ...QA_DRAFT.environment!, address: "current-draft:2576" } } });
+  expect(await page().findByText("current-draft:2576")).toBeTruthy();
+  await act(async () => {
+    pending[0]!.resolve(lateState === "completed"
+      ? { state: "completed", context: pending[0]!.request.context, new: false, ref: pending[0]!.request.ref, draft: { ...QA_DRAFT, environment: { ...QA_DRAFT.environment!, address: "old-draft:2575" } } }
+      : { state: "failed", context: pending[0]!.request.context, new: false, reason: "Old environment refused" });
+  });
+  await waitFor(() => {
+    expect(page().queryByText("old-draft:2575")).toBeNull();
+    expect(page().queryByText("Old environment refused")).toBeNull();
+    expect(page().getByText("current-draft:2576")).toBeTruthy();
+    expect(page().getByRole("heading", { name: "Local fixture" })).toBeTruthy();
+  });
 });

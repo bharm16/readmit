@@ -61,6 +61,18 @@ func OpenDatasetResult(ctx context.Context, directory string) (DatasetResult, er
 	if err != nil {
 		return DatasetResult{}, err
 	}
+	return verifyDatasetResult(ctx, files)
+}
+
+// VerifyDatasetResult reevaluates the captured plan and captured datasets.
+func VerifyDatasetResult(ctx context.Context, captured map[string][]byte) (DatasetResult, error) {
+	files, err := artifactdir.Snapshot(captured, typedResultFamily.Layout)
+	if err != nil {
+		return DatasetResult{}, err
+	}
+	return verifyDatasetResult(ctx, files)
+}
+func verifyDatasetResult(ctx context.Context, files map[string][]byte) (DatasetResult, error) {
 	if !sealed(DatasetResultSchema, files) {
 		return DatasetResult{}, invalid
 	}
@@ -68,7 +80,7 @@ func OpenDatasetResult(ctx context.Context, directory string) (DatasetResult, er
 	if json.Unmarshal(files["result.json"], &retained, json.RejectUnknownMembers(true)) != nil || retained.Schema != DatasetResultSchema {
 		return DatasetResult{}, invalid
 	}
-	plan, err := OpenPlan(filepath.Join(directory, "plan"))
+	plan, err := VerifyPlan(artifactdir.Subtree(files, "plan"))
 	if err != nil {
 		return DatasetResult{}, err
 	}
@@ -78,7 +90,7 @@ func OpenDatasetResult(ctx context.Context, directory string) (DatasetResult, er
 	}
 	snapshots := map[string]*dataset.Snapshot{}
 	for _, binding := range set.Document().Bindings {
-		snapshot, err := dataset.Open(ctx, filepath.Join(directory, "datasets", binding.Name))
+		snapshot, err := dataset.Verify(ctx, artifactdir.Subtree(files, "datasets/"+binding.Name))
 		if err != nil {
 			return DatasetResult{}, err
 		}

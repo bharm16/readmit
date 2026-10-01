@@ -117,15 +117,24 @@ closure remain separate checks.
 For the interactive journey, install/copy the exact candidate package normally,
 retain its checksum, then use only the native UI:
 
-1. Create a sample in a new synthetic workspace; verify/open `regression`.
-2. Open `regression.index.json`; author a named test sending both occurrences
-   at `practice-target.json`, with the `appointment-ledger` boundary, explicit
-   observation/reset instructions and an expected record count of one.
-3. Save a new test. Run the defective fixture and require `assertion_failure`
-   with the record-count assertion failed. Run the corrected fixture and require
-   `pass` for the same expectation and original message bytes.
-4. Close/reopen the app, reopen that workspace and require both retained results
-   still complete. Verify the evidence offline independently.
+1. Choose **Try demo**, then walk the shared authored obligations in
+   `testdata/acceptance/demo-scenario.json`: open messages, create the supplied
+   test through Setup/Checks/Review, run the defective receiver and inspect
+   expected one versus observed two, run the fixed receiver and compare.
+2. Close/reopen the application, choose Try demo and read both retained verdicts
+   from Runs; reopening starts no execution. Independently compare the retained
+   results with the command line.
+3. For the separate report/export obligation, provision a synthetic vendor
+   activation folder and activate it through ordinary Settings/License controls
+   in the isolated native account. Create a report from the failed practice run
+   with the fixed run selected as its comparison. Use Contents/Redaction/Preview
+   to export original evidence into a newly named folder, then verify the
+   portable review offline with the command line.
+
+The free demo is exercised before that separate licensed export. No production
+license or evidence is used. The rewritten driver and DOM journey share authored
+ordering and expectations; its checks are not a new five-platform qualification
+receipt. Existing historical receipts below retain their original scope.
 
 The sample uses an in-process fixture. It proves the native binding, authoring,
 local execution and result-readback journey, not external-target equivalence.
@@ -224,17 +233,11 @@ backend per platform in `tools/native/` only reads the tree and acts on it:
 
 Two journeys run wherever the native journeys run:
 
-1. The interactive journey above: the sample created in a folder chosen
-   through the host dialog, `regression` verified and opened, every authoring
-   stage answered and a new test saved, `assertion_failure` against the
-   misbehaving fixture and `pass` against the corrected one, then the window
-   closed and reopened with both verdicts read back. `readmit report
-   assemble` seals the two practice runs into a packet while the window is
-   closed; the reopened window verifies it read-only and exports it as a
-   portable review into a new folder named in the host's save dialog.
-   `readmit diff` over the two retained results reports the same, and
-   `readmit report review` reads the exported review as the review of that
-   packet.
+1. The interactive journey above uses the managed demo and current ordinary
+   screens, retained fail/pass/comparison, close/reopen and a portable original
+   review. The shared fixture owns its literal oracles. The native driver acts
+   through the OS accessibility adapters; the DOM driver crosses the real typed
+   facade. Actual installed execution remains a separate qualification gate.
 2. A staged upgrade checked against the real candidate: the vendor's
    activation folder chosen and reported active, a project created through
    the window and backed up into a new folder named in the host's save

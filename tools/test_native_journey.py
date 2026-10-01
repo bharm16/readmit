@@ -151,39 +151,41 @@ class Driver(unittest.TestCase):
         app.fill("Name", "regression", index=1, timeout=1, settle=0)
         self.assertEqual(self.sent("set"), [{"op": "set", "id": 2, "text": "regression"}])
 
-    def test_guided_sample_names_the_test_inside_its_authoring_region(self):
-        # Minimized from the failed Linux journey: the filter and profile
-        # editor appear before Test authoring and also match a global Name.
-        empty = [
-            node(0, "frame"),
-            node(1, "entry", "Name", 0, value=""),
-            node(2, "entry", "Name for SCH-1", 0, value=""),
-            node(3, "push button", "Save name", 0),
-            node(4, "landmark", "Test authoring", 0),
-            node(5, "entry", "Name", 4, value=""),
-            node(6, "push button", "Save name", 4),
-        ]
-        held = [dict(n, value="reschedule-regression") if n["id"] == 5 else n for n in empty]
-        app = self.application("linux", [empty, held])
-        press = app.press
-        fill = app.fill
-
-        class NameSaved(Exception):
+    def test_guided_sample_walks_current_controls_in_the_shared_order(self):
+        class Compared(Exception):
             pass
 
-        def until_name_saved(name, **kwargs):
-            if name == "Save name":
-                press(name, **kwargs)
-                raise NameSaved
+        class CurrentDemo:
+            def __init__(self):
+                self.pressed = []
+                self.checkpoints = []
 
-        with mock.patch.object(app, "launch"), mock.patch.object(app, "checkpoint"), \
-                mock.patch.object(app, "choose_folder"), mock.patch.object(app, "read_out"), \
-                mock.patch.object(app, "press", side_effect=until_name_saved), \
-                mock.patch.object(app, "fill", side_effect=lambda *args, **kwargs: fill(*args, **kwargs, settle=0)):
-            with self.assertRaises(NameSaved):
-                native_journey.guided_sample(app, self.root / "sample", None, None)
-        self.assertEqual(self.sent("set"), [{"op": "set", "id": 5, "text": "reschedule-regression"}])
-        self.assertEqual(self.sent("press"), [{"op": "press", "id": 6}])
+            def launch(self):
+                pass
+
+            def checkpoint(self, name):
+                self.checkpoints.append(name)
+
+            def find(self, role, name, **kwargs):
+                if (role, name) != ("region", "Demo"):
+                    raise AssertionError("unsupported current role/name")
+
+            def press(self, name, **kwargs):
+                allowed = {"Try demo", "Open sample messages", "Create supplied test", "Next", "Review", "Create test", "Run defective receiver", "Run fixed receiver", "Compare results"}
+                if name not in allowed:
+                    raise AssertionError("production offers no control named " + name)
+                self.pressed.append(name)
+                if name == "Compare results":
+                    raise Compared
+
+            def read_out(self, pattern, **kwargs):
+                return pattern
+
+        app = CurrentDemo()
+        with self.assertRaises(Compared):
+            native_journey.guided_sample(app, self.root / "sample", None, {})
+        self.assertEqual(app.pressed, ["Try demo", "Open sample messages", "Create supplied test", "Next", "Review", "Create test", "Run defective receiver", "Run fixed receiver", "Compare results"])
+        self.assertIn("demo-view-failed-check", app.checkpoints)
 
     def test_a_new_folder_is_named_in_the_save_dialog_and_an_existing_one_picked_in_the_folder_dialog(self):
         app = self.application("windows", [[node(0, "Window")]])

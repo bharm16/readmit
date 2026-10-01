@@ -213,6 +213,18 @@ func open(path string, schemas ...string) (*Run, error) {
 	if err != nil {
 		return nil, err
 	}
+	return verify(files, schemas...)
+}
+
+// Verify interprets a captured ordinary or sequence run with Open's rules.
+func Verify(captured map[string][]byte) (*Run, error) {
+	files, err := artifactdir.Snapshot(captured, runFamily.Layout)
+	if err != nil {
+		return nil, err
+	}
+	return verify(files, Schema, SequenceSchema)
+}
+func verify(files map[string][]byte, schemas ...string) (*Run, error) {
 	r := &Run{payloads: make(map[string][]byte)}
 	if err := json.Unmarshal(files["manifest.json"], &r.Manifest, json.RejectUnknownMembers(true)); err != nil {
 		return nil, errors.New("invalid run manifest")

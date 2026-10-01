@@ -244,8 +244,8 @@ func executeFHIRPhase(ctx context.Context, p *PreparedFlow, phase connectedtest.
 			state.session, err = observeinterval.Arm(ctx, *typed.interval, binding, path, observeinterval.SystemClock())
 		} else {
 			observation := fhir.observation
-			state.session, err = observeinterval.ArmSamples(ctx, fhir.interval, binding, path, observeinterval.SystemClock(), fhirobserve.SampleSchema, func(ctx context.Context, dir string) (observeinterval.Sample, error) {
-				return reader.openSample(ctx, observation, dir, dataset.Binding{})
+			state.session, err = observeinterval.ArmSamples(ctx, fhir.interval, binding, path, observeinterval.SystemClock(), fhirobserve.SampleSchema, func(ctx context.Context, files map[string][]byte) (observeinterval.Sample, error) {
+				return reader.verifySample(ctx, observation, files, dataset.Binding{})
 			})
 		}
 		if err != nil {

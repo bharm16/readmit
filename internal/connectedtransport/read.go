@@ -7,7 +7,6 @@ import (
 	"crypto/x509"
 	"encoding/json/v2"
 	"net/netip"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -40,6 +39,18 @@ func OpenEvidence(directory string) (Evidence, error) {
 	if err != nil {
 		return Evidence{}, refused
 	}
+	return verifyEvidence(files)
+}
+
+// VerifyEvidence couples transport outcomes to the exact captured bytes.
+func VerifyEvidence(captured map[string][]byte) (Evidence, error) {
+	files, err := artifactdir.Snapshot(captured, family.Layout)
+	if err != nil {
+		return Evidence{}, refused
+	}
+	return verifyEvidence(files)
+}
+func verifyEvidence(files map[string][]byte) (Evidence, error) {
 	var r, start Receipt
 	if json.Unmarshal(files["receipt.json"], &r, json.RejectUnknownMembers(true)) != nil || json.Unmarshal(files["started.json"], &start, json.RejectUnknownMembers(true)) != nil || (r.Schema != ReceiptSchema && r.Schema != ReceiptSchemaV2 && r.Schema != ReceiptSchemaV3) || r.ApplicationVerdict != "not-evaluated" || strings.TrimSpace(string(files["identity.sha256"])) != artifactdir.Identity(r.Schema, files) {
 		return Evidence{}, refused
@@ -53,7 +64,7 @@ func OpenEvidence(directory string) (Evidence, error) {
 	if !bytes.Equal(a, b) {
 		return Evidence{}, refused
 	}
-	plan, err := connectedtest.OpenPlan(filepath.Join(directory, "plan"))
+	plan, err := connectedtest.VerifyPlan(artifactdir.Subtree(files, "plan"))
 	if err != nil || r.Binding.Plan != plan.Identity() || !artifactdir.MatchesSubtree(files, "plan", plan.Document().Schema, artifactdir.Identity(plan.Document().Schema, plan.Files())) {
 		return Evidence{}, refused
 	}
@@ -76,7 +87,7 @@ func OpenEvidence(directory string) (Evidence, error) {
 	if err != nil || policy.Project != env.Project || policy.Environment != env.ID || policy.Revision != env.Revision || r.Binding.Policy != env.AddressPolicyIdentity {
 		return Evidence{}, refused
 	}
-	run, err := replay.Open(filepath.Join(directory, "run"))
+	run, err := replay.Verify(artifactdir.Subtree(files, "run"))
 	if err != nil || !artifactdir.MatchesSubtree(files, "run", run.Manifest.Schema, run.Identity) || run.Identity != r.RunIdentity || run.Manifest.SourceBundleIdentity != r.Binding.Source || run.Manifest.Target.Identity() != env.TargetIdentity || len(run.Events) != len(plan.Document().Order) || transportState(run) != r.State {
 		return Evidence{}, refused
 	}

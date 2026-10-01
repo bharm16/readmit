@@ -22,6 +22,18 @@ func OpenPlan(directory string) (*Plan, error) {
 	if err != nil {
 		return nil, err
 	}
+	return verifyPlan(files)
+}
+
+// VerifyPlan verifies the exact captured plan and every pinned dependency.
+func VerifyPlan(captured map[string][]byte) (*Plan, error) {
+	files, err := artifactdir.Snapshot(captured, planFamily.Layout)
+	if err != nil {
+		return nil, err
+	}
+	return verifyPlan(files)
+}
+func verifyPlan(files map[string][]byte) (*Plan, error) {
 	var declared struct {
 		Schema string `json:"schema"`
 	}

@@ -5,7 +5,6 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"io/fs"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -442,6 +441,18 @@ func OpenFlowPlan(path string) (*FlowPlan, error) {
 	if err != nil {
 		return nil, err
 	}
+	return verifyFlowPlan(files)
+}
+
+// VerifyFlowPlan reconstructs all phases from one captured flow snapshot.
+func VerifyFlowPlan(captured map[string][]byte) (*FlowPlan, error) {
+	files, err := artifactdir.Snapshot(captured, flowFamily.Layout)
+	if err != nil {
+		return nil, err
+	}
+	return verifyFlowPlan(files)
+}
+func verifyFlowPlan(files map[string][]byte) (*FlowPlan, error) {
 	var declared FlowDocument
 	if json.Unmarshal(files["flow.json"], &declared, json.RejectUnknownMembers(true)) != nil || declared.Schema != FlowPlanSchema && declared.Schema != FHIRFlowPlanSchema && declared.Schema != ScheduledFlowPlanSchema || !sealed(declared.Schema, files) {
 		return nil, invalid
@@ -452,7 +463,7 @@ func OpenFlowPlan(path string) (*FlowPlan, error) {
 		supplied[s.Generation.File] = files["dependencies/"+s.Generation.SHA256]
 	}
 	for _, phase := range declared.Test.Phases {
-		child, err := OpenPlan(filepath.Join(path, "phases", phase.ID))
+		child, err := VerifyPlan(artifactdir.Subtree(files, "phases/"+phase.ID))
 		if err != nil || child.Identity() != declared.Phases[phase.ID] || !artifactdir.MatchesSubtree(files, "phases/"+phase.ID, child.document.Schema, artifactdir.Identity(child.document.Schema, child.Files())) {
 			return nil, invalid
 		}

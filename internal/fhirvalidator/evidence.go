@@ -93,6 +93,18 @@ func Open(ctx context.Context, directory string) (*Evidence, error) {
 	if err != nil {
 		return nil, invalid
 	}
+	return verifyEvidence(ctx, files)
+}
+
+// Verify evaluates one captured validation receipt, with no worker effects.
+func Verify(ctx context.Context, captured map[string][]byte) (*Evidence, error) {
+	files, err := artifactdir.Snapshot(captured, resultFamily.Layout)
+	if err != nil {
+		return nil, invalid
+	}
+	return verifyEvidence(ctx, files)
+}
+func verifyEvidence(ctx context.Context, files map[string][]byte) (*Evidence, error) {
 	identity := strings.TrimSpace(string(files["identity.sha256"]))
 	if identity != artifactdir.Identity(ResultSchema, files) {
 		return nil, invalid

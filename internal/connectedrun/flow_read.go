@@ -31,7 +31,7 @@ func openFlowFiles(ctx context.Context, path string, files map[string][]byte) (F
 	if strings.TrimSpace(string(files["identity.sha256"])) != artifactdir.Identity(r.Schema, files) {
 		return FlowResult{}, invalid
 	}
-	plan, err := connectedtest.OpenFlowPlan(filepath.Join(path, "plan"))
+	plan, err := connectedtest.VerifyFlowPlan(artifactdir.Subtree(files, "plan"))
 	if err != nil || plan.Identity() != r.Plan || flowSchemaFor(plan) != r.Schema || !artifactdir.MatchesSubtree(files, "plan", plan.Document().Schema, artifactdir.Identity(plan.Document().Schema, plan.Files())) {
 		return FlowResult{}, invalid
 	}
@@ -203,7 +203,7 @@ func openFlowFiles(ctx context.Context, path string, files map[string][]byte) (F
 			priorTime = child.CompletedAt
 			continue
 		}
-		verified, err := OpenEvidence(ctx, filepath.Join(path, "phases", phase.ID))
+		verified, err := VerifyEvidence(ctx, artifactdir.Subtree(files, "phases/"+phase.ID))
 		child := verified.Result
 		if err != nil || child.Plan != intent.Plan || child.Instance != r.Instance || child.StartedAt.Before(intent.At) || child.CompletedAt.After(r.CompletedAt) {
 			return FlowResult{}, invalid
@@ -212,7 +212,7 @@ func openFlowFiles(ctx context.Context, path string, files map[string][]byte) (F
 			return FlowResult{}, invalid
 		}
 
-		evaluated, err := evaluateFlowPhase(ctx, plan, phase, child, filepath.Join(path, "phases", phase.ID))
+		evaluated, err := evaluateOwnedPhase(ctx, plan, phase, verified)
 		if err != nil || !bytes.Equal(canonicalFlow(got), canonicalFlow(evaluated)) {
 			return FlowResult{}, invalid
 		}

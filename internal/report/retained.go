@@ -97,6 +97,16 @@ type RetainedManifest struct {
 type RetainedPacket struct {
 	Manifest RetainedManifest
 	Identity string
+	snapshot *retainedSnapshot
+}
+
+type retainedSnapshot struct {
+	directory         string
+	manifest          RetainedManifest
+	identity          string
+	files             map[string][]byte
+	current, baseline *runresult.Result
+	source            *bundle.Bundle
 }
 
 // Assemble copies bounded snapshots into a new private directory and verifies
@@ -561,7 +571,48 @@ func OpenRetained(ctx context.Context, dir string) (*RetainedPacket, error) {
 	if err != nil || !bytes.Equal(raw, canonical) || !bytes.Equal(summary, files["SUMMARY.md"]) || !retainedInstructionsBlock.check(stored.Instructions, files["RERUN.md"]) {
 		return nil, invalid
 	}
-	return &RetainedPacket{Manifest: expected, Identity: digest(raw)}, nil
+	current, err := runresult.Open(filepath.Join(dir, "current"))
+	if err != nil || current.Artifact == nil || current.Artifact.Identity != expected.Current.Identity {
+		return nil, invalid
+	}
+	source, err := bundle.Verify(artifactdir.Subtree(files, "case"))
+	if err != nil || source.Identity != expected.Current.CaseIdentity {
+		return nil, invalid
+	}
+	var baseline *runresult.Result
+	if expected.Baseline != nil {
+		baseline, err = runresult.Open(filepath.Join(dir, "baseline"))
+		if err != nil || baseline.Artifact == nil || baseline.Artifact.Identity != expected.Baseline.Identity {
+			return nil, invalid
+		}
+	}
+	// Public summary metadata is detached from the privately held verified facts.
+	var summaryManifest RetainedManifest
+	if json.Unmarshal(canonical, &summaryManifest) != nil {
+		return nil, invalid
+	}
+	identity := digest(raw)
+	return &RetainedPacket{Manifest: summaryManifest, Identity: identity, snapshot: &retainedSnapshot{directory: dir, manifest: expected, identity: identity, files: files, current: current, baseline: baseline, source: source}}, nil
+}
+
+func (p *RetainedPacket) verified() (*RetainedPacket, error) {
+	if p == nil || p.snapshot == nil {
+		return nil, errors.New("a report requires a verified retained packet")
+	}
+	return &RetainedPacket{Manifest: p.snapshot.manifest, Identity: p.snapshot.identity, snapshot: p.snapshot}, nil
+}
+
+// Case returns detached evidence from this packet's captured bytes, never the
+// folder a caller separately names. Sharing uses the same reading as rendering.
+func (p *RetainedPacket) Case() (*bundle.Bundle, error) {
+	if p == nil || p.snapshot == nil {
+		return nil, errors.New("a report requires a verified retained packet")
+	}
+	return bundle.Verify(artifactdir.Subtree(p.snapshot.files, "case"))
+}
+
+func (p *RetainedPacket) Format(w fmt.State, _ rune) {
+	_, _ = w.Write([]byte("retained report (private)"))
 }
 
 func inspectRetained(ctx context.Context, dir string, files map[string][]byte) (RetainedManifest, []byte, error) {

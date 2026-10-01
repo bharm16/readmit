@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"fmt"
 	"net"
 	"net/http"
 	"path/filepath"
@@ -203,61 +202,34 @@ func ExecuteManagedRun(ctx context.Context, entry runnerprotocol.ScheduleEntry, 
 	if e != nil {
 		return "error"
 	}
-	identity, jobs, e := runqueue.PinnedJobs(ctx, entry.Spec)
-	if e != nil || identity != entry.Input {
+	prepared, e := runqueue.PrepareQueue(ctx, entry.Spec)
+	if e != nil || prepared.Identity() != entry.Input {
 		return "error"
 	}
-	passed, done := map[string]bool{}, map[string]bool{}
-	worst := "passed"
-	rank := map[string]int{"passed": 0, "failed": 1, "error": 2, "cancelled": 3, "uncertain": 4}
-	for progressed := true; progressed; {
-		progressed = false
-		for i, job := range jobs {
-			if done[job.ID] {
-				continue
-			}
-			ready, blocked := true, false
-			for _, after := range job.After {
-				ready = ready && done[after]
-				blocked = blocked || done[after] && !passed[after]
-			}
-			if !ready {
-				continue
-			}
-			done[job.ID], progressed = true, true
-			state := "failed"
-			if !blocked {
-				state = executeQueuedJob(ctx, c, fmt.Sprintf("%s-%d", key, i), job)
-			}
-			passed[job.ID] = state == "passed"
-			if rank[state] > rank[worst] {
-				worst = state
-			}
-			if state == "uncertain" || state == "cancelled" {
-				return state
-			}
+	report, e := prepared.Dispatch(ctx, c.Root, key, func(ctx context.Context, job runqueue.PinnedJob, id string) (durablerun.Summary, error) {
+		return customerrunner.RunPinned(ctx, c, customerrunner.Job{Schema: "readmit-runner-job/v1", ID: id, Spec: job.Spec}, job.Input)
+	})
+	for _, job := range report.Jobs {
+		if job.Run != nil && (job.Run.DeliveryUncertain || job.Run.JournalIncomplete) {
+			return "uncertain"
 		}
 	}
-	return worst
-}
-
-func executeQueuedJob(ctx context.Context, c customerrunner.Config, id string, job runqueue.PinnedJob) string {
-	summary, e := customerrunner.RunPinned(ctx, c, customerrunner.Job{Schema: "readmit-runner-job/v1", ID: id, Spec: job.Spec}, job.Input)
-	switch {
-	case summary.DeliveryUncertain || summary.JournalIncomplete:
-		return "uncertain"
-	case ctx.Err() != nil:
+	if ctx.Err() != nil {
 		return "cancelled"
-	case e != nil:
+	}
+	for _, job := range report.Jobs {
+		if job.Run != nil && job.Run.State == durablerun.Cancelled {
+			return "cancelled"
+		}
+	}
+	if e != nil {
 		return "error"
 	}
-	switch summary.State {
-	case durablerun.Passed:
+	switch report.ExitCode() {
+	case 0:
 		return "passed"
-	case durablerun.AssertionFailed:
+	case 1:
 		return "failed"
-	case durablerun.Cancelled:
-		return "cancelled"
 	}
 	return "error"
 }

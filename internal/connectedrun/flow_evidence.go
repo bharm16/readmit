@@ -57,11 +57,24 @@ func OpenFlowEvidence(ctx context.Context, path string) (FlowEvidence, error) {
 	if err != nil {
 		return FlowEvidence{}, err
 	}
+	return verifyFlowEvidence(ctx, path, files)
+}
+
+// VerifyFlowEvidence owns one captured lifecycle snapshot. Its plans, phases,
+// evaluations and final tables are verified without reopening any directory.
+func VerifyFlowEvidence(ctx context.Context, captured map[string][]byte) (FlowEvidence, error) {
+	files, err := artifactdir.Snapshot(captured, flowResultFamily.Layout)
+	if err != nil {
+		return FlowEvidence{}, err
+	}
+	return verifyFlowEvidence(ctx, "retained-lifecycle", files)
+}
+func verifyFlowEvidence(ctx context.Context, path string, files map[string][]byte) (FlowEvidence, error) {
 	r, err := openFlowFiles(ctx, path, files)
 	if err != nil {
 		return FlowEvidence{}, err
 	}
-	plan, err := connectedtest.OpenFlowPlan(filepath.Join(path, "plan"))
+	plan, err := connectedtest.VerifyFlowPlan(artifactdir.Subtree(files, "plan"))
 	if err != nil {
 		return FlowEvidence{}, invalid
 	}
@@ -105,7 +118,7 @@ func OpenFlowEvidence(ctx context.Context, path string) (FlowEvidence, error) {
 				pe.Validators[id] = v
 			}
 		} else {
-			verified, err := OpenEvidence(ctx, dir)
+			verified, err := VerifyEvidence(ctx, artifactdir.Subtree(files, prefix))
 			if err != nil {
 				return FlowEvidence{}, invalid
 			}
@@ -115,7 +128,7 @@ func OpenFlowEvidence(ctx context.Context, path string) (FlowEvidence, error) {
 				if _, ok := files[name]; !ok {
 					continue
 				}
-				snapshot, err := dataset.Open(ctx, filepath.Join(dir, "evaluation", "datasets", ds.ID))
+				snapshot, err := dataset.Verify(ctx, artifactdir.Subtree(files, prefix+"/evaluation/datasets/"+ds.ID))
 				if err != nil {
 					return FlowEvidence{}, invalid
 				}

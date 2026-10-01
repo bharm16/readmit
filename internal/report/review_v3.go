@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/bharm16/readmit/internal/artifactpath"
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/runresult"
 )
@@ -62,7 +62,7 @@ func documentRenderings(ctx context.Context, packetDir string, packet *RetainedP
 		return nil, err
 	}
 	authored.Schema = AuthoredSchema
-	doc, err := BuildDocument(ctx, packetDir, packet, authored)
+	doc, err := packet.Document(ctx, authored)
 	if err != nil {
 		return nil, err
 	}
@@ -154,41 +154,38 @@ func openReviewV3(ctx context.Context, dir string, files map[string][]byte) (*Re
 // DocumentReviewFiles are the files ExportDocumentReview seals for the
 // packet at source, byte for byte, held in memory rather than written: a
 // share that encrypts original evidence packs them without a plaintext copy.
-// The packet is read, verified in place, rendered and read again; a packet
-// whose bytes changed meanwhile is refused.
+// The packet owns the verified bytes used by every rendering and copied member.
 func DocumentReviewFiles(ctx context.Context, source string, authored Authored) (map[string][]byte, error) {
-	source, err := artifactpath.Directory(source)
-	if err != nil {
-		return nil, err
-	}
-	files, err := readTree(source)
-	if err != nil {
-		return nil, err
-	}
-	nested := make(map[string][]byte, len(files)+8)
-	for name, data := range files {
-		nested["packet/"+name] = data
-	}
-	if err := reviewBounds(nested); err != nil {
-		return nil, err
-	}
 	packet, err := OpenRetained(ctx, source)
 	if err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(authored.Title) == "" {
-		authored.Title = DefaultTitle(source)
+	return packet.DocumentReviewFiles(ctx, authored)
+}
+
+// DocumentReviewFiles returns detached portable-review bytes from this reading.
+func (packet *RetainedPacket) DocumentReviewFiles(ctx context.Context, authored Authored) (map[string][]byte, error) {
+	packet, err := packet.verified()
+	if err != nil {
+		return nil, err
 	}
-	renders, err := documentRenderings(ctx, source, packet, authored)
+	files := packet.snapshot.files
+	nested := make(map[string][]byte, len(files)+8)
+	for name, data := range files {
+		nested["packet/"+name] = bytes.Clone(data)
+	}
+	if err := reviewBounds(nested); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(authored.Title) == "" {
+		authored.Title = TitleFor(packet.snapshot.current.Spec.Name)
+	}
+	renders, err := documentRenderings(ctx, packet.snapshot.directory, packet, authored)
 	if err != nil {
 		return nil, err
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
-	}
-	again, err := readTree(source)
-	if err != nil || !sameTree(files, again) {
-		return nil, errors.New("the retained evidence changed while it was read")
 	}
 	for name, data := range renders {
 		nested[name] = data
@@ -205,14 +202,16 @@ func DocumentReviewFiles(ctx context.Context, source string, authored Authored) 
 	return nested, nil
 }
 
-func sameTree(a, b map[string][]byte) bool {
-	if len(a) != len(b) {
-		return false
+// ExportDocumentReview writes this exact verified reading to a new directory.
+// It never reacquires original evidence after the share has been constructed.
+func (packet *RetainedPacket) ExportDocumentReview(ctx context.Context, output string, authored Authored) (*Review, error) {
+	files, err := packet.DocumentReviewFiles(ctx, authored)
+	if err != nil {
+		return nil, err
 	}
-	for name, data := range a {
-		if other, ok := b[name]; !ok || !bytes.Equal(data, other) {
-			return false
-		}
+	delete(files, "identity.sha256")
+	if _, err := artifactdir.Write(ctx, output, reviewFamilyV3, artifactdir.Durable, files); err != nil {
+		return nil, err
 	}
-	return true
+	return OpenReview(ctx, output)
 }

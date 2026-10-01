@@ -203,6 +203,7 @@ type reportShareBinding struct {
 	options   ReportShareOptions
 	share     *reportshare.Share
 	packetDir string
+	packet    *report.RetainedPacket
 	authored  report.Authored
 	path      string
 	encrypt   *protect.File
@@ -266,13 +267,13 @@ func bindReportShare(a *App, ctx context.Context, request PrepareActionRequest, 
 	if !options.Contents.Attachments {
 		attachments = nil
 	}
-	share, err := reportshare.Build(ctx, reportshare.Request{PacketDir: backing.packetDir, Packet: backing.packet, Authored: backing.authored, Template: template,
+	share, err := reportshare.Build(ctx, reportshare.Request{Packet: backing.packet, Authored: backing.authored, Template: template,
 		Overrides: options.Overrides, Key: key, Contents: reportshare.Contents(options.Contents), Attachments: attachments, Format: format})
 	if err != nil {
 		return nil, refusal{Failed, err.Error()}
 	}
 	bound := &reportShareBinding{item: records[0].ID, revision: backing.revision, title: share.Document.Title, options: options, share: share,
-		packetDir: backing.packetDir, authored: backing.authored}
+		packetDir: backing.packetDir, packet: backing.packet, authored: backing.authored}
 	// Each list is present when empty: a share with every row resolved has
 	// no issues, not an unknown set of them.
 	display.Items, display.Rows, display.Issues = nonNil(share.Items), nonNil(share.Rows), nonNil(share.Issues)
@@ -727,7 +728,7 @@ func (s *reportShareBinding) writeFolder(ctx context.Context, destination string
 		}
 	}
 	if s.share.Original {
-		if _, err := report.ExportDocumentReview(ctx, s.packetDir, filepath.Join(destination, "Original evidence"), s.authored); err != nil {
+		if _, err := s.packet.ExportDocumentReview(ctx, filepath.Join(destination, "Original evidence"), s.authored); err != nil {
 			return true, errors.New("the original evidence could not be written; the output is incomplete")
 		}
 	}
@@ -747,7 +748,7 @@ func (s *reportShareBinding) packageSources(ctx context.Context) ([]protect.Sour
 		sources = append(sources, protect.Source{Name: file.Name, Data: file.Data})
 	}
 	if s.share.Original {
-		files, err := report.DocumentReviewFiles(ctx, s.packetDir, s.authored)
+		files, err := s.packet.DocumentReviewFiles(ctx, s.authored)
 		if err != nil {
 			return nil, errors.New("the original evidence could not be read")
 		}

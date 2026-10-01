@@ -118,11 +118,23 @@ func Open(ctx context.Context, directory string, o Observation, expect Expect) (
 	if err != nil {
 		return nil, err
 	}
+	return verifySample(ctx, files, o, expect)
+}
+
+// Verify projects only the responses inside this captured acquisition.
+func Verify(ctx context.Context, captured map[string][]byte, o Observation, expect Expect) (*Sample, error) {
+	files, err := artifactdir.Snapshot(captured, family.Layout)
+	if err != nil {
+		return nil, err
+	}
+	return verifySample(ctx, files, o, expect)
+}
+func verifySample(ctx context.Context, files map[string][]byte, o Observation, expect Expect) (*Sample, error) {
 	identity := strings.TrimSpace(string(files["identity.sha256"]))
 	if identity != artifactdir.Identity(SampleSchema, files) || o.Validate() != nil {
 		return nil, invalid
 	}
-	evidence, err := fhirrest.OpenEvidence(ctx, filepath.Join(directory, "http"))
+	evidence, err := fhirrest.VerifyEvidence(ctx, artifactdir.Subtree(files, "http"))
 	if err != nil || !artifactdir.MatchesSubtree(files, "http", fhirrest.ResultSchema, evidence.Identity()) {
 		return nil, invalid
 	}

@@ -4,9 +4,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   cancelOperation,
-  executeReviewedAction,
-  newIntentId,
-  prepareAction,
   type ActionReview,
   type ItemRef,
   type PrepareActionRequest,
@@ -14,6 +11,7 @@ import {
   type ReviewedActionResult,
 } from "./bindings";
 import { FormDialog, Modal } from "./layout";
+import { useReviewedAction } from "./reviewedAction";
 
 /** A reviewed action: the review the facade prepared, what it will do and
  * what it needs, and the one final button. A stale review is prepared again. */
@@ -77,45 +75,31 @@ export function ReviewSheet({
   onPrepared?: (review: ActionReview) => void;
   onStale?: () => void;
 }) {
-  const [review, setReview] = useState<ActionReview | null>(null);
-  const [failure, setFailure] = useState<string | null>(null);
+  const owner = JSON.stringify([action, items, destination, options, prepareKey, canPrepare]);
+  const reviewed = useReviewedAction(open, owner);
+  const { review, failure } = reviewed;
   const [confirmed, setConfirmed] = useState<string[]>([]);
   const [result, setResult] = useState<ReviewedActionResult | null>(null);
   // The intent of the final click while it runs: the operation Stop names.
   const [running, setRunning] = useState<string | null>(null);
   // The fields the review on screen was prepared for.
-  const scoped = useRef(prepareKey);
+  const scoped = useRef({ open: false, owner });
   const prepare = useCallback(async () => {
-    setReview(null);
-    setFailure(null);
     if (!canPrepare) return;
-    const answer = await prepareAction({ context: context(), action, items, ...(destination ? { destination } : {}), ...options });
-    if (answer.state === "completed" && answer.review) {
-      setReview(answer.review);
-      onPrepared?.(answer.review);
-    }
-    else setFailure(answer.reason ?? "This could not be reviewed.");
-  }, [action, canPrepare, context, destination, items, options, onPrepared]);
+    await reviewed.prepare({ context: context(), action, items, ...(destination ? { destination } : {}), ...options }, undefined, onPrepared);
+  }, [action, canPrepare, context, destination, items, options, onPrepared, reviewed.prepare]);
   useEffect(() => {
-    if (open) {
-      scoped.current = prepareKey;
-      setConfirmed([]);
-      setResult(null);
-      void prepare();
-    }
-    // Prepared once each time the sheet opens.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
-  // A changed field withdraws the review at once and prepares a new one once
-  // the typing stops.
-  useEffect(() => {
-    if (!open || prepareKey === scoped.current) return;
-    scoped.current = prepareKey;
-    setReview(null);
+    const changed = scoped.current.open && scoped.current.owner !== owner;
+    scoped.current = { open, owner };
+    setConfirmed([]);
+    setResult(null);
+    if (!open || !canPrepare) return;
+    if (!changed) { void prepare(); return; }
     const timer = window.setTimeout(() => void prepare(), 300);
     return () => window.clearTimeout(timer);
+    // Domain choices, rather than render callback identities, own preparation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prepareKey, open]);
+  }, [owner, open, canPrepare]);
 
   if (result && open) {
     return (
@@ -161,20 +145,22 @@ export function ReviewSheet({
       }
       onSubmit={async () => {
         if (!review?.token) return { reason: "This review is not ready." };
-        const intent = newIntentId();
-        setRunning(intent);
+        const started = reviewed.begin(context(), { confirmed, ...(rationale !== undefined ? { rationale } : {}) });
+        if (!started) return { reason: "This review is not ready." };
+        setRunning(started.intent);
         onRunning?.(true);
-        const answer = await executeReviewedAction({ context: context(), token: review.token, intent_id: intent, decisions: { confirmed, ...(rationale !== undefined ? { rationale } : {}) } }).finally(() => {
+        const answer = await started.execution.finally(() => {
           setRunning(null);
           onRunning?.(false);
         });
+        if (!started.current()) return null;
         if (answer.outcome === "stale") {
           onStale?.();
           await prepare();
           return { reason: "What this review covered changed. Review it again." };
         }
         if (answer.outcome === "refused" && answer.refreshed) {
-          setReview(answer.refreshed);
+          reviewed.adopt(answer.refreshed);
           return { reason: answer.reason ?? "Not done." };
         }
         setResult(answer);

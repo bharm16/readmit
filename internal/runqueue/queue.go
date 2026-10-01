@@ -69,7 +69,7 @@ type Report struct {
 func (r Report) ExitCode() int {
 	code := 0
 	for _, job := range r.Jobs {
-		if job.Admission != Executed || job.Run == nil {
+		if job.Admission != Executed || job.Run == nil || job.Run.DeliveryUncertain || job.Run.JournalIncomplete || job.Reason != "" {
 			return 2
 		}
 		if job.Run.ExitCode() > code {
@@ -186,7 +186,11 @@ func Run(ctx context.Context, request Request) (Report, error) {
 		return Report{}, err
 	}
 	queue.run(ctx, plan.Parallelism)
-	report := Report{Schema: ReportSchema, Parallelism: plan.Parallelism, Jobs: make([]JobReport, len(queue.states))}
+	return queue.report(plan.Parallelism), nil
+}
+
+func (queue *schedule) report(parallelism int) Report {
+	report := Report{Schema: ReportSchema, Parallelism: parallelism, Jobs: make([]JobReport, len(queue.states))}
 	for index, current := range queue.states {
 		// Every job reaches one of the four decisions; saying so here rather
 		// than assuming it keeps a job that somehow reached none from being
@@ -206,7 +210,7 @@ func Run(ctx context.Context, request Request) (Report, error) {
 			report.Skipped++
 		}
 	}
-	return report, nil
+	return report
 }
 
 // schedule is one queue in flight: the jobs, the resources they hold while
@@ -313,7 +317,7 @@ func (q *schedule) run(ctx context.Context, parallelism int) {
 					current.report.Admission = StartFailed
 				} else {
 					current.report.Run = &summary
-					current.passed = summary.State == durablerun.Passed
+					current.passed = err == nil && summary.State == durablerun.Passed && !summary.DeliveryUncertain && !summary.JournalIncomplete
 				}
 				finished <- index
 			}()

@@ -14,12 +14,12 @@ import (
 	"github.com/bharm16/readmit/internal/observesource"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/sendpolicy"
-	"path/filepath"
 	"strings"
 	"time"
 )
 
 type Evidence struct {
+	files    map[string][]byte
 	Schema   string
 	Result   Result
 	Identity string
@@ -36,8 +36,22 @@ func OpenEvidence(ctx context.Context, directory string) (Evidence, error) {
 	if err != nil {
 		return Evidence{}, err
 	}
-	return Evidence{Schema: result.Schema, Result: result, Identity: artifactdir.Identity(result.Schema, files)}, nil
+	return Evidence{Schema: result.Schema, Result: result, Identity: artifactdir.Identity(result.Schema, files), files: files}, nil
 }
+
+// VerifyEvidence checks a captured interval with no path-dependent child reads.
+func VerifyEvidence(ctx context.Context, captured map[string][]byte) (Evidence, error) {
+	files, err := artifactdir.Snapshot(captured, intervalFamily.Layout)
+	if err != nil {
+		return Evidence{}, err
+	}
+	result, err := openIntervalFiles(ctx, "", files)
+	if err != nil {
+		return Evidence{}, err
+	}
+	return Evidence{Schema: result.Schema, Result: result, Identity: artifactdir.Identity(result.Schema, files), files: files}, nil
+}
+
 func openIntervals(ctx context.Context, directory string) (Result, error) {
 	e, err := OpenEvidence(ctx, directory)
 	return e.Result, err
@@ -65,7 +79,7 @@ func openIntervalFiles(ctx context.Context, directory string, files map[string][
 	if r.Schema != record.Schema || !safeID(r.Instance) || r.StartedAt.IsZero() || r.CompletedAt.Before(r.StartedAt) {
 		return Result{}, invalid
 	}
-	plan, err := connectedtest.OpenPlan(filepath.Join(directory, "plan"))
+	plan, err := connectedtest.VerifyPlan(artifactdir.Subtree(files, "plan"))
 	if err != nil || plan.Identity() != r.Plan || plan.Document().Schema != planSchema || !artifactdir.MatchesSubtree(files, "plan", planSchema, artifactdir.Identity(plan.Document().Schema, plan.Files())) {
 		return Result{}, invalid
 	}
@@ -111,8 +125,7 @@ func openIntervalFiles(ctx context.Context, directory string, files map[string][
 			if !safeID(name) {
 				return Result{}, invalid
 			}
-			path := filepath.Join(directory, "observations", name)
-			snapshot, e := observesource.OpenDataset(ctx, path)
+			snapshot, e := observesource.VerifyDataset(ctx, artifactdir.Subtree(files, "observations/"+name))
 			if e != nil {
 				return Result{}, e
 			}
@@ -167,7 +180,7 @@ func openIntervalFiles(ctx context.Context, directory string, files map[string][
 				if name != "before-"+d.ID {
 					return Result{}, invalid
 				}
-				snapshot, e := observesource.OpenDataset(ctx, filepath.Join(directory, "observations", name))
+				snapshot, e := observesource.VerifyDataset(ctx, artifactdir.Subtree(files, "observations/"+name))
 				if e != nil || acquired[d.ID][snapshot.Identity()] == nil || r.Armed[d.ID] != snapshot.Identity() {
 					return Result{}, invalid
 				}
@@ -188,8 +201,7 @@ func openIntervalFiles(ctx context.Context, directory string, files map[string][
 			allComplete = false
 			continue
 		}
-		path := filepath.Join(directory, "intervals", d.ID)
-		interval, e := observeinterval.Open(ctx, path)
+		interval, e := observeinterval.Verify(ctx, artifactdir.Subtree(files, "intervals/"+d.ID))
 		if e != nil || interval.Identity != identity || interval.Binding.Run != r.Instance || interval.Binding.Source != d.Source || interval.Binding.Namespace != d.Namespace || interval.Binding.Phase != "after" || !artifactdir.MatchesSubtree(files, "intervals/"+d.ID, observeinterval.ResultSchema, interval.Identity) {
 			return Result{}, invalid
 		}
@@ -219,7 +231,7 @@ func openIntervalFiles(ctx context.Context, directory string, files map[string][
 				return Result{}, invalid
 			}
 			if sample.CapturePath != "" {
-				capture, e := networkaction.OpenCaptureEvidence(filepath.Join(path, sample.CapturePath))
+				capture, e := networkaction.VerifyCaptureEvidence(artifactdir.Subtree(files, "intervals/"+d.ID+"/"+sample.CapturePath))
 				action := capture.Result
 				if capture.Capture == nil || capture.Capture.Manifest.Provenance.StartedAt == nil || !withinRunIO(r, *capture.Capture.Manifest.Provenance.StartedAt, *capture.Capture.Manifest.Provenance.StartedAt) {
 					return Result{}, invalid
@@ -239,7 +251,7 @@ func openIntervalFiles(ctx context.Context, directory string, files map[string][
 			if r.Observations[d.ID] != expectedPath {
 				return Result{}, invalid
 			}
-			snapshot, e := dataset.Open(ctx, filepath.Join(directory, expectedPath))
+			snapshot, e := dataset.Verify(ctx, artifactdir.Subtree(files, expectedPath))
 			if e != nil || snapshot.Document().Projection.Identity() != projections[d.ID].Identity() || !artifactdir.MatchesSubtree(files, expectedPath, dataset.Schema, snapshot.Identity()) {
 				return Result{}, invalid
 			}
@@ -273,14 +285,14 @@ func openIntervalFiles(ctx context.Context, directory string, files map[string][
 		return Result{}, invalid
 	}
 	if r.Transport != "" {
-		transportEvidence, e := connectedtransport.OpenEvidence(filepath.Join(directory, "transport"))
+		transportEvidence, e := connectedtransport.VerifyEvidence(artifactdir.Subtree(files, "transport"))
 		transport := transportEvidence.Receipt
 		encoded, _ := json.Marshal(transport, json.Deterministic(true))
 		if e != nil || transport.Schema != transportSchema || !artifactdir.MatchesSubtree(files, "transport", transportSchema, transportEvidence.Identity) || !bytes.Equal(encoded, files["transport/receipt.json"]) || transport.Binding.Configuration != artifactdir.Identity("readmit-connected-configuration/v1", artifactdir.Subtree(files, "transport/configuration")) || !artifactdir.MatchesSubtree(files, "transport/plan", planSchema, artifactdir.Identity(plan.Document().Schema, plan.Files())) || !artifactdir.MatchesSubtree(files, "transport/run", runSchema, transport.RunIdentity) || transport.Instance != r.Instance || transport.Binding != intent || transport.RunIdentity != r.Transport || transport.State == "uncertain" && r.State != "uncertain" || finish.State != transport.State {
 			return Result{}, invalid
 		}
 		r.schedule = transportEvidence.Schedule
-		run, e := replay.Open(filepath.Join(directory, "transport", "run"))
+		run, e := replay.Verify(artifactdir.Subtree(files, "transport/run"))
 		if e != nil || !artifactdir.MatchesSubtree(files, "transport/run", runSchema, run.Identity) || !withinRunIO(r, run.Manifest.StartedAt, run.Manifest.CompletedAt) || r.SentAt.Before(run.Manifest.CompletedAt) || r.SentAt.After(r.CompletedAt) {
 			return Result{}, invalid
 		}
@@ -314,7 +326,7 @@ func openIntervalFiles(ctx context.Context, directory string, files map[string][
 					}
 				}
 				if sample.Snapshot != "" {
-					snapshot, e := dataset.Open(ctx, filepath.Join(directory, "intervals", d.ID, sample.Snapshot))
+					snapshot, e := dataset.Verify(ctx, artifactdir.Subtree(files, "intervals/"+d.ID+"/"+sample.Snapshot))
 					if e != nil || !artifactdir.MatchesSubtree(files, "intervals/"+d.ID+"/"+sample.Snapshot, dataset.Schema, snapshot.Identity()) {
 						return Result{}, invalid
 					}
@@ -324,7 +336,7 @@ func openIntervalFiles(ctx context.Context, directory string, files map[string][
 					}
 				}
 				if sample.BarrierPath != "" {
-					snapshot, e := dataset.Open(ctx, filepath.Join(directory, "intervals", d.ID, sample.BarrierPath))
+					snapshot, e := dataset.Verify(ctx, artifactdir.Subtree(files, "intervals/"+d.ID+"/"+sample.BarrierPath))
 					if e != nil || !artifactdir.MatchesSubtree(files, "intervals/"+d.ID+"/"+sample.BarrierPath, dataset.Schema, snapshot.Identity()) {
 						return Result{}, invalid
 					}
@@ -351,7 +363,7 @@ func openIntervalFiles(ctx context.Context, directory string, files map[string][
 	if !allComplete || len(evidence) != len(plan.Document().Test.Datasets) || r.Transport == "" || r.Phase != "finished" {
 		return Result{}, invalid
 	}
-	evaluated, e := connectedtest.OpenDatasetResult(ctx, filepath.Join(directory, "evaluation"))
+	evaluated, e := connectedtest.VerifyDatasetResult(ctx, artifactdir.Subtree(files, "evaluation"))
 	if e != nil {
 		return Result{}, e
 	}
@@ -364,7 +376,7 @@ func openIntervalFiles(ctx context.Context, directory string, files map[string][
 			return Result{}, invalid
 		}
 	}
-	run, e := replay.Open(filepath.Join(directory, "transport", "run"))
+	run, e := replay.Verify(artifactdir.Subtree(files, "transport/run"))
 	if e != nil || len(run.Events) != len(evaluated.Execution.Attempts) {
 		return Result{}, invalid
 	}

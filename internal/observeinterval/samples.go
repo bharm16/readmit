@@ -34,7 +34,7 @@ type Sample interface {
 	Size() int
 	Write(context.Context, string) error
 }
-type SampleOpener func(ctx context.Context, directory string) (Sample, error)
+type SampleOpener func(ctx context.Context, files map[string][]byte) (Sample, error)
 
 type sampleHead struct {
 	Schema string `json:"schema"`
@@ -74,15 +74,15 @@ type primary struct {
 	snapshot           *dataset.Snapshot
 }
 
-func openPrimary(ctx context.Context, directory string, opener SampleOpener) (primary, error) {
+func openPrimary(ctx context.Context, files map[string][]byte, opener SampleOpener) (primary, error) {
 	if opener != nil {
-		s, err := opener(ctx, directory)
+		s, err := opener(ctx, files)
 		if err != nil || s == nil {
 			return primary{}, invalid
 		}
 		return primary{identity: s.Identity(), binding: s.Binding(), kind: "sample", started: s.Started(), completed: s.Completed(), records: s.Records(), size: s.Size(), usable: s.Usable()}, nil
 	}
-	snapshot, err := dataset.Open(ctx, directory)
+	snapshot, err := dataset.Verify(ctx, files)
 	if err != nil {
 		return primary{}, err
 	}
