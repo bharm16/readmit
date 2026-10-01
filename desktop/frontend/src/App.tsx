@@ -17,7 +17,7 @@ import { SHARE_DRAFT_KIND, useShareReport, type ShareStep } from "./ShareReport"
 import { SupportSummarySheet } from "./SupportSummary";
 import { useEncryptedPackages } from "./EncryptedPackages";
 import { useShareTemplates } from "./ShareTemplates";
-import { SUITE_EDITOR_DRAFT, SUITE_VIEWS, useSuites, type SuiteRunHandoff, type SuitesPlace, type SuiteView } from "./Suites";
+import { CONNECTED_SUITE_EDITOR_DRAFT, SUITE_EDITOR_DRAFT, SUITE_VIEWS, useSuites, type SuiteRunHandoff, type SuitesPlace, type SuiteView } from "./Suites";
 import { environmentPlace, useEnvironments } from "./Environments";
 import { onRetentionResult } from "./drafting";
 import { IndicatorsContext, useLifecycle, useWindowBusy } from "./lifecycle";
@@ -114,7 +114,7 @@ import { SCENARIO_DRAFT_KIND, SCENARIO_DRAFT_SCHEMA, scenarioDraftObject, useSce
 import { SampleFixture, ScenarioLibraryCheck, SyntheticFamilies } from "./SampleData";
 import { SyntheticPackets } from "./SyntheticPackets";
 import { useTests, type TestsPlace } from "./Tests";
-import { TEST_EDITOR_DRAFT } from "./TestEditor";
+import { CONNECTED_EDITOR_DRAFT, TEST_EDITOR_DRAFT } from "./TestEditor";
 import { useFindings, useSimilarFindings, type EvidenceRef } from "./Findings";
 import { Report, Separator, Status } from "./shell";
 import { CommandPalette, isMac, shortcut, type PaletteEntry } from "./CommandPalette";
@@ -926,12 +926,12 @@ export default function App() {
         setResuming(draft);
         return;
       }
-      if (draft.kind === "test-draft" && draft.content_schema === TEST_EDITOR_DRAFT) {
+      if (draft.kind === "test-draft" && (draft.content_schema === TEST_EDITOR_DRAFT || draft.content_schema === CONNECTED_EDITOR_DRAFT)) {
         setResumeNotice(null);
         setRestoringTest(draft);
         return;
       }
-      if (draft.kind === "suite-editor" && draft.content_schema === SUITE_EDITOR_DRAFT) {
+      if (draft.kind === "suite-editor" && (draft.content_schema === SUITE_EDITOR_DRAFT || draft.content_schema === CONNECTED_SUITE_EDITOR_DRAFT)) {
         setResumeNotice(null);
         setRestoringSuite(draft);
         return;
@@ -3731,8 +3731,8 @@ function resumable(draft: EditorDraft): boolean {
   if (SHEET_DRAFTS.has(draft.kind)) return draft.item !== undefined;
   // A test draft reopens only in the editor that wrote it; an earlier
   // release's test drafts are offered for Discard.
-  if (draft.kind === "test-draft") return draft.content_schema === TEST_EDITOR_DRAFT;
-  if (draft.kind === "suite-editor") return draft.content_schema === SUITE_EDITOR_DRAFT;
+  if (draft.kind === "test-draft") return draft.content_schema === TEST_EDITOR_DRAFT || draft.content_schema === CONNECTED_EDITOR_DRAFT;
+  if (draft.kind === "suite-editor") return draft.content_schema === SUITE_EDITOR_DRAFT || draft.content_schema === CONNECTED_SUITE_EDITOR_DRAFT;
   if (draft.kind === SCENARIO_DRAFT_KIND) return draft.content_schema === SCENARIO_DRAFT_SCHEMA && scenarioDraftObject(draft) !== undefined;
   return draft.kind in DRAFT_PLACES;
 }

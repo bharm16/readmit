@@ -8090,7 +8090,7 @@
       "screen": "every whole-object editor sheet",
       "action": "show field problems while editing",
       "backend": {"package": "internal/desktop", "name": "App.ValidateDraft"},
-      "inputs": ["readmit-catalog/v1", "readmit-target/v3", "readmit-send-policy/v1", "readmit-reset-plan/v1", "readmit-environment-links/v1", "readmit-test/v1", "readmit-observation-source/v2", "readmit-observation-window/v1", "readmit-project/v1", "readmit-project/v2", "readmit-test-links/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-target/v1", "readmit-target/v2", "readmit-assertion-set/v1", "readmit-library-metadata/v1", "readmit-library-metadata/v2", "readmit-local-profile/v1", "readmit-profile-pack/v1", "readmit-scenario-generator/v1", "readmit-observation/v1", "readmit-suite/v1", "readmit-suite-definition/v1", "readmit-profile-pack/v2", "readmit-profile-pack/v3", "readmit-profile-pack/v4", "readmit-profile-pack/v5"],
+      "inputs": ["readmit-catalog/v1", "readmit-target/v3", "readmit-send-policy/v1", "readmit-reset-plan/v1", "readmit-environment-links/v1", "readmit-test/v1", "readmit-observation-source/v2", "readmit-observation-window/v1", "readmit-project/v1", "readmit-project/v2", "readmit-test-links/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-target/v1", "readmit-target/v2", "readmit-assertion-set/v1", "readmit-library-metadata/v1", "readmit-library-metadata/v2", "readmit-local-profile/v1", "readmit-profile-pack/v1", "readmit-scenario-generator/v1", "readmit-observation/v1", "readmit-suite/v1", "readmit-suite-definition/v1", "readmit-profile-pack/v2", "readmit-profile-pack/v3", "readmit-profile-pack/v4", "readmit-profile-pack/v5", "readmit-connected-test-authoring/v1", "readmit-suite-definition/v3", "readmit-suite/v2", "readmit-connected-test/v5", "readmit-execution-plan/v5", "readmit-connected-run-config/v4", "readmit-fhir-connection/v1", "readmit-connected-observation-setup/v1", "readmit-observation-interval/v1", "readmit-environment-isolation/v1"],
       "outputs": [],
       "prerequisites": [],
       "gui_test": {"file": "desktop/frontend/src/Tests.test.tsx", "name": "a refused or stale save keeps the whole draft and its problems, and a repeated click publishes once"},
@@ -8179,7 +8179,12 @@
         "readmit-profile-pack/v2",
         "readmit-profile-pack/v3",
         "readmit-profile-pack/v4",
-        "readmit-profile-pack/v5"
+        "readmit-profile-pack/v5",
+        "readmit-connected-test-authoring/v1",
+        "readmit-suite-definition/v3",
+        "readmit-connected-test/v5",
+        "readmit-execution-plan/v5",
+        "readmit-connected-run-config/v4"
       ],
       "outputs": [
         "readmit-catalog/v1",
@@ -8241,7 +8246,9 @@
         "readmit-profile-pack/v2",
         "readmit-profile-pack/v3",
         "readmit-profile-pack/v4",
-        "readmit-profile-pack/v5"
+        "readmit-profile-pack/v5",
+        "readmit-connected-test-authoring/v1",
+        "readmit-suite-definition/v3"
       ],
       "prerequisites": [
         "author"
@@ -8336,7 +8343,9 @@
         "readmit-profile-pack/v2",
         "readmit-profile-pack/v3",
         "readmit-profile-pack/v4",
-        "readmit-profile-pack/v5"
+        "readmit-profile-pack/v5",
+        "readmit-connected-test-authoring/v1",
+        "readmit-suite-definition/v3"
       ],
       "outputs": [],
       "prerequisites": [],
@@ -8391,11 +8400,43 @@
       "screen": "the Tests section of a suite and its editor",
       "action": "see each pinned test version's checks and messages",
       "backend": {"package": "internal/desktop", "name": "App.SuiteTests"},
-      "inputs": ["readmit-catalog/v1", "readmit-test/v1", "readmit-test-release/v1", "readmit-test-links/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5"],
+      "inputs": ["readmit-catalog/v1", "readmit-test/v1", "readmit-test-release/v1", "readmit-test-links/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-connected-test-authoring/v1"],
       "outputs": [],
       "prerequisites": [],
       "gui_test": {"file": "desktop/frontend/src/Suites.test.tsx", "name": "a saved suite opens read-only with Tests, Data, Coverage and Versions and edits every section in one Save"},
       "parity_test": {"package": "internal/desktop", "name": "TestASuiteSavesAndReopensWholeAcrossVersions"},
+      "implemented": true
+    },
+    {
+      "id": "desktop.ConnectedTestSources",
+      "source": "desktop.App.ConnectedTestSources",
+      "kind": "desktop",
+      "capability": "read one case's verified v2 or FHIR R4 evidence as a connected test's inputs: each message by its type, and each resource or declared request with the typed request it prefills, sending nothing",
+      "owner": "bharm16/readmit#588",
+      "screen": "the Inputs sheet's Add input in the test editor",
+      "action": "choose the messages, resources or requests an input sends",
+      "backend": {"package": "internal/desktop", "name": "App.ConnectedTestSources"},
+      "inputs": ["readmit-catalog/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-fhir-evidence/v1"],
+      "outputs": [],
+      "prerequisites": [],
+      "gui_test": {"file": "desktop/frontend/src/ConnectedTests.test.tsx", "name": "Add input reads a case's FHIR evidence and adds its declared request as a typed input in a phase of its own"},
+      "parity_test": {"package": "internal/desktop", "name": "TestConnectedTestSourcesReadVerifiedEvidenceAsTypedInputs"},
+      "implemented": true
+    },
+    {
+      "id": "desktop.SuggestConnectedChecks",
+      "source": "desktop.App.SuggestConnectedChecks",
+      "kind": "desktop",
+      "capability": "list the retained runs that completed a saved connected test's exact definition and propose typed checks from one, each undecided and never a server-assigned identity as an expected value, recording nothing",
+      "owner": "bharm16/readmit#588",
+      "screen": "Suggest checks in the connected test editor",
+      "action": "preview proposals from a retained run before accepting any",
+      "backend": {"package": "internal/desktop", "name": "App.SuggestConnectedChecks"},
+      "inputs": ["readmit-catalog/v1", "readmit-connected-test-authoring/v1", "readmit-suite-execution/v2", "readmit-connected-run/v4", "readmit-execution-plan/v5"],
+      "outputs": [],
+      "prerequisites": [],
+      "gui_test": {"file": "desktop/frontend/src/ConnectedTests.test.tsx", "name": "Suggest checks lists proposals undecided, adds nothing with none accepted and never offers a server-assigned identity"},
+      "parity_test": {"package": "internal/desktop", "name": "TestConnectedTestsJoinOneSuiteWithTheirApprovedDefinitionsInEveryEnvironmentAndRunInTheConnectedRunner"},
       "implemented": true
     },
     {
@@ -8439,7 +8480,7 @@
       "screen": "the Coverage section of a suite",
       "action": "see every requirement and exclusion assessed over a run",
       "backend": {"package": "internal/suite", "name": "AssessCoverage"},
-      "inputs": ["readmit-catalog/v1", "readmit-suite-definition/v1", "readmit-suite-coverage/v1", "readmit-suite/v1", "readmit-suite-selection/v1", "readmit-run-queue/v1", "readmit-run-queue-report/v1", "readmit-test/v1", "readmit-job/v1", "readmit-result/v1"],
+      "inputs": ["readmit-catalog/v1", "readmit-suite-definition/v1", "readmit-suite-coverage/v1", "readmit-suite/v1", "readmit-suite-selection/v1", "readmit-run-queue/v1", "readmit-run-queue-report/v1", "readmit-test/v1", "readmit-job/v1", "readmit-result/v1", "readmit-suite-definition/v3", "readmit-suite/v2", "readmit-suite-coverage/v2", "readmit-suite-execution/v2"],
       "outputs": [],
       "prerequisites": [],
       "gui_test": {"file": "desktop/frontend/src/Suites.test.tsx", "name": "coverage lists every requirement and exclusion and never runs anything"},
@@ -8535,7 +8576,7 @@
       "screen": "Import test in the Tests and saved test More menus",
       "action": "import a test file into a draft without saving it",
       "backend": {"package": "internal/testauthor", "name": "FromSpec"},
-      "inputs": ["readmit-test/v1", "readmit-catalog/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5"],
+      "inputs": ["readmit-test/v1", "readmit-catalog/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-connected-test/v5", "readmit-execution-plan/v5", "readmit-connected-test-authoring/v1"],
       "outputs": [],
       "prerequisites": [],
       "gui_test": {"file": "desktop/frontend/src/Tests.test.tsx", "name": "Import opens a draft, Export writes the saved contract, Edit JSON validates before saving"},
@@ -9137,7 +9178,10 @@
         "readmit-connected-runner-authority/v1",
         "readmit-runner/v1",
         "readmit-fhir-evidence/v1",
-        "readmit-fhir-variant/v1"
+        "readmit-fhir-variant/v1",
+        "readmit-connected-test-authoring/v1",
+        "readmit-suite-definition/v3",
+        "readmit-suite-approval/v2"
       ],
       "outputs": [],
       "prerequisites": [],
@@ -9218,7 +9262,10 @@
         "readmit-connected-runner-authority/v1",
         "readmit-runner/v1",
         "readmit-fhir-evidence/v1",
-        "readmit-fhir-variant/v1"
+        "readmit-fhir-variant/v1",
+        "readmit-connected-test-authoring/v1",
+        "readmit-suite-definition/v3",
+        "readmit-suite-approval/v2"
       ],
       "outputs": [
         "readmit-run/v1",
@@ -9265,7 +9312,11 @@
         "readmit-connected-run/v3",
         "readmit-connected-run/v4",
         "readmit-fhir-evidence/v1",
-        "readmit-fhir-variant/v1"
+        "readmit-fhir-variant/v1",
+        "readmit-connected-test-release/v1",
+        "readmit-suite-approval/v2",
+        "readmit-execution-plan/v5",
+        "readmit-connected-run-config/v4"
       ],
       "prerequisites": [
         "execute-if-send",

@@ -42,6 +42,18 @@ import (
 // A release is materialized in a private temporary folder only while a
 // promotion review or a hub upload reads it, and removed afterwards; the
 // approval keeps its exact bytes.
+//
+// A suite of saved connected tests records its approvals as
+// readmit-suite-approval/v2: a baseline holds each job's
+// readmit-connected-release/v1 and the readmit-suite/v2 document that pins
+// them, which is the document the version runs; an environment approval
+// holds the readmit-suite-promotion/v2 of that document for one environment.
+// Its releases are reviewed by the team through the customer runner's own
+// promotion, not a hub release review.
+
+// ConnectedSuiteApprovalSchema is the contract of one approval of a version
+// of a suite of saved connected tests.
+const ConnectedSuiteApprovalSchema = "readmit-suite-approval/v2"
 
 // suiteApprovalRecord is one approval of a suite version as its approval
 // history records it, the readmit-suite-approval/v1 document.
@@ -58,6 +70,8 @@ type suiteApprovalRecord struct {
 	Environment *approvedEnvironment `json:"environment,omitzero"`
 	Reviewer    string               `json:"reviewer,omitzero"`
 	Hub         []approvalEvent      `json:"hub,omitzero"`
+	// Connected is the readmit-suite/v2 document a v2 approval binds.
+	Connected []byte `json:"connected,omitzero"`
 }
 
 // approvedTest is one suite test an approval binds: the test version it
@@ -103,26 +117,50 @@ var approvalScopes = []SuiteApprovalScope{BaselineApproval, ReviewRequested, Rel
 func decodeSuiteApproval(data []byte) (suiteApprovalRecord, error) {
 	var record suiteApprovalRecord
 	invalid := errors.New("the suite approval cannot be read")
-	if len(data) > catalog.MaxMemberBytes || json.Unmarshal(data, &record, json.RejectUnknownMembers(true)) != nil || record.Schema != SuiteApprovalSchema ||
+	if len(data) > catalog.MaxMemberBytes || json.Unmarshal(data, &record, json.RejectUnknownMembers(true)) != nil ||
 		!slices.Contains(approvalScopes, record.Scope) || !catalog.ValidID(record.Suite) || record.Revision == "" || !suiteText(record.Actor, 256) {
 		return suiteApprovalRecord{}, invalid
 	}
 	if _, err := time.Parse(time.RFC3339, record.At); err != nil {
 		return suiteApprovalRecord{}, invalid
 	}
-	for _, test := range record.Tests {
-		release, err := expectation.Decode(test.Bytes)
-		if err != nil || release.Identity() != test.Release {
-			return suiteApprovalRecord{}, invalid
-		}
-	}
 	if (record.Scope == EnvironmentApproval) != (record.Environment != nil) {
 		return suiteApprovalRecord{}, invalid
 	}
-	if record.Environment != nil {
-		if _, err := suite.DecodePromotion(record.Environment.Promotion); err != nil {
+	switch record.Schema {
+	case SuiteApprovalSchema:
+		if record.Connected != nil {
 			return suiteApprovalRecord{}, invalid
 		}
+		for _, test := range record.Tests {
+			release, err := expectation.Decode(test.Bytes)
+			if err != nil || release.Identity() != test.Release {
+				return suiteApprovalRecord{}, invalid
+			}
+		}
+		if record.Environment != nil {
+			if _, err := suite.DecodePromotion(record.Environment.Promotion); err != nil {
+				return suiteApprovalRecord{}, invalid
+			}
+		}
+	case ConnectedSuiteApprovalSchema:
+		document, err := suite.DecodeConnected(record.Connected)
+		if err != nil || record.Scope != BaselineApproval && record.Scope != EnvironmentApproval || len(record.Tests) != len(document.Tests) {
+			return suiteApprovalRecord{}, invalid
+		}
+		for i, test := range record.Tests {
+			release, err := expectation.DecodeConnected(test.Bytes)
+			if err != nil || release.Identity() != test.Release || test.Test != document.Tests[i].ID || document.Tests[i].ReleaseIdentity != test.Release {
+				return suiteApprovalRecord{}, invalid
+			}
+		}
+		if record.Environment != nil {
+			if _, err := suite.DecodeConnectedPromotion(record.Environment.Promotion); err != nil {
+				return suiteApprovalRecord{}, invalid
+			}
+		}
+	default:
+		return suiteApprovalRecord{}, invalid
 	}
 	return record, nil
 }
@@ -145,6 +183,9 @@ func readSuiteApprovalItem(_ *loadedCatalog, _ catalog.Item, paths map[string]st
 // suiteApprovals are every approval the project records for one suite,
 // oldest first.
 func (c *loadedCatalog) suiteApprovals(suiteID string) []suiteApprovalRecord {
+	if held, read := c.approvals[suiteID]; read {
+		return slices.Clone(held)
+	}
 	records := []suiteApprovalRecord{}
 	for _, item := range c.document.Items {
 		if item.Kind != string(SuiteApprovalItem) || c.removed(item) {
@@ -161,6 +202,10 @@ func (c *loadedCatalog) suiteApprovals(suiteID string) []suiteApprovalRecord {
 		}
 	}
 	slices.SortStableFunc(records, func(x, y suiteApprovalRecord) int { return cmp.Compare(x.At, y.At) })
+	if c.approvals == nil {
+		c.approvals = map[string][]suiteApprovalRecord{}
+	}
+	c.approvals[suiteID] = slices.Clone(records)
 	return records
 }
 
@@ -290,6 +335,11 @@ type suiteApprovalBinding struct {
 	project  string
 	reviewer string
 	requests []hubprotocol.ReviewEvent
+	// connected is a baseline's plan of a suite of connected tests, with the
+	// release each job continues and the release it keeps unchanged.
+	connected *connectedSuitePlan
+	parents   [][]byte
+	kept      [][]byte
 }
 
 // baselineTest is one suite test a baseline releases: the exact version
@@ -349,11 +399,14 @@ func (a *App) bindSuiteApproval(ctx context.Context, request PrepareActionReques
 	if err != nil {
 		return nil, refusal{Failed, "this suite cannot be read: " + err.Error()}
 	}
-	if !version.runnable() {
+	if !version.runnable() && !version.authored {
 		return nil, refusal{Failed, notRunnable}
 	}
-	if version.connected != nil {
+	if version.connected != nil && !version.authored {
 		return nil, refusal{Failed, "this connected suite retains exact connected releases and promotion; a legacy baseline or team review cannot approve them"}
+	}
+	if version.authored && (scope == ReviewRequested || scope == ReleaseApproval) {
+		return nil, refusal{Failed, "a suite of connected tests is approved for each environment it runs in; its releases are not reviewed through the team hub"}
 	}
 	options := SuiteApprovalOptions{}
 	if request.SuiteApproval != nil {
@@ -389,7 +442,13 @@ func (a *App) bindSuiteApproval(ctx context.Context, request PrepareActionReques
 	switch scope {
 	case BaselineApproval:
 		bound.actor = a.reviewerName()
-		if declined := loaded.planBaseline(bound, &display); declined.state != "" {
+		plan := loaded.planBaseline
+		if version.authored {
+			plan = func(bound *suiteApprovalBinding, display *SuiteApprovalReview) refusal {
+				return loaded.planConnectedBaseline(bound, display, records, notReady)
+			}
+		}
+		if declined := plan(bound, &display); declined.state != "" {
 			return nil, declined
 		}
 	default:
@@ -401,6 +460,8 @@ func (a *App) bindSuiteApproval(ctx context.Context, request PrepareActionReques
 				shown := SuiteApprovalTest{Name: loaded.nameOf(test.Ref, test.Test), Version: test.Ref.Revision}
 				if release, err := expectation.Decode(test.Bytes); err == nil {
 					shown.Release = strconv.Itoa(release.Baseline.Revision)
+				} else if number := connectedReleaseNumber(records, test.Test, test.Release); number > 0 {
+					shown.Release = strconv.Itoa(number)
 				}
 				display.Tests = append(display.Tests, shown)
 			}
@@ -422,9 +483,14 @@ func (a *App) bindSuiteApproval(ctx context.Context, request PrepareActionReques
 	display.Actor = bound.actor
 	shown, _ := json.Marshal(display, json.Deterministic(true))
 	parts := []string{string(action), loaded.root, loaded.document.Project.ID, a.reviewer(), a.policyBinding(ctx, false, held),
-		item.ID, label, digestOf(version.data), string(shown), bound.reviewed}
+		item.ID, label, digestOf(version.digested()), string(shown), bound.reviewed}
 	for _, test := range bound.tests {
 		parts = append(parts, digestOf(test.data), test.review, string(test.reuse))
+	}
+	if plan := bound.connected; plan != nil {
+		for j := range plan.jobs {
+			parts = append(parts, plan.reviews[j].Identity(), string(bound.parents[j]), string(bound.kept[j]))
+		}
 	}
 	for _, request := range bound.requests {
 		parts = append(parts, request.Command.ID, strconv.Itoa(request.Sequence))
@@ -486,6 +552,10 @@ func (c *loadedCatalog) planEnvironmentApproval(bound *suiteApprovalBinding, dis
 	environment := draft.Environments[at]
 	bound.environment, bound.targetRevision = &environment, strings.TrimSpace(options.Revision)
 	display.Environment, display.Site, display.TargetRevision = environment.Name, environment.Site, bound.targetRevision
+	if bound.version.authored {
+		c.planConnectedPromotion(bound, display, environment, notReady)
+		return refusal{}
+	}
 	plan, problems := c.planSuite(draft)
 	if len(problems) > 0 {
 		notReady("this version no longer compiles against the project: " + firstProblem(problems))
@@ -668,11 +738,15 @@ func executeSuiteApproval(a *App, ctx context.Context, bound *boundAction, decis
 	approval := bound.suiteApproval
 	reason := strings.TrimSpace(decisions.Rationale)
 	record := suiteApprovalRecord{Schema: SuiteApprovalSchema, Scope: approval.scope, Suite: approval.suite.ID, Revision: approval.version.label,
-		SuiteSHA256: digestOf(approval.version.data), Actor: approval.actor, At: catalog.Stamp(a.now()), Reason: reason, Tests: []approvedTest{}}
+		SuiteSHA256: digestOf(approval.version.digested()), Actor: approval.actor, At: catalog.Stamp(a.now()), Reason: reason, Tests: []approvedTest{}}
 	refuse := func(state State, text string) ReviewedActionResult {
 		result := ReviewedActionResult{Outcome: ActionRefused}
 		result.refuse(state, text)
 		return result
+	}
+	if approval.version.authored {
+		record.Schema = ConnectedSuiteApprovalSchema
+		return a.executeConnectedApproval(ctx, bound, record, refuse)
 	}
 	switch approval.scope {
 	case BaselineApproval:

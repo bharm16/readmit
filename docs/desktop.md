@@ -1826,6 +1826,56 @@ against a stale version; Run hands the saved version to the run review, where
 sending stays a separate explicit step. Duplicate, Export test, Import test,
 Edit JSON and Details are in its menu.
 
+**Connected tests.** Choosing Engine output or Application records as the
+Outcome makes the test a connected test: what decides it is what the systems
+under test recorded, read through named observations, rather than an
+acknowledgement or the receiver ledger. Its Setup has the Environment (a v2
+or FHIR environment with typed isolation, which is its Reset), a FHIR server
+when a v2 test's observations or requests reach FHIR, and Inputs. The Inputs
+sheet orders inputs into phases: a case's chosen messages are sent as their
+original bytes, and FHIR resources or declared requests from imported
+evidence become reviewed requests whose method, what they address (a new
+resource, one resource by a bound identity, or the resources matching an
+identifier), conditional-create identifier, required version, returned
+representation and the identities the response binds are typed choices. Each
+input waits for the inputs it names; each phase waits for earlier phases to
+pass or complete, optionally only on one check's outcome, and reads its
+observations before or after its inputs. A phase sends v2 messages of one case
+or FHIR requests, so a v2 → FHIR scenario is two phases of one test. Checks
+are the typed dataset checks of the Library — Value, Number, Date and time,
+Related value, Changed value, Record count, Unique keys, Every record and
+Values in order — over the fields the observation's Go projection declares,
+selecting records by business key, with conditions and only the expected
+states the field's source can represent (a FHIR element is Present or Not
+present; a typed v2 field keeps Empty, Null and Not present apart); and
+Response, Acknowledgement and Validation checks of one input. Review shows the
+inputs, environment, observations with the versions they pin, generation and
+every check; Create test publishes the readmit-connected-test-authoring/v1
+document and its links as one version and sends nothing. Reopening an edit
+reports, at each check, an observation whose projection changed or a case
+whose evidence changed since the test was written; Use current, named for
+the observation, re-pins it and keeps every check as written, and Save is
+refused until the draft validates. A connected test runs as a member of a
+suite. A save compiles the test against its environment
+into the readmit-connected-test/v5 lifecycle and prepares it exactly as the
+connected runner does, offline: a missing capability check, approved address,
+isolation, validator or SMART key reference is refused at its field. Suggest
+checks lists completed runs of exactly this test's definition and proposes a
+record count and each field's value for each business key it read, undecided;
+a resource identity, reference or response-bound value is listed with its
+reason and never proposed as an expected value; Accept, Reject and Apply
+selected are the editor's own proposal review. A changed environment, FHIR
+server or mapping marks the inputs and checks it affects, and the draft keeps
+them until resolved. Import test opens an existing readmit-connected-test/v5
+lifecycle (its sealed plan's test.json or flow.json) in the editor: each input
+from the project case holding its exact bytes, each observation at the saved
+version whose definition it pins. A check the editor does not represent, such
+as one selecting a record by its position in an earlier output, is shown
+read-only with its reason, inspected as declared and saved back exactly as
+written; a lifecycle holding anything the editor can neither represent nor
+keep is refused rather than converted. The editor retains unsaved connected
+work under readmit-desktop-test-editor/v2.
+
 Reusable **check groups** (`readmit-assertion-set/v1`) are kept in Tests ›
 Library › Checks; see [the Library](#library). A test links a check group by
 the exact version it uses.
@@ -3195,6 +3245,32 @@ new file, and **Export run configuration** (`ExportSuiteRunConfiguration`)
 prepares one version for one environment into a new folder exactly as `readmit
 suite prepare` does, with the release pins of its latest baseline; both write
 only where the person chooses, and nothing is sent.
+
+A suite may instead pin saved connected tests at exact versions. A connected
+test runs once, or over a dataset: each row sends its case in place of the
+one case the test's v2 messages come from and may override, by phase and
+check, any of the test's own expected values with a complete typed value. It
+has no send order or state sharing. Dependencies wait for every row of the
+test they name. Each environment binds every test's parameter to a named
+environment and, for its requests and FHIR observations, a FHIR server, each
+pinned at the version it was saved with; a later version is chosen again,
+never followed. A Save validates by compiling every job against every
+environment and checking that each environment keeps the same definition, and
+publishes only the readmit-suite-definition/v3 draft: it writes nothing else
+and approves nothing, and the version is not runnable yet. Approve version
+records its baseline (readmit-suite-approval/v2): each job's
+readmit-connected-test-release/v1, continuing the job's earlier release in
+this suite, and the readmit-suite/v2 document that pins them, whose
+lifecycles, selections and releases are placed by content under the project's
+`.readmit/connected` folder and removed again if the baseline is not
+recorded. That document is the version the connected runner prepares and
+runs, as [connected suites](connected-suites.md) describe; an environment
+approval of it is suite.ApproveConnectedPromotion's readmit-suite-promotion/v2
+for one environment and deploys nothing. Its releases are not reviewed
+through the team hub. The runtime grant files are named beside each
+selection, for the runner's operator to provision. Unsaved suite work holding
+a FHIR server binding or a connected override is retained under
+readmit-suite-editor/v2.
 
 A suite being edited is retained as unstored work in the editor draft store
 under the `readmit-suite-editor/v1` content contract (`{"schema", "item",

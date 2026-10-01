@@ -373,6 +373,15 @@ func (c *loadedCatalog) referrers(item catalog.Item) []Referrer {
 		case string(TestItem):
 			if spec, err := testrunner.ReadSpec(paths[primaryRole(TestItem)]); err == nil {
 				uses = names(spec.Target, spec.Observation.Path)
+			} else if connected, err := c.connectedTestOf(other, ""); err == nil {
+				// A connected test names its environments and observations
+				// by their identities.
+				uses = connected.draft.Server == item.ID || connected.links != nil && connected.links.Environment == item.ID
+				for _, phase := range connected.draft.Phases {
+					for _, observed := range phase.Observations {
+						uses = uses || observed.Observation.ID == item.ID
+					}
+				}
 			}
 		case string(SuiteItem):
 			// A saved suite binds a named environment and observation by its
@@ -380,7 +389,7 @@ func (c *loadedCatalog) referrers(item catalog.Item) []Referrer {
 			if version, err := c.suiteVersion(other, ""); err == nil {
 				for _, environment := range version.draft.Environments {
 					for _, binding := range environment.Bindings {
-						uses = uses || binding.Target.ID == item.ID || binding.Observation != nil && binding.Observation.ID == item.ID
+						uses = uses || binding.Target.ID == item.ID || binding.Observation != nil && binding.Observation.ID == item.ID || binding.Server != nil && binding.Server.ID == item.ID
 					}
 				}
 				if version.original() {

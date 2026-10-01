@@ -33,8 +33,9 @@ import { fileName } from "./Environments";
 import { IconButton } from "./IconButton";
 import { BackLink, EmptyState, FormDialog, Menu, Modal, ValueRows, type MenuItem, type SubmitFailure } from "./layout";
 import { listDate } from "./Projects";
-import { CheckDetails, CheckRows, messageLabel, observationName, useTestEditor, type EditorStart, type TestEditorContent, type TestWork } from "./TestEditor";
+import { CheckDetails, CheckRows, emptyTestDraft, messageLabel, observationName, useTestEditor, type EditorStart, type TestEditorContent, type TestWork } from "./TestEditor";
 import { TaskTabs } from "./TaskTabs";
+import { CONNECTED_BOUNDARIES, ConnectedCheckDetails, ConnectedCheckList, ConnectedInputs, connectedCheckRows, environmentOffer } from "./ConnectedTest";
 import "./tests.css";
 
 /** Where Tests is: its list, one saved test, a new test or an edit. */
@@ -93,6 +94,8 @@ export function sortTests(items: CatalogItem[], sort: SortState | null): Catalog
 
 function workOf(answer: ItemDraftResult): TestWork | null {
   const test = answer.draft?.test;
+  const connected = answer.draft?.connected_test;
+  if (connected) return { name: answer.draft?.name ?? "", test: test ?? emptyTestDraft(answer.draft?.name ?? ""), links: answer.draft?.test_links ?? {}, connected };
   if (!test) return null;
   return { name: answer.draft?.name ?? test.name, test, links: answer.draft?.test_links ?? {} };
 }
@@ -267,14 +270,14 @@ export function useTests({ root, shown: pageShown, place, go, back, busy, onRun,
       const editing = content.mode === "edit" && restoreDraft.item?.ref.kind === "test";
       const answer = editing
         ? await openItemDraft({ context: context(), ref: { kind: "test", id: restoreDraft.item!.ref.id } })
-        : await openItemDraft({ context: context(), ref: { kind: "test", id: "" }, ...(content.case ? { from: { case: content.case, messages: content.draft.test.messages ?? [] } } : {}) });
+        : await openItemDraft({ context: context(), ref: { kind: "test", id: "" }, ...(content.case ? { from: { case: content.case, messages: content.draft.test?.messages ?? [] } } : {}) });
       if (answer.state !== "completed") {
         onRestored?.(answer.reason ?? "The test this draft edits cannot be opened.");
         return;
       }
       const base = startOf(editing ? "edit" : "new", answer);
       // An edit keeps the version it was based on, so a newer save is refused as a conflict.
-      setStart({ ...base, ...(editing ? { ref: restoreDraft.item!.ref } : {}), baseline: editing ? base.work : null, work: { name: content.draft.name, test: content.draft.test, links: content.draft.test_links }, retained: restoreDraft });
+      setStart({ ...base, ...(editing ? { ref: restoreDraft.item!.ref } : {}), baseline: editing ? base.work : null, work: { name: content.draft.name, test: content.draft.test ?? base.work?.test ?? emptyTestDraft(content.draft.name), links: content.draft.test_links, ...(content.draft.connected_test ? { connected: content.draft.connected_test } : {}) }, retained: restoreDraft });
       go(editing ? { kind: "edit", id: restoreDraft.item!.ref.id } : { kind: "new" });
       onRestored?.();
     })();
@@ -329,6 +332,7 @@ export function useTests({ root, shown: pageShown, place, go, back, busy, onRun,
     view: place.kind === "test" ? place.view : "setup",
     context,
     environments,
+    cases,
     busy,
     go,
     refresh,
@@ -623,6 +627,7 @@ function useTestDetail({
   view,
   context,
   environments,
+  cases: casesList,
   busy,
   go,
   refresh,
@@ -630,6 +635,7 @@ function useTestDetail({
   onImported,
 }: {
   item: CatalogItem | null;
+  cases: CatalogItem[];
   view: "setup" | "checks" | "history";
   context: () => import("./bindings").RequestContext;
   environments: CatalogItem[];
@@ -642,6 +648,7 @@ function useTestDetail({
   const [opened, setOpened] = useState<ItemDraftResult | null>(null);
   const [history, setHistory] = useState<TestHistoryResult | null>(null);
   const [sheet, setSheet] = useState<null | "duplicate" | "json" | "details">(null);
+  const [inspectingConnected, setInspectingConnected] = useState<ReturnType<typeof connectedCheckRows>[number] | null>(null);
   const [notice, setNotice] = useState<{ text: string; problem?: boolean } | null>(null);
   const [inspecting, setInspecting] = useState<TestExpectation | null>(null);
   const [chosenRun, setChosenRun] = useState<string | null>(null);
@@ -684,7 +691,24 @@ function useTestDetail({
   // Run reviews exactly the version shown.
   const runRef: ItemRef = { kind: "test", id: ref.id, ...(summary.current_version ? { revision: summary.current_version } : {}) };
 
-  const setup = (
+  const connected = opened?.draft?.connected_test ?? null;
+  const offers = opened?.test?.connected ?? null;
+  const names = { cases: casesList, context: offers };
+  const connectedSetup = connected ? (
+    <>
+      <ValueRows
+        label="Setup"
+        rows={[
+          { label: "Outcome", value: CONNECTED_BOUNDARIES[connected.boundary] ?? "—" },
+          { label: "Environment", value: environment?.name ?? (links.environment ? "Removed environment" : "—") },
+          ...(connected.server ? [{ label: "FHIR server", value: environmentOffer(offers, connected.server)?.name ?? "Removed environment" }] : []),
+          { label: "Reset", value: environmentOffer(offers, links.environment ?? "")?.isolation ?? "—" },
+        ]}
+      />
+      <ConnectedInputs draft={connected} names={names} />
+    </>
+  ) : null;
+  const setup = connectedSetup ?? (
     <ValueRows
       label="Setup"
       rows={[
@@ -700,8 +724,13 @@ function useTestDetail({
       ]}
     />
   );
-  const checks =
-    (test?.expectations.length ?? 0) === 0 ? <p>No checks</p> : <CheckRows checks={test?.expectations ?? []} messages={messages} onInspect={setInspecting} />;
+  const checks = connected ? (
+    <ConnectedCheckList draft={connected} onInspect={setInspectingConnected} />
+  ) : (test?.expectations.length ?? 0) === 0 ? (
+    <p>No checks</p>
+  ) : (
+    <CheckRows checks={test?.expectations ?? []} messages={messages} onInspect={setInspecting} />
+  );
   const runs = history?.runs ?? [];
   // The groups this test links, decided against the chosen run's evidence.
   const decideChecks = async (runId: string) => {
@@ -807,16 +836,17 @@ function useTestDetail({
         {view === "setup" ? setup : view === "checks" ? checks : historyBody}
       </TaskTabs>
       <CheckDetails check={inspecting} messages={messages} onClose={() => setInspecting(null)} />
+      {connected ? <ConnectedCheckDetails draft={connected} row={inspectingConnected} names={names} onClose={() => setInspectingConnected(null)} /> : null}
       <DuplicateSheet
         open={sheet === "duplicate"}
         name={item.name}
         onClose={() => setSheet(null)}
         onSave={async (name) => {
-          if (!opened?.draft?.test) return { reason: "This test is not open." };
+          if (!opened?.draft?.test && !connected) return { reason: "This test is not open." };
           const answer = await saveItem({
             context: context(),
             kind: "test",
-            draft: { name, test: { ...opened.draft.test, name }, test_links: links },
+            draft: connected ? { name, connected_test: connected, test_links: links } : { name, test: { ...opened!.draft!.test!, name }, test_links: links },
             intent_id: newIntentId(),
           });
           if (answer.outcome !== "saved" || !answer.saved) return { reason: answer.problems.map((p) => p.problem).join(" ") || answer.reason || "Not saved." };
@@ -872,7 +902,7 @@ function useTestDetail({
   );
 
   const menu: MenuItem[] = [
-    { label: "Duplicate", onSelect: () => setSheet("duplicate"), disabled: busy || !opened?.draft?.test },
+    { label: "Duplicate", onSelect: () => setSheet("duplicate"), disabled: busy || (!opened?.draft?.test && !connected) },
     {
       label: "Export test",
       onSelect: () =>
@@ -904,7 +934,7 @@ function useTestDetail({
       object: item.name,
       items: [
         { label: "Run", onSelect: () => onRun(runRef), disabled: busy || !runnable },
-        { label: "Edit", onSelect: () => go({ kind: "edit", id: ref.id }), disabled: busy || !opened?.draft?.test || !!opened?.test?.read_only },
+        { label: "Edit", onSelect: () => go({ kind: "edit", id: ref.id }), disabled: busy || (!opened?.draft?.test && !connected) || !!opened?.test?.read_only },
         ...menu,
       ],
     },
@@ -914,7 +944,7 @@ function useTestDetail({
           label="More test actions"
           items={menu}
         />
-        <button type="button" disabled={busy || !opened?.draft?.test || opened?.test?.read_only} onClick={() => go({ kind: "edit", id: ref.id })}>
+        <button type="button" disabled={busy || (!opened?.draft?.test && !connected) || opened?.test?.read_only} onClick={() => go({ kind: "edit", id: ref.id })}>
           Edit
         </button>
         <button type="button" className="primary" disabled={busy || !runnable} onClick={() => onRun(runRef)}>

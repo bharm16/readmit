@@ -69,6 +69,9 @@ type loadedCatalog struct {
 	origins     map[string]catalog.Origin
 	originsRead bool
 
+	// approvals are each suite's approval history, read once per load.
+	approvals map[string][]suiteApprovalRecord
+
 	runViews    []runView
 	runsRead    bool
 	suiteRuns   []suiteRunView

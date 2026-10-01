@@ -21,7 +21,7 @@ import type {
   SuiteTestVersion,
 } from "./bindings";
 import { renderApp } from "./testkit/app";
-import { CASE_ENTRY, caseCatalogItem, catalogOfListing, folderWithCase, GRID_OCCURRENCE, NEXT_OCCURRENCE } from "./testkit/fixtures";
+import { CASE_ENTRY, caseCatalogItem, catalogOfListing, connectedSuiteVersion, folderWithCase, GRID_OCCURRENCE, NEXT_OCCURRENCE } from "./testkit/fixtures";
 import { goTo, page } from "./testkit/navigation";
 import type { FacadeHandlers, FacadeStub } from "./testkit/wails";
 
@@ -697,3 +697,78 @@ test("an environment list answered busy past its retries is read again, so a bin
   await waitFor(() => expect(rowsOf(environments)[0]).toEqual(["Scheduling QA", "acknowledgements", QA.name, "—"]), { timeout: 10_000 });
   expect(within(environments).queryByText("Removed")).toBeNull();
 }, 20_000);
+
+test("a suite of connected tests binds their FHIR server and runs one over a dataset whose rows override its own expected values", async () => {
+  const user = userEvent.setup();
+  const FHIR = item("environment", "env-fhir", "Scheduling FHIR", { environment: { classification: "nonproduction", address: "fhir.invalid", transport: "https", transport_approved: true, approval_required: false, last_checked_at: null, observation: null, has_policy: true, reset_actions: 0, protocol: "fhir-r4" } }, "2");
+  const CONNECTED = item("test", "t-connected", "Reschedule keeps one record", { test: { source_case: CASE.ref, latest_run: null, assertions: 3, current_version: "3", boundary: "application-state" } }, "3");
+  const start = connectedSuiteVersion({ id: "" }, "").connected!.expected[0]!.value;
+  const connectedVersion = (ref: { id: string; revision?: string }): SuiteTestVersion => ({ ...connectedSuiteVersion(ref, CONNECTED.name), connected: { ...connectedSuiteVersion(ref, CONNECTED.name).connected!, environment: QA.ref.id, server: FHIR.ref.id } });
+
+  const parameterized: SuiteDraft = {
+    id: "scheduling-regression",
+    tags: [],
+    concurrency: 1,
+    tests: [{ id: "reschedule", test: { kind: "test", id: CONNECTED.ref.id, revision: "3" }, dataset: "schedules", parameter: "engine", after: [], isolation: "shared", sequence: [], tags: [] }],
+    datasets: [{ id: "schedules", name: "Schedules", rows: [{ id: "on-time", case: { kind: "case", id: CASE.ref.id } }] }],
+    environments: [{ id: "qa", name: "QA", site: "", bindings: [{ parameter: "engine", target: { kind: "environment", id: QA.ref.id, revision: "3" }, server: { kind: "environment", id: FHIR.ref.id, revision: "2" } }] }],
+    requirements: [],
+    exclusions: [],
+  };
+  const SUITE = item("suite", "s-connected", "Scheduling regression", { suite: { tests: 1, environments: ["QA"], latest_run: null, latest_outcome: "", runnable: false } }, "1");
+  const rendered = await renderApp({
+    SelectWorkspace: () => folderWithCase(),
+    ...suiteHandlers(),
+    OpenItemDraft: (request) =>
+      request.ref.kind === "suite"
+        ? suiteAnswer(request, { ref: { kind: "suite", id: SUITE.ref.id, revision: "1" }, draft: { name: SUITE.name, suite: parameterized }, suite: { original: false, read_only: false, runnable: false, tests: [connectedVersion({ id: CONNECTED.ref.id })] } })
+        : { state: "completed", context: request.context, new: false, ref: request.ref, draft: { name: CONNECTED.name, test_links: { environment: QA.ref.id, reset: "environment" } } },
+    SuiteTests: (request: SuiteTestsRequest) => ({ state: "completed", context: request.context, tests: request.tests.map(connectedVersion) }),
+    SaveItem: (request) => saved(request, "s-connected"),
+  });
+  const lists: Record<string, CatalogItem[]> = { suite: [SUITE], test: [CONNECTED], case: [CASE], environment: [QA, FHIR], observation: [APPOINTMENTS] };
+  rendered.facade.reply({
+    ListCatalog: (query) => {
+      const items = lists[query.kind];
+      return items ? { state: "completed" as const, context: query.context, page: { items, total: items.length, snapshot: "s", recorded: true, incomplete: [] } } : catalogOfListing(query, rendered.facade);
+    },
+  });
+  await goTo(user, "Projects");
+  await user.click(screen.getByRole("button", { name: "Open" }));
+  await goTo(user, "Tests");
+  await user.click(await page().findByRole("tab", { name: "Suites" }));
+
+  // A new suite of a connected test runs it once and binds its FHIR server.
+  await user.click(await page().findByRole("button", { name: "New suite" }));
+  const sheet = await screen.findByRole("dialog", { name: "New suite" });
+  await user.type(within(sheet).getByLabelText("Name"), "Scheduling smoke");
+  await user.click(within(sheet).getByRole("checkbox", { name: CONNECTED.name }));
+  await user.click(within(sheet).getByRole("button", { name: "Create" }));
+  await waitFor(() => expect(rendered.facade.callsTo("SaveItem")).toHaveLength(1));
+  const created = (rendered.facade.oneCall("SaveItem")[0] as SaveItemRequest).draft.suite!;
+  expect(created.datasets).toEqual([]);
+  expect(created.tests).toEqual([expect.objectContaining({ test: { kind: "test", id: CONNECTED.ref.id, revision: "3" }, dataset: "", sequence: [] })]);
+  expect(created.environments).toEqual([expect.objectContaining({ bindings: [{ parameter: created.tests[0]!.parameter, target: { kind: "environment", id: QA.ref.id }, server: { kind: "environment", id: FHIR.ref.id } }] })]);
+
+  // A row of its dataset overrides one of its own expected values, typed as
+  // the field it is expected of.
+  await user.click(await page().findByRole("button", { name: "Edit" }));
+  await user.click(await page().findByRole("tab", { name: "Data" }));
+  await user.dblClick(within(await page().findByRole("table", { name: "Datasets" })).getByText("Schedules"));
+  const dataset = await screen.findByRole("dialog", { name: "Edit dataset" });
+  expect(within(dataset).getByText("2026-03-02T09:30:00Z (test)")).toBeTruthy();
+  await user.click(within(dataset).getByRole("button", { name: "Edit Reschedule · Moved start for row 1" }));
+  const value = await screen.findByRole("dialog", { name: "Expected value" });
+  expect(within(value).getAllByRole("option").map((option) => option.textContent)).toEqual(["Present", "Not present"]);
+  await user.clear(within(value).getByLabelText("Value"));
+  await user.type(within(value).getByLabelText("Value"), "2026-03-02T09:45:00Z");
+  await user.click(within(value).getByRole("button", { name: "Apply" }));
+  await user.click(within(await screen.findByRole("dialog", { name: "Edit dataset" })).getByRole("button", { name: "Apply" }));
+  await waitFor(() => expect(rendered.facade.callsTo("SaveEditorDraft").length).toBeGreaterThan(0));
+  expect(rendered.facade.callsTo("SaveEditorDraft").at(-1)!.args[0]).toMatchObject({ kind: "suite-editor", content_schema: "readmit-suite-editor/v2" });
+  await user.click(page().getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(rendered.facade.callsTo("SaveItem")).toHaveLength(2));
+  const edited = (rendered.facade.callsTo("SaveItem")[1]!.args[0] as SaveItemRequest).draft.suite!;
+  expect(edited.datasets[0]!.rows[0]!.connected_expected).toEqual({ "reschedule/moved-start": { ...start, text: "2026-03-02T09:45:00Z" } });
+  expect(edited.environments[0]!.bindings[0]!.target.revision).toBe("3");
+});

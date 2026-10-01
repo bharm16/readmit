@@ -1622,11 +1622,82 @@ export interface Condition {
   values?: string[];
 }
 
+/** internal/desktop.ConnectedAckCheck */
+export interface ConnectedAckCheck {
+  id: string;
+  name: string;
+  step: string;
+  code: string;
+}
+
 /** internal/desktop.ConnectedActionOptions */
 export interface ConnectedActionOptions {
   plan: string;
   policy: string;
   credential?: string;
+}
+
+/** internal/desktop.ConnectedCheck */
+export interface ConnectedCheck {
+  name: string;
+  check: AssertionDatasetAssertion;
+}
+
+/** internal/desktop.ConnectedClause */
+export interface ConnectedClause {
+  kind: string;
+  id: string;
+  name: string;
+  reason: string;
+  text: string;
+}
+
+/** internal/desktop.ConnectedColumn */
+export interface ConnectedColumn {
+  name: string;
+  type: string;
+  code_system?: string;
+  key: boolean;
+  required: boolean;
+  repeated: boolean;
+  states: string[];
+}
+
+/** internal/desktop.ConnectedEnvironmentOffer */
+export interface ConnectedEnvironmentOffer {
+  ref: ItemRef;
+  name: string;
+  protocol: string;
+  isolation?: string;
+  effects: string[];
+  capabilities: boolean;
+  validator?: string;
+  authentication?: string;
+  reason?: string;
+}
+
+/** internal/desktop.ConnectedFHIR */
+export interface ConnectedFHIR {
+  method: string;
+  resource: string;
+  target: ConnectedFHIRTarget;
+  if_none_exist?: ConnectedIdentifier;
+  if_match?: string;
+  prefer?: string;
+  bind: ConnectedtestResponseBinding[];
+}
+
+/** internal/desktop.ConnectedFHIRTarget */
+export interface ConnectedFHIRTarget {
+  kind: string;
+  variable?: string;
+  identifier?: ConnectedIdentifier;
+}
+
+/** internal/desktop.ConnectedIdentifier */
+export interface ConnectedIdentifier {
+  system: string;
+  value: string;
 }
 
 /** internal/desktop.ConnectedMinimizeChoice */
@@ -1681,6 +1752,127 @@ export interface ConnectedObservation {
   fhir?: FHIRSearchDraft;
 }
 
+/** internal/desktop.ConnectedObservationOffer */
+export interface ConnectedObservationOffer {
+  ref: ItemRef;
+  name: string;
+  protocol: string;
+  phases: string[];
+  environment?: string;
+  columns: ConnectedColumn[];
+  projection?: string;
+  horizon_ms: number;
+  barrier?: boolean;
+  readable: boolean;
+  reason?: string;
+}
+
+/** internal/desktop.ConnectedOperatorChoice */
+export interface ConnectedOperatorChoice {
+  operator: string;
+  types: string[];
+}
+
+/** internal/desktop.ConnectedPhase */
+export interface ConnectedPhase {
+  id: string;
+  name: string;
+  steps: string[];
+  after: ConnectedtestPhaseDependency[];
+  when?: ConnectedtestPhaseCondition;
+  observations: ConnectedPhaseObservation[];
+  checks: ConnectedCheck[];
+  responses: ConnectedResponseCheck[];
+  validations: ConnectedValidationCheck[];
+  acknowledgements: ConnectedAckCheck[];
+  unsupported?: ConnectedClause[];
+}
+
+/** internal/desktop.ConnectedPhaseObservation */
+export interface ConnectedPhaseObservation {
+  dataset: string;
+  observation: ItemRef;
+  when: string;
+}
+
+/** internal/desktop.ConnectedProposal */
+export interface ConnectedProposal {
+  id: string;
+  phase: string;
+  check: ConnectedCheck;
+  reason?: string;
+}
+
+/** internal/desktop.ConnectedResponseCheck */
+export interface ConnectedResponseCheck {
+  name: string;
+  check: ConnectedtestResponseCheck;
+}
+
+/** internal/desktop.ConnectedSource */
+export interface ConnectedSource {
+  case: ItemRef;
+  identity: string;
+  occurrence: string;
+}
+
+/** internal/desktop.ConnectedSourceOffer */
+export interface ConnectedSourceOffer {
+  occurrence: string;
+  label: string;
+  resource?: string;
+  sendable: boolean;
+  fhir?: ConnectedFHIR;
+}
+
+/** internal/desktop.ConnectedSourcesRequest */
+export interface ConnectedSourcesRequest {
+  context: RequestContext;
+  case: ItemRef;
+}
+
+/** internal/desktop.ConnectedSourcesResult */
+export interface ConnectedSourcesResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  identity?: string;
+  protocol?: string;
+  sources: ConnectedSourceOffer[];
+}
+
+/** internal/desktop.ConnectedStep */
+export interface ConnectedStep {
+  id: string;
+  after: string[];
+  source: ConnectedSource;
+  v2?: ConnectedV2;
+  fhir?: ConnectedFHIR;
+}
+
+/** internal/desktop.ConnectedSuggestRequest */
+export interface ConnectedSuggestRequest {
+  context: RequestContext;
+  test: ItemRef;
+  run?: ItemRef;
+}
+
+/** internal/desktop.ConnectedSuggestResult */
+export interface ConnectedSuggestResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  runs: ConnectedSuggestRun[];
+  proposals: ConnectedProposal[];
+}
+
+/** internal/desktop.ConnectedSuggestRun */
+export interface ConnectedSuggestRun {
+  run: ItemRef;
+  name: string;
+  started_at: string | null;
+}
+
 /** internal/desktop.ConnectedSuiteDraft */
 export interface ConnectedSuiteDraft {
   document: SuiteConnectedDocument;
@@ -1712,6 +1904,60 @@ export interface ConnectedSuiteRunOptions {
   promotion_identity: string;
   revision: string;
   instance: string;
+}
+
+/** internal/desktop.ConnectedTestContext */
+export interface ConnectedTestContext {
+  observations: ConnectedObservationOffer[];
+  pinned: ConnectedObservationOffer[];
+  environments: ConnectedEnvironmentOffer[];
+}
+
+/** internal/desktop.ConnectedTestDraft */
+export interface ConnectedTestDraft {
+  schema: string;
+  boundary: string;
+  server?: string;
+  generation: ConnectedtestGeneration;
+  variables: ConnectedVariable[];
+  steps: ConnectedStep[];
+  phases: ConnectedPhase[];
+}
+
+/** internal/desktop.ConnectedTestVocabulary */
+export interface ConnectedTestVocabulary {
+  boundaries: string[];
+  operators: ConnectedOperatorChoice[];
+  methods: string[];
+  preferences: string[];
+  response_outcomes: string[];
+  ack_codes: string[];
+  variable_kinds: string[];
+  binding_froms: string[];
+  binding_scopes: string[];
+  phase_requires: string[];
+  condition_results: string[];
+  quantifiers: string[];
+}
+
+/** internal/desktop.ConnectedV2 */
+export interface ConnectedV2 {
+}
+
+/** internal/desktop.ConnectedValidationCheck */
+export interface ConnectedValidationCheck {
+  id: string;
+  name: string;
+  step: string;
+}
+
+/** internal/desktop.ConnectedVariable */
+export interface ConnectedVariable {
+  id: string;
+  kind: string;
+  namespace?: string;
+  value?: string;
+  offset_ms?: number;
 }
 
 /** internal/desktop.ConnectedVocabulary */
@@ -1785,6 +2031,40 @@ export interface ConnectedtestAttempt {
   kind: string;
   outcome: string;
   uncertain: boolean;
+}
+
+/** internal/connectedtest.Generation */
+export interface ConnectedtestGeneration {
+  seed: number;
+  base_time: string;
+}
+
+/** internal/connectedtest.PhaseCondition */
+export interface ConnectedtestPhaseCondition {
+  phase: string;
+  check: string;
+  outcome: string;
+}
+
+/** internal/connectedtest.PhaseDependency */
+export interface ConnectedtestPhaseDependency {
+  phase: string;
+  requires: string;
+}
+
+/** internal/connectedtest.ResponseBinding */
+export interface ConnectedtestResponseBinding {
+  variable: string;
+  from: string;
+  multiplicity: string;
+  scope: string;
+}
+
+/** internal/connectedtest.ResponseCheck */
+export interface ConnectedtestResponseCheck {
+  id: string;
+  step: string;
+  outcome: string;
 }
 
 /** internal/desktop.ConnectionAction */
@@ -5294,6 +5574,7 @@ export interface ItemDraft {
   test?: TestDraftDocument;
   test_links?: TestLinks;
   test_document?: string;
+  connected_test?: ConnectedTestDraft;
   observation?: ObservationDraft;
   case?: CaseDraft;
   project?: ProjectDraft;
@@ -11407,6 +11688,7 @@ export interface SuiteBinding {
   target_source?: string;
   observation?: ItemRef;
   observation_source?: string;
+  server?: ItemRef;
 }
 
 /** internal/desktop.SuiteChange */
@@ -11468,6 +11750,14 @@ export interface SuiteConnectedEnvironment {
   bindings: SuiteConnectedBinding[];
 }
 
+/** internal/desktop.SuiteConnectedExpected */
+export interface SuiteConnectedExpected {
+  key: string;
+  name: string;
+  field: ConnectedColumn;
+  value: DatasetValue;
+}
+
 /** internal/suite.ConnectedTest */
 export interface SuiteConnectedTest {
   id: string;
@@ -11477,6 +11767,15 @@ export interface SuiteConnectedTest {
   release_identity: string;
   after: string[];
   state: string;
+}
+
+/** internal/desktop.SuiteConnectedVersion */
+export interface SuiteConnectedVersion {
+  environment?: string;
+  server?: string;
+  phases: string[];
+  checks: string[];
+  expected: SuiteConnectedExpected[];
 }
 
 /** internal/desktop.SuiteContext */
@@ -11502,6 +11801,7 @@ export interface SuiteDataRow {
   case: ItemRef;
   source?: string;
   expected?: Record<string, TestRunnerValue>;
+  connected_expected?: Record<string, DatasetValue>;
 }
 
 /** internal/desktop.SuiteDataset */
@@ -11750,6 +12050,7 @@ export interface SuiteTestVersion {
   sequence: string[];
   ledger: boolean;
   reason?: string;
+  connected?: SuiteConnectedVersion;
 }
 
 /** internal/desktop.SuiteTestsRequest */
@@ -12140,6 +12441,7 @@ export interface TestContext {
   proposals: TestProposal[];
   document?: string;
   read_only: boolean;
+  connected?: ConnectedTestContext;
 }
 
 /** internal/testauthor.Coverage */
@@ -12957,6 +13259,7 @@ export interface ViewsResult {
 /** internal/desktop.Vocabulary */
 export interface Vocabulary {
   connected: ConnectedVocabulary;
+  connected_tests: ConnectedTestVocabulary;
   diagnosis_builtins: DiagnosisBuiltin[];
   import_plan: ImportPlanVocabulary;
   import_engines: EngineExportEngine[];
@@ -13074,6 +13377,7 @@ export interface Facade {
   CompleteHubAuth(code: string, state: string): Promise<HubResult>;
   ConnectHub(): Promise<HubResult>;
   ConnectOperatorHub(): Promise<HubResult>;
+  ConnectedTestSources(request: ConnectedSourcesRequest): Promise<ConnectedSourcesResult>;
   CorpusProgress(): Promise<CorpusProgressResult>;
   CreateLicenseActivation(request: LicenseActivationRequest): Promise<OperationResult>;
   CreateNamedProject(request: NewProjectRequest): Promise<ProjectOpenResult>;
@@ -13374,6 +13678,7 @@ export interface Facade {
   StartSampleFixture(request: SampleFixtureRequest): Promise<SampleFixtureResult>;
   StartSuiteRun(request: SuiteRunRequest): Promise<SuiteRunResult>;
   StoreOperatorHubArtifact(): Promise<HubTransferResult>;
+  SuggestConnectedChecks(request: ConnectedSuggestRequest): Promise<ConnectedSuggestResult>;
   SuggestExpectations(request: TestRequest): Promise<TestResult>;
   SuiteCoverage(request: SuiteCoverageRequest): Promise<SuiteAssessment>;
   SuiteHistory(request: ItemRequest): Promise<SuiteHistoryResult>;

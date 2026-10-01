@@ -5,8 +5,10 @@
 import { useEffect, useState } from "react";
 import type {
   CatalogItem,
+  DatasetValue,
   ItemRef,
   SuiteBinding,
+  SuiteConnectedExpected,
   SuiteDataRow,
   SuiteDataset,
   SuiteDraft,
@@ -22,6 +24,8 @@ import { EXCLUSION_STATES } from "./display";
 import { FormDialog, type SubmitFailure } from "./layout";
 import { datasetChecks, identifier, localOf, localZone, utcOf, valueFits, valueOf, zones } from "./suite-model";
 import { CheckSheet, checkExpected, checkTitle, messageLabel } from "./TestEditor";
+import { TypedValueFields, type TypedField } from "./Checks";
+import { valueText } from "./ConnectedTest";
 
 /** A checkbox list of named choices, in the order given. */
 function Choices({ legend, choices, chosen, onChange }: { legend: string; choices: { id: string; name: string; note?: string }[]; chosen: string[]; onChange: (ids: string[]) => void }) {
@@ -205,7 +209,7 @@ export function TestRowSheet({
       ) : null}
       <label htmlFor="row-dataset">Dataset</label>
       <select id="row-dataset" value={held.dataset} onChange={(event) => setHeld({ ...held, dataset: event.target.value })}>
-        {draft.datasets.some((set) => set.id === held.dataset) ? null : <option value={held.dataset}>Choose a dataset</option>}
+        {version?.connected ? <option value="">None</option> : draft.datasets.some((set) => set.id === held.dataset) ? null : <option value={held.dataset}>Choose a dataset</option>}
         {draft.datasets.map((set) => (
           <option key={set.id} value={set.id}>
             {set.name}
@@ -229,6 +233,8 @@ export function TestRowSheet({
         </>
       ) : null}
       {others.length > 0 || held.after.length > 0 ? <Choices legend="Depends on" choices={others} chosen={held.after} onChange={(after) => setHeld({ ...held, after })} /> : null}
+      {version?.connected ? null : (
+        <>
       <fieldset>
         <legend>State sharing</legend>
         <label className="check">
@@ -248,6 +254,8 @@ export function TestRowSheet({
           </option>
         ))}
       </select>
+        </>
+      )}
     </FormDialog>
   );
 }
@@ -279,13 +287,28 @@ export function DatasetSheet({
   const blank = (): SuiteDataset => ({ id: "", name: "", rows: [] });
   const [held, setHeld] = useState<SuiteDataset>(dataset ?? blank());
   const [editing, setEditing] = useState<{ row: number; check: TestExpectation } | null>(null);
+  const [connectedEditing, setConnectedEditing] = useState<{ row: number; expected: SuiteConnectedExpected; value: DatasetValue } | null>(null);
   useEffect(() => {
     if (open) {
       setHeld(dataset ?? blank());
       setEditing(null);
+      setConnectedEditing(null);
     }
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
   const { users, checks } = datasetChecks(draft, held.id, versions);
+  // The expected values of the connected tests over this dataset, by key.
+  const connectedChecks = draft.tests
+    .filter((test) => test.dataset === held.id && held.id !== "")
+    .flatMap((test) => versions.find((v) => v.ref.id === test.test.id && v.ref.revision === test.test.revision)?.connected?.expected ?? [])
+    .filter((expected, at, all) => all.findIndex((other) => other.key === expected.key) === at);
+  const connectedOverride = (index: number, key: string, value: DatasetValue | undefined) => {
+    const row = held.rows[index]!;
+    const overrides = { ...(row.connected_expected ?? {}) };
+    if (value === undefined) delete overrides[key];
+    else overrides[key] = value;
+    const { connected_expected: _old, ...rest } = row;
+    setRow(index, Object.keys(overrides).length > 0 ? { ...rest, connected_expected: overrides } : rest);
+  };
   const sortedCases = [...cases].filter((item) => item.availability === "available").sort((a, b) => a.name.localeCompare(b.name));
   const rowIds = () => held.rows.map((row) => row.id);
   const caseName = (ref: ItemRef) => cases.find((item) => item.ref.id === ref.id)?.name ?? "";
@@ -301,7 +324,7 @@ export function DatasetSheet({
   return (
     <>
       <FormDialog
-        open={open && editing === null}
+        open={open && editing === null && connectedEditing === null}
         title={dataset ? "Edit dataset" : "Add dataset"}
         submitLabel="Apply"
         dirty={JSON.stringify(held) !== JSON.stringify(dataset ?? blank())}
@@ -370,6 +393,23 @@ export function DatasetSheet({
                   </div>
                 );
               })}
+              {connectedChecks.map((expected) => {
+                const value = row.connected_expected?.[expected.key];
+                return (
+                  <div key={expected.key} className="override">
+                    <span className="override-check">{expected.name}</span>
+                    <span className="override-value">{value !== undefined ? valueText(value) : `${valueText(expected.value)} (test)`}</span>
+                    <button type="button" className="quiet" aria-label={`Edit ${expected.name} for row ${index + 1}`} onClick={() => setConnectedEditing({ row: index, expected, value: value ?? expected.value })}>
+                      Edit
+                    </button>
+                    {value !== undefined ? (
+                      <button type="button" className="quiet" aria-label={`Reset ${expected.name} for row ${index + 1}`} onClick={() => connectedOverride(index, expected.key, undefined)}>
+                        Reset override
+                      </button>
+                    ) : null}
+                  </div>
+                );
+              })}
               {unknown.map((id) => (
                 <div key={id} className="override">
                   <span className="override-check">{id}</span>
@@ -403,6 +443,18 @@ export function DatasetSheet({
           Add row
         </button>
       </FormDialog>
+      {connectedEditing ? (
+        <ExpectedValueSheet
+          name={connectedEditing.expected.name}
+          field={connectedEditing.expected.field}
+          value={connectedEditing.value}
+          onClose={() => setConnectedEditing(null)}
+          onApply={(value) => {
+            connectedOverride(connectedEditing.row, connectedEditing.expected.key, value);
+            setConnectedEditing(null);
+          }}
+        />
+      ) : null}
       {editing ? (
         <CheckSheet
           open
@@ -418,6 +470,16 @@ export function DatasetSheet({
         />
       ) : null}
     </>
+  );
+}
+
+/** One expected value a row overrides, edited as its field's type. */
+function ExpectedValueSheet({ name, field, value, onClose, onApply }: { name: string; field: TypedField; value: DatasetValue; onClose: () => void; onApply: (value: DatasetValue) => void }) {
+  const [held, setHeld] = useState(value);
+  return (
+    <FormDialog open title="Expected value" submitLabel="Apply" dirty={JSON.stringify(held) !== JSON.stringify(value)} onClose={onClose} onSubmit={() => { onApply(held); return null; }}>
+      <TypedValueFields id="row-expected" label={name} field={field} value={held} onChange={setHeld} />
+    </FormDialog>
   );
 }
 
@@ -463,6 +525,9 @@ export function BindingSheet({
   // A parameter a test of appointment records is bound through needs the
   // observation that test reads.
   const ledger = draft.tests.some((test) => test.parameter === held.binding.parameter && versions.find((v) => v.ref.id === test.test.id && v.ref.revision === test.test.revision)?.ledger);
+  // A parameter a connected test is bound through may name the FHIR server
+  // its requests and FHIR observations reach in this environment.
+  const connected = draft.tests.some((test) => test.parameter === held.binding.parameter && versions.find((v) => v.ref.id === test.test.id && v.ref.revision === test.test.revision)?.connected);
   const pick = (list: CatalogItem[]) => [...list].filter((item) => item.availability === "available").sort((a, b) => a.name.localeCompare(b.name));
   return (
     <FormDialog
@@ -523,6 +588,26 @@ export function BindingSheet({
           </option>
         ))}
       </select>
+      {connected || held.binding.server ? (
+        <>
+          <label htmlFor="binding-server">FHIR server</label>
+          <select
+            id="binding-server"
+            value={held.binding.server?.id ?? ""}
+            onChange={(event) => {
+              const { server: _dropped, ...binding } = held.binding;
+              setHeld({ ...held, binding: event.target.value ? { ...binding, server: { kind: "environment", id: event.target.value } } : binding });
+            }}
+          >
+            <option value="">The test's own</option>
+            {pick(environments.filter((item) => item.summary.environment?.protocol === "fhir-r4")).map((item) => (
+              <option key={item.ref.id} value={item.ref.id}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+        </>
+      ) : null}
       {ledger || held.binding.observation || held.binding.observation_source ? (
         <>
           <label htmlFor="binding-observation">Observation</label>

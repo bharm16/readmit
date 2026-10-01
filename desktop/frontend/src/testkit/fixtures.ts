@@ -69,6 +69,8 @@ import type {
   RunEvidenceResult,
   SuiteRunResult,
   RunSpecChoiceResult,
+  ConnectedTestContext,
+  SuiteTestVersion,
 } from "../bindings";
 
 /** The synthetic workspace root the fixtures name. It is not a path on any
@@ -227,6 +229,30 @@ export function shellResult(): ShellResult {
  * window's description. A test that is about one of these passes its own. */
 export function vocabularyFixture(bounds: Partial<Vocabulary["bounds"]> = {}): Vocabulary {
   return {
+    connected_tests: {
+      boundaries: ["engine-output", "application-state"],
+      operators: [
+        { operator: "value-equals", types: [] },
+        { operator: "decimal-equals", types: ["decimal"] },
+        { operator: "instant-equals", types: ["date", "datetime"] },
+        { operator: "value-related", types: [] },
+        { operator: "value-changed", types: [] },
+        { operator: "row-count", types: [] },
+        { operator: "unique-keys", types: [] },
+        { operator: "each-equals", types: [] },
+        { operator: "sequence-equals", types: [] },
+      ],
+      methods: ["POST", "PUT", "DELETE", "GET"],
+      preferences: ["return=minimal", "return=representation", "return=OperationOutcome"],
+      response_outcomes: ["succeeded", "not-modified", "conflict", "not-found", "pending", "rejected", "rejected-transaction", "partial-failure", "unauthorized", "forbidden", "throttled", "unavailable"],
+      ack_codes: ["AA", "AE", "AR", "CA", "CE", "CR"],
+      variable_kinds: ["literal", "synthetic-id", "timestamp", "response"],
+      binding_froms: ["logical-id", "version-id"],
+      binding_scopes: ["phase", "lifecycle"],
+      phase_requires: ["pass", "complete"],
+      condition_results: ["passed", "failed", "skipped"],
+      quantifiers: ["every", "any", "none"],
+    },
     connected: {
       connection: { schema: "readmit-fhir-connection/v1", base: "", version: "4.0.1", classification: "unclassified", authentication: "", server_name: "" },
       observation: {
@@ -1535,5 +1561,65 @@ export function teamResult(overrides: Partial<HubTeamResult> = {}): HubTeamResul
     ],
     resources: [{ resource: "booking-rules", revisions: [{ id: "rev-1", artifact: "b".repeat(64), actor: "ana", at: "2026-09-19T10:00:00Z", reason: "first", parents: [] }], tips: ["rev-1"] }],
     ...overrides,
+  };
+}
+
+/** What a connected test's editor reads beside its draft: a FHIR observation
+ * of appointments by business key, a v2 engine and a FHIR application, each
+ * with its typed isolation. Every name and identifier is synthetic. */
+export function connectedTestContext(): ConnectedTestContext {
+  const fhir = { kind: "environment" as const, id: "env-fhir", revision: "3" };
+  return {
+    observations: [
+      {
+        ref: { kind: "observation", id: "obs-appointments", revision: "4" },
+        name: "Appointments",
+        protocol: "fhir",
+        phases: ["both"],
+        environment: fhir.id,
+        projection: "p1",
+        horizon_ms: 30000,
+        readable: true,
+        columns: [
+          { name: "key", type: "text", key: true, required: true, repeated: false, states: ["present", "absent"] },
+          { name: "identity", type: "text", key: false, required: true, repeated: false, states: ["present", "absent"] },
+          { name: "start", type: "datetime", key: false, required: false, repeated: false, states: ["present", "absent"] },
+          { name: "status", type: "code", code_system: "http://hl7.org/fhir/appointmentstatus", key: false, required: false, repeated: false, states: ["present", "absent"] },
+        ],
+      },
+    ],
+    pinned: [],
+    environments: [
+      { ref: { kind: "environment", id: "env-engine", revision: "2" }, name: "Scheduling engine", protocol: "v2", isolation: "Lab tenant", effects: ["Creates Patient"], capabilities: false },
+      { ref: fhir, name: "Scheduling FHIR", protocol: "fhir", isolation: "Lab tenant", effects: ["Creates Patient"], capabilities: true, validator: "not-configured", authentication: "none" },
+    ],
+  };
+}
+
+/** A connected test version as a suite uses it: the environments it names,
+ * its phase and check, and the one expected value a dataset row can override. */
+export function connectedSuiteVersion(ref: { id: string; revision?: string }, name: string): SuiteTestVersion {
+  return {
+    ref: { kind: "test", id: ref.id, revision: ref.revision ?? "3" },
+    name,
+    version: ref.revision ?? "3",
+    checks: [],
+    messages: [],
+    sequence: [],
+    ledger: false,
+    connected: {
+      environment: "env-qa",
+      server: "env-fhir",
+      phases: ["Reschedule"],
+      checks: ["Reschedule · Moved start"],
+      expected: [
+        {
+          key: "reschedule/moved-start",
+          name: "Reschedule · Moved start",
+          field: { name: "start", type: "datetime", key: false, required: false, repeated: false, states: ["present", "absent"] },
+          value: { state: "present", type: "datetime", text: "2026-03-02T09:30:00Z", precision: "second", timezone: "+00:00" },
+        },
+      ],
+    },
   };
 }

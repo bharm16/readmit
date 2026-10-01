@@ -439,10 +439,10 @@ func validateEditorDraft(draft EditorDraft) error {
 	if draft.ContentSchema == NoteDraftSchema {
 		return validateNoteDraft(draft.Content)
 	}
-	if draft.ContentSchema == SuiteEditorDraftSchema {
-		return validateSuiteEditorDraft(draft.Content)
+	if draft.ContentSchema == SuiteEditorDraftSchema || draft.ContentSchema == SuiteEditorDraftSchemaV2 {
+		return validateSuiteEditorDraft(draft.ContentSchema, draft.Content)
 	}
-	if draft.ContentSchema == TestEditorDraftSchema {
+	if draft.ContentSchema == TestEditorDraftSchema || draft.ContentSchema == TestEditorDraftSchemaV2 {
 		return validateTestEditorDraft(draft)
 	}
 	return nil
@@ -453,6 +453,9 @@ func validateEditorDraft(draft EditorDraft) error {
 const (
 	TestEditorDraftSchema = "readmit-desktop-test-editor/v1"
 	TestEditorDraftKind   = "test-draft"
+	// TestEditorDraftSchemaV2 is the same retained work holding a connected
+	// test's authoring draft in place of a test draft.
+	TestEditorDraftSchemaV2 = "readmit-desktop-test-editor/v2"
 )
 
 // TestEditorDraft is the test editor's retained work: whether it creates a
@@ -476,7 +479,7 @@ type TestEditorDraft struct {
 // draft holds only what a test carries.
 func validateTestEditorDraft(retained EditorDraft) error {
 	var draft TestEditorDraft
-	if err := json.Unmarshal(retained.Content, &draft, json.RejectUnknownMembers(true)); err != nil || draft.Schema != TestEditorDraftSchema {
+	if err := json.Unmarshal(retained.Content, &draft, json.RejectUnknownMembers(true)); err != nil || draft.Schema != retained.ContentSchema {
 		return errors.New("invalid test editor draft content")
 	}
 	if retained.Kind != TestEditorDraftKind {
@@ -495,6 +498,9 @@ func validateTestEditorDraft(retained EditorDraft) error {
 		return errors.New("a test editor draft names the case it was opened over by its identity")
 	}
 	held := draft.Draft
+	if draft.Schema == TestEditorDraftSchemaV2 {
+		held.ConnectedTest = nil
+	}
 	held.Name, held.Test, held.TestLinks, held.TestDocument = "", nil, nil, ""
 	if !reflect.DeepEqual(held, ItemDraft{}) {
 		return errors.New("a test editor draft holds only a test's name, draft, document and links")
@@ -506,6 +512,11 @@ func validateTestEditorDraft(retained EditorDraft) error {
 // work: the suite it edits, if any, the name and the whole suite draft as
 // the editor holds it, each member of which may still be unanswered.
 const SuiteEditorDraftSchema = "readmit-suite-editor/v1"
+
+// SuiteEditorDraftSchemaV2 is the same retained work of a suite of connected
+// tests, whose bindings may name a FHIR server and whose rows may override a
+// connected check. A v1 draft declares neither.
+const SuiteEditorDraftSchemaV2 = "readmit-suite-editor/v2"
 
 // SuiteEditorDraft is the suite editor's retained work. Item names the saved
 // suite and version an edit began from, and is absent for a new suite. It
@@ -521,9 +532,9 @@ type SuiteEditorDraft struct {
 // contract: it declares its schema, names a suite of the project when it
 // edits one, and carries a suite draft, whose validity is decided only when
 // it is saved.
-func validateSuiteEditorDraft(content jsontext.Value) error {
+func validateSuiteEditorDraft(schema string, content jsontext.Value) error {
 	var draft SuiteEditorDraft
-	if err := json.Unmarshal(content, &draft, json.RejectUnknownMembers(true)); err != nil || draft.Schema != SuiteEditorDraftSchema {
+	if err := json.Unmarshal(content, &draft, json.RejectUnknownMembers(true)); err != nil || draft.Schema != schema || schema == SuiteEditorDraftSchema && connectedMembers(draft.Suite) {
 		return errors.New("invalid suite editor draft content")
 	}
 	if item := draft.Item; item != nil && (item.Kind != SuiteItem || !catalog.ValidID(item.ID) || len(item.Revision) > 16) {

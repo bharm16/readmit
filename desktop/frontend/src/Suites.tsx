@@ -90,7 +90,14 @@ export type SuiteRunHandoff = { target: SuiteRunTarget; name: string; version: s
 
 /** A suite editor's unsaved work as the drafts store keeps it. */
 export const SUITE_EDITOR_DRAFT = "readmit-suite-editor/v1";
-export type SuiteEditorContent = { schema: typeof SUITE_EDITOR_DRAFT; name: string; suite: SuiteDraft };
+/** The same work of a suite of connected tests, whose bindings may name a
+ * FHIR server and whose rows may override a connected check. */
+export const CONNECTED_SUITE_EDITOR_DRAFT = "readmit-suite-editor/v2";
+export type SuiteEditorContent = { schema: typeof SUITE_EDITOR_DRAFT | typeof CONNECTED_SUITE_EDITOR_DRAFT; name: string; suite: SuiteDraft };
+
+function declaresConnected(draft: SuiteDraft): boolean {
+  return draft.environments.some((env) => env.bindings.some((binding) => binding.server)) || draft.datasets.some((set) => set.rows.some((row) => row.connected_expected));
+}
 
 /** The sheet an edit opens with, when a detail action began it. */
 type EditSheet =
@@ -660,7 +667,7 @@ function TestsSection({ draft, versions, lists, problems, onSheet, results, onAd
       },
     },
     { key: "version", header: "Version", priority: 2, minWidth: 5, render: ({ test }) => (test.test.revision ? `v${test.test.revision}` : "—") },
-    { key: "dataset", header: "Dataset", priority: 2, minWidth: 10, flex: true, render: ({ test }) => names.datasetName(test.dataset) },
+    { key: "dataset", header: "Dataset", priority: 2, minWidth: 10, flex: true, render: ({ test }) => (test.dataset ? names.datasetName(test.dataset) : "—") },
     onSheet
       ? {
           key: "actions",
@@ -1836,14 +1843,15 @@ function useSuiteEditor({
       if (retainer.currentId() !== "") void retainer.dropCurrent();
       return;
     }
-    const content: SuiteEditorContent = { schema: SUITE_EDITOR_DRAFT, name, suite: draft };
+    const schema = declaresConnected(draft) ? CONNECTED_SUITE_EDITOR_DRAFT : SUITE_EDITOR_DRAFT;
+    const content: SuiteEditorContent = { schema, name, suite: draft };
     retainer.save({
       id: "",
       kind: "suite-editor",
       workspace: scope.project,
       case: "",
       identity: "",
-      content_schema: SUITE_EDITOR_DRAFT,
+      content_schema: schema,
       content,
       ...(start.ref && scope.project_id ? { item: { project_id: scope.project_id, ref: start.ref } } : {}),
     });
@@ -1882,7 +1890,11 @@ function useSuiteEditor({
 
   if (!start || !draft) return { title: "Suite", leave: onClose, dirty: false, body: <p aria-live="polite">Reading…</p> };
   const names = namer(draft, versions, lists);
-  const local = draftProblems(draft, name, names.testName);
+  const connectedVersion = (id: string) => {
+    const pinned = draft.tests.find((test) => test.id === id)?.test;
+    return !!versions.find((v) => v.ref.id === pinned?.id && v.ref.revision === pinned?.revision)?.connected;
+  };
+  const local = draftProblems(draft, name, names.testName, connectedVersion);
   const shown = [...problems.filter((problem) => !local.some((held) => held.field === problem.field)), ...local];
 
   const save = async (): Promise<boolean> => {

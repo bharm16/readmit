@@ -3,6 +3,7 @@ package desktop
 import (
 	"context"
 
+	"github.com/bharm16/readmit/internal/dataset"
 	"github.com/bharm16/readmit/internal/runqueue"
 	"github.com/bharm16/readmit/internal/testauthor"
 	"github.com/bharm16/readmit/internal/testrunner"
@@ -110,6 +111,10 @@ type SuiteDataRow struct {
 	Case     ItemRef                     `json:"case"`
 	Source   string                      `json:"source,omitzero"`
 	Expected map[string]testrunner.Value `json:"expected,omitzero"`
+	// ConnectedExpected is, by phase and check identity ("phase/check"), the
+	// complete typed expected value a row replaces in a connected test. Only
+	// a readmit-suite-definition/v3 draft declares one.
+	ConnectedExpected map[string]dataset.Value `json:"connected_expected,omitzero"`
 }
 
 // SuiteEnvironment is one environment of the suite: its name, the site it
@@ -131,6 +136,10 @@ type SuiteBinding struct {
 	TargetSource      string   `json:"target_source,omitzero"`
 	Observation       *ItemRef `json:"observation,omitzero"`
 	ObservationSource string   `json:"observation_source,omitzero"`
+	// Server is the named FHIR environment a connected test's FHIR requests
+	// and observations reach in this environment, when it is not the one the
+	// test names. Only a readmit-suite-definition/v3 draft declares one.
+	Server *ItemRef `json:"server,omitzero"`
 }
 
 // SuiteRequirement is one declared requirement: its name, its internal
@@ -180,6 +189,31 @@ type SuiteTestVersion struct {
 	Sequence []string                 `json:"sequence"`
 	Ledger   bool                     `json:"ledger"`
 	Reason   string                   `json:"reason,omitzero"`
+	// Connected describes a connected test version.
+	Connected *SuiteConnectedVersion `json:"connected,omitzero"`
+}
+
+// SuiteConnectedVersion is a connected test version as a suite uses it: the
+// environments it names, its phases and its checks by phase and check
+// identity, which a dataset row overrides by.
+type SuiteConnectedVersion struct {
+	Environment string   `json:"environment,omitzero"`
+	Server      string   `json:"server,omitzero"`
+	Phases      []string `json:"phases"`
+	Checks      []string `json:"checks"`
+	// Expected are the test's own expected values a dataset row can
+	// override, each by its "phase/check" key.
+	Expected []SuiteConnectedExpected `json:"expected"`
+}
+
+// SuiteConnectedExpected is one expected value of a connected test: its key,
+// its check's name, the typed field it is expected of and the value the test
+// itself expects.
+type SuiteConnectedExpected struct {
+	Key   string          `json:"key"`
+	Name  string          `json:"name"`
+	Field ConnectedColumn `json:"field"`
+	Value dataset.Value   `json:"value"`
 }
 
 // SuiteTestsRequest asks for saved test versions as a suite uses them.

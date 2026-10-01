@@ -51,6 +51,37 @@ func (c *loadedCatalog) suiteTestVersion(ref ItemRef) SuiteTestVersion {
 	item := c.document.Items[index]
 	shown.Name, shown.Version = item.Name, cmp.Or(ref.Revision, item.RevisionLabel())
 	saved, err := c.testOf(item, ref.Revision)
+	if errors.Is(err, errConnectedTest) {
+		connected, err := c.connectedTestOf(item, ref.Revision)
+		if err != nil {
+			shown.Reason = "this version of the test cannot be read: " + err.Error()
+			return shown
+		}
+		shown.Connected = &SuiteConnectedVersion{Phases: []string{}, Checks: []string{}, Expected: []SuiteConnectedExpected{}}
+		if connected.links != nil {
+			shown.Connected.Environment = connected.links.Environment
+		}
+		shown.Connected.Server = connected.draft.Server
+		pinned := c.pinnedOffers(connected.draft)
+		for _, phase := range connected.draft.Phases {
+			shown.Connected.Phases = append(shown.Connected.Phases, phase.Name)
+			for _, check := range phase.Checks {
+				shown.Connected.Checks = append(shown.Connected.Checks, phase.Name+" · "+check.Name)
+				if check.Check.Expected == nil {
+					continue
+				}
+				expected := SuiteConnectedExpected{Key: connectedRowKey(phase.ID, check.Check.ID), Name: phase.Name + " · " + check.Name, Field: ConnectedColumn{Name: check.Check.Column, Type: check.Check.Expected.Type, States: []string{}}, Value: *check.Check.Expected}
+				for _, observed := range phase.Observations {
+					offer := pinned[observed.Observation.ID+"@"+observed.Observation.Revision]
+					if at := slices.IndexFunc(offer.Columns, func(column ConnectedColumn) bool { return column.Name == check.Check.Column }); observed.Dataset == check.Check.Subject.Dataset && at >= 0 {
+						expected.Field = offer.Columns[at]
+					}
+				}
+				shown.Connected.Expected = append(shown.Connected.Expected, expected)
+			}
+		}
+		return shown
+	}
 	if err != nil {
 		shown.Reason = "this version of the test cannot be read: " + err.Error()
 		return shown
@@ -252,7 +283,7 @@ func (c *loadedCatalog) compareSuite(item catalog.Item, from, to string) (SuiteC
 		return comparison, err
 	}
 	comparison.To = later.label
-	if later.connected != nil {
+	if later.connected != nil && !later.authored {
 		return comparison, errors.New("connected suite changes require inspection of their pinned connected revisions; the legacy template comparison does not assess them")
 	}
 	if from == "" {
@@ -275,7 +306,7 @@ func (c *loadedCatalog) compareSuite(item catalog.Item, from, to string) (SuiteC
 		return comparison, err
 	}
 	comparison.From = earlier.label
-	if earlier.connected != nil {
+	if earlier.connected != nil && !earlier.authored || earlier.authored != later.authored {
 		return comparison, errors.New("a connected suite revision cannot be compared as a legacy template suite")
 	}
 	comparison.Changes = c.suiteChanges(earlier.draft, later.draft)
@@ -287,6 +318,14 @@ func (c *loadedCatalog) compareSuite(item catalog.Item, from, to string) (SuiteC
 		prior := earlier.draft.Tests[at].Test
 		changed := SuiteTestChange{Test: test.Test, Name: c.nameOf(test.Test, test.ID), From: prior.Revision, To: test.Test.Revision,
 			Checks: []SuiteCheckChange{}, Messages: []TestMessage{}, Changes: []TestChange{}}
+		if later.authored {
+			before, after := c.pinnedConnected(prior), c.pinnedConnected(test.Test)
+			if before != nil && after != nil {
+				changed.Changes = connectedChanges(before, after)
+			}
+			comparison.Tests = append(comparison.Tests, changed)
+			continue
+		}
 		before, after := c.pinnedVersion(prior), c.pinnedVersion(test.Test)
 		if before != nil && after != nil {
 			changed.Checks = checkChanges(checksOf(before.spec), checksOf(after.spec))
@@ -298,6 +337,19 @@ func (c *loadedCatalog) compareSuite(item catalog.Item, from, to string) (SuiteC
 		comparison.Tests = append(comparison.Tests, changed)
 	}
 	return comparison, nil
+}
+
+// pinnedConnected reads the connected test version a reference pins, or nil.
+func (c *loadedCatalog) pinnedConnected(ref ItemRef) *savedConnected {
+	index := c.document.Find(ref.ID)
+	if ref.ID == "" || index < 0 || c.document.Items[index].Kind != string(TestItem) {
+		return nil
+	}
+	saved, err := c.connectedTestOf(c.document.Items[index], ref.Revision)
+	if err != nil {
+		return nil
+	}
+	return saved
 }
 
 // pinnedVersion reads the test version a reference pins, or nil.
@@ -603,6 +655,10 @@ func (c *loadedCatalog) suiteCoverage(ctx context.Context, result *SuiteAssessme
 		result.refuse(Empty, notRunnable)
 		return
 	}
+	if version.authored {
+		c.connectedCoverage(ctx, result, item, version, request, now)
+		return
+	}
 	if version.connected != nil {
 		result.refuse(Failed, "connected coverage requires a readmit-suite-coverage/v2 policy over the sealed connected execution")
 		return
@@ -708,6 +764,132 @@ func (c *loadedCatalog) suiteCoverage(ctx context.Context, result *SuiteAssessme
 	for _, job := range report.Jobs {
 		shown := SuiteJobCoverage{Test: rows[job.ID][0], Row: rows[job.ID][1], Execution: job.Execution, Reason: job.Reason,
 			Expired: job.Expired, Stability: job.Stability.State, Eligible: job.Eligible}
+		if job.Exclusion != "none" {
+			shown.Exclusion = job.Exclusion
+		}
+		result.Jobs = append(result.Jobs, shown)
+	}
+}
+
+// connectedCoverage assesses a suite of saved connected tests over one of its
+// retained connected executions, with the readmit-suite-coverage/v2
+// declaration built from the version's requirements and exclusions and the
+// exact plans and approvals the execution pinned, through the one assessment
+// `readmit suite coverage` makes of a connected execution.
+func (c *loadedCatalog) connectedCoverage(ctx context.Context, result *SuiteAssessment, item catalog.Item, version *suiteVersion, request SuiteCoverageRequest, now time.Time) {
+	if len(version.draft.Requirements) == 0 {
+		result.refuse(Empty, "This version declares no requirements")
+		return
+	}
+	if len(request.Previous) > 0 {
+		result.refuse(Failed, "a connected suite's coverage is assessed over one run")
+		return
+	}
+	identity := suite.Identity(version.data)
+	type candidate struct {
+		ref       ItemRef
+		dir       string
+		started   time.Time
+		execution suite.ConnectedExecution
+	}
+	runs := []candidate{}
+	for _, run := range c.document.Items {
+		if run.Kind != string(RunItem) || run.Entry == "" || c.removed(run) {
+			continue
+		}
+		dir := filepath.Join(c.root, run.Entry)
+		execution, err := suite.OpenConnectedExecution(ctx, dir)
+		if err != nil || execution.Preparation.Suite != identity {
+			continue
+		}
+		held := candidate{ref: ItemRef{Kind: RunItem, ID: run.ID}, dir: dir, execution: execution}
+		for _, job := range execution.Report.Jobs {
+			if job.Flow != nil && (held.started.IsZero() || job.Flow.StartedAt.Before(held.started)) {
+				held.started = job.Flow.StartedAt
+			}
+		}
+		runs = append(runs, held)
+	}
+	slices.SortStableFunc(runs, func(x, y candidate) int { return cmp.Or(y.started.Compare(x.started), cmp.Compare(x.ref.ID, y.ref.ID)) })
+	var chosen *candidate
+	switch {
+	case request.Run != nil:
+		at := slices.IndexFunc(runs, func(run candidate) bool { return run.ref.ID == request.Run.ID })
+		if at < 0 {
+			result.refuse(Failed, "that run did not execute this version of the suite")
+			return
+		}
+		chosen = &runs[at]
+	case len(runs) > 0:
+		chosen = &runs[0]
+	default:
+		result.refuse(Empty, "No run of this version is retained; coverage is assessed over a run")
+		return
+	}
+	jobs := map[string][]string{}
+	tests := map[string]string{}
+	for _, test := range version.draft.Tests {
+		jobs[test.ID] = connectedJobIDs(version.draft, test)
+		for _, job := range jobs[test.ID] {
+			tests[job] = test.ID
+		}
+	}
+	document := suite.ConnectedCoverageDocument{Schema: suite.ConnectedCoverageSchema, SuiteSHA256: identity, Specifications: []suite.ConnectedCoverageSpecification{}, Requirements: []suite.Requirement{}, Exclusions: []suite.Exclusion{}}
+	for i, job := range chosen.execution.Queue.Jobs {
+		pinned := chosen.execution.Document.Tests[i]
+		document.Specifications = append(document.Specifications, suite.ConnectedCoverageSpecification{Job: job.ID, Plan: job.PlanIdentity, Definition: pinned.Definition, Release: pinned.ReleaseIdentity})
+	}
+	for _, requirement := range version.draft.Requirements {
+		declared := suite.Requirement{ID: requirement.ID, Jobs: []string{}}
+		for _, test := range requirement.Tests {
+			declared.Jobs = append(declared.Jobs, jobs[test]...)
+		}
+		document.Requirements = append(document.Requirements, declared)
+	}
+	for _, exclusion := range version.draft.Exclusions {
+		for _, job := range jobs[exclusion.Test] {
+			document.Exclusions = append(document.Exclusions, suite.Exclusion{Job: job, State: exclusion.State, Reason: exclusion.Reason, Expires: exclusion.Until})
+		}
+	}
+	raw, err := json.Marshal(document, json.Deterministic(true))
+	if err != nil {
+		result.refuse(Failed, "the coverage declarations cannot be held for the assessment")
+		return
+	}
+	file, err := os.CreateTemp("", "readmit-suite-coverage-*.json")
+	if err != nil {
+		result.refuse(Failed, "the coverage declarations cannot be held for the assessment")
+		return
+	}
+	defer os.Remove(file.Name())
+	_, err = file.Write(raw)
+	if closed := file.Close(); err == nil {
+		err = closed
+	}
+	if err != nil {
+		result.refuse(Failed, "the coverage declarations cannot be held for the assessment")
+		return
+	}
+	report, err := suite.AssessConnectedCoverage(ctx, chosen.dir, file.Name(), now)
+	if errors.Is(err, context.Canceled) {
+		result.refuse(Cancelled, "coverage assessment cancelled; retained evidence is unchanged")
+		return
+	}
+	if err != nil {
+		result.refuse(Failed, err.Error())
+		return
+	}
+	result.State, result.Run, result.At = Completed, &chosen.ref, report.At.Format(time.RFC3339)
+	result.Environment = chosen.execution.Preparation.Environment
+	if at := slices.IndexFunc(version.draft.Environments, func(environment SuiteEnvironment) bool { return environment.ID == result.Environment }); at >= 0 {
+		result.Environment = version.draft.Environments[at].Name
+	}
+	result.Denominator, result.Passed = report.Denominator, report.Passed
+	for _, requirement := range report.Requirements {
+		result.Requirements = append(result.Requirements, SuiteRequirementResult{ID: requirement.ID, State: requirement.State})
+	}
+	for _, job := range report.Jobs {
+		shown := SuiteJobCoverage{Test: tests[job.ID], Execution: job.Execution, Reason: job.Reason, Expired: job.Expired, Stability: job.Stability.State, Eligible: job.Eligible}
 		if job.Exclusion != "none" {
 			shown.Exclusion = job.Exclusion
 		}

@@ -285,7 +285,11 @@ func sniffSchema(path string) (string, bool) {
 	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
 		return "", false
 	}
-	head := window[:read]
+	return schemaIn(window[:read])
+}
+
+// schemaIn is the schema the head of a JSON document declares.
+func schemaIn(head []byte) (string, bool) {
 	const member = `"schema"`
 	at := bytes.Index(head, []byte(member))
 	if at < 0 {

@@ -70,3 +70,19 @@ For explicitly authorized non-loopback v2 execution, see
 
 Version 2 plans pin [typed downstream datasets](typed-datasets.md) and their
 shared assertion contracts for the connected orchestration handoff.
+
+## Authoring in the desktop
+
+The desktop's test editor authors a connected test as a
+`readmit-connected-test-authoring/v1` document: phases of v2 messages and
+typed FHIR requests from the project's cases, the named observations each
+phase reads at exact saved versions, and typed dataset, response,
+acknowledgement and validation checks. It names project objects, never files.
+Saving compiles it against its named environment into a
+`readmit-connected-test/v5` lifecycle and prepares it with the connected
+runner's own preparation to prove it executes. The
+`readmit-connected-test-release/v1` a connected suite pins is recorded when a
+suite version's baseline is approved. A sealed `readmit-connected-test/v5`
+plan opens in the editor through Import test; checks it does not represent are
+kept as written. See
+[authoring a regression test](desktop.md#authoring-a-regression-test).
