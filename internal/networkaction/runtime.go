@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"encoding/base64"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
@@ -182,6 +181,7 @@ func (p *RuntimeHTTPPlan) Execute(ctx context.Context, authority Authority, reso
 		return HTTPResponse{}, receipt, refused
 	}
 	security := destination.Security{ServerName: s.ServerName, Authorities: s.Authorities}
+	credentials := [][]byte{}
 	if s.PrivateKey != nil {
 		if check(ctx) != nil {
 			return HTTPResponse{}, receipt, refused
@@ -195,6 +195,7 @@ func (p *RuntimeHTTPPlan) Execute(ctx context.Context, authority Authority, reso
 			return HTTPResponse{}, receipt, refused
 		}
 		security.Certificate = &cert
+		credentials = append(credentials, value.Expose())
 	}
 	material := RuntimeMaterial{}
 	if provider != nil {
@@ -274,37 +275,7 @@ func (p *RuntimeHTTPPlan) Execute(ctx context.Context, authority Authority, reso
 	receipt.HTTPStatus = response.Status
 	// An echo cannot escape into the protocol adapter's raw evidence. Token
 	// responses stay opaque and are never themselves part of this receipt.
-	for _, value := range [][]byte{material.bearer, material.assertion} {
-		if len(value) > 0 && sensitiveEcho(response.Body, value) {
-			return HTTPResponse{}, receipt, refused
-		}
-		for _, values := range response.Header {
-			for _, h := range values {
-				if len(value) > 0 && sensitiveEcho([]byte(h), value) {
-					return HTTPResponse{}, receipt, refused
-				}
-			}
-		}
-	}
-	headers := safeHeaders(response.Header)
-	if p.v2 != nil {
-		headers = safeHeadersV2(response.Header)
-	}
-	return HTTPResponse{Status: response.Status, Body: ResponseBody{raw: response.Body}, header: headers}, receipt, nil
-}
-
-func sensitiveEcho(body, value []byte) bool {
-	if bytes.Contains(body, value) {
-		return true
-	}
-	quoted, _ := json.Marshal(string(value))
-	if len(quoted) > 2 && bytes.Contains(body, quoted[1:len(quoted)-1]) {
-		return true
-	}
-	for _, encoding := range []*base64.Encoding{base64.StdEncoding, base64.RawStdEncoding, base64.URLEncoding, base64.RawURLEncoding} {
-		if bytes.Contains(body, []byte(encoding.EncodeToString(value))) {
-			return true
-		}
-	}
-	return false
+	credentials = append(credentials, material.bearer, material.assertion)
+	released, err := releaseHTTPResponse(response, credentials, p.v2 != nil)
+	return released, receipt, err
 }

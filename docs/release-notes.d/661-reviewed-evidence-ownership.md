@@ -1,0 +1,3 @@
+- Prevent delayed reviews and environment reads from replacing the choices or project currently shown. Retained reports and lifecycle tables now use owned verified evidence, and credential echoes are withheld consistently from HTTP evidence.
+- Bind scheduled queues to their dependencies, isolation and parallelism and retain skipped jobs accurately. Existing partial schedule pins pause for a fresh review. Profile imports and generated records use shared durable publication.
+- Update demo acceptance to the current workflow and preserve report/export readback. Practice runs can create reports through the same result resolver their run details use.

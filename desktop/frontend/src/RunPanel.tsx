@@ -4,13 +4,9 @@
 // will send, where, and what must be done first; the final Send is the only
 // thing that sends. Changing the environment or what is sent prepares the
 // review again, and nothing opens a connection before Send.
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
-  executeReviewedAction,
   listWholeCatalog,
-  newIntentId,
-  prepareAction,
-  withdrawReview,
   type ActionReview,
   type CatalogItem,
   type ItemRef,
@@ -20,6 +16,7 @@ import {
   type ReviewedActionResult,
   type RunReview,
 } from "./bindings";
+import { useReviewedAction } from "./reviewedAction";
 import { HIDDEN_VALUE, STATE_SHARING, term } from "./display";
 import { FormDialog, Reveal, ValueRows } from "./layout";
 import { messageLabel } from "./TestEditor";
@@ -124,14 +121,10 @@ export function SendReview({
 }) {
   const open = request !== null;
   const [chosen, setChosen] = useState<Chosen>({ transformations: [], reveal: false });
-  const [review, setReview] = useState<ActionReview | null>(null);
-  const [failure, setFailure] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState<string[]>([]);
   const [changing, setChanging] = useState(false);
   const [expanded, setExpanded] = useState<"messages" | "jobs" | null>(null);
   const [editingChanges, setEditingChanges] = useState(false);
-  const held = useRef<string | null>(null);
-  const turn = useRef(0);
   const environmentRead = useRef<Promise<void>>(Promise.resolve());
   // The project's named environments, which a test or a send can be changed
   // to, read as the review opens.
@@ -148,61 +141,29 @@ export function SendReview({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // A review this sheet no longer shows can no longer be sent.
-  const release = useCallback(() => {
-    if (held.current) void withdrawReview(held.current);
-    held.current = null;
-  }, []);
-
   const key = request ? JSON.stringify([request, chosen]) : "";
+  const reviewed = useReviewedAction(open, key);
+  const { review, failure } = reviewed;
   useEffect(() => {
-    if (!request) return;
-    const mine = ++turn.current;
-    release();
-    setReview(null);
-    setFailure(null);
     setConfirmed([]);
-    const needsEnvironment = (request.kind === "messages" && !(chosen.environment ?? request.environment));
-    if (needsEnvironment) {
+    if (!request) return;
+    if (request.kind === "messages" && !(chosen.environment ?? request.environment)) {
       setChanging(true);
       return;
     }
-    const asked = context();
-    // Both facade reads need its single operation slot. The review starts
-    // after this sheet's own listing has released it, and a closed or changed
-    // sheet cannot begin a late preparation.
-    void environmentRead.current.then(() => {
-      if (mine !== turn.current) return;
-      return prepareAction({ context: asked, ...preparing(request, chosen) });
-    }).then((answer) => {
-      if (!answer) return;
-      if (mine !== turn.current) {
-        if (answer.review?.token) void withdrawReview(answer.review.token);
-        return;
-      }
-      if (answer.state === "completed" && answer.review) {
-        held.current = answer.review.token ?? null;
-        setReview(answer.review);
-      } else {
-        setFailure(answer.reason ?? "This could not be prepared.");
-      }
-    });
-    // Prepared again whenever what it is asked for changes.
+    void reviewed.prepare({ context: context(), ...preparing(request, chosen) }, environmentRead.current);
+    // Domain choices own preparation; callbacks do not create new reviews.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
   useEffect(() => {
     if (!open) {
-      turn.current++;
-      release();
       setChosen({ transformations: [], reveal: false });
-      setReview(null);
-      setFailure(null);
       setChanging(false);
       setExpanded(null);
       setEditingChanges(false);
     }
-  }, [open, release]);
+  }, [open]);
 
   if (!request) return null;
   const run = review?.run ?? null;
@@ -362,11 +323,9 @@ export function SendReview({
       onSubmit={async () => {
         if (!review?.token) return { reason: "This review is not ready." };
         if (onBeforeSend && review.destination.output) await onBeforeSend(review.destination.output);
-        const intent = newIntentId();
-        const execution = executeReviewedAction({ context: context(), token: review.token, intent_id: intent, decisions: { confirmed } });
-        // The review is spent by this click; the run page answers for it now.
-        held.current = null;
-        onStarted({ request, review, intent, execution });
+        const started = reviewed.begin(context(), { confirmed });
+        if (!started) return { reason: "What this review covered changed. Review it again." };
+        onStarted({ request, review: started.review, intent: started.intent, execution: started.execution });
         return null;
       }}
     >

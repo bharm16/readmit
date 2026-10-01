@@ -251,22 +251,46 @@ func OpenDataset(ctx context.Context, path string) (*dataset.Snapshot, error) {
 	if err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(string(files["identity.sha256"])) != artifactdir.Identity(declared.Schema, files) {
+	return verifyDataset(ctx, files, declared.Schema)
+}
+
+// VerifyDataset verifies one bounded captured acquisition and its network proof.
+func VerifyDataset(ctx context.Context, captured map[string][]byte) (*dataset.Snapshot, error) {
+	var declared struct {
+		Schema string `json:"schema"`
+	}
+	if len(captured["manifest.json"]) > 64<<10 || json.Unmarshal(captured["manifest.json"], &declared) != nil {
+		return nil, errors.New("invalid dataset acquisition")
+	}
+	family := datasetFamily
+	if declared.Schema == ScopedDatasetAcquisitionSchema {
+		family = scopedDatasetFamily()
+	} else if declared.Schema != DatasetAcquisitionSchema {
+		return nil, errors.New("unsupported dataset acquisition")
+	}
+	files, err := artifactdir.Snapshot(captured, family.Layout)
+	if err != nil {
+		return nil, err
+	}
+	return verifyDataset(ctx, files, declared.Schema)
+}
+func verifyDataset(ctx context.Context, files map[string][]byte, schema string) (*dataset.Snapshot, error) {
+	if strings.TrimSpace(string(files["identity.sha256"])) != artifactdir.Identity(schema, files) {
 		return nil, errors.New("dataset acquisition identity mismatch")
 	}
 	var receipt datasetReceipt
-	if json.Unmarshal(files["manifest.json"], &receipt, json.RejectUnknownMembers(true)) != nil || receipt.Schema != declared.Schema {
+	if json.Unmarshal(files["manifest.json"], &receipt, json.RejectUnknownMembers(true)) != nil || receipt.Schema != schema {
 		return nil, errors.New("invalid dataset acquisition")
 	}
-	result, err := dataset.Open(ctx, filepath.Join(path, "dataset"))
+	result, err := dataset.Verify(ctx, artifactdir.Subtree(files, "dataset"))
 	if err != nil {
 		return nil, err
 	}
 	if result.Identity() != receipt.DatasetIdentity || result.Document().Binding != receipt.Binding {
 		return nil, errors.New("dataset acquisition binding mismatch")
 	}
-	if declared.Schema == ScopedDatasetAcquisitionSchema {
-		action, err := networkResultFor(path, result.Document().Acquisition.Kind)
+	if schema == ScopedDatasetAcquisitionSchema {
+		action, err := networkResultFromFiles(files, result.Document().Acquisition.Kind)
 		if err != nil || action.Binding.Source != receipt.Binding.Source || action.Binding.Operation != sendpolicy.ObservationRead {
 			return nil, errors.New("scoped acquisition does not bind source")
 		}

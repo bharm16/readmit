@@ -1,0 +1,92 @@
+import { useState } from "react";
+import { test, expect, vi } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { SendReview } from "./RunPanel";
+import { ReviewSheet } from "./ReviewSheet";
+import { installFacade } from "./testkit/wails";
+import type { ActionReviewResult, PrepareActionRequest } from "./bindings";
+
+test("a reviewed action keeps the current visible choice when an earlier preparation arrives late", async () => {
+  const pending: { request: PrepareActionRequest; resolve: (answer: ActionReviewResult) => void }[] = [];
+  const facade = installFacade({
+    PrepareAction: (request) => new Promise<ActionReviewResult>(resolve => pending.push({request, resolve})),
+    ExecuteReviewedAction: request => ({state:"completed", context:request.context, outcome:"completed", replayed:false}),
+    WithdrawReview: () => ({state:"completed", context:{project:"",generation:0}})
+  });
+  const context = () => ({project:"/audit/project",generation:0});
+  function Harness() {
+    const [source,setSource] = useState("A");
+    return <ReviewSheet open title="Review race" action="team.upload" finalLabel="Upload" context={context} items={[]} options={{team:{project:"team-project",source}}} prepareKey={source} onClose={() => undefined} onDone={() => undefined} fields={<label>Source<input value={source} onChange={event=>setSource(event.target.value)} /></label>} render={review=><p>Review token: {review.token}</p>} />;
+  }
+  render(<Harness/>);
+  await waitFor(()=>expect(pending.length).toBe(1));
+  const user=userEvent.setup();
+  await user.clear(screen.getByRole("textbox",{name:"Source"}));
+  await user.type(screen.getByRole("textbox",{name:"Source"}),"B");
+  await waitFor(()=>expect(pending.length).toBe(2));
+  const answer=(at:number,token:string):ActionReviewResult=>({state:"completed",context:pending[at]!.request.context,review:{action:"team.upload",token,ready:true,requirements:[],consent:"upload",items:[],destination:{name:"Team"}}});
+  pending[1]!.resolve(answer(1,"token-B"));
+  expect(await screen.findByText("Review token: token-B")).toBeTruthy();
+  pending[0]!.resolve(answer(0,"token-A"));
+  await waitFor(() => expect(facade.callsTo("WithdrawReview")).toHaveLength(1));
+  expect(screen.getByText("Review token: token-B")).toBeTruthy();
+  expect((screen.getByRole("textbox",{name:"Source"}) as HTMLInputElement).value).toBe("B");
+  await user.click(screen.getByRole("button",{name:"Upload"}));
+  await waitFor(()=>expect(facade.callsTo("ExecuteReviewedAction").length).toBe(1));
+  expect(facade.oneCall("ExecuteReviewedAction")[0].token).toBe("token-B");
+  expect(facade.oneCall("WithdrawReview")[0]).toBe("token-A");
+});
+
+test("closing a review withdraws an answer that completes after close", async () => {
+  let answer: ((value: ActionReviewResult) => void) | undefined;
+  let requested: PrepareActionRequest | undefined;
+  const facade = installFacade({
+    PrepareAction: request => new Promise<ActionReviewResult>(resolve => { requested = request; answer = resolve; }),
+    WithdrawReview: () => ({state:"completed", context:{project:"",generation:0}}),
+  });
+  const props = {title:"Close review", action:"team.upload" as const, finalLabel:"Upload", context:() => ({project:"/audit/project",generation:0}), items:[], onClose:() => undefined, onDone:() => undefined, render:() => <p>Reviewed</p>};
+  const shown = render(<ReviewSheet {...props} open />);
+  await waitFor(() => expect(requested).toBeTruthy());
+  shown.rerender(<ReviewSheet {...props} open={false} />);
+  answer!({state:"completed", context:requested!.context, review:{action:"team.upload", consent:"upload", items:[], destination:{name:"Team"}, token:"closed-token", ready:true, requirements:[]}});
+  await waitFor(() => expect(facade.oneCall("WithdrawReview")[0]).toBe("closed-token"));
+  expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
+  expect(screen.queryByText("Reviewed")).toBeNull();
+});
+
+
+test("a send held before dispatch cannot spend a review after its visible choice changes", async () => {
+  const waits: (() => void)[] = [];
+  const started = vi.fn();
+  const facade = installFacade({
+    ListCatalog: request => ({ state: "completed", context: request.context, page: { items: [], total: 0, snapshot: "s", incomplete: [], recorded: true } }),
+    PrepareAction: request => ({ state: "completed", context: request.context, review: {
+      action: "run.test", token: "token-" + request.items[0]!.id, ready: true, requirements: [], consent: "send", items: [], destination: { name: "Fixture", output: "job-" + request.items[0]!.id },
+    } }),
+    WithdrawReview: () => ({ state: "completed", context: { project: "", generation: 0 } }),
+    ExecuteReviewedAction: request => ({ state: "completed", context: request.context, outcome: "completed", replayed: false }),
+  });
+  function Harness() {
+    const [test, setTest] = useState("A");
+    return <><button onClick={() => setTest("B")}>Choose B</button><SendReview request={{ kind: "test", test: { kind: "test", id: test } }} context={() => ({ project: "/audit/project", generation: 1 })} onClose={() => undefined} onStarted={started} onBeforeSend={() => new Promise<void>(resolve => waits.push(resolve))} onEditEnvironment={() => undefined} onActivate={() => undefined} /></>;
+  }
+  render(<Harness />);
+  const user = userEvent.setup();
+  await waitFor(() => expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(false));
+  await user.click(screen.getByRole("button", { name: "Send" }));
+  await waitFor(() => expect(waits).toHaveLength(1));
+  await user.click(screen.getByRole("button", { name: "Choose B" }));
+  await waitFor(() => expect(facade.callsTo("PrepareAction")).toHaveLength(2));
+  waits[0]!();
+  expect(await screen.findByText("What this review covered changed. Review it again.")).toBeTruthy();
+  expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
+  expect(started).not.toHaveBeenCalled();
+  expect(facade.oneCall("WithdrawReview")[0]).toBe("token-A");
+  await user.click(screen.getByRole("button", { name: "Send" }));
+  await waitFor(() => expect(waits).toHaveLength(2));
+  waits[1]!();
+  await waitFor(() => expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(1));
+  expect(facade.oneCall("ExecuteReviewedAction")[0].token).toBe("token-B");
+  expect(started).toHaveBeenCalledOnce();
+});

@@ -213,3 +213,10 @@ func networkResultFor(path string, kind string) (networkaction.Result, error) {
 	}
 	return networkaction.OpenHTTP(filepath.Join(path, "network"))
 }
+
+func networkResultFromFiles(files map[string][]byte, kind string) (networkaction.Result, error) {
+	if kind == "database" {
+		return VerifyDatabaseAction(artifactdir.Subtree(files, "network"))
+	}
+	return networkaction.VerifyHTTP(artifactdir.Subtree(files, "network"))
+}

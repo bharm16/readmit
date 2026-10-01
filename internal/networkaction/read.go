@@ -10,7 +10,6 @@ import (
 	"net"
 	"net/netip"
 	"net/url"
-	"path/filepath"
 	"strings"
 )
 
@@ -143,6 +142,19 @@ func readCapture(directory string) (Result, *bundle.Bundle, string, error) {
 	if err != nil {
 		return Result{}, nil, "", err
 	}
+	return verifyCapture(files)
+}
+
+// VerifyCaptureEvidence checks the captured action and case without path reads.
+func VerifyCaptureEvidence(captured map[string][]byte) (CaptureEvidence, error) {
+	files, err := artifactdir.Snapshot(captured, captureFamily.Layout)
+	if err != nil {
+		return CaptureEvidence{}, err
+	}
+	result, capture, identity, err := verifyCapture(files)
+	return CaptureEvidence{Result: result, Capture: capture, Identity: identity}, err
+}
+func verifyCapture(files map[string][]byte) (Result, *bundle.Bundle, string, error) {
 	if strings.TrimSpace(string(files["identity.sha256"])) != artifactdir.Identity(ResultSchema, files) {
 		return Result{}, nil, "", refused
 	}
@@ -170,7 +182,7 @@ func readCapture(directory string) (Result, *bundle.Bundle, string, error) {
 	if !bytes.Equal(expected, files["operation.json"]) {
 		return Result{}, nil, "", refused
 	}
-	capture, err := bundle.Open(filepath.Join(directory, "case"))
+	capture, err := bundle.Verify(artifactdir.Subtree(files, "case"))
 	if err != nil {
 		if r.State == "incomplete" {
 			return r, nil, strings.TrimSpace(string(files["identity.sha256"])), nil

@@ -123,6 +123,9 @@ func resolveReportRun(scope draftScope, ref ItemRef, job, field string) (reportR
 	if err != nil {
 		return reportRun{}, problem("This run cannot be read")
 	}
+	// Practice runs retain the result under their owned session, exactly as
+	// the ordinary run-detail reader resolves them.
+	path = runFolder(path)
 	opened, err := runresult.Open(path)
 	switch {
 	case err != nil:

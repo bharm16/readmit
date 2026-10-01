@@ -177,6 +177,20 @@ func Open(path string) (*Bundle, error) {
 	if err != nil {
 		return nil, err
 	}
+	return verifyFiles(files)
+}
+
+// Verify interprets detached captured case bytes through the same bounded
+// reader as Open, without reopening a source directory.
+func Verify(captured map[string][]byte) (*Bundle, error) {
+	files, err := artifactdir.Snapshot(captured, family.Layout)
+	if err != nil {
+		return nil, err
+	}
+	return verifyFiles(files)
+}
+
+func verifyFiles(files map[string][]byte) (*Bundle, error) {
 	var manifest Manifest
 	if err := json.Unmarshal(files["manifest.json"], &manifest, json.RejectUnknownMembers(true)); err != nil {
 		return nil, errors.New("invalid bundle manifest")

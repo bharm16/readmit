@@ -31,6 +31,19 @@ func OpenEvidence(ctx context.Context, directory string) (*Evidence, error) {
 	}
 	return &Evidence{result: result, files: files, identity: strings.TrimSpace(string(files["identity.sha256"]))}, nil
 }
+
+// VerifyEvidence owns detached captured bytes for both verdicts and projections.
+func VerifyEvidence(ctx context.Context, captured map[string][]byte) (*Evidence, error) {
+	files, err := artifactdir.Snapshot(captured, family.Layout)
+	if err != nil {
+		return nil, refused
+	}
+	result, err := verify(ctx, files)
+	if err != nil {
+		return nil, err
+	}
+	return &Evidence{result: result, files: files, identity: strings.TrimSpace(string(files["identity.sha256"]))}, nil
+}
 func (e *Evidence) Identity() string { return e.identity }
 func (e *Evidence) Result() Result   { var r Result; _ = json.Unmarshal(encode(e.result), &r); return r }
 func (e *Evidence) ResponseBytes(index int) ([]byte, bool) {

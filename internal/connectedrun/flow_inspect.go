@@ -28,7 +28,7 @@ func InspectFlow(ctx context.Context, path string) (FlowResult, error) {
 	if json.Unmarshal(files["started.json"], &start, json.RejectUnknownMembers(true)) != nil || start.Schema != FlowSchema && start.Schema != FlowSchemaV4 || start.StartedAt.IsZero() || !safeID(start.Instance) {
 		return FlowResult{}, invalid
 	}
-	plan, err := connectedtest.OpenFlowPlan(filepath.Join(path, "plan"))
+	plan, err := connectedtest.VerifyFlowPlan(artifactdir.Subtree(files, "plan"))
 	if err != nil || plan.Identity() != start.Plan || flowSchemaFor(plan) != start.Schema || !artifactdir.MatchesSubtree(files, "plan", plan.Document().Schema, artifactdir.Identity(plan.Document().Schema, plan.Files())) {
 		return FlowResult{}, invalid
 	}
@@ -95,10 +95,10 @@ func InspectFlow(ctx context.Context, path string) (FlowResult, error) {
 			r.Phases[i] = partial
 			continue
 		}
-		verified, e := OpenEvidence(ctx, filepath.Join(path, "phases", phase.ID))
+		verified, e := VerifyEvidence(ctx, artifactdir.Subtree(files, "phases/"+phase.ID))
 		child := verified.Result
 		if e == nil && child.Plan == intent.Plan && child.Instance == r.Instance && !child.StartedAt.Before(intent.At) && artifactdir.MatchesSubtree(files, "phases/"+phase.ID, phaseSchemaFor(plan), verified.Identity) {
-			evaluated, e := evaluateFlowPhase(ctx, plan, phase, child, filepath.Join(path, "phases", phase.ID))
+			evaluated, e := evaluateOwnedPhase(ctx, plan, phase, verified)
 			if e == nil {
 				if raw, ok := files["phase-"+phase.ID+".json"]; ok && !bytes.Equal(raw, canonicalFlow(evaluated)) {
 					return FlowResult{}, invalid

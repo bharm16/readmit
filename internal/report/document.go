@@ -12,6 +12,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/runcompare"
@@ -236,21 +237,30 @@ type Document struct {
 // under what a person wrote for it. dir is the packet's folder and packet
 // its verification.
 func BuildDocument(ctx context.Context, dir string, packet *RetainedPacket, authored Authored) (*Document, error) {
+	verified, err := packet.verified()
+	if err != nil {
+		return nil, err
+	}
+	if filepath.Clean(dir) != verified.snapshot.directory {
+		resolved, err := artifactpath.Resolve(dir)
+		if err != nil || resolved != verified.snapshot.directory {
+			return nil, errors.New("the folder does not name this verified retained packet")
+		}
+	}
+	return verified.Document(ctx, authored)
+}
+
+// Document constructs a report from the owned reading, independent of later
+// source replacement, relocation or deletion. Summary fields cannot rewrite it.
+func (packet *RetainedPacket) Document(ctx context.Context, authored Authored) (*Document, error) {
+	packet, err := packet.verified()
+	if err != nil {
+		return nil, err
+	}
 	if err := authored.Validate(); err != nil {
 		return nil, err
 	}
-	files, err := readTree(dir)
-	if err != nil {
-		return nil, err
-	}
-	current, err := runresult.Open(filepath.Join(dir, "current"))
-	if err != nil || current.Artifact == nil {
-		return nil, errors.New("the retained current run cannot be read")
-	}
-	source, err := bundle.Open(filepath.Join(dir, "case"))
-	if err != nil {
-		return nil, errors.New("the retained case cannot be read")
-	}
+	files, current, source := packet.snapshot.files, packet.snapshot.current, packet.snapshot.source
 	doc := &Document{
 		Schema: DocumentSchema, Title: authored.Title, PacketIdentity: packet.Identity,
 		ExportPolicy: packet.Manifest.ExportPolicy, ContainsSourceValues: packet.Manifest.ContainsSourceValues,
@@ -266,10 +276,7 @@ func BuildDocument(ctx context.Context, dir string, packet *RetainedPacket, auth
 	doc.Checks = documentChecks(current, doc.Messages)
 	doc.Evidence = append(doc.Evidence, documentEvidence(files, CurrentRole, "case", "current", current)...)
 	if packet.Manifest.Baseline != nil {
-		baseline, err := runresult.Open(filepath.Join(dir, "baseline"))
-		if err != nil || baseline.Artifact == nil {
-			return nil, errors.New("the retained comparison run cannot be read")
-		}
+		baseline := packet.snapshot.baseline
 		doc.Runs = append(doc.Runs, documentRun(ComparisonRole, *packet.Manifest.Baseline, baseline))
 		comparison, err := runcompare.CompareOpened(ctx, runcompare.OpenedInput{Baseline: baseline, Current: current})
 		if err != nil {
@@ -282,7 +289,17 @@ func BuildDocument(ctx context.Context, dir string, packet *RetainedPacket, auth
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return doc, nil
+	// Values contain pointer unions and nested record maps. Return a detached
+	// document so a caller cannot rewrite the privately verified run reading.
+	raw, err := json.Marshal(doc)
+	if err != nil {
+		return nil, err
+	}
+	var detached Document
+	if err := json.Unmarshal(raw, &detached); err != nil {
+		return nil, err
+	}
+	return &detached, nil
 }
 
 func documentRun(role string, facts RetainedRun, opened *runresult.Result) DocumentRun {

@@ -256,6 +256,18 @@ func Open(ctx context.Context, directory string) (*Snapshot, error) {
 	if err != nil {
 		return nil, err
 	}
+	return verify(ctx, files)
+}
+
+// Verify reads a detached captured dataset without reopening its directory.
+func Verify(ctx context.Context, captured map[string][]byte) (*Snapshot, error) {
+	files, err := artifactdir.Snapshot(captured, family.Layout)
+	if err != nil {
+		return nil, err
+	}
+	return verify(ctx, files)
+}
+func verify(ctx context.Context, files map[string][]byte) (*Snapshot, error) {
 	if strings.TrimSpace(string(files["identity.sha256"])) != artifactdir.Identity(Schema, files) {
 		return nil, invalid
 	}

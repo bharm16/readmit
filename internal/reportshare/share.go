@@ -19,7 +19,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -72,7 +71,6 @@ type Overrides struct {
 
 // Request is one share to prepare.
 type Request struct {
-	PacketDir   string
 	Packet      *report.RetainedPacket
 	Authored    report.Authored
 	Template    *redact.Policy
@@ -212,11 +210,11 @@ func Build(ctx context.Context, request Request) (*Share, error) {
 	if err != nil {
 		return nil, err
 	}
-	doc, err := report.BuildDocument(ctx, request.PacketDir, request.Packet, request.Authored)
+	doc, err := request.Packet.Document(ctx, request.Authored)
 	if err != nil {
 		return nil, err
 	}
-	source, err := bundle.Open(filepath.Join(request.PacketDir, "case"))
+	source, err := request.Packet.Case()
 	if err != nil {
 		return nil, errors.New("the report's retained case cannot be read")
 	}

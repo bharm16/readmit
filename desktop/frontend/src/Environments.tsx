@@ -57,6 +57,7 @@ import { listDate } from "./Projects";
 import { NewObservationEditor, useObservation } from "./Observations";
 import { ReviewSheet } from "./ReviewSheet";
 import { useVocabulary } from "./vocabulary";
+import { useOwnedRead } from "./ownedRead";
 import "./environments.css";
 
 /** Where Environments is: its list, one environment, its credentials, or one observation. */
@@ -236,26 +237,33 @@ export function useEnvironments({ root, context, place, go, back, busy, onAdded,
     if (addRequested) setAdding(true);
   }, [addRequested]);
 
+  const readList = useOwnedRead(root, context, () => {
+    setItems(null);
+    setListSelected(null);
+    setListFailure(null);
+    setExample(null);
+    setExampleFailure(null);
+  });
+
   const refresh = useCallback(async () => {
     if (!root) return;
-    const answer = await listWholeCatalog({ context: context(), kind: "environment", filter: {} });
+    await readList(asked => listWholeCatalog({ context: asked, kind: "environment", filter: {} }), answer => {
     if (answer.state === "completed" || answer.state === "empty") {
       setItems(answer.page?.items ?? []);
       setListFailure(null);
     } else {
       setListFailure(answer.reason ?? "The environments could not be read.");
     }
-  }, [context, root]);
+    });
+  }, [readList, root]);
 
   useEffect(() => {
-    setItems(null);
-    setListSelected(null);
     void refresh();
   }, [refresh]);
 
   const envId = place.kind === "environment" || place.kind === "credentials" ? place.id : null;
   const selected = envId ? (items?.find((item) => item.ref.id === envId) ?? null) : null;
-  const detail = useEnvironmentDetail({ item: selected, context, refresh, go, back, busy, place, onEdited: onAdded });
+  const detail = useEnvironmentDetail({ owner: root, item: selected, context, refresh, go, back, busy, place, onEdited: onAdded });
   const observation = useObservation({
     id: place.kind === "observation" ? place.id : null,
     environment: place.kind === "observation" ? (items?.find((item) => item.ref.id === place.environment) ?? null) : null,
@@ -561,6 +569,7 @@ function ImportExampleSheet({
 // ---------- One environment ----------
 
 function useEnvironmentDetail({
+  owner,
   item,
   context,
   refresh,
@@ -570,6 +579,7 @@ function useEnvironmentDetail({
   place,
   onEdited,
 }: {
+  owner: string | null;
   item: CatalogItem | null;
   context: () => RequestContext;
   refresh: () => Promise<void>;
@@ -595,9 +605,18 @@ function useEnvironmentDetail({
   const [notice, setNotice] = useState<string | null>(null);
   const ref = item?.ref ?? null;
 
+  const readDetail = useOwnedRead(ref ? JSON.stringify([owner, ref.id, ref.revision]) : null, context, () => {
+    setCheck(null);
+    setFHIRChecks({});
+    setDraft(null);
+    setDraftFailure(null);
+    setObservations([]);
+    setSheet(null);
+  });
+
   const reload = useCallback(async () => {
     if (!ref) return;
-    const [answer, named] = await Promise.all([openItemDraft({ context: context(), ref }), listWholeCatalog({ context: context(), kind: "observation", filter: {} })]);
+    await readDetail(asked => Promise.all([openItemDraft({ context: asked, ref }), listWholeCatalog({ context: asked, kind: "observation", filter: {} })]), ([answer, named]) => {
     setObservations(named.page?.items ?? []);
     if (answer.state === "completed" && answer.draft) {
       setDraft(answer.draft);
@@ -605,12 +624,10 @@ function useEnvironmentDetail({
     } else {
       setDraftFailure(answer.reason ?? "This environment could not be read.");
     }
-  }, [context, ref?.id, ref?.revision]); // eslint-disable-line react-hooks/exhaustive-deps
+    });
+  }, [readDetail, ref?.id, ref?.revision]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    setCheck(null);
-    setFHIRChecks({});
-    setDraft(null);
     void reload();
   }, [reload]);
 

@@ -10,7 +10,6 @@ import (
 	"github.com/bharm16/readmit/internal/durablelog"
 	"github.com/bharm16/readmit/internal/durablerun"
 	"github.com/bharm16/readmit/internal/networkaction"
-	"path/filepath"
 	"strings"
 	"time"
 )
@@ -20,9 +19,9 @@ import (
 func Recover(ctx context.Context, path string) (Result, error) { return read(ctx, path, false, nil) }
 func Open(ctx context.Context, path string) (Result, error)    { return read(ctx, path, true, nil) }
 func read(ctx context.Context, path string, sealed bool, opener SampleOpener) (Result, error) {
-	layout, schema, primarySchema := family.Layout, ResultSchema, dataset.Schema
+	layout := family.Layout
 	if opener != nil {
-		layout, schema = samplesFamily.Layout, SamplesSchema
+		layout = samplesFamily.Layout
 	}
 	if !sealed {
 		layout.RequiredFiles = []string{"definition.json", "binding.json", "journal.jsonl"}
@@ -33,6 +32,34 @@ func read(ctx context.Context, path string, sealed bool, opener SampleOpener) (R
 	files, err := artifactdir.Read(path, layout)
 	if err != nil {
 		return Result{}, err
+	}
+	return verifyFiles(ctx, files, sealed, opener)
+}
+
+// Verify applies the complete interval rules to one detached captured snapshot.
+func Verify(ctx context.Context, captured map[string][]byte) (Result, error) {
+	files, err := artifactdir.Snapshot(captured, family.Layout)
+	if err != nil {
+		return Result{}, err
+	}
+	return verifyFiles(ctx, files, true, nil)
+}
+
+// VerifySamples retains the existing sample contract's own verification seam.
+func VerifySamples(ctx context.Context, captured map[string][]byte, opener SampleOpener) (Result, error) {
+	if opener == nil {
+		return Result{}, invalid
+	}
+	files, err := artifactdir.Snapshot(captured, samplesFamily.Layout)
+	if err != nil {
+		return Result{}, err
+	}
+	return verifyFiles(ctx, files, true, opener)
+}
+func verifyFiles(ctx context.Context, files map[string][]byte, sealed bool, opener SampleOpener) (Result, error) {
+	schema, primarySchema := ResultSchema, dataset.Schema
+	if opener != nil {
+		schema = SamplesSchema
 	}
 	if opener != nil {
 		var head sampleHead
@@ -70,7 +97,7 @@ func read(ctx context.Context, path string, sealed bool, opener SampleOpener) (R
 			if !strings.HasPrefix(record.Snapshot, "samples/") || strings.Contains(record.Snapshot, "..") || strings.Contains(record.Snapshot, "\\") {
 				return invalid
 			}
-			sample, err := openPrimary(ctx, filepath.Join(path, record.Snapshot), opener)
+			sample, err := openPrimary(ctx, artifactdir.Subtree(files, record.Snapshot), opener)
 			if err != nil || sample.identity != record.Identity || !artifactdir.MatchesSubtree(files, record.Snapshot, primarySchema, sample.identity) {
 				return invalid
 			}
@@ -98,7 +125,7 @@ func read(ctx context.Context, path string, sealed bool, opener SampleOpener) (R
 					return invalid
 				}
 				doc := sample.snapshot.Document()
-				readback, err := networkaction.OpenCaptureEvidence(filepath.Join(path, "capture"))
+				readback, err := networkaction.VerifyCaptureEvidence(artifactdir.Subtree(files, "capture"))
 				result, capture := readback.Result, readback.Capture
 				if err != nil || capture == nil || result.Binding.Source != binding.Source || !artifactdir.MatchesSubtree(files, "capture", networkaction.ResultSchema, readback.Identity) {
 					return invalid
@@ -133,7 +160,7 @@ func read(ctx context.Context, path string, sealed bool, opener SampleOpener) (R
 			if d.Barrier == nil || !strings.HasPrefix(record.BarrierPath, "samples/barrier-") || strings.ContainsAny(record.BarrierPath[len("samples/barrier-"):], "/\\.") {
 				return invalid
 			}
-			snapshot, err := dataset.Open(ctx, filepath.Join(path, record.BarrierPath))
+			snapshot, err := dataset.Verify(ctx, artifactdir.Subtree(files, record.BarrierPath))
 			if err != nil {
 				return err
 			}
@@ -153,7 +180,7 @@ func read(ctx context.Context, path string, sealed bool, opener SampleOpener) (R
 			}
 			if err == nil {
 				if expected.Complete && record.Snapshot != "" && record.Status == "healthy" {
-					sample, e := openPrimary(ctx, filepath.Join(path, record.Snapshot), opener)
+					sample, e := openPrimary(ctx, artifactdir.Subtree(files, record.Snapshot), opener)
 					if e != nil || !artifactdir.MatchesSubtree(files, record.Snapshot, primarySchema, sample.identity) || sample.started.Before(barrierDocument.Acquisition.CompletedAt) {
 						return invalid
 					}

@@ -305,16 +305,12 @@ func (p *HTTPPlan) Execute(ctx context.Context, authority Authority, output stri
 	}
 	response, requestErr := destination.HTTPOnScopedRoute(ctx, route, req, security, spec.MaxBytes, time.Duration(spec.TimeoutMS)*time.Millisecond)
 	result.State = "uncertain"
+	var released HTTPResponse
 	if requestErr == nil {
 		result.State = "responded"
 		result.HTTPStatus = response.Status
-		retain := spec.Operation != sendpolicy.SMARTToken
-		for _, value := range secrets {
-			if len(value) > 0 && bytes.Contains(response.Body, value) {
-				retain = false
-			}
-		}
-		if retain {
+		released, requestErr = releaseHTTPResponse(response, secrets, false)
+		if requestErr == nil && spec.Operation != sendpolicy.SMARTToken {
 			if w.WriteFile("response.bin", response.Body) != nil {
 				return HTTPResponse{}, Result{}, refused
 			}
@@ -328,7 +324,7 @@ func (p *HTTPPlan) Execute(ctx context.Context, authority Authority, output stri
 	if requestErr != nil {
 		return HTTPResponse{}, result, refused
 	}
-	return HTTPResponse{Status: response.Status, Body: ResponseBody{raw: response.Body}, header: safeHeaders(response.Header)}, result, nil
+	return released, result, nil
 }
 func validActor(a Actor) bool {
 	return RecordedActor(a) && a.Expires.After(time.Now())

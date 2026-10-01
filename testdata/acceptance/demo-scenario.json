@@ -1,0 +1,37 @@
+{
+  "schema": "readmit-demo-acceptance/v1",
+  "entry": "Try demo",
+  "region": "Demo",
+  "test_name": "Rescheduling updates the original appointment",
+  "steps": [
+    {"id": "open-messages", "title": "Open sample messages"},
+    {"id": "create-test", "title": "Create supplied test"},
+    {"id": "run-defective", "title": "Run defective receiver"},
+    {"id": "view-failed-check", "title": "View failed check"},
+    {"id": "run-fixed", "title": "Run fixed receiver"},
+    {"id": "compare", "title": "Compare results"}
+  ],
+  "expected": {
+    "check": "Record count",
+    "required_count": 1,
+    "defective_count": 2,
+    "fixed_count": 1,
+    "defective_status": "assertion_failure",
+    "fixed_status": "pass",
+    "defective_label": "Failed",
+    "fixed_label": "Passed",
+    "boundary": "appointment-ledger",
+    "occurrences": 2,
+    "paired": 2,
+    "unchanged": 2,
+    "field_changes": 0
+  },
+  "retained": {
+    "case": "regression",
+    "defective": "defective-run/result",
+    "fixed": "fixed-run/result",
+    "review_title": "Demo regression review",
+    "export_name": "demo-review",
+    "original_review": "Original evidence"
+  }
+}

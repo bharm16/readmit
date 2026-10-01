@@ -259,3 +259,13 @@ runs), `TestConnectedHubBackupRefusesToDiscardDispatchAndInterruptedClaims`
 (validator removal). The procedures' order on a customer's own host, service
 manager and backup volume is the administrator's to rehearse; no test stands
 in for that installation.
+
+## Full queue pins
+
+Schedule preparation now uses the `readmit-prepared-queue/v2` identity domain:
+all queue configuration (including dependencies, isolation and parallelism) plus
+its prepared test identities. Revalidation pauses a schedule carrying an earlier
+partial pin until the operator prepares and reviews it again. Historical schedule
+and queue records remain readable; no approval is upgraded in place. Managed
+legacy dispatch uses the existing queue scheduler at the customer's runner
+capacity of one environment lease, retaining every skipped/refused job.

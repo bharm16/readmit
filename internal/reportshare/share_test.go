@@ -49,7 +49,7 @@ func newFixture(t *testing.T) fixture {
 
 func (f fixture) build(t *testing.T, template *redact.Policy, overrides reportshare.Overrides, contents reportshare.Contents, key byte) *reportshare.Share {
 	t.Helper()
-	share, err := reportshare.Build(context.Background(), reportshare.Request{PacketDir: f.dir, Packet: f.packet, Authored: f.authored, Template: template,
+	share, err := reportshare.Build(context.Background(), reportshare.Request{Packet: f.packet, Authored: f.authored, Template: template,
 		Overrides: overrides, Key: bytes.Repeat([]byte{key}, redact.MinDeriverKeyBytes), Contents: contents, Format: "markdown"})
 	if err != nil {
 		t.Fatal(err)
@@ -174,7 +174,7 @@ func TestATemplateDerivesTheReportAndItsMessagesTogether(t *testing.T) {
 func TestAttachmentsAndOriginalEvidenceAreNeverRedacted(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
-	share, err := reportshare.Build(context.Background(), reportshare.Request{PacketDir: f.dir, Packet: f.packet, Authored: f.authored, Template: &f.policy,
+	share, err := reportshare.Build(context.Background(), reportshare.Request{Packet: f.packet, Authored: f.authored, Template: &f.policy,
 		Key: bytes.Repeat([]byte{1}, redact.MinDeriverKeyBytes), Format: "html",
 		Contents:    reportshare.Contents{Attachments: true, Original: true},
 		Attachments: []reportshare.Attachment{{Name: "scan.png", Data: []byte("image")}, {Name: "gone.txt", Unreadable: "missing"}}})
@@ -191,7 +191,7 @@ func TestAttachmentsAndOriginalEvidenceAreNeverRedacted(t *testing.T) {
 	if !blocking {
 		t.Fatalf("an unreadable attachment does not block: %+v", share.Issues)
 	}
-	removed, err := reportshare.Build(context.Background(), reportshare.Request{PacketDir: f.dir, Packet: f.packet, Authored: f.authored, Template: &f.policy,
+	removed, err := reportshare.Build(context.Background(), reportshare.Request{Packet: f.packet, Authored: f.authored, Template: &f.policy,
 		Key: bytes.Repeat([]byte{1}, redact.MinDeriverKeyBytes), Format: "html",
 		Contents:    reportshare.Contents{Attachments: true, Original: true, Removed: []string{"attachment:gone.txt", "original"}},
 		Attachments: []reportshare.Attachment{{Name: "scan.png", Data: []byte("image")}, {Name: "gone.txt", Unreadable: "missing"}}})

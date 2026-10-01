@@ -30,6 +30,7 @@ import (
 	"github.com/bharm16/readmit/internal/operationguard"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/runnerprotocol"
+	"github.com/bharm16/readmit/internal/runqueue"
 	"github.com/bharm16/readmit/internal/testlicense"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
@@ -238,6 +239,7 @@ func TestCustomerRunnerActualTLSExecutionRevocationAndRecovery(t *testing.T) {
 	}
 	defer listener.Close()
 	received := make(chan struct{})
+	var targetFrames atomic.Int64
 	crashReceived := make(chan struct{})
 	outageReceived := make(chan struct{})
 	go func() {
@@ -252,6 +254,7 @@ func TestCustomerRunnerActualTLSExecutionRevocationAndRecovery(t *testing.T) {
 				conn.Close()
 				return
 			}
+			targetFrames.Add(1)
 			if i == 0 {
 				fmt.Fprint(conn, "\x0bMSH|^~\\&|FIXTURE|LAB|READMIT|TEST|20260101120000||ACK|ACK-1|P|2.5.1\rMSA|AA|LISTEN-BOOK\r\x1c\r")
 				conn.Close()
@@ -281,6 +284,47 @@ func TestCustomerRunnerActualTLSExecutionRevocationAndRecovery(t *testing.T) {
 	// A changed schedule pin refuses before the local fixture sees a frame.
 	if _, e := runnerJobPinned(t, c, job, strings.Repeat("0", 64)); e == nil {
 		t.Fatal("changed pin executed")
+	}
+	// Whole-queue changes must refuse at the real managed dispatch boundary,
+	// before the independently hosted fixture receives a single frame. The
+	// scheduled execution below remains the positive target/admission control.
+	queuePath := filepath.Join(dir, "queue.json")
+	queue := runqueue.Plan{Schema: runqueue.PlanSchema, Parallelism: 1, Jobs: []runqueue.Job{
+		{ID: "after", Spec: "spec.json", Isolation: runqueue.SharedState, After: []string{"before"}},
+		{ID: "before", Spec: "spec.json", Isolation: runqueue.SharedState},
+	}}
+	writeQueue := func() {
+		t.Helper()
+		raw, err := json.Marshal(queue)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(queuePath, raw, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeQueue()
+	queuePin, _, err := runqueue.PinnedJobs(t.Context(), queuePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	managed := runnerprotocol.ScheduleEntry{RunnerConfig: configPath, Spec: queuePath, Input: queuePin}
+	if reason := hub.RevalidateManagedRun(t.Context(), c.Project, managed); reason != "" {
+		t.Fatal("unchanged queue did not revalidate", reason)
+	}
+	queue.Jobs[0].After = nil
+	writeQueue()
+	if reason := hub.RevalidateManagedRun(t.Context(), c.Project, managed); reason != runnerprotocol.ReasonPinChanged {
+		t.Fatal("changed dependencies did not require new approval", reason)
+	}
+	if state := hub.ExecuteManagedRun(t.Context(), managed, "changed-dependencies"); state != "error" {
+		t.Fatal("managed dispatch ran a queue with changed dependencies", state)
+	}
+	if targetFrames.Load() != 0 {
+		t.Fatal("changed queue reached the target before refusal")
+	}
+	if entries, err := os.ReadDir(root); err != nil || len(entries) != 0 {
+		t.Fatal("changed queue created a local execution", entries, err)
 	}
 	now := time.Now().UTC()
 	due := now.Truncate(time.Minute)

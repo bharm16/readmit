@@ -30,7 +30,7 @@ import (
 // the offline reader. Typed checks run through the shared evaluator only when
 // the stimulus settled and every declared observation is complete.
 func (x fhirReader) evaluate(ctx context.Context, r FHIRPhaseRun, evidence map[string]assertion.Table) (FHIREvaluation, error) {
-	plan, dir := x.plan, x.dir
+	plan := x.plan
 	d := plan.Document().Test
 	e := FHIREvaluation{Schema: FHIREvaluationSchema, Responses: []FlowCheck{}, Validations: []FlowCheck{}}
 	if r.State == "complete" && len(evidence) == len(d.Datasets) {
@@ -57,7 +57,7 @@ func (x fhirReader) evaluate(ctx context.Context, r FHIRPhaseRun, evidence map[s
 	for _, c := range d.Validations {
 		outcome := assertion.OutcomeUndecided
 		if identity := r.Validations[c.ID]; networkaction.ValidDigest(identity) {
-			retained, err := fhirvalidator.Open(ctx, filepath.Join(dir, "validations", c.ID))
+			retained, err := x.validation(ctx, c.ID)
 			if err != nil || retained.Identity() != identity {
 				return e, invalid
 			}
@@ -80,9 +80,9 @@ func (x fhirReader) evaluate(ctx context.Context, r FHIRPhaseRun, evidence map[s
 // wireReport evaluates the pinned wire assertions over the original inputs
 // and the actual acknowledgements only; application state is never inferred.
 func (x fhirReader) wireReport(ctx context.Context) (assertion.Report, error) {
-	flow, phase, dir := x.flow, x.phase, x.dir
+	flow, phase := x.flow, x.phase
 	evidence := assertion.Evidence{Input: map[string]assertion.Message{}, Observed: map[string]assertion.Message{}}
-	run, err := replay.Open(filepath.Join(dir, "transport", "run"))
+	run, err := x.transport()
 	if err != nil {
 		return assertion.Report{}, err
 	}
@@ -129,11 +129,11 @@ func (x fhirReader) wireReport(ctx context.Context) (assertion.Report, error) {
 
 // result summarizes a verified v5 phase for the flow result.
 func (x fhirReader) result(r FHIRPhaseRun, e FHIREvaluation, identity string) (FlowPhaseResult, error) {
-	flow, phase, dir := x.flow, x.phase, x.dir
+	flow, phase := x.flow, x.phase
 	out := unexecutedPhase(flow, phase, r.State)
 	out.RunIdentity = identity
 	if r.Transport != "" {
-		transport, err := replay.Open(filepath.Join(dir, "transport", "run"))
+		transport, err := x.transport()
 		if err != nil || transport.Identity != r.Transport || len(transport.Events) != len(out.Steps) {
 			return out, invalid
 		}
@@ -391,11 +391,11 @@ func (x fhirReader) derive(ctx context.Context, claimed FHIRPhaseRun) (FHIRPhase
 		schema := observeinterval.ResultSchema
 		if observation != nil {
 			schema = observeinterval.SamplesSchema
-			interval, err = observeinterval.OpenSamples(ctx, path, func(ctx context.Context, dir string) (observeinterval.Sample, error) {
-				return x.openSample(ctx, *observation, dir, dataset.Binding{})
+			interval, err = observeinterval.VerifySamples(ctx, x.subtree(path), func(ctx context.Context, sample map[string][]byte) (observeinterval.Sample, error) {
+				return x.verifySample(ctx, *observation, sample, dataset.Binding{})
 			})
 		} else {
-			interval, err = observeinterval.Open(ctx, path)
+			interval, err = observeinterval.Verify(ctx, x.subtree(path))
 		}
 		if err != nil || interval.Identity != identity || interval.Binding != (dataset.Binding{Run: claimed.Instance, Phase: "after", Namespace: ds.Namespace, Source: ds.Source}) || !artifactdir.MatchesSubtree(x.files, "intervals/"+ds.ID, schema, identity) {
 			return r, nil, invalid
@@ -463,12 +463,12 @@ func (x fhirReader) derive(ctx context.Context, claimed FHIRPhaseRun) (FHIRPhase
 	r.Stage = "stimulus"
 	settled := true
 	if len(r.Steps) == 0 {
-		transport, err := connectedtransport.OpenEvidence(filepath.Join(x.dir, "transport"))
+		transport, err := x.transportEvidence()
 		receipt := transport.Receipt
 		if err != nil || receipt.Schema != connectedtransport.ReceiptSchemaV2 || !artifactdir.MatchesSubtree(x.files, "transport", receipt.Schema, transport.Identity) || !artifactdir.MatchesSubtree(x.files, "transport/plan", connectedtest.PhasePlanSchemaV2, artifactdir.Identity(connectedtest.PhasePlanSchemaV2, x.plan.Files())) || receipt.Binding.Plan != x.plan.Identity() || receipt.Instance != claimed.Instance || receipt.RunIdentity != claimed.Transport {
 			return r, nil, invalid
 		}
-		run, err := replay.Open(filepath.Join(x.dir, "transport", "run"))
+		run, err := x.transport()
 		if err != nil || run.Identity != receipt.RunIdentity || !within(claimed, run.Manifest.StartedAt, run.Manifest.CompletedAt) || run.Manifest.StartedAt.Before(stimulusAt) {
 			return r, nil, invalid
 		}
@@ -549,7 +549,7 @@ func (x fhirReader) derive(ctx context.Context, claimed FHIRPhaseRun) (FHIRPhase
 			return r, nil, invalid
 		}
 		if networkaction.ValidDigest(value) {
-			retained, err := fhirvalidator.Open(ctx, filepath.Join(x.dir, "validations", c.ID))
+			retained, err := x.validation(ctx, c.ID)
 			step := slices.IndexFunc(r.Steps, func(s FHIRStepRecord) bool { return s.Step == c.Step })
 			if err != nil || retained.Identity() != value || step < 0 || !artifactdir.MatchesSubtree(x.files, "validations/"+c.ID, fhirvalidator.ResultSchema, value) {
 				return r, nil, invalid
@@ -593,7 +593,7 @@ type openedHTTP struct {
 }
 
 func (x fhirReader) openHTTP(prefix, identity string) (openedHTTP, error) {
-	e, err := fhirrest.OpenEvidence(context.Background(), filepath.Join(x.dir, filepath.FromSlash(prefix)))
+	e, err := x.httpEvidence(context.Background(), prefix)
 	if err != nil || e.Identity() != identity || !artifactdir.MatchesSubtree(x.files, prefix, fhirrest.ResultSchema, identity) {
 		return openedHTTP{}, invalid
 	}
@@ -656,7 +656,11 @@ func (x fhirReader) openSample(ctx context.Context, o fhirobserve.Observation, d
 	if err != nil {
 		return nil, err
 	}
-	return fhirobserve.Open(ctx, dir, o, fhirobserve.Expect{Base: base, URL: address, Binding: binding})
+	expect := fhirobserve.Expect{Base: base, URL: address, Binding: binding}
+	if x.files != nil {
+		return fhirobserve.Verify(ctx, x.subtree(dir), o, expect)
+	}
+	return fhirobserve.Open(ctx, dir, o, expect)
 }
 func (x fhirReader) observationDataset(o fhirobserve.Observation) string {
 	for _, ds := range x.plan.Document().Test.Datasets {
@@ -682,7 +686,7 @@ func (x fhirReader) openAcquisition(ctx context.Context, ds connectedtest.Datase
 		}
 		return sample.Identity(), sample.Started(), sample.Completed(), nil
 	}
-	snapshot, err := observesource.OpenDataset(ctx, dir)
+	snapshot, err := x.acquiredDataset(ctx, dir)
 	if err != nil {
 		return "", time.Time{}, time.Time{}, err
 	}
@@ -715,9 +719,9 @@ func (x fhirReader) openTable(ctx context.Context, ds connectedtest.Dataset, o *
 	var snapshot *dataset.Snapshot
 	var err error
 	if strings.Contains(filepath.ToSlash(dir), "/intervals/") {
-		snapshot, err = dataset.Open(ctx, dir)
+		snapshot, err = x.datasetSnapshot(ctx, dir)
 	} else {
-		snapshot, err = observesource.OpenDataset(ctx, dir)
+		snapshot, err = x.acquiredDataset(ctx, dir)
 	}
 	if err != nil {
 		return assertion.Table{}, err
@@ -735,7 +739,7 @@ func (x fhirReader) acquisitionTime(ctx context.Context, ds connectedtest.Datase
 		}
 		return sample.Started(), nil
 	}
-	snapshot, err := dataset.Open(ctx, dir)
+	snapshot, err := x.datasetSnapshot(ctx, dir)
 	if err != nil {
 		return time.Time{}, err
 	}
@@ -781,4 +785,56 @@ func interruptedFHIRPhase(plan *connectedtest.FlowPlan, phase connectedtest.Flow
 		}
 	}
 	return r, nil
+}
+
+// subtree names a member inside this phase's owned snapshot, never a new read.
+func (x fhirReader) subtree(directory string) map[string][]byte {
+	relative, err := filepath.Rel(x.dir, directory)
+	if err != nil || !filepath.IsLocal(relative) {
+		return nil
+	}
+	return artifactdir.Subtree(x.files, filepath.ToSlash(relative))
+}
+func (x fhirReader) verifySample(ctx context.Context, o fhirobserve.Observation, files map[string][]byte, binding dataset.Binding) (*fhirobserve.Sample, error) {
+	_, base, address, err := x.plan.ObservationURL(x.observationDataset(o))
+	if err != nil {
+		return nil, err
+	}
+	return fhirobserve.Verify(ctx, files, o, fhirobserve.Expect{Base: base, URL: address, Binding: binding})
+}
+func (x fhirReader) validation(ctx context.Context, id string) (*fhirvalidator.Evidence, error) {
+	if x.files != nil {
+		return fhirvalidator.Verify(ctx, artifactdir.Subtree(x.files, "validations/"+id))
+	}
+	return fhirvalidator.Open(ctx, filepath.Join(x.dir, "validations", id))
+}
+func (x fhirReader) transport() (*replay.Run, error) {
+	if x.files != nil {
+		return replay.Verify(artifactdir.Subtree(x.files, "transport/run"))
+	}
+	return replay.Open(filepath.Join(x.dir, "transport", "run"))
+}
+func (x fhirReader) transportEvidence() (connectedtransport.Evidence, error) {
+	if x.files != nil {
+		return connectedtransport.VerifyEvidence(artifactdir.Subtree(x.files, "transport"))
+	}
+	return connectedtransport.OpenEvidence(filepath.Join(x.dir, "transport"))
+}
+func (x fhirReader) httpEvidence(ctx context.Context, prefix string) (*fhirrest.Evidence, error) {
+	if x.files != nil {
+		return fhirrest.VerifyEvidence(ctx, artifactdir.Subtree(x.files, prefix))
+	}
+	return fhirrest.OpenEvidence(ctx, filepath.Join(x.dir, filepath.FromSlash(prefix)))
+}
+func (x fhirReader) acquiredDataset(ctx context.Context, directory string) (*dataset.Snapshot, error) {
+	if x.files != nil {
+		return observesource.VerifyDataset(ctx, x.subtree(directory))
+	}
+	return observesource.OpenDataset(ctx, directory)
+}
+func (x fhirReader) datasetSnapshot(ctx context.Context, directory string) (*dataset.Snapshot, error) {
+	if x.files != nil {
+		return dataset.Verify(ctx, x.subtree(directory))
+	}
+	return dataset.Open(ctx, directory)
 }
