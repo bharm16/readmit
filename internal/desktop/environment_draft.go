@@ -777,24 +777,9 @@ func (a *App) OpenItemDraft(request ItemRequest) ItemDraftResult {
 			}
 			draft.Runner = runner
 		case EnvironmentItem:
-			members, err := loaded.environmentOf(record)
-			if err != nil {
+			if err := loaded.environmentDraft(record, &draft); err != nil {
 				result.refuse(Failed, err.Error())
 				return result
-			}
-			draft.Environment, draft.SendPolicy, draft.ResetPlan = &members.target, members.policy, members.reset
-			draft.Isolation = members.isolation
-			if members.fhir != nil {
-				draft.Environment, draft.FHIR = nil, members.fhir
-			}
-			if draft.ResetPlan != nil {
-				plan := *draft.ResetPlan
-				loaded.observationIdentities(&plan)
-				draft.ResetPlan = &plan
-			}
-			if _, held := members.paths["links"]; held {
-				links := members.links
-				draft.Links = &links
 			}
 		default:
 			observation, err := loaded.observationOf(record)
@@ -809,6 +794,30 @@ func (a *App) OpenItemDraft(request ItemRequest) ItemDraftResult {
 		result.State, result.Ref, result.Draft = Completed, &ref, &draft
 		return result
 	})
+}
+
+// environmentDraft fills draft with every member an environment's revision
+// declares, as its editor opens it.
+func (c *loadedCatalog) environmentDraft(record catalog.Item, draft *ItemDraft) error {
+	members, err := c.environmentOf(record)
+	if err != nil {
+		return err
+	}
+	draft.Environment, draft.SendPolicy, draft.ResetPlan = &members.target, members.policy, members.reset
+	draft.Isolation = members.isolation
+	if members.fhir != nil {
+		draft.Environment, draft.FHIR = nil, members.fhir
+	}
+	if draft.ResetPlan != nil {
+		plan := *draft.ResetPlan
+		c.observationIdentities(&plan)
+		draft.ResetPlan = &plan
+	}
+	if _, held := members.paths["links"]; held {
+		links := members.links
+		draft.Links = &links
+	}
+	return nil
 }
 
 // observationOf reads the source and window an available observation

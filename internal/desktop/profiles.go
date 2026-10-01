@@ -49,6 +49,14 @@ var profiles = map[string]operationguard.Profile{
 	"StartReduction":              {Name: reductionOperation, Interruptible: true, Execution: operationguard.Execute},
 	"CollectObservation":          {Name: "observation", Interruptible: true, Author: true, Execution: operationguard.Execute},
 
+	// The optional local validator. A check runs the container engine's
+	// command line against its local socket; it is not an execution and
+	// sends nothing. Installing and removing one change this computer's
+	// local capability and an environment's connection.
+	"CheckValidator":   {Name: validatorOperation, Interruptible: true},
+	"InstallValidator": {Name: validatorOperation, Interruptible: true, Author: true},
+	"RemoveValidator":  {Name: validatorOperation, Interruptible: true, Author: true},
+
 	// The customer hub. A lifecycle command that only exports takes no
 	// author admission, posted or reconciled (postHubLifecycle).
 	"DiagnoseHub":              {Name: hubRequestOperation},

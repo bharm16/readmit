@@ -103,5 +103,21 @@ class SuppliedPackageTests(unittest.TestCase):
         self.assertEqual(build.package_key(inventory.owned_package(folder)), "readmit.synthetic.validation#1.0.0")
 
 
+class PinTests(unittest.TestCase):
+    def test_every_acquired_input_is_an_exact_release_never_a_mutable_latest(self):
+        pins = capability.load_pins()
+        self.assertIn("@sha256:", pins["base_image"])
+        for asset in pins["assets"]:
+            with self.subTest(asset=asset["id"]):
+                url = asset["url"].lower()
+                self.assertTrue(url.startswith("https://"))
+                for mutable in ("latest", "current", "snapshot", "nightly"):
+                    self.assertNotIn(mutable, url)
+                self.assertRegex(asset["version"], r"^[0-9]+(\.[0-9]+)+")
+                self.assertIn(asset["version"].replace("+", "%2B"), asset["url"])
+                self.assertRegex(asset["sha256"], r"^[0-9a-f]{64}$")
+                self.assertGreater(asset["size"], 0)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -77,6 +77,14 @@ test reported as passing.
 - [ ] #112: substantiate every public feature, connector, support and commercial
   claim from the matching tested release. Preview pages may describe current
   functionality before #109; finished-product claims require complete acceptance.
+- [ ] #591 (IG21): a reviewer not involved in implementing the
+  [connection recipes](connection-recipes.md) deploys the pinned independent
+  lab and a runner, installs the validator package offline from its published
+  identity, imports the three shipped connection examples through Environments ›
+  Import example, registers credentials in the approved store and completes each
+  topology without author-written glue. Retain their record of each step and
+  any refusal. The examples, deployment refusals and recovery paths are executed
+  in CI and the opt-in labs; that independent acceptance is the owner's gate.
 - [ ] #109/#110/#111: retain native end-to-end journeys, measured performance
   and interruption results, and security/privacy/accessibility acceptance. Their
   coverage supplements the per-deliverable ledger below, not replaces it.

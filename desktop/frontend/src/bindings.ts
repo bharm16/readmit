@@ -383,6 +383,11 @@ import type {
   ShareTemplatesResult,
   EncryptedPackagesResult,
   SharingPolicyRequest,
+  ConnectionExampleRequest,
+  ConnectionExampleResult,
+  ValidatorCheckResult,
+  ValidatorInstallRequest,
+  ValidatorRemoveRequest,
 } from "./bindings.gen";
 
 export type * from "./bindings.gen";
@@ -1880,6 +1885,27 @@ export function removeItem(request: ItemRequest): Promise<RemoveItemResult> {
 /** The host's file dialog for one file an environment editor names. */
 export function chooseEnvironmentFile(kind: EnvironmentFileKind): Promise<PathChoiceResult> {
   return guard(() => facade().ChooseEnvironmentFile(kind), { state: "failed" });
+}
+
+/** Reads a chosen connection example, or imports it with a value for every
+ * placeholder under the intent its click allocated. */
+export function importConnectionExample(request: ConnectionExampleRequest): Promise<ConnectionExampleResult> {
+  return submitted(() => facade().ImportConnectionExample(request), { state: "failed", context: request.context, saved: [], problems: [] });
+}
+
+/** Installs a validator package for a saved FHIR connection and selects it. */
+export function installValidator(request: ValidatorInstallRequest): Promise<ValidatorCheckResult> {
+  return submitted(() => facade().InstallValidator(request), { state: "failed", context: request.context });
+}
+
+/** Removes the validator this application installed for a saved FHIR connection. */
+export function removeValidator(request: ValidatorRemoveRequest): Promise<ValidatorCheckResult> {
+  return submitted(() => facade().RemoveValidator(request), { state: "failed", context: request.context });
+}
+
+/** Checks the local validator a saved FHIR connection selects, on request. */
+export function checkValidator(request: ItemRequest): Promise<ValidatorCheckResult> {
+  return guard(() => facade().CheckValidator(request), { state: "failed", context: request.context });
 }
 
 // Storage: backups under the remembered backup location. Reads come back as

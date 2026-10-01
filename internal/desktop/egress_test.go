@@ -346,6 +346,7 @@ var operationsRunningDeclaredPrograms = []string{
 	"CheckTarget", "ResetTarget", "StartReduction",
 	"StartCapture",
 	"CollectObservation",
+	"CheckValidator", "InstallValidator", "RemoveValidator",
 }
 
 // The privacy status covers the reviewed inventories: every operation in them

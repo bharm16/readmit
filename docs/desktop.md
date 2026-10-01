@@ -4383,6 +4383,35 @@ Listing validates only local capability metadata and starts no worker or remote
 service. Opening, listing, editing, saving and navigating never resolve credentials,
 request tokens, perform DNS/TLS, collect, send, set up or clean up anything.
 
+**Check validator…**, in a FHIR environment's More environment actions, opens
+the Validator sheet and checks only then (`CheckValidator`).
+It reads the selected capability's pins offline and asks the selected local
+container engine, through its command line, whether it is the qualified
+platform and holds the exact worker image — the check a validation and the
+deployment command make — and shows Ready or what is missing with what to do.
+It fetches nothing, resolves no credential and contacts no FHIR server; the
+privacy status shows the engine's command line running while it asks. The
+sheet's **Install package…** chooses a validator package folder and takes the
+identity its administrator published; **Install** (`InstallValidator`)
+verifies the package against it, installs it into the selected engine and this
+application's own storage, as `readmit validator install` does, and saves the
+connection selecting it. **Remove** (`RemoveValidator`) removes the validator
+this application installed for the connection, keeping an image another
+installed validator uses, and saves the connection without it. See
+[deploying the validator](fhir-validation.md#deploying-the-capability).
+
+Environments › **Import example** chooses a `readmit-connection-example/v1`
+file (`ChooseEnvironmentFile` with `connection-example`) and opens one sheet
+asking for each value the example marks as a placeholder: a file placeholder
+chosen with the file dialog (`example-file`), a case placeholder offering the
+project's cases. **Import** (`ImportConnectionExample`) saves the
+example's capture listeners, environments and observations through the
+validation each editor's Save uses, then each environment's link to its
+observation, and opens the first environment. A missing value saves nothing and
+is answered at its field; a value an object's validation refuses stops the
+import at that object, names its field and keeps the objects saved before it.
+Importing approves no transport and connects to nothing. See [connection recipes](connection-recipes.md).
+
 New managed members are `readmit-fhir-connection/v1`,
 `readmit-connected-observation-setup/v1`, and
 `readmit-environment-isolation/v1`; they publish through the existing catalog CAS

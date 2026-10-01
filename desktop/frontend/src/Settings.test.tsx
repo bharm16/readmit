@@ -196,7 +196,7 @@ test("with no connections Security offers Add connection", async () => {
 test("visiting Security calls no check, Hub status, credential or runner operation", async () => {
   const user = userEvent.setup();
   const { facade } = await renderApp({ ListConnections: (context) => ({ state: "completed", context, rows: [QA, HUB] }) });
-  const reaching = ["CheckEnvironment", "CheckEnvironmentDestination", "CheckCredential", "HubStatus", "ConnectHub", "ReadRunnerConfig", "DiagnoseHub"] as const;
+  const reaching = ["CheckEnvironment", "CheckEnvironmentDestination", "CheckCredential", "HubStatus", "ConnectHub", "ReadRunnerConfig", "DiagnoseHub", "CheckValidator", "InstallValidator", "RemoveValidator", "ImportConnectionExample"] as const;
   const before = reaching.map((method) => facade.callsTo(method).length);
   const table = await openSecurity(user);
   await waitFor(() => expect(rowsOf(table)).toHaveLength(2));
@@ -222,6 +222,7 @@ test("Security reads the saved FHIR protocol and authentication boundaries witho
   expect(within(detail).getByText("Registered observer scope")).toBeTruthy();
   expect(within(detail).getByText("Not checked")).toBeTruthy();
   expect(facade.callsTo("CheckEnvironment")).toHaveLength(0);
+  expect(facade.callsTo("CheckValidator")).toHaveLength(0);
   expect(facade.callsTo("PrepareAction")).toHaveLength(0);
   expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
 });

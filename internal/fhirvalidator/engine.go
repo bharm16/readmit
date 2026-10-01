@@ -107,7 +107,13 @@ func (e *Engine) command(ctx context.Context, args ...string) *exec.Cmd {
 	return c
 }
 func (e *Engine) control(ctx context.Context, args ...string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	return e.invoke(ctx, 10*time.Second, args...)
+}
+
+// invoke runs one engine command line within limit and answers its bounded
+// standard output.
+func (e *Engine) invoke(ctx context.Context, limit time.Duration, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, limit)
 	defer cancel()
 	c := e.command(ctx, args...)
 	out := &limitedBuffer{limit: 256 << 10}
@@ -139,6 +145,12 @@ func (e *Engine) inspect(ctx context.Context, c *Capability) (Status, EngineReco
 		ServerVersion string `json:"ServerVersion"`
 		OSType        string `json:"OSType"`
 		Architecture  string `json:"Architecture"`
+	}
+	// A command line that cannot reach its engine can still print its own
+	// half of the answer with no server in it: that engine is unavailable,
+	// not an unsupported platform.
+	if json.Unmarshal(raw, &info) == nil && info.ServerVersion == "" {
+		return Status{"worker-unavailable", "start the selected local container engine"}, EngineRecord{}
 	}
 	if json.Unmarshal(raw, &info) != nil || info.OSType != "linux" || (info.Architecture != "aarch64" && info.Architecture != "arm64") || !engineVersion.MatchString(info.ServerVersion) {
 		return Status{"unsupported-runtime", "use the qualified Linux arm64 worker platform"}, EngineRecord{}

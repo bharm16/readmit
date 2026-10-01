@@ -75,6 +75,7 @@ authoritative.
 | `upgrade check`, `upgrade prepare` | Explicit offline upgrade check and rollback archive | [upgrade](docs/upgrade.md) |
 | `license` | Offline organization entitlements: v1 device-bound and v2 named-author contracts, runner admission | [license](docs/license.md), [named authors](docs/license-v2.md) |
 | `runner` | Operate a customer-controlled, hub-enrolled local runner | [customer runner](docs/customer-runner.md) |
+| `validator` | Verify, install, check and remove the optional local FHIR validator offline from a package with a published identity | [FHIR validation](docs/fhir-validation.md#deploying-the-capability), [connection recipes](docs/connection-recipes.md) |
 | `secret` | Credential references, never values | [secret](docs/secret.md) |
 | `protect` | Encrypted transfer packages under a referenced key | [protect](docs/protect.md) |
 | `target` | Named nonproduction environments: record, validate, reach without sending; reviewed fixture reset | [target](docs/target.md) |

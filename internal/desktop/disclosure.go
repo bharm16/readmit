@@ -208,6 +208,7 @@ var declaredProgramOperations = []namedOperation{
 	{"reduction", "An operator-declared program is running now: the locator of the private key the client certificate of a reduction's fixture reset presents." + declaredProgramReach},
 	{"capture", "An operator-declared program is running now: the transfer program or credential locator a capture source declares, or the locator of the private key a TLS capture listener presents." + declaredProgramReach},
 	{"observation", "An operator-declared program is running now: the credential locator the observation source declares." + declaredProgramReach},
+	{validatorOperation, "A program is running now: the local container engine's command line, which a validator check, installation or removal runs over the engine's local socket to inspect, load or remove the validator image." + declaredProgramReach},
 }
 
 // declaredProgramDisclosure answers for the programs an operator declared:

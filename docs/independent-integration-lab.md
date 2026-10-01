@@ -5,6 +5,9 @@ FHIR JPA 8.6.0 configured for FHIR R4 4.0.1 over PostgreSQL 16.11. It is an
 independent reference target for synthetic regression work. It is not Epic or
 Oracle Health certification, a customer interface qualification or an EHR clone.
 IG22 still owns exercising the finished production Desktop/runner against it.
+Separately, an independent reviewer's acceptance of the shipped connection
+examples against it is a recorded [release acceptance](release-acceptance.md)
+gate.
 
 ## Create and qualify
 
@@ -58,6 +61,11 @@ OIE administrator password replaces the vendor bootstrap password inside the
 private network before channels run. Inspect assigned ports with Docker Compose
 using the state directory's recorded project and environment file; never expose
 this fixture to a public interface.
+
+The three boundaries correspond to the three topologies of the shipped
+[connection examples](connection-recipes.md). The values the examples'
+placeholders take for this lab — its assigned ports, private CA and SMART keys
+— stay in its private state and are never committed.
 
 ## Oracle and defect revisions
 

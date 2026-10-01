@@ -581,7 +581,7 @@ func TestAReviewedResetRequiresEachManualConfirmationAndReportsPerActionOutcomes
 func TestChooseEnvironmentFileKinds(t *testing.T) {
 	c := &chooser{files: []string{"/etc/ssl/ca.pem"}}
 	app := newApp(t, c)
-	for _, kind := range []string{"ca-certificate", "client-certificate", "locator-program", "observation-input"} {
+	for _, kind := range []string{"ca-certificate", "client-certificate", "locator-program", "observation-input", "connection-example", "example-file"} {
 		chosen := app.ChooseEnvironmentFile(kind)
 		if chosen.State != desktop.Completed || chosen.Kind != kind || len(chosen.Paths) != 1 || chosen.Paths[0] != "/etc/ssl/ca.pem" {
 			t.Fatalf("%s: %+v", kind, chosen)

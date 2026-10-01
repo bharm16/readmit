@@ -1,0 +1,69 @@
+{
+  "schema": "readmit-connection-example/v1",
+  "topology": "v2-engine-v2-capture",
+  "name": "Engine output observation",
+  "placeholders": [
+    {"token": "<CAPTURE_CASE>", "label": "Captured case", "kind": "case"}
+  ],
+  "objects": [
+    {
+      "id": "output",
+      "kind": "observation",
+      "draft": {
+        "name": "Example engine output",
+        "observation": {
+          "source": {
+            "schema": "readmit-observation-source/v2",
+            "source": {"kind": "downstream-capture", "identity": "engine-output", "scope": "scheduling"},
+            "enabled": true,
+            "freshness": {"max_age": "1h"},
+            "extraction": null,
+            "file": null,
+            "http": null,
+            "capture": {"path": "<CAPTURE_CASE>", "kinds": ["message"], "record_key": "SCH-1.1", "max_occurrences": 1000}
+          },
+          "window": {
+            "schema": "readmit-observation-window/v1",
+            "source": {"kind": "downstream-capture", "identity": "engine-output", "scope": "scheduling"},
+            "watermark": {"kind": "none", "position": ""},
+            "pre_existing_state": {"declaration": "declared-empty", "baseline_identity": ""},
+            "completion": {"deadline": "30s", "quiet_period": "2s", "stable_samples": 3, "max_records": 1000, "max_samples": 16}
+          },
+          "connected": {
+            "schema": "readmit-connected-observation-setup/v1",
+            "namespace": "engine-output",
+            "phase": "after",
+            "business_keys": [{"field": "appointment", "variable": "appointment-id"}],
+            "baseline": "before-run",
+            "completion": {
+              "schema": "readmit-observation-interval/v1",
+              "source": "",
+              "namespace": "",
+              "enabled": true,
+              "mode": "snapshots",
+              "freshness": "snapshot-only",
+              "horizon_ms": 30000,
+              "sample_ms": 1000,
+              "max_gap_ms": 3000,
+              "max_samples": 64,
+              "max_records": 1000,
+              "max_bytes": 16777216
+            },
+            "projection": {
+              "schema": "readmit-dataset-projection/v1",
+              "id": "engine-output",
+              "format": "hl7",
+              "order": "source",
+              "columns": [
+                {"name": "appointment", "type": "text", "selector": "SCH-1.1", "key": true, "required": true, "repeated": false},
+                {"name": "event", "type": "text", "selector": "MSH-9.2", "key": false, "required": true, "repeated": false},
+                {"name": "start", "type": "text", "selector": "SCH-11.4", "key": false, "required": false, "repeated": false}
+              ],
+              "limits": {"max_rows": 1000, "max_bytes": 1048576, "timeout_ms": 30000}
+            }
+          }
+        }
+      }
+    }
+  ]
+}

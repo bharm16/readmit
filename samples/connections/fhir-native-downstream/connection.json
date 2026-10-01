@@ -1,0 +1,108 @@
+{
+  "schema": "readmit-connection-example/v1",
+  "topology": "fhir-native-downstream",
+  "name": "FHIR-native input and declared downstream encounter",
+  "placeholders": [
+    {"token": "<FHIR_BASE>", "label": "FHIR base address", "kind": "text"},
+    {"token": "<FHIR_SERVER_NAME>", "label": "FHIR certificate name", "kind": "text"},
+    {"token": "<FHIR_CA_FILE>", "label": "FHIR CA certificate file", "kind": "file"},
+    {"token": "<FHIR_RANGE>", "label": "FHIR address range", "kind": "text"},
+    {"token": "<TOKEN_ENDPOINT>", "label": "Token endpoint", "kind": "text"},
+    {"token": "<OBSERVER_CLIENT_ID>", "label": "Read-only client ID", "kind": "text"},
+    {"token": "<OBSERVER_KEY_REFERENCE>", "label": "Read-only signing key reference", "kind": "text"},
+    {"token": "<OBSERVER_KEY_ID>", "label": "Read-only signing key ID", "kind": "text"},
+    {"token": "<SIGNING_ALGORITHM>", "label": "Signing algorithm", "kind": "text"},
+    {"token": "<OBSERVER_PUBLIC_KEYS_FILE>", "label": "Read-only public keys file", "kind": "file"},
+    {"token": "<ENCOUNTER_ID_SYSTEM>", "label": "Encounter identifier system", "kind": "text"}
+  ],
+  "objects": [
+    {
+      "id": "application",
+      "kind": "environment",
+      "draft": {
+        "name": "Example application FHIR API",
+        "fhir": {
+          "schema": "readmit-fhir-connection/v1",
+          "base": "<FHIR_BASE>",
+          "version": "4.0.1",
+          "classification": "nonproduction",
+          "authentication": "smart",
+          "server_name": "<FHIR_SERVER_NAME>",
+          "ca_file": "<FHIR_CA_FILE>",
+          "client_id": "<OBSERVER_CLIENT_ID>",
+          "token_endpoint": "<TOKEN_ENDPOINT>",
+          "algorithm": "<SIGNING_ALGORITHM>",
+          "scopes": ["system/Appointment.rs", "system/Encounter.rs"],
+          "key_reference": "<OBSERVER_KEY_REFERENCE>",
+          "key_id": "<OBSERVER_KEY_ID>",
+          "public_keys_file": "<OBSERVER_PUBLIC_KEYS_FILE>"
+        },
+        "policy": {
+          "schema": "readmit-send-policy/v1",
+          "approved_destinations": ["<FHIR_RANGE>"]
+        },
+        "reset": {
+          "schema": "readmit-reset-plan/v1",
+          "environment": "",
+          "actions": [
+            {
+              "id": "isolated-tenant",
+              "operator": "operator_confirms",
+              "authority": "none",
+              "instructions": "Confirm that the test writes only to the isolated test tenant, that the separate setup client holds the only write scopes the test uses, and that no other job creates encounters there during the run.",
+              "observation": ""
+            }
+          ]
+        },
+        "links": {
+          "schema": "readmit-environment-links/v1",
+          "observation": "encounters",
+          "reset_name": "Isolated application tenant",
+          "action_names": ["Tenant isolated"]
+        }
+      }
+    },
+    {
+      "id": "encounters",
+      "kind": "observation",
+      "draft": {
+        "name": "Example downstream encounters",
+        "observation": {
+          "connected": {
+            "schema": "readmit-connected-observation-setup/v1",
+            "environment": "application",
+            "namespace": "encounters",
+            "phase": "both",
+            "business_keys": [{"field": "encounter", "variable": "encounter-id"}],
+            "baseline": "before-run",
+            "completion": {
+              "schema": "readmit-observation-interval/v1",
+              "source": "",
+              "namespace": "",
+              "enabled": true,
+              "mode": "snapshots",
+              "freshness": "snapshot-only",
+              "horizon_ms": 30000,
+              "sample_ms": 1000,
+              "max_gap_ms": 3000,
+              "max_samples": 64,
+              "max_records": 1000,
+              "max_bytes": 16777216
+            },
+            "fhir": {
+              "resource": "Encounter",
+              "boundary": "authoritative-application-api",
+              "criteria": [{"parameter": "identifier", "type": "token", "system": "<ENCOUNTER_ID_SYSTEM>", "value": "{encounter-id}"}],
+              "fields": [
+                {"name": "encounter", "field": "identifier[0].value", "key": true, "required": true},
+                {"name": "status", "field": "status", "key": false, "required": true},
+                {"name": "identity", "field": "resource-identity", "key": false, "required": true}
+              ],
+              "budget": {"pages": 16, "rows": 1000, "bytes": 16777216, "timeout_ms": 30000}
+            }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -46,7 +46,7 @@ var lockedTasks = []lockedTask{
 		"Enter the address, classification and transport settings.",
 		"Save the environment, then choose Test connection.",
 		"Add an observation when the test needs downstream records.",
-	}, []string{"TLS certificates", "Credential references", "Production refusal"}},
+	}, []string{"TLS certificates", "Credential references", "Production refusal", "Connection examples", "Network placement", "Local validator", "What a pass shows", "Connection problems"}},
 	{"Share a report", "open-reports", "Open reports", []string{
 		"Create a report from a saved run or open an existing report.",
 		"Choose Share and select the contents and destination.",
