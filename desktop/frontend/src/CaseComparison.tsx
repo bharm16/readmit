@@ -168,15 +168,7 @@ export function useCaseComparison({
 
   const body = (
     <div className="object-page comparison-page">
-      {answered ? (
-        <ValueRows
-          label="Compared cases"
-          rows={[
-            { label: "Current", value: sideText(answered.current) },
-            { label: "Other", value: sideText(answered.other) },
-          ]}
-        />
-      ) : null}
+      {answered ? <div className="comparison-source-controls"><label>Left<input readOnly value={sideText(answered.current)} /></label><label>Right<input readOnly value={sideText(answered.other)} /></label><label className="comparison-match">Match messages by<div><input readOnly value={keys.join(", ") || "No matching keys selected"} /><button type="button" disabled={busy} onClick={()=>setSheet("options")}>Choose fields</button></div></label></div> : null}
       {result && result.state !== "completed" ? (
         <div role="alert" className="comparison-refusal">
           <p>{result.reason ?? "These cases could not be compared."}</p>
@@ -257,7 +249,7 @@ export function useCaseComparison({
       />
     </div>
   );
-  return { title: "Compare", actions, body };
+  return { title: "Compare captures", actions, body };
 }
 
 function sideText(side: Compared["current"]): string {

@@ -57,12 +57,14 @@ for (const state of ["too_large", "unparsed"] as const) {
       />,
     );
     expect(screen.getByText(notice)).toBeTruthy();
-    await user.click(screen.getByRole("tab", { name: "Raw" }));
+    await user.click(screen.getByRole("button", { name: "More message actions" }));
+    await user.click(screen.getByRole("menuitem", { name: "Raw" }));
     expect(screen.getByText(notice)).toBeTruthy();
     // Unrevealed, Raw holds no text at all; the bytes stay in Hex.
     expect(screen.getAllByText("Hidden").length).toBeGreaterThan(0);
     expect(screen.queryByText("No bytes")).toBeNull();
-    await user.click(screen.getByRole("tab", { name: "Hex" }));
+    await user.click(screen.getByRole("button", { name: "More message actions" }));
+    await user.click(screen.getByRole("menuitem", { name: "Hex" }));
     expect(screen.getByText(notice)).toBeTruthy();
   });
 }

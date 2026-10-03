@@ -112,3 +112,27 @@
   gap: var(--s3);
   padding: var(--s2) 0;
 }
+
+/* The reader browser names exact occurrences; the full list remains available
+   through Back to messages. It never renders a message value. */
+.message-browser-entry {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  min-width: 0;
+  overflow: hidden;
+}
+.message-browser-entry > strong,
+.message-browser-entry > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.message-browser-entry > span {
+  color: var(--muted);
+  font-size: var(--text-support);
+}
+.message-browser .list-toolbar,
+.message-browser .selection-actions {
+  flex-wrap: wrap;
+}

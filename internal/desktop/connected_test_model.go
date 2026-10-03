@@ -99,7 +99,9 @@ type ConnectedStep struct {
 }
 
 // ConnectedV2 sends the source message's original bytes unchanged.
-type ConnectedV2 struct{}
+type ConnectedV2 struct {
+	RuntimeMarkerSelector string `json:"runtime_marker_selector,omitzero"`
+}
 
 // ConnectedFHIR is one reviewed FHIR R4 request, described by finite typed
 // choices rather than a URL or script: its method, what it addresses, a

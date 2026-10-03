@@ -25,10 +25,12 @@ func (a authority) Check(context.Context, networkaction.Binding) (networkaction.
 }
 
 type captureOptions struct {
-	directory  string
-	sessions   int
-	filters    []observeinterval.ScopeFilter
-	projection *dataset.Projection
+	owned         bool
+	deferStimulus bool
+	directory     string
+	sessions      int
+	filters       []observeinterval.ScopeFilter
+	projection    *dataset.Projection
 }
 
 func liveCapture(t *testing.T, maxRecords int, options ...captureOptions) (*observeinterval.Session, *observeinterval.Capture, *clock, dataset.Projection, dataset.Binding) {
@@ -49,7 +51,15 @@ func liveCapture(t *testing.T, maxRecords int, options ...captureOptions) (*obse
 			settings.sessions = 10
 		}
 	}
-	source, _ := json.Marshal(observeinterval.CaptureSource{Schema: observeinterval.CaptureSourceSchema, Address: address, ReceiverPolicy: collection.Policy{Schema: collection.PolicySchemaV1, Name: "owned", SourceLabel: "independent", Acknowledgement: collection.AckRule{Operator: collection.FixedCodeOperator, Code: "AA"}, AcceptedMessageTypes: collection.MessageTypeRule{Operator: collection.AnyMessageTypeRule, Values: []string{}}}, TimeoutMS: 5000, MaxFrameBytes: 4096, MaxBytes: 65536, MaxMessages: maxRecords, MaxConnections: 4, MaxSessions: settings.sessions, RunSelector: "ZRN-1", Include: settings.filters})
+	schema := observeinterval.CaptureSourceSchema
+	outputKey := ""
+	var keys []string
+	if settings.owned {
+		schema = observeinterval.CaptureSourceSchemaV2
+		outputKey = "MSH-10"
+		keys = []string{"CONTROL"}
+	}
+	source, _ := json.Marshal(observeinterval.CaptureSource{OutputKeySelector: outputKey, PhaseKeys: keys, Schema: schema, Address: address, ReceiverPolicy: collection.Policy{Schema: collection.PolicySchemaV1, Name: "owned", SourceLabel: "independent", Acknowledgement: collection.AckRule{Operator: collection.FixedCodeOperator, Code: "AA"}, AcceptedMessageTypes: collection.MessageTypeRule{Operator: collection.AnyMessageTypeRule, Values: []string{}}}, TimeoutMS: 5000, MaxFrameBytes: 4096, MaxBytes: 65536, MaxMessages: maxRecords, MaxConnections: 4, MaxSessions: settings.sessions, RunSelector: "ZRN-1", Include: settings.filters})
 	binding := dataset.Binding{Run: "run-one", Phase: "after", Namespace: "appointments", Source: dataset.Digest(source)}
 	projection := dataset.Projection{Schema: dataset.ProjectionSchema, ID: "events", Format: "hl7", Order: "source", Columns: []dataset.Column{{Name: "key", Type: "text", Selector: "PID-3.1", Key: true, Required: true}}, Limits: dataset.Limits{MaxRows: 20, MaxBytes: 65536, TimeoutMS: 1000}}
 	if settings.projection != nil {
@@ -76,8 +86,16 @@ func liveCapture(t *testing.T, maxRecords int, options ...captureOptions) (*obse
 	}
 	t.Cleanup(capture.Stop)
 	baseline, err := capture.Poll(context.Background())
-	if err != nil || session.Append(context.Background(), baseline) != nil || session.StimulusStarted() != nil {
+	if err != nil || session.Append(context.Background(), baseline) != nil {
 		t.Fatal("collector not armed", err)
+	}
+	if !settings.deferStimulus {
+		if session.StimulusStarted() != nil {
+			t.Fatal("stimulus checkpoint")
+		}
+		if settings.owned {
+			capture.ScopeAfter(session.StimulusTime())
+		}
 	}
 	return session, capture, clock, projection, binding
 }

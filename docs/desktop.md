@@ -2198,14 +2198,24 @@ deciding it because a window reopened would be a lie. The shell keeps those two
 apart.
 
 Where this viewer is lives in one bounded, versioned
-`readmit-desktop-session/v1` document
+`readmit-desktop-session/v3` document
 ([ADR-0003](adr/0003-specs-are-strict-json-with-typed-operators.md)) in
 `session.json`, beside the saved filters and the remembered projects in the
 user configuration directory:
 
 ```json
-{"schema":"readmit-desktop-session/v1","view":{"workspace":"/absolute/folder","region":"evidence","case":"regression","run":"/absolute/folder/job-001"}}
+{"schema":"readmit-desktop-session/v3","view":{"workspace":"/absolute/folder","region":"evidence","case":"regression","run":"/absolute/folder/job-001"}}
 ```
+
+The reader also accepts v1 and v2 without rewriting their bytes. Optional
+`navigation` retains the destination, exact source and occurrence identities,
+field path, bounded ordered checked case occurrences and loose-file indexes,
+saved view, sort and
+scroll position. Explicitly selected reference
+catalog, profile, pack and documentation paths retain their verified hashes.
+Reopening verifies those identities again; changed files require explicit
+selection. It never retains reference prose, message values or execution
+consent, and values reopen hidden.
 
 A session an earlier release wrote may also carry a `drafts` member, the note
 edits that release kept there. It is read past, whatever it holds, and never
@@ -2350,24 +2360,27 @@ case status is required to have one.
 ### Layout and focus order
 
 The window is a sidebar, the page, and the details of a selection beside it.
-There is no status strip and no permanent footer. The window itself never
-scrolls; the page body and the details each scroll inside themselves.
+The reader has a bounded status strip for its source, reference and reveal
+state. The window itself never scrolls; the page body and the details each
+scroll inside themselves.
 
-The sidebar lists, in this order: **Projects**; with a project open, its
-switcher and **Cases**, **Tests**, **Runs**, **Environments** and **Reports**;
-then **Tools**, **Settings** and **Help**. With no project open only Projects
-and the utilities are listed — no disabled project destinations. The project
-switcher names the open project and offers its recent projects, *Open
-project…*, *New project…* and *Project settings*.
+An open workbench lists **Messages**, **Captures**, **Test cases** and
+**Targets**, followed by **Settings** and **Help**. **Tools** opens from the
+Settings header, the reader's source menu or the command palette. Runs and
+exports open contextually under Test cases. The project/source switcher
+offers **Projects**, recent projects, *Open project…*, *New project…* and
+*Project settings*. A compact window keeps a Projects entry; the standalone
+landing keeps its Tools entry. Opening a loose file does not require a project.
 
 | Destination | What it holds |
 | --- | --- |
 | Projects | The projects this viewer opened, New project, Open, the demo and drafts to restore. |
-| Cases | The open project's cases, with their notes and attachments; an open case's Messages, Timeline and Findings, with Create test, Create variant and Compare as its actions (and Original case and Changes on a variant); Import and Capture. |
-| Tests | Tests and Suites. **Library** opens Checks, Profiles and Scenarios. |
-| Runs | Run details; **Run test** and **Compare** open those flows, and a failed run's More menu opens **Minimize failure**. |
-| Environments | Targets, credential references, send policies and reset plans. |
-| Reports | Reports; a report's **Export** and **Share** open the share flow and its More menu has **Support summary**; the landing's More menu has *Support summary*, *Templates* and *Encrypted packages*. |
+| Messages | Loose or retained messages, original text/bytes, the eleven-column hierarchical grid, and synchronized reference and validation details. |
+| Captures | Imported and received cases, source context, notes and attachments, variants, selected-message comparison and exact-output export. |
+| Test cases | Drafts, saved tests and suites. Saved tests keep Inputs, Expectations, Runs, Before/after and Exports together; publication versions remain reachable. The Test page menu opens **Library**, Run history, Exports, Schedules and the retained reusable-work owners. |
+| Run history | Contextual run details, review and comparison; a failed run's More menu retains **Minimize failure**. |
+| Targets | Targets, bounded receive sources, credential references, send policies, observations and reset plans. |
+| Exports | Contextual reports and source-associated exports. A report's Export/Share flow previews exact output; Support summary, Templates and Encrypted packages remain reachable through their owning menus. |
 | Tools | Inspect file, Sample data and Benchmarks, each opened from the list. |
 | Settings | General, License, Team, Runners, Security and Storage, as categories beside the selected one. |
 | Help | Help topics, the privacy statement and what this build supports. |
@@ -2468,19 +2481,16 @@ such as Go to field, closes as soon as it is answered. Read-only values are
 label and value rows, with Edit opening the prefilled sheet, as Settings ›
 General shows.
 
-**Tokens.** Sizes come from one set of tokens in rem at a 16px root — 13rem
-sidebar, 3.5rem headers, 2.25rem tabs, 2.75rem toolbars and rows, 2rem buttons,
-2.25rem inputs, 30/35/45rem sheets — and colours from the system's own pairs
-(Canvas and CanvasText, Field and FieldText, ButtonFace and ButtonText, the
-accent and the text drawn on it), with rules, hover and selection mixed from
-them. A test of the stylesheets refuses colour literals, gradients, remote
-resources, a forced-colours opt-out, any panel stylesheet that sizes
-controls or table cells itself, pixel lengths outside the shared tokens (only
-lines — borders, outlines and hairlines — stay in physical pixels), radii other
-than the two shared ones, width media queries (which would ignore the text
-size) and a control that hides its focus ring without showing focus another
-way, and checks that the lengths the code decides layout with are the
-stylesheet's own tokens.
+**Tokens.** Sizes come from the shared rem tokens at a 16px root, with the
+workbench's 32px toolbar buttons and 28px tabs matching their Figma variants.
+The central control palette matches Interface / Button (`2220:3737`): primary,
+hover, border, disabled and on-primary roles are declared once in `styles.css`.
+Surfaces, text, status and light/dark preference still follow the platform;
+forced colours replace control roles with their system pairs. The stylesheet
+checks pin those exact Figma declarations and refuse arbitrary colour literals
+elsewhere, gradients, remote resources, forced-colours opt-outs, panel-owned
+control/table sizing, unscaled lengths, unrelated radii and width media queries.
+Keyboard focus remains visible and measured layout uses the same rem tokens.
 
 **Vocabulary.** Closed vocabularies read through explicit captions keyed by
 their generated types, and a member without one reads *Unsupported* with its
@@ -2626,7 +2636,7 @@ The window offers `system`, `light` and `dark`, and text sizes of 100%, 125%,
 window follows the system theme at 100%. The shell keeps ten separate
 owner-only local documents: saved
 filters and views (`readmit-filters/v2`, which also reads `/v1`),
-the working session (`readmit-desktop-session/v1`), editor drafts
+the working session (`readmit-desktop-session/v3`, which reads `/v1` and `/v2`), editor drafts
 (`readmit-desktop-drafts/v1`, or `/v2` while a draft names the object it
 edits), the projects folder and the projects opened
 (`readmit-desktop-projects/v1`), when each object of a project was last

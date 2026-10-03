@@ -1,0 +1,10 @@
+.interface-requirements { display:flex; flex-direction:column; gap:var(--s3); min-width:0; }
+.requirements-header,.requirements-actions { display:flex; align-items:center; flex-wrap:wrap; gap:var(--s2); }
+.requirements-header { justify-content:space-between; }
+.requirements-layout { display:flex; flex-wrap:wrap; align-items:stretch; gap:0; min-width:0; border-top:1px solid var(--line); }
+.requirements-rail { flex:0 1 16rem; min-width:0; background:var(--canvas); border-right:1px solid var(--line); }
+.requirements-main { flex:1 1 34rem; min-width:0; padding:var(--s5); display:flex; flex-direction:column; gap:var(--s3); }
+.requirements-rail-item { display:flex; flex-direction:column; gap:var(--s1); padding:var(--s2) 0; }
+.requirements-rail-item span,.requirements-rail-item small { color:var(--muted); font-size:var(--text-support); }
+.requirements-main h3 { margin:0; }
+.requirements-main p { margin:0; color:var(--muted); }

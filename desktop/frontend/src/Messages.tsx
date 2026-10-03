@@ -24,6 +24,8 @@ import { DataTable, type Column, type SortState } from "./DataTable";
 import { EmptyState, FormDialog, Menu, type MenuItem, type SubmitFailure } from "./layout";
 import { IconButton } from "./IconButton";
 import { FIELD_STATES } from "./display";
+import searchAsset from "./assets/workbench/search.svg";
+import moreAsset from "./assets/workbench/more.svg";
 import "./messages.css";
 
 /** The query that narrows nothing. */
@@ -340,7 +342,19 @@ export function MessageList({
   seed,
   onSeedUsed,
   busy,
+  browser = false,
+  browserSourceName,
+  browserSourceKind,
+ sourceSendableCount,
+ selectionReading=false,
+ selectionReason,
 }: {
+  browser?: boolean;
+  browserSourceName?: string;
+  browserSourceKind?: "derived" | "retained";
+ sourceSendableCount?:number;
+ selectionReading?:boolean;
+ selectionReason?:string|null;
   result: MessagesResult | null;
   rows: MessageRow[];
   loading: boolean;
@@ -375,6 +389,7 @@ export function MessageList({
   onSeedUsed: () => void;
   busy: boolean;
 }) {
+  const [browserByType,setBrowserByType]=useState(false);
   const [filtering, setFiltering] = useState(false);
   const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -393,9 +408,11 @@ export function MessageList({
   const current = views.find((candidate) => candidate.name === view) ?? null;
   const unsaved = applied && (current === null || !sameQuery(current.query, query));
   const chips = chipsOf(query, onQuery, sourceName);
-  const sendable = rows.filter((row) => checked.has(row.id) && row.kind === "message").length;
+  const sendable = sourceSendableCount ?? rows.filter((row) => checked.has(row.id) && row.kind === "message").length;
 
-  const columns: Column<MessageRow>[] = [
+  const columns: Column<MessageRow>[] = browser ? [
+    { key: "message", header: "Messages", priority: 1, minWidth: 6, flex: true, render: (row) => <span className="message-browser-entry" title={`${sourceLabel(row)} · ${observedInstant(row.observed_at)} · ${DIRECTION_NAMES[row.direction]}`}><strong>{rowType(row)}</strong><span>{row.id}</span></span> },
+  ] : [
     { key: "time", header: "Time", priority: 1, minWidth: 7.5, sortable: true, render: (row) => timeOfDay(row.observed_at) },
     { key: "type", header: "Type", priority: 1, minWidth: 7, render: rowType },
     ...(shownColumns.kind ? [{ key: "kind", header: "Kind", priority: 4, minWidth: 6.5, render: (row: MessageRow) => KINDS[row.kind] }] : []),
@@ -457,8 +474,9 @@ export function MessageList({
     body = (
       <DataTable
         label="Messages"
+        {...(browser ? {rowHeightRem:4,hideHeader:true} : {})}
         className={checked.size > 0 ? "page-table messages-table has-checked" : "page-table messages-table"}
-        rows={rows}
+        rows={browser && browserByType ? [...rows].sort((left,right)=>rowType(left).localeCompare(rowType(right))) : rows}
         rowId={(row) => row.id}
         rowLabel={(row) => `${timeOfDay(row.observed_at)} · ${rowType(row)} · ${sourceLabel(row)}`}
         columns={columns}
@@ -491,8 +509,10 @@ export function MessageList({
   }
 
   return (
-    <section className="messages" aria-label="Messages">
-      <div className="toolbar list-toolbar">
+    <section className={`messages${browser ? " message-browser" : ""}`} aria-label="Messages">
+      {selectionReason ? <p role="alert">{selectionReason}</p> : null}
+      {browser ? <><div className="file-browser-heading"><h2>Messages</h2><Menu className="reader-menu" trigger={<img className="workbench-icon" src={moreAsset} alt="" />} label="Messages view" items={[...viewItems,{label:"Filter messages",onSelect:()=>setFiltering(true)},{label:"Search messages",onSelect:()=>setSearching(true)},{label:"Columns…",onSelect:()=>setColumnsOpen(true)},...(unsaved ? [{label:"Save view",onSelect:()=>setSaving(true)}] : []),{label:"Create variant",onSelect:onCreateVariant,disabled:busy || selectionReading || sendable===0},{label:"Send selected",onSelect:onSendSelected,disabled:busy || selectionReading || sendable===0}]}/></div><form className="file-browser-search" onSubmit={event=>{event.preventDefault();const form=new FormData(event.currentTarget);const text=String(form.get("search") || "");onQuery({...query,search:text ? {scope:query.search?.scope || "metadata",text}:null});}}><img className="workbench-icon" src={searchAsset} alt=""/><input name="search" aria-label="Search messages" placeholder="Search…" defaultValue={query.search?.text || ""}/></form><div className="file-browser-tabs" role="tablist" aria-label="Message grouping"><button type="button" role="tab" aria-selected={!browserByType} onClick={()=>setBrowserByType(false)}>All</button><button type="button" role="tab" aria-selected={browserByType} onClick={()=>setBrowserByType(true)}>By type</button></div><div className="file-browser-source"><strong>{browserSourceName || rows.find(row=>row.id===selected)?.source_name || rows.find(row=>row.id===selected)?.source_id || "Retained capture"}</strong><span>{result?.matched ?? rows.length} {(result?.matched ?? rows.length) === 1 ? "message" : "messages"}{browserSourceKind === "derived" ? " · Derived" : ""}</span></div></> : null}
+      {!browser ? <div className="toolbar list-toolbar">
         <div className="toolbar-group">
           <IconButton icon="search" label="Search messages" onClick={() => setSearching(true)} />
           <IconButton icon="filter" label="Filter messages" onClick={() => setFiltering(true)} />
@@ -507,10 +527,10 @@ export function MessageList({
           {checked.size > 0 ? (
             <div className="selection-actions" role="group" aria-label="Selected messages">
               {protocol !== "fhir-r4" ? <>
-                <button type="button" disabled={busy || sendable === 0} onClick={onCreateTest}>Create test</button>
-                <button type="button" disabled={busy || sendable === 0} onClick={onSendSelected}>Send selected</button>
+                <button type="button" disabled={busy || selectionReading || sendable === 0} onClick={onCreateTest}>Create test</button>
+                <button type="button" disabled={busy || selectionReading || sendable === 0} onClick={onSendSelected}>Send selected</button>
               </> : null}
-              <button type="button" disabled={busy || sendable === 0} onClick={onCreateVariant}>
+              <button type="button" disabled={busy || selectionReading || sendable === 0} onClick={onCreateVariant}>
                 Create variant
               </button>
             </div>
@@ -525,7 +545,7 @@ export function MessageList({
             ]}
           />
         </div>
-      </div>
+      </div> : null}
       {chips.length > 0 || (result && (result.undecided > 0 || result.undecodable > 0)) ? (
         <div className="chips" role="group" aria-label="Applied filters">
           {chips.map((chip) => (
@@ -556,6 +576,7 @@ export function MessageList({
         </div>
       ) : null}
       {body}
+      {browser ? <footer className="file-browser-footer"><span>Source</span><strong>{browserSourceName || rows.find(row=>row.id===selected)?.source_name || rows.find(row=>row.id===selected)?.source_id || "Retained capture"}</strong><span>Original bytes retained</span></footer> : null}
 
       <ColumnsSheet
         open={columnsOpen}

@@ -169,6 +169,7 @@ test("a failure is minimized by one reviewed series: refused without a reset, st
   // The reset the operator performs between trials, saved on the environment.
   await goTo(user, "Environments");
   await press(user, await page().findByText(environment));
+  await press(user, page().getByRole("tab", { name: "Reset" }));
   const resetGroup = within(await page().findByRole("region", { name: "Reset" }, { timeout: 10_000 }));
   await press(user, resetGroup.getByRole("button", { name: "Add reset" }));
   const editing = within(await screen.findByRole("dialog", { name: /reset$/i }));

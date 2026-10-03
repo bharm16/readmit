@@ -6,6 +6,7 @@
 import { useEffect, useState } from "react";
 import type { CatalogItem, EditorDraft } from "./bindings";
 import { DataTable, type Column } from "./DataTable";
+import "./system-workbench.css";
 import { EmptyState, FormDialog, Menu, Modal, type SubmitFailure } from "./layout";
 
 /** What a date reads as in a list: Today, Yesterday, or the day. An unknown
@@ -83,7 +84,8 @@ export function ProjectList({
       key: "name",
       header: "Project",
       priority: 1,
-      minWidth: 15,
+      minWidth: 22,
+      flex:true,
       render: (project) => {
         const notice = notices[project.ref.id];
         if (project.availability === "available" && !notice) return project.name;
@@ -95,6 +97,8 @@ export function ProjectList({
         );
       },
     },
+    {key:"owner",header:"Owner",priority:2,minWidth:14,render:project=>project.summary.project?.owner||"Not recorded"},
+    {key:"captures",header:"Captures",priority:2,minWidth:8,render:project=>project.summary.project?.cases??"Not recorded"},
     { key: "opened", header: "Last opened", priority: 2, minWidth: 8, render: (project) => listDate(project.last_opened_at) },
     {
       key: "actions",
@@ -108,6 +112,7 @@ export function ProjectList({
               Locate
             </button>
           )}
+          <button type="button" className="link" disabled={busy || project.availability!=="available"} onClick={()=>onOpen(project)}>Open</button>
           <Menu
             label={`More actions for ${project.name}`}
             items={[
@@ -124,7 +129,7 @@ export function ProjectList({
   return (
     <DataTable
       label="Projects"
-      className="page-table"
+      className="page-table interface-switcher-table"
       rows={sortProjects(projects)}
       rowId={(project) => project.ref.id}
       rowLabel={(project) => project.name}
@@ -220,6 +225,7 @@ export function NewProjectSheet({
 
 /** A label for what a retained draft belongs to. */
 const DRAFT_OBJECTS: Record<string, string> = {
+ "field-value-map":"Value map",
   note: "Note",
   import: "Import",
   "canonical-test": "Test",
@@ -247,7 +253,7 @@ function draftName(draft: EditorDraft): string {
   const content = typeof draft.content === "object" && draft.content !== null ? (draft.content as Record<string, unknown>) : {};
   const inner = typeof content.draft === "object" && content.draft !== null ? (content.draft as Record<string, unknown>) : {};
   const editing = typeof content.editing === "object" && content.editing !== null ? (content.editing as Record<string, unknown>) : {};
-  const named = draft.kind === "note" ? content.title : draft.kind === "case" ? content.name : draft.kind === "test-draft" ? inner.name : draft.kind === "scenario-editor" ? editing.name : undefined;
+  const named = draft.kind === "note" ? content.title : draft.kind === "case" ? content.name : (draft.kind === "test-draft" || draft.kind === "field-value-map") ? inner.name : draft.kind === "scenario-editor" ? editing.name : undefined;
   if (typeof named === "string" && named.trim() !== "") return named.trim();
   return draft.case;
 }

@@ -1,0 +1,20 @@
+.system-general-header,.system-general-values { max-width:40rem; }
+.system-general-values .value-rows { display:flex; flex-direction:column; gap:var(--s2); }
+.system-general-values .value-rows dt { font-size:var(--text-support); color:var(--muted); margin-top:var(--s3); }
+.system-general-values .value-rows dd { border:1px solid var(--border-strong); border-radius:var(--radius-control); padding:var(--s2); min-height:var(--input); margin:0; }
+.modal.context-authoring-sheet { width:min(53.75rem,calc(100vw - 2 * var(--sheet-clearance))); }
+.context-authoring-sheet .dialog-fields { padding:var(--s5); }
+.context-authoring-sheet .dialog-fields > label,.context-authoring-sheet .dialog-fields > input,.context-authoring-sheet .dialog-fields > select { max-width:100%; }
+.project-settings-sheet .dialog-fields > input { max-width:35rem; }
+.interface-switcher-table { margin-top:0; }
+
+.system-general-values .value-row { display:flex; flex-direction:column; gap:var(--s2); }
+
+.page[data-page="settings"] > .page-body { padding:0; }
+.page[data-page="settings"] .categories:not(.narrow) { grid-template-columns:17rem minmax(0,1fr); gap:0; min-height:100%; }
+.page[data-page="settings"] .category-rail { border-right:1px solid var(--line); }
+.page[data-page="settings"] .category-rail .nav-item { min-height:4rem; padding:var(--s3); border-radius:0; border-bottom:1px solid var(--line); }
+.page[data-page="settings"] .category-body { padding:var(--s6); }
+.page[data-page="settings"] section[aria-label="Execution setup"] .toolbar-group { flex-direction:column; align-items:flex-start; gap:var(--s3); }
+.page[data-page="help"] > .page-body { padding:0; }
+.help-workspace { min-height:100%; }

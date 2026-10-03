@@ -18,6 +18,8 @@ import "github.com/bharm16/readmit/internal/operationguard"
 // command leaves to the hub, and runner execution, whose jobs the runner
 // admits one by one.
 var profiles = map[string]operationguard.Profile{
+	// Whole-capture field aggregation is a cancellable local read.
+	"ReadFieldValues": {Name: FieldValuesOperation, Interruptible: true},
 	// Runs, practice and the proofs that send to their own loopback receivers.
 	"StartDurableRun":           {Name: runOperation, Interruptible: true, Execution: operationguard.Execute},
 	"ResumeDurableRun":          {Name: runOperation, Interruptible: true, Execution: operationguard.Execute},

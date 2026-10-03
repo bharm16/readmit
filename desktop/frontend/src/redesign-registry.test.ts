@@ -23,7 +23,7 @@ const exists = (path: string) => {
 type Test = { file: string; test: string };
 type Route = { destination: string; view?: string; surface?: string };
 type View = { view: string; title: string; owner: { issue: string; program: string }; route: Route; sources: string[]; fixtures: string[]; acceptance: Test[]; captures: string[] };
-type Shared = { component: string; owner: { issue: string; program: string }; sources: string[]; acceptance: Test[] };
+type Shared = { component: string; owner: { issue: string; program: string }; sources: string[]; acceptance: Test[]; workbench_migration?: { acceptance_transitions?: { previous: Test; current: Test; owner: string; reason: string }[] } };
 type Row = {
   capture: string;
   file: string;
@@ -79,7 +79,14 @@ test("shared components are recorded apart from the views, each with its owner, 
   for (const shared of map.shared) {
     expect(shared.owner.issue).toMatch(OWNERS);
     for (const source of shared.sources) expect(exists(source), source).toBe(true);
-    for (const reference of shared.acceptance) expect(hasTest(reference), `${shared.component}: ${reference.test}`).toBe(true);
+    for (const reference of shared.acceptance) {
+      const transition = shared.workbench_migration?.acceptance_transitions?.find(entry => entry.previous.file === reference.file && entry.previous.test === reference.test);
+      if (transition) {
+        expect(transition.owner).toBe("bharm16/readmit#688");
+        expect(transition.reason.trim()).not.toBe("");
+      }
+      expect(hasTest(transition?.current ?? reference), `${shared.component}: ${reference.test}`).toBe(true);
+    }
   }
 });
 

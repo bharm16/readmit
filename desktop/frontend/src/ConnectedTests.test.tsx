@@ -183,7 +183,7 @@ test("an external reschedule test is authored from imported v2 evidence and crea
     ValidateDraft: (request) => ({ state: "completed", context: request.context, problems: [] }),
     SaveItem: (request) => savedAnswer(request),
   });
-  await user.click(await page().findByRole("button", { name: "New test" }));
+  await user.click(await page().findByRole("button", { name: "New test case" }));
   await user.selectOptions(page().getByRole("combobox", { name: "Case" }), CASE.ref.id);
   const name = await page().findByRole("textbox", { name: "Name" });
   await user.clear(name);
@@ -316,7 +316,7 @@ test("a saved FHIR test reopens and saves back every request, condition and expe
   expect(within(setup).getByText("Application records")).toBeTruthy();
   expect(page().getByText("POST Appointment")).toBeTruthy();
   expect(page().getByText("PUT Appointment · appointment-id")).toBeTruthy();
-  await user.click(page().getByRole("tab", { name: "Checks" }));
+  await user.click(page().getByRole("tab", { name: "Expectations" }));
   expect(await page().findByRole("button", { name: /Booked/ })).toBeTruthy();
   await user.click(page().getByRole("button", { name: "Edit" }));
   const name = await page().findByRole("textbox", { name: "Name" });
@@ -356,7 +356,7 @@ test("refused, stale and invalidated saves keep the whole connected draft and it
   });
   await user.click(await page().findByText("Booking keeps one appointment"));
   await user.click(await page().findByRole("button", { name: "Edit" }));
-  await user.click(await page().findByRole("tab", { name: "Checks" }));
+  await user.click(await page().findByRole("tab", { name: "Expectations" }));
   expect(await page().findByText(/Booked: the observation Appointments this check reads changed/)).toBeTruthy();
   await user.click(page().getByRole("button", { name: "More check actions" }));
   await user.click(await screen.findByRole("menuitem", { name: "Use current Appointments" }));
@@ -365,7 +365,7 @@ test("refused, stale and invalidated saves keep the whole connected draft and it
   let request = facade.oneCall("SaveItem")[0] as SaveItemRequest;
   expect(request.draft.connected_test!.phases.map((p) => p.observations[0]!.observation.revision)).toEqual(["5", "5"]);
   expect(request.draft.connected_test!.phases[0]!.checks).toEqual(BOOKING.phases[0]!.checks);
-  await user.click(page().getByRole("tab", { name: "Setup" }));
+  await user.click(page().getByRole("tab", { name: "Inputs" }));
   expect(await page().findByText(/no installed local validator/)).toBeTruthy();
   answer = "conflict";
   await user.click(page().getByRole("button", { name: "Save" }));
@@ -407,7 +407,7 @@ test("Suggest checks lists proposals undecided, adds nothing with none accepted 
   });
   await user.click(await page().findByText("Booking keeps one appointment"));
   await user.click(await page().findByRole("button", { name: "Edit" }));
-  await user.click(await page().findByRole("tab", { name: "Checks" }));
+  await user.click(await page().findByRole("tab", { name: "Expectations" }));
   await user.click(page().getByRole("button", { name: "More check actions" }));
   await user.click(await screen.findByRole("menuitem", { name: "Suggest checks" }));
   const sheet = await screen.findByRole("dialog", { name: "Suggest checks" });
@@ -436,7 +436,7 @@ test("Add input reads a case's FHIR evidence and adds its declared request as a 
       sources: [{ occurrence: "r1", label: "Appointment", resource: "Appointment", sendable: true, fhir: { method: "POST", resource: "Appointment", target: { kind: "type" }, if_none_exist: { system: "urn:example:appointment", value: "APT-1" }, bind: [] } }],
     }),
   });
-  await user.click(await page().findByRole("button", { name: "New test" }));
+  await user.click(await page().findByRole("button", { name: "New test case" }));
   await user.selectOptions(page().getByRole("combobox", { name: "Case" }), CASE.ref.id);
   await user.click(await page().findByRole("radio", { name: "Application records" }));
   await user.click(page().getByRole("button", { name: "Change" }));
@@ -476,7 +476,7 @@ test("an imported check the editor does not represent stays read-only and as wri
   });
   await user.click(await page().findByText("Booking keeps one appointment"));
   await user.click(await page().findByRole("button", { name: "Edit" }));
-  await user.click(await page().findByRole("tab", { name: "Checks" }));
+  await user.click(await page().findByRole("tab", { name: "Expectations" }));
   // Read only: inspected as declared, never edited or removed.
   await user.click(await page().findByRole("button", { name: "More actions for First output" }));
   expect(screen.queryByRole("menuitem", { name: "Edit" })).toBeNull();
@@ -499,7 +499,7 @@ test("an imported check the editor does not represent stays read-only and as wri
 
   // Leaving the edited test asks first; a double Save publishes once.
   const name = await page().findByRole("textbox", { name: "Name" }).catch(async () => {
-    await user.click(page().getByRole("tab", { name: "Setup" }));
+    await user.click(page().getByRole("tab", { name: "Inputs" }));
     return page().findByRole("textbox", { name: "Name" });
   });
   await user.type(name, " again");

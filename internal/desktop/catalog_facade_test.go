@@ -141,11 +141,16 @@ func TestTheCatalogListsEveryKindThroughItsOwnReader(t *testing.T) {
 		registered.Summary.Case.Evidence != "verified" {
 		t.Fatalf("the registered case: %+v", cases)
 	}
+	if registered.Summary.Case.Occurrences == nil || *registered.Summary.Case.Occurrences != 2 {
+		t.Fatalf("the two retained scheduling messages must supply the capture count: %+v", registered.Summary.Case)
+	}
 	if !slices.Contains(registered.Capabilities, desktop.ReplaySendAction) || registered.CreatedAt != nil {
 		t.Fatalf("a generated case has no import time, and an activated window may send it: %+v", registered)
 	}
 	if other, held := cases["@cancellation"]; !held || other.Availability != desktop.ItemAvailable || other.Summary.Case.Registered || other.Summary.Case.Status != "" {
 		t.Fatalf("an unregistered case: %+v", cases)
+	} else if other.Summary.Case.Occurrences == nil || *other.Summary.Case.Occurrences != 3 {
+		t.Fatalf("the unregistered booking, reschedule and cancellation retain three messages: %+v", other.Summary.Case)
 	}
 
 	tests := listed(t, app, root, desktop.TestItem)

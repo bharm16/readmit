@@ -2,6 +2,7 @@
 // when each started, each check aligned by its identity and definition, and
 // what they were run with compared part by part. Added runs are counted for
 // their results; nothing here infers a cause or a probability.
+import { ConnectedRunComparison } from "./ConnectedRunComparison";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   compareRunItems,
@@ -35,6 +36,7 @@ function outcomeText(status: string, observed: number | undefined): string {
 
 type CompareProps = {
   root: string | null;
+  explicitRoles?:boolean;
   runs: string[];
   view: string;
   onView: (view: string) => void;
@@ -45,7 +47,7 @@ type CompareProps = {
 };
 
 /** Compare runs: its title, actions and body. */
-export function useRunComparison({ root, runs, view, onView, onRuns, onOpen, onCompared }: CompareProps) {
+export function useRunComparison({ root, runs, view, onView, onRuns, onOpen, onCompared,explicitRoles=false }: CompareProps) {
   const scope = useRef(new RequestScope());
   const context = useCallback(() => scope.current.enter(root ?? ""), [root]);
   const [result, setResult] = useState<RunComparisonItemsResult | null>(null);
@@ -57,18 +59,20 @@ export function useRunComparison({ root, runs, view, onView, onRuns, onOpen, onC
     if (!root || runs.length < 2) return;
     setResult(null);
     const asked = context();
-    void compareRunItems({ context: asked, runs: runs.map((id) => ({ kind: "run", id })) }).then((answer) => {
-      if (scope.current.current(answer)) {
-        setResult(answer);
-        onCompared?.(runs, answer);
-      }
-    });
-    void listWholeCatalog({ context: asked, kind: "run", filter: {} }).then((answer) => {
-      if (scope.current.current(answer)) setCandidates((answer.page?.items ?? []).filter(comparable));
-    });
+    let live=true;
+    void (async()=>{
+      const listing=await listWholeCatalog({context:asked,kind:"run",filter:{}});
+      if(!live || !scope.current.current(listing)) return;
+      const available=(listing.page?.items??[]).filter(comparable);
+      setCandidates(available);
+      const connected=runs.length===2 && runs.every(id=>available.find(item=>item.ref.id===id)?.summary.run?.can_compare!==undefined);
+      const answer=await compareRunItems({context:asked,runs:runs.map(id=>({kind:"run",id})),...((connected || explicitRoles)?{before:{kind:"run" as const,id:runs[0]!},after:{kind:"run" as const,id:runs[1]!}}:{})});
+      if(live && scope.current.current(answer)){setResult(answer);onCompared?.(runs,answer)}
+    })();
+    return ()=>{live=false};
     // Compared again whenever the chosen runs change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, root]);
+  }, [key, root,explicitRoles]);
 
   const comparison = result?.comparison;
   const tabs: { key: Tab; label: string }[] = [
@@ -100,6 +104,8 @@ export function useRunComparison({ root, runs, view, onView, onRuns, onOpen, onC
         </div>
       </div>
     );
+  } else if (comparison.connected) {
+ body=<ConnectedRunComparison comparison={comparison} candidates={candidates} onRuns={onRuns} onOpen={onOpen}/>;
   } else {
     const checks =
       comparison.checks.length === 0 ? (
@@ -112,9 +118,9 @@ export function useRunComparison({ root, runs, view, onView, onRuns, onOpen, onC
           rowId={(row) => row.check.id}
           rowLabel={(row) => checkTitle(row.check, [])}
           columns={[
-            { key: "check", header: "Check", priority: 1, minWidth: 12, flex: true, render: (row) => checkTitle(row.check, []) },
-            { key: "earlier", header: "Earlier", priority: 2, minWidth: 8, render: (row) => outcomeText(row.earlier, row.earlier_observed) },
-            { key: "later", header: "Later", priority: 2, minWidth: 8, render: (row) => outcomeText(row.later, row.later_observed) },
+            { key: "check", header: explicitRoles ? "Expectation":"Check", priority: 1, minWidth: 12, flex: true, render: (row) => checkTitle(row.check, []) },
+            { key: "earlier", header: explicitRoles ? "Before":"Earlier", priority: 2, minWidth: 8, render: (row) => outcomeText(row.earlier, row.earlier_observed) },
+            { key: "later", header: explicitRoles ? "After":"Later", priority: 2, minWidth: 8, render: (row) => outcomeText(row.later, row.later_observed) },
             { key: "change", header: "Change", priority: 1, minWidth: 8, render: (row) => term(CHECK_CHANGES, row.change).text },
           ]}
           selected={null}
@@ -176,7 +182,7 @@ export function useRunComparison({ root, runs, view, onView, onRuns, onOpen, onC
           label="Compared runs"
           rows={[
             {
-              label: "Earlier",
+              label: explicitRoles ? "Before":"Earlier",
               value: (
                 <button type="button" className="link" onClick={() => onOpen(comparison.earlier.run.id)}>
                   {sideText(comparison.earlier)}
@@ -184,7 +190,7 @@ export function useRunComparison({ root, runs, view, onView, onRuns, onOpen, onC
               ),
             },
             {
-              label: "Later",
+              label: explicitRoles ? "After":"Later",
               value: (
                 <button type="button" className="link" onClick={() => onOpen(comparison.later.run.id)}>
                   {sideText(comparison.later)}
@@ -194,21 +200,21 @@ export function useRunComparison({ root, runs, view, onView, onRuns, onOpen, onC
             ...(comparison.repeats.length > 0 ? [{ label: "Added", value: comparison.repeats.length === 1 ? "1 run" : `${comparison.repeats.length} runs` }] : []),
           ]}
         />
-        <TaskTabs label="Comparison views" id="compare-views" tabs={tabs} selected={tab} onSelect={(next) => onView(next)}>
+        {explicitRoles ? <>{checks}<h2>Recorded execution conditions</h2>{configuration}</> : <TaskTabs label="Comparison views" id="compare-views" tabs={tabs} selected={tab} onSelect={(next) => onView(next)}>
           {tab === "checks" ? checks : tab === "configuration" ? configuration : stabilityBody}
-        </TaskTabs>
+        </TaskTabs>}
       </div>
     );
   }
 
   return {
-    title: "Compare runs",
+    title: comparison?.connected ? "Before and after" : "Compare runs",
     actions: (
       <>
         <button type="button" onClick={() => setSheet("change")}>
           Change selection
         </button>
-        <button type="button" disabled={!comparison || runs.length - 2 >= MAX_REPEATS || sameTest.length === 0} onClick={() => setSheet("add")}>
+        <button type="button" disabled={!comparison || !!comparison.connected || runs.length - 2 >= MAX_REPEATS || sameTest.length === 0} onClick={() => setSheet("add")}>
           Add runs
         </button>
       </>

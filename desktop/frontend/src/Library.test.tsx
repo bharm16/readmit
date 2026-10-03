@@ -73,7 +73,7 @@ async function openLibrary(user: User, lists: Lists, handlers: FacadeHandlers = 
   await goTo(user, "Projects");
   await user.click(screen.getByRole("button", { name: "Open" }));
   await goTo(user, "Tests");
-  await user.click(await page().findByRole("button", { name: "Library" }));
+  await goTo(user,"Library");
   await page().findByRole("heading", { level: 1, name: "Library" });
   return rendered;
 }
@@ -124,7 +124,7 @@ test("Library opens on Profiles and remembers the category chosen in this projec
   const checks = await page().findByRole("table", { name: "Check groups" });
   await waitFor(() => expect(rowsOf(checks).map((row) => row[0])).toEqual(["Reschedule checks"]));
   await goTo(user, "Tests");
-  await user.click(await page().findByRole("button", { name: "Library" }));
+  await goTo(user,"Library");
   expect(await page().findByRole("tab", { name: "Checks", selected: true })).toBeTruthy();
 });
 
@@ -333,7 +333,7 @@ test("Use in test opens the chosen test's editor with the group linked at its ve
   const sheet = within(await screen.findByRole("dialog", { name: `Use ${GROUP.name} in a test` }));
   await user.selectOptions(sheet.getByLabelText("Test"), TEST.name);
   await user.click(sheet.getByRole("button", { name: "Open test" }));
-  await user.click(await page().findByRole("tab", { name: "Checks" }));
+  await user.click(await page().findByRole("tab", { name: "Expectations" }));
   const linked = await page().findByRole("list", { name: "Check groups" });
   expect(within(linked).getByText(`${GROUP.name} · v1`)).toBeTruthy();
   // Leaving now asks about the unsaved link; nothing was saved.
@@ -636,10 +636,10 @@ test("a closed metadata import cannot resurrect Library after a project change",
   facade.reply({ SelectWorkspace: () => folderChosen("/second-project", []) });
   await goTo(user, "Projects");
   await user.click(page().getByRole("button", { name: "Open" }));
-  await page().findByRole("heading", { name: "Cases", level: 1 });
+  await page().findByRole("heading", { name: "Captures", level: 1 });
   reading.resolve({ state: "completed", context: original, new: true, draft: { name: "Old metadata", profile: importedMetadataDraft("old-document") } });
   await waitFor(() => expect(reading.size).toBe(0));
-  expect(page().getByRole("heading", { name: "Cases", level: 1 })).toBeTruthy();
+  expect(page().getByRole("heading", { name: "Captures", level: 1 })).toBeTruthy();
   expect(page().queryByRole("heading", { name: "Metadata pack", level: 2 })).toBeNull();
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(facade.callsTo("SaveItem")).toHaveLength(0);
@@ -1052,7 +1052,7 @@ test("a new scenario previews the same messages for its saved seed and base time
       saved = request.draft.scenario!;
       return savedAs(request, "s-new");
     },
-    GenerateScenarioCases: (request) => ({ state: "completed", context: request.context, support: [], unconvertible: [], replayed: false, seed: 7, cases: [{ case: { kind: "case", id: "case-synthetic" }, entry: "synthetic-0a1b2c3d4e5f-case", identity: "synthetic-identity", row: "basic", variant: "baseline", polarity: "positive", messages: 2, phases: [{ id: "book", event: "S12", expect: "accepted", occurrences: [1] }, { id: "reschedule", event: "S13", expect: "accepted", occurrences: [2] }], evaluated: true, verdict: "pass" }] }),
+    CreateScenarioCase: request=>({state:"completed",context:request.context,case:{kind:"case",id:"case-synthetic"},entry:"synthetic-0a1b2c3d4e5f-case",identity:"synthetic-identity",provenance:"synthetic",replayed:false,streams:1,seed:7}),
     OpenCase: () => caseResult(),
   });
   await user.click(page().getByRole("tab", { name: "Scenarios" }));
@@ -1080,13 +1080,11 @@ test("a new scenario previews the same messages for its saved seed and base time
   await user.click(page().getByRole("button", { name: "Save" }));
   await waitFor(() => expect(facade.callsTo("SaveItem")).toHaveLength(1));
   expect(saved!.plan.seed).toBe(7);
-  await user.click(await page().findByRole("button", { name: "Create case" }));
-  await waitFor(() => expect(facade.callsTo("GenerateScenarioCases")).toHaveLength(1));
-  expect(facade.oneCall("GenerateScenarioCases")[0]).toMatchObject({ scenario: { kind: "scenario", id: "s-new", revision: "1" } });
-  expect(facade.callsTo("CreateScenarioCase")).toHaveLength(0);
-  expect(await page().findByRole("table", { name: "Generated cases" })).toBeTruthy();
-  expect(page().getByText("book → 1 · reschedule → 2")).toBeTruthy();
-  await user.click(page().getByRole("button", { name: "Open generated case Reschedule · basic · baseline" }));
+  await waitFor(()=>expect((page().getByRole("button",{name:"Create case"}) as HTMLButtonElement).disabled).toBe(false));
+  await user.click(page().getByRole("button", { name: "Create case" }));
+  await waitFor(()=>expect(facade.callsTo("CreateScenarioCase")).toHaveLength(1));
+  expect(facade.oneCall("CreateScenarioCase")[0]).toMatchObject({scenario:{kind:"scenario",id:"s-new",revision:"1"}});
+  expect(facade.callsTo("GenerateScenarioCases")).toHaveLength(0);
   await waitFor(() => expect(facade.callsTo("OpenCase").some((call) => call.args[1] === "synthetic-0a1b2c3d4e5f-case")).toBe(true));
 });
 
@@ -1149,8 +1147,8 @@ test("scenario generation settings keep business clauses and exact profile pins 
 
 test("scenario generation reports progress and Stop cancels only the active encoder", async () => {
   const user = userEvent.setup();
-  const { facade } = await openLibrary(user, { scenario: [SCENARIO] }, {
-    OpenItemDraft: (request) => ({ state: "completed", context: request.context, new: false, ref: SCENARIO.ref, draft: { name: SCENARIO.name, scenario: scenarioDraft() } }),
+  const { facade } = await openLibrary(user, { scenario: [SCENARIO], profile: [PROFILE] }, {
+    OpenItemDraft: (request) => ({ state: "completed", context: request.context, new: false, ref: SCENARIO.ref, draft: { name: SCENARIO.name, scenario: { ...scenarioDraft(), profile: PROFILE.ref } } }),
     ScenarioCasesProgress: () => ({ state: "completed", progress: { stage: "encoding", cases: 4, done: 1, messages: 2 } }),
     Cancel: async () => {},
   });

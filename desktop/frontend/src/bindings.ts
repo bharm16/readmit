@@ -13,6 +13,43 @@
 // values to an analytics or rendering service: nothing leaves the machine.
 
 import type {
+  ContextEditorDraftRequest,
+  ContextEditorDraftResult,
+  ValueMapsResult,
+  ValueMapResult,
+  ValueMapSaveRequest,
+  ValueMapImportRequest,
+  ValueMapExportRequest,
+  ValueMapExportResult,
+  ValueMapInspectionRequest,
+  ValueMapInspectionResult,
+  ValueMapDraftRequest,
+  ValueMapDraftResult,
+  ReferenceCatalogResult,
+  InterfaceSpecsResult,
+  InterfaceSpecResult,
+  InterfaceSpecSaveRequest,
+  InterfaceSpecDocumentResult,
+  InterfaceRequirementsRequest,
+  InterfaceRequirementsResult,
+  FieldValuesRequest,
+  FieldValuesResult,
+  FieldValueOccurrencesRequest,
+  FieldValueOccurrencesResult,
+  CaptureContextResult,
+  CaptureContextSaveRequest,
+  HL7ReferenceRequest,
+  HL7ReferenceResult,
+  HL7ReferenceSelection,
+  HL7ReferenceSelectionResult,
+  ExchangeHistoryResult,
+  ExchangeRuntimeMarkerResult,
+  SourceExportsResult,
+  SourceExportPreviewResult,
+  ConnectedObservationRequest,
+  ConnectedObservationResult,
+  ConnectedCaptureRequest,
+  ExchangeCaptureRequest,
   RunnerGrantsResult,
   RunnerListResult,
   SchedulePrepareRequest,
@@ -697,6 +734,11 @@ export function inspectOccurrence(request: InspectRequest): Promise<InspectionRe
 /** Retains where this viewer is, so an interruption does not also lose it. */
 export function recordView(view: View): Promise<SessionResult> {
   return guard(() => facade().RecordView(view), { state: "failed" });
+}
+
+/** Reads this viewer's private navigation without resuming external effects. */
+export function workingSession(): Promise<SessionResult> {
+  return retryingRead(() => facade().WorkingSession(), { state: "failed" });
 }
 
 /** Retains one editor's unstored work, replacing the draft it is an edit of. An
@@ -1426,6 +1468,13 @@ export function inspectImportPreview(request: ImportInspectRequest): Promise<Ins
   return retryingRead(() => facade().InspectImportPreview(request), { state: "failed" });
 }
 
+export function readCaptureContext(request: ItemRequest): Promise<CaptureContextResult> {
+  return retryingRead(() => facade().ReadCaptureContext(request), { state: "failed", context: request.context });
+}
+export function saveCaptureContext(request: CaptureContextSaveRequest): Promise<CaptureContextResult> {
+  return guard(() => facade().SaveCaptureContext(request), { state: "failed", context: request.context });
+}
+
 export function chooseCapturePath(kind: CapturePathKind): Promise<PathChoiceResult> {
   return guard(() => facade().ChooseCapturePath(kind), { state: "failed" });
 }
@@ -1447,6 +1496,37 @@ export function retryCaptureFinalization(request: CaptureSessionRequest): Promis
 /** The project's capture sessions, read-only, newest first. */
 export function listCaptureSessions(request: RequestContext): Promise<CaptureSessionsResult> {
   return retryingRead(() => facade().ListCaptureSessions(request), { state: "failed", context: request, sessions: [] });
+}
+/** Reads retained exchanges without restoring consent or restarting effects. */
+export function listExchanges(request: RequestContext): Promise<ExchangeHistoryResult> {
+  return retryingRead(() => facade().ListExchanges(request), { state: "failed", context: request, exchanges: [] });
+}
+/** Opens the exact retained receive evidence inside its exchange owner. */
+export function openExchangeCapture(request: ExchangeCaptureRequest): Promise<RetainedCaptureResult> {
+  return retryingRead(() => facade().OpenExchangeCapture(request), { state: "failed", context: request.context, session: request.exchange });
+}
+/** Creates a local, author-admitted one-use runtime marker; it sends nothing. */
+export function issueExchangeRuntimeMarker(request: RequestContext): Promise<ExchangeRuntimeMarkerResult> {
+  return guard(() => facade().IssueExchangeRuntimeMarker(request), { state: "failed", context: request });
+}
+/** Reads actual source-associated export receipts without recreating output. */
+export function listSourceExports(request: ItemRequest): Promise<SourceExportsResult> {
+  return retryingRead(() => facade().ListSourceExports(request), { state: "failed", context: request.context, entries: [] });
+}
+/** Chooses and verifies an existing exported file against its retained receipt. */
+export function openSourceExport(request: ItemRequest): Promise<SourceExportPreviewResult> {
+  return guard(() => facade().OpenSourceExport(request), { state: "failed", context: request.context });
+}
+/** Pages verified retained observation data under the current reveal choice. */
+export function readConnectedObservation(request: ConnectedObservationRequest): Promise<ConnectedObservationResult> {
+  return retryingRead(() => facade().ReadConnectedObservation(request), {
+    state: "failed", context: request.context, available: false, phase: request.phase, dataset: request.dataset,
+    columns: [], rows: [], total: 0, offset: request.offset, hidden: !request.reveal,
+  });
+}
+/** Opens the exact retained capture supporting an observed dataset, read-only. */
+export function openConnectedCapture(request: ConnectedCaptureRequest): Promise<RetainedCaptureResult> {
+  return retryingRead(() => facade().OpenConnectedCapture(request), { state: "failed", context: request.context, session: request.run.id });
 }
 /** Opens, read-only, the case a cancelled, interrupted or unfinalized capture
  * kept; its messages are read by the answered workspace, case name and
@@ -1480,8 +1560,21 @@ export function saveNormalizationPolicy(request: RuleDocumentSaveRequest): Promi
 
 /** Asks the host for the file to read, or where a copy of it is saved; a copy
  * offers the source's own name. */
-export function chooseInspectionPath(kind: "file" | "copy-destination", source = ""): Promise<InspectionPathResult> {
+export function chooseInspectionPath(kind: import("./bindings.gen").InspectionPathKind, source = ""): Promise<InspectionPathResult> {
   return guard(() => facade().ChooseInspectionPath(kind, source), { state: "failed" });
+}
+
+/** Verifies one explicitly selected local catalog and returns bounded coverage. */
+export function readReferenceCatalog(path: string): Promise<ReferenceCatalogResult> {
+  return retryingRead(() => facade().ReadReferenceCatalog(path), { state: "failed" });
+}
+/** Looks up one exact local catalog entity and a bounded page of its children. */
+export function lookupHL7Reference(request: HL7ReferenceRequest): Promise<HL7ReferenceResult> {
+  return retryingRead(() => facade().LookupHL7Reference(request), { state: "failed", children: [], offset: request.offset, child_count: 0, total_count: 0 });
+}
+/** Verifies explicitly selected local profile, pack and documentation pins. */
+export function readHL7ReferenceSelection(selection: HL7ReferenceSelection): Promise<HL7ReferenceSelectionResult> {
+  return retryingRead(() => facade().ReadHL7ReferenceSelection(selection), { state: "failed" });
 }
 
 const NO_FILE = { name: "", bytes: 0, sha256: "", format: "", terminator: "", format_selection: "", terminator_selection: "", total: 0, offset: 0, rows: [] };
@@ -2280,4 +2373,67 @@ export function minimizeSetup(request: RunRequest): Promise<MinimizeSetupResult>
 /** The minimization running now; read while it runs, taking no slot. */
 export function minimizeProgress(): Promise<MinimizeProgressResult> {
   return guard(() => facade().MinimizeProgress(), { state: "failed" });
+}
+
+export function readFieldValues(request: FieldValuesRequest): Promise<FieldValuesResult> {
+  return retryingRead(() => facade().ReadFieldValues(request), {
+    state: "failed", identity: request.scope.identity, scope_identity: "", snapshot: "", selector: request.selector,
+    unit: "", total: 0, matched: 0, scope_undecided: 0, scope_undecodable: 0, scanned: 0,
+    complete: false, scan_complete: false, revealed: false,
+    counts: { present: 0, empty: 0, null: 0, omitted: 0, undecodable: 0, undecided: 0 },
+    rows: [], group_count: 0, offset: request.offset, limit: request.limit,
+  });
+}
+export function readFieldValueOccurrences(request: FieldValueOccurrencesRequest): Promise<FieldValueOccurrencesResult> {
+  return retryingRead(() => facade().ReadFieldValueOccurrences(request), {
+    state: "failed", identity: request.scope.identity, scope_identity: "", snapshot: request.snapshot,
+    bucket: request.bucket, rows: [], total: 0, offset: request.offset, limit: request.limit,
+  });
+}
+
+export function listInterfaceSpecs(context: RequestContext): Promise<InterfaceSpecsResult> {
+  return retryingRead(() => facade().ListInterfaceSpecs(context), { state: "failed", context, items: [] });
+}
+export function readInterfaceSpec(request: ItemRequest): Promise<InterfaceSpecResult> {
+  return retryingRead(() => facade().ReadInterfaceSpec(request), { state: "failed", context: request.context });
+}
+export function saveInterfaceSpec(request: InterfaceSpecSaveRequest): Promise<InterfaceSpecResult> {
+  return guard(() => facade().SaveInterfaceSpec(request), { state: "failed", context: request.context });
+}
+export function chooseInterfaceSpecDocument(context: RequestContext): Promise<InterfaceSpecDocumentResult> {
+  return guard(() => facade().ChooseInterfaceSpecDocument(context), { state: "failed", context });
+}
+export function readInterfaceRequirements(request: InterfaceRequirementsRequest): Promise<InterfaceRequirementsResult> {
+  return retryingRead(() => facade().ReadInterfaceRequirements(request), {
+    state: "failed", context: request.context, selector: request.selector, segment: "", position: 0, applicability: "not_available",
+  });
+}
+
+export function listValueMaps(context: RequestContext): Promise<ValueMapsResult> {
+  return retryingRead(() => facade().ListValueMaps(context), { state: "failed", context, items: [] });
+}
+export function readValueMap(request: ItemRequest): Promise<ValueMapResult> {
+  return retryingRead(() => facade().ReadValueMap(request), { state: "failed", context: request.context });
+}
+export function saveValueMap(request: ValueMapSaveRequest): Promise<ValueMapResult> {
+  return guard(() => facade().SaveValueMap(request), { state: "failed", context: request.context });
+}
+export function importValueMapCSV(request: ValueMapImportRequest): Promise<ValueMapResult> {
+  return guard(() => facade().ImportValueMapCSV(request), { state: "failed", context: request.context });
+}
+export function exportValueMapCSV(request: ValueMapExportRequest): Promise<ValueMapExportResult> {
+  return guard(() => facade().ExportValueMapCSV(request), { state: "failed", context: request.context, bytes: 0 });
+}
+export function inspectValueMap(request: ValueMapInspectionRequest): Promise<ValueMapInspectionResult> {
+  return retryingRead(() => facade().InspectValueMap(request), {
+    state: "failed", context: request.context, ref: request.ref, identity: request.identity,
+    occurrence: request.occurrence, selector: request.selector, revealed: false,
+    mapping: "not_available", field_state: "",
+  });
+}
+export function readValueMapDraft(request: ValueMapDraftRequest): Promise<ValueMapDraftResult> {
+  return retryingRead(() => facade().ReadValueMapDraft(request), { state: "failed", context: request.context });
+}
+export function readContextEditorDraft(request: ContextEditorDraftRequest): Promise<ContextEditorDraftResult> {
+  return retryingRead(() => facade().ReadContextEditorDraft(request), { state: "failed", context: request.context });
 }

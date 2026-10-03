@@ -1,29 +1,55 @@
 /* Bundled with the executable. No web fonts, no remote stylesheets, no
    analytics: the shell renders entirely offline.
 
-   Every colour is the platform's own, in its pairs: Canvas with CanvasText,
-   Field with FieldText, ButtonFace with ButtonText, and the accent with the
-   text drawn on it. Rules, hover and selection are mixed from those. On
-   macOS the semantic label, background and separator colours replace their
-   roles, and status roles take the system's red, orange and green where it
-   has them; everywhere else a status is its word and its shape. Nothing is
-   told apart by colour alone.
+   Surfaces, text and status roles follow the platform theme. Controls use
+   the exact Figma palette declared below, including white primary text;
+   forced colours restore the platform's paired roles. Rules and selection
+   are mixed from those roles. Nothing is told apart by colour alone.
 
    Every length is in rem, so one root text scale enlarges the whole window;
    only borders, rules and focus outlines stay physical pixels. The shared
    tokens below are the only place a size is decided. */
+@font-face {
+  font-family: "IBM Plex Sans";
+  src: url("./assets/fonts/IBMPlexSans-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Sans";
+  src: url("./assets/fonts/IBMPlexSans-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Sans";
+  src: url("./assets/fonts/IBMPlexSans-SemiBold.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("./assets/fonts/JetBrainsMono-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   color-scheme: light dark;
 
   --canvas: Canvas;
   --text: CanvasText;
   --muted: GrayText;
-  --control: ButtonFace;
-  --control-text: ButtonText;
+  --control: var(--canvas);
+  --control-text: var(--text);
   --field: Field;
   --field-text: FieldText;
-  --accent: Highlight;
-  --accent-text: HighlightText;
+  --accent: var(--interface-color-action);
+  --accent-text: var(--interface-color-on-action);
   --line: color-mix(in srgb, CanvasText 16%, Canvas);
   --rail: color-mix(in srgb, CanvasText 4%, Canvas);
   --hover: color-mix(in srgb, CanvasText 6%, Canvas);
@@ -39,7 +65,13 @@
   --s4: 1rem;
   --s6: 1.5rem;
   --s8: 2rem;
-  --sidebar: 13rem;
+  --sidebar: 14rem;
+  --reader-compact-window: 105rem;
+  --reader-compact-sidebar: 11.5rem;
+  --message-browser: 13rem;
+  --message-browser-compact: 11rem;
+  --reader-reference: 24rem;
+  --reader-reference-compact: 22rem;
   --icon-rail: 3.25rem;
   --header: 3.5rem;
   --tabs: 2.25rem;
@@ -49,11 +81,12 @@
   --text-body: 0.875rem;
   --line-body: 1.25rem;
   --text-support: 0.75rem;
+  --text-navigation: 0.8125rem;
   --line-support: 1rem;
   --text-section: 1rem;
   --line-section: 1.375rem;
-  --text-title: 1.25rem;
-  --line-title: 1.75rem;
+  --text-title: 1rem;
+  --line-title: 1.5rem;
   --button: 2rem;
   --button-inset: 0.75rem;
   --input: 2.25rem;
@@ -68,8 +101,8 @@
   --sheet-wide: 45rem;
   --sheet-clearance: 1.5rem;
   --report-column: 47.5rem;
-  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
   /* The older names the panel stylesheets draw with, as the roles above. */
   --bg: var(--canvas);
@@ -92,13 +125,6 @@
 
   --text-scale: 1;
   font-family: var(--font);
-}
-
-@supports (color: AccentColor) {
-  :root {
-    --accent: AccentColor;
-    --accent-text: AccentColorText;
-  }
 }
 
 @supports (color: -apple-system-label) {
@@ -215,6 +241,58 @@ body {
   grid-template-columns: minmax(0, 1fr) 1px var(--inspector-width, var(--inspector));
 }
 
+.workarea.with-details.reader-layout {
+  grid-template-columns: var(--message-browser-width, 13rem) 1px minmax(0, 1fr);
+  grid-template-rows: var(--header) minmax(0, 1fr);
+}
+.app.compact .workarea.with-details.reader-layout {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+/* The reader has one full-width toolbar above its three investigation panes.
+   Keep the existing page/landmark owners while placing their header and body
+   in the shared workarea grid. */
+.reader-layout.with-details .region-evidence {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-row: 1 / -1;
+  grid-template-columns: subgrid;
+  grid-template-rows: subgrid;
+}
+.reader-layout.with-details .region-evidence > .page:not([hidden]) {
+  display: contents;
+}
+.reader-layout.with-details .page-header {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  flex-wrap: nowrap;
+  padding: var(--s2) var(--s4);
+}
+.reader-layout.with-details .page-body {
+  grid-column: 1;
+  grid-row: 2;
+}
+.reader-layout.with-details > .separator {
+  grid-column: 2;
+  grid-row: 2;
+}
+.reader-layout.with-details > .region-inspector {
+  grid-column: 3;
+  grid-row: 2;
+  padding: 0;
+}
+.app-reader {
+  --header: 3.75rem;
+  --inset: 1rem;
+  --text-title: 1rem;
+  --line-title: 1.5rem;
+  --text-body: 0.8125rem;
+}
+.nav-current {
+  flex: none;
+  margin-inline-start: auto;
+}
+
 .region {
   min-height: 0;
   min-width: 0;
@@ -297,18 +375,19 @@ body {
 .nav-list {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: var(--s1);
   width: 100%;
 }
 
 .nav-item {
   background: transparent;
-  border: 0;
+  border: 1px solid transparent;
   border-radius: var(--radius-control);
   color: var(--text);
+  font-size: var(--text-navigation);
   font-weight: 400;
   justify-content: flex-start;
-  min-height: var(--tabs);
+  min-height: var(--s8);
   padding: 0 var(--s2);
   position: relative;
   text-align: start;
@@ -325,7 +404,7 @@ body {
 .nav-item[aria-current="page"],
 .nav-item[aria-current="page"]:hover:not(:disabled) {
   background: var(--selection);
-  box-shadow: inset 2px 0 0 var(--accent);
+  border-color: var(--accent);
   font-weight: 600;
 }
 
@@ -527,7 +606,7 @@ button.operation-label {
 /* A compact window wraps a long title to two lines rather than clipping it. */
 .app.compact .page-header h1 {
   display: -webkit-box;
-  min-width: min(100%, 12rem);
+  min-width: 0;
   overflow-wrap: anywhere;
   white-space: normal;
   -webkit-box-orient: vertical;
@@ -763,15 +842,16 @@ textarea {
 button {
   align-items: center;
   background: var(--control);
-  border: 1px solid var(--line);
+  border: 1px solid var(--interface-color-border);
   border-radius: var(--radius-control);
   color: var(--control-text);
   cursor: pointer;
   display: inline-flex;
-  font-weight: 400;
+  font-size: .75rem;
+  font-weight: 600;
   gap: var(--s2);
   justify-content: center;
-  line-height: var(--line-body);
+  line-height: 1.125rem;
   min-height: var(--button);
   padding: 0 var(--button-inset);
   text-align: center;
@@ -779,7 +859,7 @@ button {
 }
 
 button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--control) 94%, CanvasText);
+  background: var(--interface-color-hover);
 }
 
 button.primary,
@@ -791,7 +871,7 @@ button.primary,
 
 button.primary:hover:not(:disabled),
 .modal button[type="submit"]:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent) 90%, CanvasText);
+  background: var(--interface-color-action-hover);
 }
 
 button.quiet,
@@ -844,8 +924,17 @@ button.danger,
 
 button:disabled {
   cursor: default;
-  opacity: 0.5;
+  opacity: 1;
+  background: var(--rail);
+  color: var(--interface-color-disabled-text);
 }
+button.primary:disabled, .modal button[type="submit"]:disabled {
+  background: var(--interface-color-disabled);
+  border-color: var(--interface-color-disabled);
+  color: var(--interface-color-disabled-text);
+}
+button.link:disabled, button.quiet:disabled { background:transparent; }
+
 
 select,
 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
@@ -3095,3 +3184,187 @@ h2 .count {
 .drafts-table {
   width: 100%;
 }
+
+/* Local Figma outline assets retain their geometry in both system themes. */
+:root[data-theme="dark"] .workbench-icon {
+  filter: invert(1);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .workbench-icon {
+    filter: invert(1);
+  }
+}
+/* Reader-only shell geometry: the browser, byte view and reference each scroll. */
+.reader-layout.with-details > .region-inspector { overflow:hidden; }
+.reader-layout.with-details .page-body { padding:0; overflow:hidden; }
+.reader-layout.with-details .page-header h1 { width:10.625rem; flex:none; font-size:1rem; }
+.reader-layout.with-details .page-actions { display:flex; flex:1; min-width:0; gap:.5rem; align-items:center; }
+.reader-toolbar-edition { color:var(--muted); font-size:.75rem; min-width:10.625rem; }
+.reader-toolbar-space { flex:1; }
+.reader-layout .page-header button { font-size:.75rem; min-height:2rem; }
+.reader-source-switcher { padding-top:.75rem; }
+.reader-source-switcher .project-switcher > button { min-height:3rem; }
+.reader-switcher-caption { display:flex; flex:1; min-width:0; flex-direction:column; gap:0; text-align:left; }
+.reader-switcher-caption strong { font-size:.8125rem; line-height:1.25rem; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.reader-switcher-caption > span { font-size:.75rem; line-height:1.125rem; color:var(--muted); }
+.app-reader .sidebar .nav-list { gap:.25rem; }
+.app-reader .sidebar .nav-list button { min-height:2rem; font-size:.8125rem; }
+.app-reader-compact .reader-toolbar-edition { min-width:7rem; }
+
+.reader-layout .case-views > .task-tabs { display:none; }
+.reader-layout .messages { margin:0; }
+.reader-layout .messages > .file-browser-heading { position:static !important; clip:auto !important; width:auto !important; height:auto !important; overflow:visible !important; }
+
+.reader-layout .messages .messages-table { min-width:0; width:100%; }
+.reader-layout .messages tbody td { padding:.75rem .5rem; text-align:left; min-height:4rem; }
+.reader-layout .messages .message-browser-entry { display:flex; flex-direction:column; align-items:flex-start; gap:.25rem; }
+.reader-layout .messages .message-browser-entry > span { color:var(--muted); font-size:.75rem; }
+.reader-layout .messages > .file-browser-tabs > .more-menu { margin-left:auto; }
+.reader-layout .messages .check-column { width:1.5rem; min-width:1.5rem; }
+.app-reader-compact .hl7-reader .reader-grid-columns, .app-reader-compact .hl7-reader .reader-grid-row { grid-template-columns:5rem 11rem 2.5rem 2rem 2.75rem 3rem 2rem 3.125rem 2.625rem 4.625rem minmax(13rem,1fr); min-width:58rem; }
+.app-reader-wide .hl7-reader .reader-grid-columns, .app-reader-wide .hl7-reader .reader-grid-row { grid-template-columns:5.5rem 14rem 3rem 2.5rem 3.375rem 3.875rem 2.5rem 3.875rem 3.375rem 5.5rem minmax(15.25rem,1fr); min-width:69rem; }
+.app-reader .reader-source-switcher { border:0; margin:0; padding:0 0 .75rem; }
+.app-reader .reader-source-switcher .menu-trigger { min-height:3rem; padding:0 .75rem; border:1px solid var(--line); background:var(--canvas); border-radius:var(--radius-control); }
+.reader-layout .messages .check-column, .file-reader-browser .check-column { width:2rem; min-width:2rem; }
+.reader-layout .messages td.check-column, .file-reader-browser td.check-column { overflow:visible; text-overflow:clip; white-space:normal; font-size:0; line-height:0; padding:.75rem .5rem; }
+.reader-layout .messages .check-column input, .file-reader-browser .check-column input { display:block; margin:0; }
+.reader-layout .messages th[scope="row"], .file-reader-browser th[scope="row"] { padding:.75rem .75rem .75rem .25rem; text-align:start; }
+.file-browser-search input:not([type="checkbox"]):not([type="radio"]):not([type="range"]) { background:transparent; border:0; border-radius:0; box-shadow:none; appearance:none; min-height:1.75rem; padding:0; outline:0; }
+.file-browser-search:focus-within { outline:2px solid var(--accent); outline-offset:1px; }
+
+/* The source card and four workspace destinations share the Figma shell. */
+.app-workbench { --header:3.75rem; --rail:color-mix(in srgb,var(--text) 4%,var(--canvas)); }
+.app-workbench .sidebar { background:var(--rail); }
+.app-workbench .sidebar-switcher { border:0; margin:0 0 1rem; padding:0; }
+.app-workbench .project-switcher > .menu-trigger { border:1px solid var(--line); background:var(--canvas); min-height:3rem; padding:.5rem .75rem; }
+.switcher-caption { display:flex; flex-direction:column; min-width:0; gap:.125rem; text-align:start; }
+.switcher-kind { color:var(--muted); font-size:.75rem; line-height:1rem; font-weight:400; }
+.app-workbench .sidebar .nav-list { gap:.25rem; }
+.app-workbench .sidebar .nav-list button { background:var(--canvas); min-height:2rem; }
+.app-workbench .sidebar .nav-list button[aria-current="page"] { background:var(--selection); }
+
+/* Capture/import/map controls retain one shared sizing owner. */
+.value-map-entry-card input { font-size:var(--text-navigation); }
+.import-summary-table th,.import-summary-table td { height:var(--row); }
+.capture-search-field input:not([type="checkbox"]):not([type="radio"]):not([type="range"]) { height:var(--button); width:100%; padding-inline-start:calc(var(--s3) + var(--icon) + var(--s2)); appearance:none; }
+.capture-search-field input::-webkit-search-decoration { display:none; }
+.workflow-search input:not([type="checkbox"]):not([type="radio"]):not([type="range"]) { padding-inline-start:2.5rem; }
+
+/* Reader controls and table cells share the shell sizing owner. */
+.hl7-reader .reader-view-tabs button { min-height:1.75rem; padding:0 .375rem; font-size:.6875rem; border:0; background:transparent; color:var(--muted); }
+.hl7-reader .reader-grid-footer button { min-height:1.75rem; padding:0 .5rem; font-size:.75rem; background:var(--canvas); }
+.hl7-reader .reader-message-context > button { min-height:1.5rem; background:transparent; border:0; padding:.25rem 0; color:var(--accent); }
+.hl7-reader .reader-reference-tabs button { border:0; background:transparent; font-size:.75rem; font-weight:600; min-height:1.75rem; padding:0 .625rem; white-space:nowrap; }
+.hl7-reader .reader-status-bar .reveal button { min-height:1.5rem; padding:0 .5rem; font-size:.6875rem; }
+.hl7-reader .reader-reference-components li > button { background:transparent; border:0; padding:0; min-height:1.25rem; font-size:.75rem; color:var(--muted); }
+.hl7-reader .reader-pane-tabs button { border:0; min-height:1.75rem; font-size:.75rem; font-weight:600; background:transparent; }
+.file-browser-search input { border:0; padding:0; min-width:0; width:100%; min-height:1.75rem; font-size:.75rem; background:transparent; }
+.file-browser-tabs button { min-height:1.75rem; border:0; background:transparent; font-size:.75rem; font-weight:600; padding:0 .75rem; min-width:4.5rem; }
+.file-reader-browser td { min-height:4rem; padding:.75rem .5rem; text-align:left; }
+.hl7-variant-editor .variant-name input { min-height:2.25rem; font-size:.8125rem; color:var(--text); }
+.comparison-source-controls input { min-height:2.25rem; font-size:.8125rem; color:var(--text); }
+.field-values-field input { min-height:2.25rem; font-size:.8125rem; }
+
+/* Scoped Workbench workflow control geometry, owned by the shared control sheet. */
+
+.workflow-rail button.workflow-step { display: flex; flex-direction: column; justify-content: center; gap: .25rem; min-height: 4rem; padding: .75rem; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; text-align: start; white-space: normal; background: var(--canvas); color: var(--text); width: 100%; align-items: flex-start; }
+
+.workflow-page .data-table th, .workflow-page .plain-table th { font-size: .75rem; font-weight: 400; color: var(--muted); background: var(--rail); }
+
+.workflow-page .data-table td, .workflow-page .plain-table td { font-size: .8125rem; }
+
+.workflow-page .plain-table th, .workflow-page .plain-table td { padding: .75rem; border-bottom: 1px solid var(--line); text-align: start; }
+
+.workflow-page .task-tabs > button { border: 0; border-radius: var(--radius-control); min-height: 1.75rem; font-size: .75rem; font-weight: 600; padding: .3125rem .75rem; }
+/* Selected workflow tabs keep the same Figma geometry as their sibling views. */
+.workflow-page > .task-tabs > button { min-height: 1.75rem; padding: .3125rem .75rem; font-size: .75rem; font-weight: 600; border-radius: var(--radius-control); }
+.workflow-page > .task-tabs > button[aria-selected="true"] { background: var(--accent); color: var(--accent-text); }
+/* Reader surfaces keep their hierarchy even when macOS WindowBackground is Canvas. */
+.app-reader { --rail:color-mix(in srgb, var(--text) 4%, var(--canvas)); }
+.reader-layout .messages .file-browser-tabs { min-width:0; gap:.25rem; }
+.reader-layout .messages .file-browser-tabs > button { min-width:0; flex:1; padding:0 .375rem; }
+.reader-layout .messages .file-browser-tabs > .reader-menu { flex:none; margin-left:0; }
+.reader-layout .messages .file-browser-tabs > .reader-menu .menu-trigger { min-width:1.5rem; padding:.25rem; min-height:1.75rem; }
+.reader-layout .messages .file-browser-tabs > .reader-menu .menu-popover { left:0; right:auto; }
+.hl7-reader .reader-attribute-link { border:0; background:transparent; padding:0; color:var(--text); font-size:.8125rem; line-height:1.25rem; font-weight:400; min-height:0; text-align:start; }
+.hl7-reader .reader-attribute-link:hover { text-decoration:underline; }
+.reader-layout .messages .file-browser-tabs > .reader-menu .menu-popover { left:auto; right:0; min-width:0; width:calc(var(--message-browser-width, var(--message-browser)) - 1rem); }
+
+/* Exact control roles from Figma Interface / Button, node 2220:3737. */
+:root {
+  --interface-color-action: #005ad9;
+  --interface-color-action-hover: #0046ad;
+  --interface-color-border: #b6becb;
+  --interface-color-hover: #edf2f9;
+  --interface-color-disabled: #d5dbe4;
+  --interface-color-disabled-text: #667181;
+  --interface-color-on-action: #ffffff;
+}
+@media (forced-colors: active) {
+  :root {
+    --interface-color-action: Highlight;
+    --interface-color-action-hover: Highlight;
+    --interface-color-border: ButtonText;
+    --interface-color-hover: Canvas;
+    --interface-color-disabled: Canvas;
+    --interface-color-disabled-text: GrayText;
+    --interface-color-on-action: HighlightText;
+  }
+}
+
+/* Frame overrides are Figma's toolbar (32px) and tab (28px) variants. */
+.reader-layout .page-actions > button:not(.primary):not(.link):not(.quiet) { min-width:4.75rem; }
+.reader-layout .page-actions > button.primary { min-width:8.3rem; }
+.reader-toolbar-reference { min-width:5.325rem; font-weight:600; }
+.file-browser-tabs > button, .hl7-reader .reader-reference-tabs button, .hl7-reader .reader-pane-tabs button { height:1.75rem; min-height:1.75rem; padding:0 .75rem; font-size:.75rem; line-height:1.125rem; font-weight:600; border:0; border-radius:var(--radius-control); color:var(--text); background:var(--canvas); }
+.file-browser-tabs > button[aria-selected="true"], .hl7-reader .reader-reference-tabs button[aria-selected="true"], .hl7-reader .reader-pane-tabs button[aria-selected="true"] { color:var(--interface-color-on-action); background:var(--interface-color-action); }
+.file-browser-tabs > button:disabled, .hl7-reader .reader-reference-tabs button:disabled, .hl7-reader .reader-pane-tabs button:disabled { color:var(--interface-color-disabled-text); }
+.hl7-reader .reader-reference-tabs > button:nth-child(1) { width:5rem; }
+.hl7-reader .reader-reference-tabs > button:nth-child(2) { width:5.875rem; }
+.hl7-reader .reader-reference-tabs > button:nth-child(3) { width:6.75rem; }
+.reader-layout .page-header button, .hl7-reader .reader-header button { line-height:1.125rem; font-weight:600; }
+.hl7-reader .reader-header > .link { min-height:2rem; padding:0 .75rem; background:var(--canvas); }
+.hl7-reader .reader-grid-controls > .link { min-height:2rem; padding:0 .75rem; font-size:.75rem; line-height:1.125rem; font-weight:600; background:var(--canvas); }
+
+/* Reader button slots measured from R01/R08, without displacing grouping tabs. */
+.file-browser-heading { display:flex; align-items:center; justify-content:space-between; gap:.25rem; }
+.file-browser-heading > h2 { margin:0; font-size:.8125rem; line-height:1.25rem; font-weight:600; }
+.file-browser-heading .reader-menu > button { width:1.75rem; height:1.75rem; min-width:1.75rem; min-height:1.75rem; padding:0; background:var(--canvas); border-color:transparent; }
+.reader-layout .messages .file-browser-tabs > button, .file-reader-browser .file-browser-tabs > button { flex:none; min-width:0; width:4.5rem; height:1.75rem; padding:0 .75rem; }
+.reader-layout .messages .file-browser-tabs > button:nth-child(2), .file-reader-browser .file-browser-tabs > button:nth-child(2) { width:4.5625rem; }
+.reader-layout .page-header button:disabled:not(.primary):not(.link):not(.quiet), .app-workbench .page-header button:disabled:not(.primary):not(.link):not(.quiet) { background:var(--rail); color:var(--interface-color-disabled-text); }
+.hl7-reader .reader-reference-scroll > button { align-self:flex-start; }
+.hl7-reader .reader-header > button.link { width:5.325rem; }
+.hl7-reader .reader-grid-controls > button.link { width:6.6rem; }
+/* The library supplies a More glyph, with no idle button plate. */
+.reader-layout .page-actions .reader-menu > .menu-trigger,
+.hl7-reader .reader-context .reader-menu > .menu-trigger {
+  background:transparent;
+  border-color:transparent;
+  min-width:2rem;
+  width:2rem;
+  height:2rem;
+  padding:0;
+}
+.reader-layout .page-actions .reader-menu > .menu-trigger:hover,
+.hl7-reader .reader-context .reader-menu > .menu-trigger:hover { background:var(--interface-color-hover); }
+.app-workbench .nav-item, .app-reader .nav-item { padding:0 .75rem; }
+.workflow-page .task-tabs > button, .workflow-editor .task-tabs > button { height:1.75rem; min-height:1.75rem; padding:0 .75rem; line-height:1.125rem; }
+.page[data-page="new-test"] .page-actions > button:first-child { min-width:5.75rem; }
+.page[data-page="tests"] .page-actions > button.primary { min-width:4.75rem; }
+.page[data-page="tests"] .page-actions > button.workflow-new-test-case { min-width:7.025rem; }
+.workflow-rail-footer > button { min-width:4.9rem; }
+.workflow-step > span, .message-browser-entry > span { font-weight:400; }
+/* Figma focus strokes stay inside the control's measured rectangle. */
+button.primary:focus-visible, .modal button[type="submit"]:focus-visible { outline:2px solid var(--text); outline-offset:-2px; }
+button:not(.primary):focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+/* Evidence rows remain regular text; their button semantics are navigation. */
+.hl7-reader .reader-grid-row { font-weight:400; }
+.hl7-reader .reader-grid-row.reader-kind-segment { font-weight:600; }
+.hl7-reader .reader-grid-footer button { background:transparent; border:0; padding:0; min-height:1.125rem; }
+.hl7-reader .reader-original .selected-line { display:inline-block; width:100%; vertical-align:top; background:var(--selection); }
+/* Creation controls share one32px row; legacy flow-footer cannot stretch siblings. */
+.workflow-create-test-sheet .dialog-footer { align-items:center; }
+.workflow-create-test-sheet .dialog-footer > button { height:2rem; min-height:2rem; padding:0 .75rem; line-height:1.125rem; }
+.workflow-create-test-sheet .dialog-footer > .flow-footer { border:0; margin:0; padding:0; }
+.capture-export-sheet .modal-footer { flex-direction:row; justify-content:flex-end; align-items:center; }

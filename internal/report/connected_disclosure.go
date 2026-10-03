@@ -108,6 +108,9 @@ func publishDisclosed(ctx context.Context, publish disclosedPublish) error {
 	}
 	protected := []os.FileInfo{}
 	for _, path := range []string{publish.packet, publish.policy} {
+		if path == "" {
+			continue
+		}
 		info, err := os.Stat(path)
 		if err != nil {
 			return err

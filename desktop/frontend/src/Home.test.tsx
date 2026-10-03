@@ -5,7 +5,7 @@ import { expect, test } from "vitest";
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderApp } from "./testkit/app";
-import { page, sidebar } from "./testkit/navigation";
+import { goTo, page, sidebar } from "./testkit/navigation";
 import { CASE_ENTRY, caseCatalogItem, editorDraft, folderChosen, folderWithCase, projectOverviewResult, WORKSPACE_ROOT } from "./testkit/fixtures";
 import type { FacadeHandlers } from "./testkit/wails";
 import type { CatalogItem, CatalogQuery, CatalogResult, EditorDraft } from "./bindings";
@@ -21,7 +21,7 @@ test("a window with no project open offers new, open and the demo, and nothing e
   // Licensing and connections are Settings, never the first screen.
   expect(page().queryByRole("button", { name: /activate/i })).toBeNull();
   // The project destinations exist only once a project is open.
-  expect(sidebar().queryByRole("button", { name: "Cases" })).toBeNull();
+  expect(sidebar().queryByRole("button", { name: "Captures" })).toBeNull();
   expect(facade.callsTo("SelectWorkspace").length).toBe(0);
   expect(facade.callsTo("CreateSampleWorkspace").length).toBe(0);
 });
@@ -34,10 +34,10 @@ test("choosing a real project opens a chosen folder and reaches the project scre
   await user.click(page().getByRole("button", { name: "Open" }));
   expect(facade.oneCall("SelectWorkspace")).toEqual([]);
   // The folder opens on its cases, and the sidebar names it.
-  expect(await page().findByRole("heading", { level: 1, name: "Cases" })).toBeTruthy();
+  expect(await page().findByRole("heading", { level: 1, name: "Captures" })).toBeTruthy();
   expect(sidebar().getByRole("button", { name: "Project: workspace-under-test" })).toBeTruthy();
   expect(sidebar().getByRole("button", { name: /^Project: / })).toBeTruthy();
-  expect(sidebar().getByRole("button", { name: "Cases" }).getAttribute("aria-current")).toBe("page");
+  expect(sidebar().getByRole("button", { name: "Captures" }).getAttribute("aria-current")).toBe("page");
 });
 
 const noContext = { project: "", generation: 0 };
@@ -88,8 +88,8 @@ test("a new project asks only for a name, goes into the remembered location, and
   expect(facade.oneCall("CreateNamedProject")).toEqual([{ name: "Scheduling investigation", location: WORKSPACE_ROOT }]);
   // No folder picker opens after Create.
   expect(facade.callsTo("ChooseProjectLocation")).toHaveLength(0);
-  expect(await page().findByRole("heading", { level: 1, name: "Cases" })).toBeTruthy();
-  expect(page().getByText("No cases yet")).toBeTruthy();
+  expect(await page().findByRole("heading", { level: 1, name: "Captures" })).toBeTruthy();
+  expect(page().getByText("No captures yet")).toBeTruthy();
   expect(screen.queryByRole("dialog", { name: "New project" })).toBeNull();
 });
 
@@ -196,7 +196,7 @@ test("projects this viewer opened are listed newest first; a row opens its proje
   expect(facade.oneCall("ForgetProject")).toEqual(["old"]);
   // The row itself opens the project, on its Cases.
   await user.click(table.getByRole("row", { name: "Scheduling investigation" }));
-  expect(await page().findByRole("heading", { level: 1, name: "Cases" })).toBeTruthy();
+  expect(await page().findByRole("heading", { level: 1, name: "Captures" })).toBeTruthy();
   expect(facade.callsTo("OpenWorkspace")[0]?.args).toEqual([WORKSPACE_ROOT]);
 });
 
@@ -322,7 +322,7 @@ test("Create cannot be pressed twice while a create runs; the new folder's name 
   expect((sheet.getByLabelText("Name") as HTMLInputElement).value).toBe("Scheduling investigation");
   expect((sheet.getByRole("button", { name: "Create" }) as HTMLButtonElement).disabled).toBe(true);
   parked.resolve({ state: "completed", context: noContext, recorded: true, project: listedProject("p1", "Scheduling investigation", created, null) });
-  expect(await page().findByRole("heading", { level: 1, name: "Cases" })).toBeTruthy();
+  expect(await page().findByRole("heading", { level: 1, name: "Captures" })).toBeTruthy();
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "New project" })).toBeNull());
   expect(facade.callsTo("CreateNamedProject")).toHaveLength(1);
   // The folder the facade generated is internal: its name is nowhere on screen.
@@ -381,13 +381,13 @@ test("after a license refusal the projects list, opening a project and Try demo 
   // The list is still there, and its row opens the project.
   const table = within(await page().findByRole("table", { name: "Projects" }));
   await user.click(table.getByRole("row", { name: "Scheduling investigation" }));
-  expect(await page().findByRole("heading", { level: 1, name: "Cases" })).toBeTruthy();
+  expect(await page().findByRole("heading", { level: 1, name: "Captures" })).toBeTruthy();
   expect(facade.callsTo("OpenWorkspace")[0]?.args).toEqual([WORKSPACE_ROOT]);
   // Back on Projects, the demo still opens.
-  await user.click(sidebar().getByRole("button", { name: "Projects" }));
+  await goTo(user, "Projects");
   await user.click(await page().findByRole("button", { name: "Try demo" }));
   await waitFor(() => expect(facade.callsTo("OpenDemoProject")).toHaveLength(1));
-  expect(await page().findByRole("heading", { level: 1, name: "Cases" })).toBeTruthy();
+  expect(await page().findByRole("heading", { level: 1, name: "Captures" })).toBeTruthy();
 }, 15_000);
 
 /** The open project, one case of it, and the answers opening it takes. */
@@ -514,7 +514,7 @@ test("a draft whose case is gone says so on Cases and opens nothing", async () =
   const { facade } = await renderApp({ ...openingProject(), EditorDrafts: () => ({ state: "completed", drafts: [gone] }) });
   await user.click(await page().findByRole("button", { name: "Review" }));
   await user.click(within(screen.getByRole("dialog", { name: "Drafts to restore" })).getByRole("button", { name: "Case details · Removed meanwhile" }));
-  expect(await page().findByRole("heading", { level: 1, name: "Cases" })).toBeTruthy();
+  expect(await page().findByRole("heading", { level: 1, name: "Captures" })).toBeTruthy();
   expect(await page().findByText("The case this draft edits is no longer in the project.")).toBeTruthy();
   // No sheet opens, and nothing is saved, discarded or sent.
   expect(screen.queryByRole("dialog", { name: "Edit details" })).toBeNull();

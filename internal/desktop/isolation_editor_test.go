@@ -3,6 +3,7 @@ package desktop
 import (
 	"encoding/json/v2"
 	"encoding/pem"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/bharm16/readmit/internal/catalog"
 	"github.com/bharm16/readmit/internal/networkaction"
@@ -259,6 +261,7 @@ func main() {
 type isolationEditorTarget struct {
 	mu        sync.Mutex
 	requests  int
+	actions   []string
 	mutations []string
 	version   int
 	lease     map[string]any
@@ -276,6 +279,7 @@ func (s *isolationEditorTarget) serve(w http.ResponseWriter, request *http.Reque
 	defer s.mu.Unlock()
 	s.requests++
 	action := strings.TrimPrefix(request.URL.Path, "/fixture/v1/")
+	s.actions = append(s.actions, action)
 	var payload map[string]any
 	if request.Method == "GET" {
 		_ = json.Unmarshal([]byte(request.URL.Query().Get("scope")), &payload)
@@ -438,12 +442,32 @@ func TestIsolationEditorRealFacadeSavesPassivelyAndRunsReviewedLifecycle(t *test
 		if prepared.Review.Isolation == nil || prepared.Review.Isolation.RegisteredEnvironment != adapter.Environment || prepared.Review.Destination.Address != server.URL {
 			t.Fatalf("scope hidden or retargeted: %+v", prepared.Review)
 		}
+		started := time.Now()
 		result := app.ExecuteReviewedAction(ExecuteActionRequest{Context: created.Context, Token: prepared.Review.Token, IntentID: intent, Decisions: ReviewDecisions{Confirmed: confirmations}})
 		if result.State != Completed || result.Isolation == nil {
 			requests, mutations, resources, leased := target.counts()
 			providerEvents, _ := os.ReadFile(providerLog)
-			t.Fatalf("action %s: state=%s reason=%s outcome=%+v requests=%d mutations=%d resources=%d lease=%v provider_calls=%d", action, result.State, result.Reason, result.Isolation, requests, mutations, resources, leased, strings.Count(string(providerEvents), "resolved\n"))
+			target.mu.Lock()
+			actions := append([]string(nil), target.actions...)
+			target.mu.Unlock()
+			// Read only the immutable network outcome, never the retained
+			// request/response body or credential lookup value. These facts
+			// distinguish bounded transport refusal from target-state drift.
+			network := []string{}
+			for sequence := 1; sequence <= 128; sequence++ {
+				path := filepath.Join(created.Context.Project, prepared.Review.Destination.Output, "actions", fmt.Sprintf("n%04d", sequence))
+				if _, err := os.Stat(path); os.IsNotExist(err) {
+					break
+				}
+				receipt, err := networkaction.OpenHTTP(path)
+				has := func(name string) bool { _, err := os.Stat(filepath.Join(path, name)); return err == nil }
+				network = append(network, fmt.Sprintf("n%04d state=%s status=%d retained=%v readable=%v intent=%v response=%v sealed=%v", sequence, receipt.State, receipt.HTTPStatus, receipt.ResponseRetained, err == nil, has("intent.json"), has("response.bin"), has("identity.sha256")))
+			}
+			t.Fatalf("action %s intent=%s elapsed=%s timeout_ms=%d: state=%s reason=%s outcome=%+v requests=%d mutations=%d resources=%d lease=%v provider_calls=%d actions=%v network=%v", action, intent, time.Since(started), adapter.TimeoutMS, result.State, result.Reason, result.Isolation, requests, mutations, resources, leased, strings.Count(string(providerEvents), "resolved\n"), actions, network)
 		}
+		requests, mutations, resources, leased := target.counts()
+		providerEvents, _ := os.ReadFile(providerLog)
+		t.Logf("completed action=%s intent=%s elapsed=%s timeout_ms=%d requests=%d mutations=%d resources=%d lease=%v provider_calls=%d", action, intent, time.Since(started), adapter.TimeoutMS, requests, mutations, resources, leased, strings.Count(string(providerEvents), "resolved\n"))
 		return result
 	}
 	perform(PreflightIsolationAction, "preflight", nil)

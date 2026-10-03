@@ -8,7 +8,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { CatalogItem, CatalogQuery, IncompleteSave, ItemDraftResult, ItemRequest, RunExplanation, SaveItemRequest, TestContext, TestDraftDocument, TestHistoryResult } from "./bindings";
 import { renderApp } from "./testkit/app";
-import { CASE_ENTRY, CASE_IDENTITY, caseCatalogItem, caseResult, catalogOfListing, folderWithCase, GRID_OCCURRENCE, messageRow, messagesResult, NEXT_OCCURRENCE, WORKSPACE_ROOT } from "./testkit/fixtures";
+import { editorDraft, CASE_ENTRY, CASE_IDENTITY, caseCatalogItem, caseResult, catalogOfListing, folderWithCase, GRID_OCCURRENCE, messageRow, messagesResult, NEXT_OCCURRENCE, WORKSPACE_ROOT } from "./testkit/fixtures";
 import { findCaseRow, goTo, page } from "./testkit/navigation";
 import type { FacadeHandlers, FacadeStub } from "./testkit/wails";
 
@@ -144,12 +144,14 @@ test("Tests lands on the saved tests list sorted by last update, with no editor,
   const user = userEvent.setup();
   await openTests(user, [CANCEL, RESCHEDULE]);
   const table = await page().findByRole("table", { name: "Tests" });
-  await waitFor(() => expect(rowsOf(table)).toHaveLength(2));
-  expect(rowsOf(table).map((row) => row[0])).toEqual(["Reschedule keeps one appointment", "Cancellation removes appointment"]);
-  expect(rowsOf(table)[0]!.slice(1, 3)).toEqual([CASE_ENTRY, "Failed"]);
-  expect(page().getByRole("tab", { name: "Tests", selected: true })).toBeTruthy();
-  expect(page().getByRole("button", { name: "New test" })).toBeTruthy();
-  expect(page().getByRole("button", { name: "Library" })).toBeTruthy();
+  await waitFor(() => expect(checkRowsOf(table)).toHaveLength(2));
+  expect(checkRowsOf(table).map((row) => row[0])).toEqual(["Reschedule keeps one appointment", "Cancellation removes appointment"]);
+  expect(checkRowsOf(table)[0]!.slice(2, 4)).toEqual([CASE_ENTRY, "Failed"]);
+  expect(page().getByRole("tab", { name: "Test cases", selected: true })).toBeTruthy();
+  expect(page().getByRole("button", { name: "New test case" })).toBeTruthy();
+  await user.click(page().getByRole("button", { name: "Test page actions" }));
+  expect(page().getByRole("menuitem", { name: "Library" })).toBeTruthy();
+  await user.keyboard("{Escape}");
   expect(page().queryAllByRole("textbox")).toHaveLength(0);
   expect(page().queryByText(/readmit-test/)).toBeNull();
 });
@@ -158,8 +160,8 @@ test("a test with no compatible run shows — and a failed latest run shows Fail
   const user = userEvent.setup();
   await openTests(user, [CANCEL, RESCHEDULE]);
   const table = await page().findByRole("table", { name: "Tests" });
-  await waitFor(() => expect(rowsOf(table)).toHaveLength(2));
-  expect(rowsOf(table).map((row) => row[2])).toEqual(["Failed", "—"]);
+  await waitFor(() => expect(checkRowsOf(table)).toHaveLength(2));
+  expect(checkRowsOf(table).map((row) => row[3])).toEqual(["Failed", "—"]);
 });
 
 test("No tests yet offers New test, and a filter that matches nothing offers Clear filters", async () => {
@@ -169,7 +171,8 @@ test("No tests yet offers New test, and a filter that matches nothing offers Cle
   facade.reply({ ListCatalog: (query) => catalog([CANCEL])(query, facade) });
   await goTo(user, "Projects");
   await goTo(user, "Tests");
-  await user.click(page().getByRole("button", { name: "Search tests" }));
+  await user.click(page().getByRole("button", { name: "Test page actions" }));
+  await user.click(page().getByRole("menuitem", { name: "Search tests" }));
   const search = await screen.findByRole("dialog", { name: "Search tests" });
   await user.type(within(search).getByLabelText("Search"), "nothing like this");
   await user.click(within(search).getByRole("button", { name: "Search" }));
@@ -182,16 +185,18 @@ test("Search matches names and authored tags only; Filter narrows by case, resul
   const user = userEvent.setup();
   await openTests(user, [CANCEL, RESCHEDULE]);
   const table = await page().findByRole("table", { name: "Tests" });
-  await user.click(page().getByRole("button", { name: "Search tests" }));
+  await user.click(page().getByRole("button", { name: "Test page actions" }));
+  await user.click(page().getByRole("menuitem", { name: "Search tests" }));
   await user.type(within(await screen.findByRole("dialog", { name: "Search tests" })).getByLabelText("Search"), "cancel");
   await user.click(within(screen.getByRole("dialog", { name: "Search tests" })).getByRole("button", { name: "Search" }));
-  await waitFor(() => expect(rowsOf(table).map((row) => row[0])).toEqual(["Cancellation removes appointment"]));
+  await waitFor(() => expect(checkRowsOf(table).map((row) => row[0])).toEqual(["Cancellation removes appointment"]));
   await user.click(page().getAllByRole("button", { name: "Clear filters" })[0]!);
-  await user.click(page().getByRole("button", { name: "Filter tests" }));
+  await user.click(page().getByRole("button", { name: "Test page actions" }));
+  await user.click(page().getByRole("menuitem", { name: "Filter tests" }));
   const filter = await screen.findByRole("dialog", { name: "Filter tests" });
   await user.click(within(filter).getByRole("checkbox", { name: "Failed" }));
   await user.click(within(filter).getByRole("button", { name: "Apply" }));
-  await waitFor(() => expect(rowsOf(table).map((row) => row[0])).toEqual(["Reschedule keeps one appointment"]));
+  await waitFor(() => expect(checkRowsOf(table).map((row) => row[0])).toEqual(["Reschedule keeps one appointment"]));
 });
 
 test("Create test from selected case messages opens Setup prefilled in source order without visiting Messages", async () => {
@@ -243,9 +248,16 @@ test("an environment saved after Tests was last listed is offered to a test crea
   await page().findByRole("table", { name: "Messages" });
   await user.click(await screen.findByRole("button", { name: "More case actions" }));
   await user.click(await screen.findByRole("menuitem", { name: "Create test" }));
-  const choice = await page().findByRole("combobox", { name: "Environment" });
+  const choice = await page().findByRole("combobox", { name: /^(Target|Environment)$/ });
   await waitFor(() => expect(within(choice).queryByRole("option", { name: "Scheduling QA" })).toBeTruthy());
 });
+
+function checkRowsOf(table:HTMLElement):string[][] {
+ const headers=within(table).getAllByRole("columnheader").map(cell=>cell.textContent?.trim());
+ const check=headers.indexOf("Check"), expected=headers.indexOf("Expected");
+ if(check<0 || expected<0)return rowsOf(table);
+ return rowsOf(table).map(row=>[row[check]??"",row[expected]??""]);
+}
 
 test("an ACK-only test is created through Setup, Checks and Review with one Create test", { timeout: 15_000 }, async () => {
   const user = userEvent.setup();
@@ -254,7 +266,7 @@ test("an ACK-only test is created through Setup, Checks and Review with one Crea
     ValidateDraft: (request) => ({ state: "completed", context: request.context, problems: [] }),
     SaveItem: (request) => saved(request),
   });
-  await user.click(await page().findByRole("button", { name: "New test" }));
+  await user.click(await page().findByRole("button", { name: "New test case" }));
   expect(await page().findByRole("heading", { level: 1, name: "New test" })).toBeTruthy();
   await user.selectOptions(page().getByRole("combobox", { name: "Case" }), CASE.ref.id);
   const name = await page().findByRole("textbox", { name: "Name" });
@@ -266,7 +278,7 @@ test("an ACK-only test is created through Setup, Checks and Review with one Crea
   await user.click(within(pick).getByRole("checkbox", { name: /SIU · S13/ }));
   await user.click(within(pick).getByRole("checkbox", { name: /SIU · S12/ }));
   await user.click(within(pick).getByRole("button", { name: "Apply" }));
-  await user.selectOptions(page().getByRole("combobox", { name: "Environment" }), QA.ref.id);
+  await user.selectOptions(page().getByRole("combobox", { name: /^(Target|Environment)$/ }), QA.ref.id);
   await user.click(page().getByRole("radio", { name: "Acknowledgements" }));
   // Only this step's inputs are drawn.
   expect(page().queryByLabelText("Expected count")).toBeNull();
@@ -282,7 +294,7 @@ test("an ACK-only test is created through Setup, Checks and Review with one Crea
   await user.type(within(sheet).getByLabelText("Expected value"), "AA");
   await user.click(within(sheet).getByRole("button", { name: "Apply" }));
   const checks = await page().findByRole("table", { name: "Checks" });
-  expect(rowsOf(checks)[0]!.slice(0, 2)).toEqual(["ACK MSA-1 · SIU · S13", "AA"]);
+  expect(checkRowsOf(checks)[0]!.slice(0, 2)).toEqual(["ACK MSA-1 · SIU · S13", "AA"]);
 
   await user.click(page().getByRole("button", { name: "Review" }));
   const setup = await page().findByLabelText("Setup", { selector: "dl" });
@@ -306,7 +318,7 @@ test("an ACK-only test is created through Setup, Checks and Review with one Crea
 test("an ACK field check offers Present, Empty, Null and Not present, and a value only for Present", async () => {
   const user = userEvent.setup();
   await openTests(user, [], { OpenItemDraft: (request) => newDraftAnswer(request, { boundary: "ack-contract" }) });
-  await user.click(await page().findByRole("button", { name: "New test" }));
+  await user.click(await page().findByRole("button", { name: "New test case" }));
   await user.selectOptions(await page().findByRole("combobox", { name: "Case" }), CASE.ref.id);
   await user.click((await page().findAllByRole("button", { name: "Change" }))[1]!);
   await user.click(within(await screen.findByRole("dialog", { name: "Messages" })).getByRole("checkbox", { name: /SIU · S12/ }));
@@ -320,7 +332,7 @@ test("an ACK field check offers Present, Empty, Null and Not present, and a valu
   await user.click(within(sheet).getByRole("radio", { name: "Null" }));
   expect(within(sheet).queryByLabelText("Expected value")).toBeNull();
   await user.click(within(sheet).getByRole("button", { name: "Apply" }));
-  expect(rowsOf(await page().findByRole("table", { name: "Checks" }))[0]![1]).toBe("Null");
+  expect(checkRowsOf(await page().findByRole("table", { name: "Checks" }))[0]![1]).toBe("Null");
 });
 
 test("a downstream-record test needs an observation and a record check, and saves once", { timeout: 15_000 }, async () => {
@@ -330,13 +342,13 @@ test("a downstream-record test needs an observation and a record check, and save
     ValidateDraft: (request) => ({ state: "completed", context: request.context, problems: [] }),
     SaveItem: (request) => saved(request),
   });
-  await user.click(await page().findByRole("button", { name: "New test" }));
+  await user.click(await page().findByRole("button", { name: "New test case" }));
   await user.selectOptions(await page().findByRole("combobox", { name: "Case" }), CASE.ref.id);
   await page().findByRole("textbox", { name: "Name" });
   await user.click(page().getAllByRole("button", { name: "Change" })[1]!);
   await user.click(within(await screen.findByRole("dialog", { name: "Messages" })).getByRole("checkbox", { name: /SIU · S12/ }));
   await user.click(within(screen.getByRole("dialog", { name: "Messages" })).getByRole("button", { name: "Apply" }));
-  await user.selectOptions(page().getByRole("combobox", { name: "Environment" }), QA.ref.id);
+  await user.selectOptions(page().getByRole("combobox", { name: /^(Target|Environment)$/ }), QA.ref.id);
   await user.click(page().getByRole("radio", { name: "Appointment records" }));
   const observation = await page().findByRole("combobox", { name: "Observation" });
   // A named observation a test run cannot read is listed with its reason, and cannot be chosen.
@@ -350,7 +362,7 @@ test("a downstream-record test needs an observation and a record check, and save
   await user.type(within(sheet).getByLabelText("Expected count"), "0");
   await user.click(within(sheet).getByRole("button", { name: "Apply" }));
   // Explicit zero is kept as zero.
-  expect(rowsOf(await page().findByRole("table", { name: "Checks" }))[0]!.slice(0, 2)).toEqual(["Record count", "0"]);
+  expect(checkRowsOf(await page().findByRole("table", { name: "Checks" }))[0]!.slice(0, 2)).toEqual(["Record count", "0"]);
   await user.click(page().getByRole("button", { name: "Review" }));
   await page().findByLabelText("Setup", { selector: "dl" });
   await user.click(page().getByRole("button", { name: "Create test" }));
@@ -373,8 +385,8 @@ test("choosing Acknowledgements shows the record checks it affects before removi
   expect(page().getByRole("radio", { name: "Appointment records" })).toHaveProperty("checked", true);
   await user.click(page().getByRole("radio", { name: "Acknowledgements" }));
   await user.click(within(await screen.findByRole("dialog", { name: "Change the outcome?" })).getByRole("button", { name: "Remove checks" }));
-  await user.click(page().getByRole("tab", { name: "Checks" }));
-  expect(rowsOf(await page().findByRole("table", { name: "Checks" })).map((row) => row[0])).toEqual(["ACK MSA-1 · SIU · S13"]);
+  await user.click(page().getByRole("tab", { name: "Expectations" }));
+  expect(checkRowsOf(await page().findByRole("table", { name: "Checks" })).map((row) => row[0])).toEqual(["ACK MSA-1 · SIU · S13"]);
 });
 
 test("a refused or stale save keeps the whole draft and its problems, and a repeated click publishes once", { timeout: 15_000 }, async () => {
@@ -388,7 +400,7 @@ test("a refused or stale save keeps the whole draft and its problems, and a repe
         ? { state: "completed", context: request.context, outcome: "invalid", replayed: false, problems: [{ field: "test.environment", problem: "Choose a saved environment." }] }
         : saved(request),
   });
-  await user.click(await page().findByRole("button", { name: "New test" }));
+  await user.click(await page().findByRole("button", { name: "New test case" }));
   await user.selectOptions(await page().findByRole("combobox", { name: "Case" }), CASE.ref.id);
   await page().findByRole("textbox", { name: "Name" });
   await user.click(page().getAllByRole("button", { name: "Change" })[1]!);
@@ -406,7 +418,7 @@ test("a refused or stale save keeps the whole draft and its problems, and a repe
   const refused = facade.oneCall("SaveItem")[0] as SaveItemRequest;
 
   answer = "saved";
-  await user.selectOptions(page().getByRole("combobox", { name: "Environment" }), QA.ref.id);
+  await user.selectOptions(page().getByRole("combobox", { name: /^(Target|Environment)$/ }), QA.ref.id);
   await user.click(page().getByRole("button", { name: "Next" }));
   await user.click(page().getByRole("button", { name: "Review" }));
   const create = await page().findByRole("button", { name: "Create test" });
@@ -454,7 +466,7 @@ test("Suggest checks previews proposals undecided and Apply selected adds only a
     },
     { run: [run] },
   );
-  await user.click(await page().findByRole("button", { name: "New test" }));
+  await user.click(await page().findByRole("button", { name: "New test case" }));
   await user.selectOptions(await page().findByRole("combobox", { name: "Case" }), CASE.ref.id);
   await page().findByRole("textbox", { name: "Name" });
   await user.click(page().getAllByRole("button", { name: "Change" })[1]!);
@@ -479,7 +491,7 @@ test("Suggest checks previews proposals undecided and Apply selected adds only a
     { suggestion: "s1", approved: true },
     { suggestion: "s2", approved: false },
   ]);
-  expect(rowsOf(await page().findByRole("table", { name: "Checks" })).map((row) => row[0])).toEqual(["ACK MSA-1 · SIU · S12"]);
+  expect(checkRowsOf(await page().findByRole("table", { name: "Checks" })).map((row) => row[0])).toEqual(["ACK MSA-1 · SIU · S12"]);
   expect(facade.callsTo("SaveItem")).toHaveLength(0);
 });
 
@@ -498,9 +510,9 @@ test("a saved test opens on Setup with case, messages, environment, outcome, obs
   expect(await within(setup).findByText("Appointments")).toBeTruthy();
   expect(within(setup).queryByText("appointments-2026-01-02.json")).toBeNull();
   expect(within(setup).getByText("Empty appointments")).toBeTruthy();
-  expect(page().getByRole("tab", { name: "Setup", selected: true })).toBeTruthy();
+  expect(page().getByRole("tab", { name: "Inputs", selected: true })).toBeTruthy();
   expect(page().queryAllByRole("textbox")).toHaveLength(0);
-  await user.click(page().getByRole("tab", { name: "Checks" }));
+  await user.click(page().getByRole("tab", { name: "Expectations" }));
   const checks = page().getByRole("list", { name: "Checks" });
   expect(within(checks).getByText("Record count")).toBeTruthy();
   expect(within(checks).getByText("AA")).toBeTruthy();
@@ -530,7 +542,7 @@ test("Edit saves once and a stale version is refused without overwriting", { tim
   outcome = "saved";
   await user.click(page().getByRole("button", { name: "Save" }));
   await waitFor(() => expect(facade.callsTo("SaveItem")).toHaveLength(2));
-  expect(await page().findByRole("tab", { name: "Setup", selected: true })).toBeTruthy();
+  expect(await page().findByRole("tab", { name: "Inputs", selected: true })).toBeTruthy();
 });
 
 test("Run on an edited test offers Save changes or Keep editing and opens run review without sending", async () => {
@@ -568,7 +580,7 @@ test("History lists versions and their runs, or No runs yet with Run", async () 
   };
   const { facade } = await openTests(user, [RESCHEDULE], { OpenItemDraft: (request) => savedAnswer(request), TestHistory: (request) => ({ ...history, context: request.context }) });
   await user.dblClick(await page().findByText("Reschedule keeps one appointment"));
-  await user.click(await page().findByRole("tab", { name: "History" }));
+  await user.click(page().getByRole("button",{name:"More test actions"}));await user.click(screen.getByRole("menuitem",{name:"Versions"}));
   const versions = await page().findByRole("table", { name: "Versions" });
   await waitFor(() => expect(rowsOf(versions)).toHaveLength(2));
   expect(rowsOf(versions)[0]!.slice(0, 1).concat(rowsOf(versions)[0]!.slice(2))).toEqual(["v2", "Avery QA", "Checks, Reset"]);
@@ -577,7 +589,7 @@ test("History lists versions and their runs, or No runs yet with Run", async () 
   facade.reply({ TestHistory: (request) => ({ ...history, context: request.context, runs: [] }) });
   await goTo(user, "Projects");
   await goTo(user, "Tests");
-  await user.click(await page().findByRole("tab", { name: "History" }));
+  await user.click(page().getByRole("button",{name:"More test actions"}));await user.click(screen.getByRole("menuitem",{name:"Versions"}));
   expect(await page().findByText("No runs yet")).toBeTruthy();
 });
 
@@ -659,7 +671,7 @@ test("Remove check can be undone, and a saved check opens its full details read-
   const user = userEvent.setup();
   await openTests(user, [RESCHEDULE], { OpenItemDraft: (request) => savedAnswer(request), TestHistory: (request) => ({ state: "completed", context: request.context, versions: [], runs: [] }) });
   await user.dblClick(await page().findByText("Reschedule keeps one appointment"));
-  await user.click(await page().findByRole("tab", { name: "Checks" }));
+  await user.click(await page().findByRole("tab", { name: "Expectations" }));
   await user.click(await page().findByRole("button", { name: /^ACK MSA-1/ }));
   const details = await screen.findByRole("dialog", { name: "ACK MSA-1 · SIU · S13" });
   expect(within(details).getByText("Present")).toBeTruthy();
@@ -668,13 +680,13 @@ test("Remove check can be undone, and a saved check opens its full details read-
   await user.click(within(details).getByRole("button", { name: "Close" }));
 
   await user.click(page().getByRole("button", { name: "Edit" }));
-  await user.click(await page().findByRole("tab", { name: "Checks" }));
+  await user.click(await page().findByRole("tab", { name: "Expectations" }));
   const table = await page().findByRole("table", { name: "Checks" });
   await user.click(within(table).getByRole("button", { name: "More actions for Record count" }));
   await user.click(await screen.findByRole("menuitem", { name: "Remove check" }));
-  await waitFor(() => expect(rowsOf(page().getByRole("table", { name: "Checks" })).map((row) => row[0])).toEqual(["ACK MSA-1 · SIU · S13"]));
+  await waitFor(() => expect(checkRowsOf(page().getByRole("table", { name: "Checks" })).map((row) => row[0])).toEqual(["ACK MSA-1 · SIU · S13"]));
   await user.click(page().getByRole("button", { name: "Undo" }));
-  await waitFor(() => expect(rowsOf(page().getByRole("table", { name: "Checks" })).map((row) => row[0])).toEqual(["Record count", "ACK MSA-1 · SIU · S13"]));
+  await waitFor(() => expect(checkRowsOf(page().getByRole("table", { name: "Checks" })).map((row) => row[0])).toEqual(["Record count", "ACK MSA-1 · SIU · S13"]));
 });
 
 test("Run from the command palette opens the saved test's run review and sends nothing", async () => {
@@ -734,7 +746,7 @@ test("a run of a test that links check groups shows each group decided against t
     }),
   });
   await user.dblClick(await page().findByText("Reschedule keeps one appointment"));
-  await user.click(await page().findByRole("tab", { name: "History" }));
+  await user.click(page().getByRole("button",{name:"More test actions"}));await user.click(screen.getByRole("menuitem",{name:"Versions"}));
   const runs = await page().findByRole("table", { name: "Runs" });
   await waitFor(() => expect(rowsOf(runs)).toHaveLength(1));
   await user.click(runs.querySelector('tr[data-row-id="run-1"]')!);
@@ -792,7 +804,7 @@ test("a failed editor read ends Reading and Retry opens the saved draft without 
   expect(page().queryByText("Reading…")).toBeNull();
   facade.reply({ OpenItemDraft: request => savedAnswer(request) });
   await user.click(page().getByRole("button", { name: "Retry" }));
-  await page().findByRole("tab", { name: "Checks" });
+  await page().findByRole("tab", { name: "Expectations" });
   expect(facade.callsTo("SaveItem")).toHaveLength(0);
 });
 
@@ -815,6 +827,149 @@ test("returning to a dirty saved-test edit preserves its values and refreshes ne
     : catalog([RESCHEDULE])(query, facade) });
   await goTo(user, "Tests");
   expect(await page().findByRole("textbox", { name: "Name" })).toHaveProperty("value", "Kept draft");
-  await within(page().getByRole("combobox", { name: "Environment" })).findByRole("option", { name: "New staging" });
+  await within(page().getByRole("combobox", { name: /^(Target|Environment)$/ })).findByRole("option", { name: "New staging" });
   expect(facade.callsTo("SaveItem")).toHaveLength(0);
+});
+
+test("target setup returns to the unfinished test with its chosen messages and scroll", async () => {
+  const user = userEvent.setup();
+  await openTests(user, [], {
+    OpenCase: () => caseResult(),
+    OpenItemDraft: (request) => request.ref.kind === "environment"
+      ? { state: "completed", context: request.context, new: true, draft: { name: "" } }
+      : newDraftAnswer(request),
+    ListCredentials: (request) => ({ state: "empty", context: request.context, credentials: [], referring: [] }),
+  });
+  await user.click(await page().findByRole("button", { name: "New test case" }));
+  await user.selectOptions(page().getByRole("combobox", { name: "Case" }), CASE.ref.id);
+  const name = await page().findByRole("textbox", { name: "Name" });
+  await user.clear(name);
+  await user.type(name, "Keep this draft");
+  await user.click(page().getAllByRole("button", { name: "Change" })[1]!);
+  const messages = within(await screen.findByRole("dialog", { name: "Messages" }));
+  await user.click(messages.getByRole("checkbox", { name: /SIU · S12/ }));
+  await user.click(messages.getByRole("button", { name: "Apply" }));
+  const body = document.querySelector<HTMLElement>('.page[data-page="new-test"] .page-body')!;
+  body.scrollTop = 440;
+  await user.click(page().getByRole("button", { name: "Add environment" }));
+  const setup = within(await screen.findByRole("dialog", { name: "Add environment" }));
+  await user.click(setup.getByRole("button", { name: "Cancel" }));
+  const returnedName = await page().findByRole("textbox", { name: "Name" });
+  expect(returnedName).toHaveProperty("value", "Keep this draft");
+  expect(page().getByText("SIU · S13")).toBeTruthy();
+  expect(document.querySelector<HTMLElement>('.page[data-page="new-test"] .page-body')?.scrollTop).toBe(440);
+});
+
+
+test("Test cases discovers named incomplete drafts without execution setup and resumes their ordered inputs",async()=>{
+ const user=userEvent.setup();
+ const held=editorDraft("draft-order","test-draft",{schema:"readmit-desktop-test-editor/v1",mode:"new",step:"setup",case:CASE.ref,draft:{name:"Unconfigured ordered draft",test:draft({name:"Unconfigured ordered draft",messages:[NEXT_OCCURRENCE,GRID_OCCURRENCE]}),test_links:{}}},{case:"",identity:"",content_schema:"readmit-desktop-test-editor/v1"});
+ const {facade}=await openTests(user,[],{EditorDrafts:()=>({state:"completed",drafts:[held]}),OpenItemDraft:request=>newDraftAnswer(request)});
+ await user.click(page().getByRole("button",{name:/^Drafts/}));
+ const drafts=within(await page().findByRole("table",{name:"Test drafts"}));
+ expect(drafts.getByText("Unconfigured ordered draft")).toBeTruthy();
+ expect(drafts.getByText("Draft")).toBeTruthy();
+ await user.click(drafts.getByRole("button",{name:"Resume Unconfigured ordered draft"}));
+ expect(await page().findByDisplayValue("Unconfigured ordered draft")).toBeTruthy();
+ const original=facade.callsTo("OpenItemDraft").at(-1)?.args[0];
+ expect(original).toMatchObject({from:{messages:[NEXT_OCCURRENCE,GRID_OCCURRENCE]}});
+ expect(page().getByRole("button",{name:"Save draft"})).toBeTruthy();
+ expect(facade.callsTo("SaveItem")).toHaveLength(0);
+});
+
+test("ordered input steps can move without changing authored message expectations",async()=>{
+ const user=userEvent.setup();
+ const {facade}=await openTests(user,[],{OpenItemDraft:request=>newDraftAnswer(request,{expectations:[{id:"kept",operator:"ack_field_equals",message:NEXT_OCCURRENCE,selector:"MSA-1",field:{state:"present",text:"AA"}}]}),SaveEditorDraft:draft=>({state:"completed",drafts:[{...draft,id:"retained-ordered"}]})});
+ await user.click(page().getByRole("button",{name:"New test case"}));
+ await user.selectOptions(page().getByRole("combobox",{name:"Case"}),CASE.ref.id);
+ await user.type(await page().findByRole("textbox",{name:"Name"}),"Reordered draft");
+ const sourceSteps=within(page().getByRole("list",{name:"Authored input steps"}));
+ await user.click(sourceSteps.getAllByRole("button")[0]!);
+ await user.click(page().getByRole("button",{name:"Move input 1 down"}));
+ await user.click(page().getByRole("button",{name:"Save draft"}));
+ await user.click(page().getByRole("button",{name:/^Drafts/}));
+ await page().findByRole("table",{name:"Test drafts"});
+ expect(facade.callsTo("SaveEditorDraft").at(-1)?.args[0]).toMatchObject({content:{draft:{test:{messages:[NEXT_OCCURRENCE,GRID_OCCURRENCE],expectations:[{id:"kept",message:NEXT_OCCURRENCE,field:{text:"AA"}}]}}}});
+});
+
+test("resuming a missing-source draft keeps authored inputs and exact unsupported document content",async()=>{
+ const user=userEvent.setup();
+ const document='{ "schema": "readmit-test/v1", "extension": "owned unsupported clause" }';
+ const held=editorDraft("draft-unavailable","test-draft",{schema:"readmit-desktop-test-editor/v1",mode:"new",step:"setup",case:CASE.ref,draft:{name:"Unavailable source draft",test:draft({name:"Unavailable source draft",messages:[NEXT_OCCURRENCE,GRID_OCCURRENCE]}),test_document:document,test_links:{}}},{case:"",identity:"",content_schema:"readmit-desktop-test-editor/v1"});
+ const {facade}=await openTests(user,[],{EditorDrafts:()=>({state:"completed",drafts:[held]}),OpenItemDraft:request=>({state:"failed",reason:"The original source is unavailable.",context:request.context,new:true}),SaveEditorDraft:draft=>({state:"completed",drafts:[{...draft,id:held.id}]})});
+ await user.click(page().getByRole("button",{name:/^Drafts/}));
+ await user.click(await page().findByRole("button",{name:"Resume Unavailable source draft"}));
+ expect(await page().findByRole("textbox",{name:"Name"})).toHaveProperty("value","Unavailable source draft");
+ expect(page().getByText("The original source is unavailable.")).toBeTruthy();
+ await user.click(page().getByRole("button",{name:"Save draft"}));
+ await user.click(page().getByRole("button",{name:/^Drafts/}));
+ await page().findByRole("table",{name:"Test drafts"});
+ expect(facade.callsTo("SaveEditorDraft").at(-1)?.args[0]).toMatchObject({id:held.id,content:{draft:{test_document:document,test:{messages:[NEXT_OCCURRENCE,GRID_OCCURRENCE]}}}});
+ expect(facade.callsTo("SaveItem")).toHaveLength(0);
+});
+
+test("a selected saved test exposes Inputs, Expectations, Runs, Before/after and Exports while its publication history remains reachable",async()=>{
+ const user=userEvent.setup();const {facade}=await openTests(user,[RESCHEDULE],{OpenItemDraft:request=>savedAnswer(request),TestHistory:request=>({state:"completed",context:request.context,versions:[{revision:"2",published_at:"2026-01-03T09:00:00Z",author:"QA",changes:[],current:true}],runs:[]})});
+ await user.dblClick(await page().findByText(RESCHEDULE.name));
+ for(const name of ["Inputs","Expectations","Runs","Before/after","Exports"])expect(await page().findByRole("tab",{name})).toBeTruthy();
+ await user.click(page().getByRole("tab",{name:"Runs"}));await page().findByText("No runs yet");
+ await user.click(page().getByRole("tab",{name:"Before/after"}));await page().findByText("Choose two retained runs of this test to compare.");
+ await user.click(page().getByRole("tab",{name:"Exports"}));await page().findByRole("button",{name:"Export test definition"});
+ await user.click(page().getByRole("button",{name:"More test actions"}));await user.click(screen.getByRole("menuitem",{name:"Versions"}));await page().findByRole("table",{name:"Versions"});
+ expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
+});
+
+test("selected-test retained views exclude copied or other-test records and comparison keeps the explicitly chosen roles",async()=>{
+ const user=userEvent.setup();const run=(id:string,test:CatalogItem,association:string):CatalogItem=>({ref:{kind:"run",id},name:id,created_at:null,updated_at:null,last_opened_at:null,availability:"available",capabilities:[],summary:{run:{kind:"test",test:test.ref,test_association:association,started_at:id==="before-run"?"2026-01-01T12:00:00Z":"2026-01-02T12:00:00Z",completed_at:"2026-01-02T12:01:00Z",uncertain:0,delivery_uncertain:false,active:false,result:"passed",entry:id}}});
+ const owned=run("before-run",RESCHEDULE,"linked"),later=run("after-run",RESCHEDULE,"linked"),copy=run("copied-run",RESCHEDULE,"unlinked"),other=run("other-run",CANCEL,"linked");
+ const report=(id:string,test:CatalogItem):CatalogItem=>({ref:{kind:"report",id},name:id,created_at:null,updated_at:null,last_opened_at:null,availability:"available",capabilities:[],summary:{report:{form:"report",related_case:CASE.ref,status:"reviewed",tests:[test.ref],source_runs:[owned.ref]}}});
+ const {facade}=await openTests(user,[RESCHEDULE,CANCEL],{OpenItemDraft:request=>savedAnswer(request),TestHistory:request=>({state:"completed",context:request.context,versions:[],runs:[{run:copy.ref,revision:"2",started_at:null,outcome:"pass"}]}),CompareRunItems:request=>({state:"failed",context:request.context,reason:"A retained boundary remains unavailable"})},{run:[owned,later,copy,other],report:[report("owned-report",RESCHEDULE),report("other-report",CANCEL)]});
+ await user.dblClick(await page().findByText(RESCHEDULE.name));await user.click(page().getByRole("tab",{name:"Runs"}));const runs=await page().findByRole("table",{name:"Runs"});await waitFor(()=>expect(rowsOf(runs)).toHaveLength(2));expect(runs.querySelector('[data-row-id="copied-run"]')).toBeNull();expect(runs.querySelector('[data-row-id="other-run"]')).toBeNull();
+ await user.click(page().getByRole("tab",{name:"Before/after"}));await user.selectOptions(page().getByLabelText("Before"),later.ref.id);await user.selectOptions(page().getByLabelText("After"),owned.ref.id);await page().findByText("A retained boundary remains unavailable");expect(facade.oneCall("CompareRunItems")[0]).toMatchObject({before:later.ref,after:owned.ref});
+ await user.click(page().getByRole("tab",{name:"Exports"}));const reports=await page().findByRole("table",{name:"Test reports"});await within(reports).findByText("owned-report");expect(within(reports).queryByText("other-report")).toBeNull();
+ expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
+});
+
+test("saved-test lifecycle navigation preserves the exact dirty editor and a refused retention keeps its current view",async()=>{
+ const user=userEvent.setup();let refuse=true;
+ const {facade}=await openTests(user,[RESCHEDULE],{OpenItemDraft:request=>savedAnswer(request),TestHistory:request=>({state:"completed",context:request.context,versions:[],runs:[]}),SaveEditorDraft:value=>refuse ? {state:"failed",reason:"Latest private edits were not retained"}:{state:"completed",drafts:[{...value,id:"retained-edit"}]}});
+ await user.dblClick(await page().findByText(RESCHEDULE.name));await user.click(page().getByRole("button",{name:"Edit"}));const name=await page().findByLabelText("Name");await user.type(name," pending");
+ await user.click(page().getByRole("tab",{name:"Runs"}));await page().findAllByText("Latest private edits were not retained");expect(page().getByLabelText("Name")).toHaveProperty("value",`${RESCHEDULE.name} pending`);
+ refuse=false;await user.click(page().getByRole("button",{name:"Retry draft save"}));await waitFor(()=>expect(page().queryByText("This edit was not retained.")).toBeNull());await user.click(page().getByRole("tab",{name:"Runs"}));await page().findByText("No runs yet");
+ await user.click(page().getByRole("button",{name:"Edit"}));expect(await page().findByLabelText("Name")).toHaveProperty("value",`${RESCHEDULE.name} pending`);expect(facade.callsTo("SaveItem")).toHaveLength(0);
+});
+
+
+test("test-case browse and recent runs show reading until the actual catalogue answers, never a fabricated zero",async()=>{
+ const user=userEvent.setup();let release:()=>void=()=>undefined;
+ const gate=new Promise<void>(resolve=>{release=resolve;});
+ const rendered=await renderApp({SelectWorkspace:()=>folderWithCase()});
+ rendered.facade.reply({ListCatalog:async query=>{if(query.kind==="test"||query.kind==="run"||query.kind==="suite")await gate;return catalog([RESCHEDULE])(query,rendered.facade);}});
+ await goTo(user,"Projects");await user.click(screen.getByRole("button",{name:"Open"}));await goTo(user,"Tests");
+ const browse=within(screen.getByRole("complementary",{name:"Browse test cases"}));
+ expect(browse.getByRole("button",{name:/All test cases/}).textContent).toContain("Reading");
+ expect(page().getByText("Reading retained runs…")).toBeTruthy();
+ expect(page().queryByText("No retained runs")).toBeNull();expect(browse.queryByText("0 saved tests")).toBeNull();
+ release();await page().findByRole("table",{name:"Tests"});
+ expect(await browse.findByText("1 saved test")).toBeTruthy();
+});
+
+test("the saved-test step rail returns from Expectations to the exact input or preparation through Inputs",async()=>{
+ const user=userEvent.setup();
+ const {facade}=await openTests(user,[RESCHEDULE],{OpenItemDraft:request=>savedAnswer(request),TestHistory:request=>({state:"completed",context:request.context,versions:[],runs:[]})});
+ await user.dblClick(await page().findByText(RESCHEDULE.name));
+ await page().findByLabelText("Setup",{selector:"dl"});
+ await user.click(page().getByRole("tab",{name:"Expectations"}));
+ const rail=within(page().getByRole("complementary",{name:"Saved test steps"}));
+ await user.click(rail.getByRole("button",{name:new RegExp(`2 · Send.*${NEXT_OCCURRENCE}`)}));
+ expect(page().getByRole("tab",{name:"Inputs",selected:true})).toBeTruthy();
+ expect(page().getByRole("region",{name:"Original test input"})).toBeTruthy();
+ await user.click(page().getByRole("button",{name:"Open original message"}));
+ await waitFor(()=>expect(facade.callsTo("InspectOccurrence").at(-1)?.args[0]).toMatchObject({occurrence:NEXT_OCCURRENCE,reveal:false}));
+ await user.click(page().getByRole("tab",{name:"Expectations"}));
+ await user.click(rail.getByRole("button",{name:/^Preparation/}));
+ expect(page().getByRole("tab",{name:"Inputs",selected:true})).toBeTruthy();
+ expect(page().getByLabelText("Setup",{selector:"dl"})).toBeTruthy();
+ expect(page().queryByRole("region",{name:"Original test input"})).toBeNull();
+ expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
 });

@@ -1,0 +1,1 @@
+- Tests can open environment setup and return to the same unfinished draft, selected messages and scroll position after saving or cancelling. Returns verify the project and original evidence identity; changed or unavailable evidence keeps the current work and offers a retry. Navigation context holds identities only and is never stored as evidence, approval or credentials.

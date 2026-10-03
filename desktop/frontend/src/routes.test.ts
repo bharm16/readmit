@@ -78,3 +78,22 @@ test("a child destination sits under its sidebar destination", () => {
   expect(sidebarOf("benchmarks")).toBe("tools");
   expect(sidebarOf("environments")).toBe("environments");
 });
+
+test("a contextual target setup returns to its project test, selection and scroll", () => {
+  const editor = initialRoutes({ destination: "edit-test", projectId: "p1", objectId: "test-7", view: "setup" });
+  const origin = { projectId: "p1", destination: "edit-test" as const, objectId: "test-7", view: "setup", returnContext: { selection: "message-2", scrollTop: 440 }, evidence: { entry: "case-7", identity: "sealed-a" } };
+  const setup = routeReducer(editor, { type: "go", to: { destination: "environments", view: "add", origin } });
+  const returned = routeReducer(setup, { type: "return", evidence: { entry: "case-7", identity: "sealed-a" } });
+  expect(returned.current).toEqual({ destination: "edit-test", projectId: "p1", objectId: "test-7", view: "setup", returnContext: { selection: "message-2", scrollTop: 440 } });
+});
+
+test("foreign project origins and changed or unread evidence refuse return without losing work", () => {
+  const editor = initialRoutes({ destination: "new-test", projectId: "p1" });
+  const origin = { projectId: "p1", destination: "new-test" as const, returnContext: { selection: "message-2" }, evidence: { entry: "case-7", identity: "sealed-a" } };
+  expect(routeReducer(editor, { type: "go", to: { destination: "environments", origin: { ...origin, projectId: "p2" } } })).toBe(editor);
+  const setup = routeReducer(editor, { type: "go", to: { destination: "environments", view: "add", origin } });
+  expect(routeReducer(setup, { type: "return", evidence: { entry: "case-7", identity: "sealed-b" } })).toBe(setup);
+  expect(routeReducer(setup, { type: "return" })).toBe(setup);
+  const otherProject = routeReducer(setup, { type: "project", projectId: "p2", to: { destination: "cases" } });
+  expect(routeReducer(otherProject, { type: "return", evidence: origin.evidence })).toBe(otherProject);
+});

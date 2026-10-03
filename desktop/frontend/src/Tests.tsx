@@ -1,7 +1,11 @@
+import "./workflow.css";
+import {SavedTestWorkflow} from "./SavedTestWorkflow";
+import searchAsset from "./assets/workbench/search.svg";
 // Tests: the project's saved tests as one list; a saved test's Setup, Checks
 // and History; and the one editor every entry reaches — New test, Create test
 // from a case's messages, a confirmed finding, an import or a duplicate. Run
 // hands the saved version to the run review; nothing here sends.
+import {SelectedTestBeforeAfter,SelectedTestExports,associatedTestRuns,type SelectedTestRun} from "./SelectedTestLifecycle";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   exportTestItem,
@@ -26,9 +30,10 @@ import {
   type TestOrigin,
   type TestRunnerStatus,
   type TestSummary,
+  type TestMessage,
 } from "./bindings";
 import { DataTable, type Column, type SortState } from "./DataTable";
-import { DisplayTerm, TEST_BOUNDARIES, TEST_CHANGES, TEST_RESULTS, term } from "./display";
+import { DisplayTerm, TEST_BOUNDARIES, TEST_CHANGES, TEST_RESULTS,RUN_RESULTS, term } from "./display";
 import { fileName } from "./Environments";
 import { IconButton } from "./IconButton";
 import { BackLink, EmptyState, FormDialog, Menu, Modal, ValueRows, type MenuItem, type SubmitFailure } from "./layout";
@@ -39,16 +44,20 @@ import { CONNECTED_BOUNDARIES, ConnectedCheckDetails, ConnectedCheckList, Connec
 import "./tests.css";
 
 /** Where Tests is: its list, one saved test, a new test or an edit. */
+export type TestWorkspaceView="setup"|"checks"|"history"|"runs"|"compare"|"exports";
+export function isTestWorkspaceView(view:string|undefined):view is TestWorkspaceView {return ["setup","checks","history","runs","compare","exports"].includes(view??"");}
 export type TestsPlace =
   | { kind: "list" }
-  | { kind: "test"; id: string; view: "setup" | "checks" | "history" }
+  | { kind: "test"; id: string; view: TestWorkspaceView }
   | { kind: "new" }
   | { kind: "edit"; id: string };
 
 export const TEST_VIEWS = [
-  { key: "setup", label: "Setup" },
-  { key: "checks", label: "Checks" },
-  { key: "history", label: "History" },
+  { key: "setup", label: "Inputs" },
+  { key: "checks", label: "Expectations" },
+  { key: "runs", label: "Runs" },
+  { key: "compare", label: "Before/after" },
+  { key: "exports", label: "Exports" },
 ] as const;
 
 function summaryOf(item: CatalogItem): Partial<TestSummary> {
@@ -96,13 +105,14 @@ function workOf(answer: ItemDraftResult): TestWork | null {
   const test = answer.draft?.test;
   const connected = answer.draft?.connected_test;
   if (connected) return { name: answer.draft?.name ?? "", test: test ?? emptyTestDraft(answer.draft?.name ?? ""), links: answer.draft?.test_links ?? {}, connected };
-  if (!test) return null;
-  return { name: answer.draft?.name ?? test.name, test, links: answer.draft?.test_links ?? {} };
+  if (!test) return answer.test?.document ? {name:answer.draft?.name??"Imported test draft",test:emptyTestDraft(answer.draft?.name??"Imported test draft"),links:answer.draft?.test_links??{},document:answer.test.document}:null;
+  return { name: answer.draft?.name ?? test.name, test, links: answer.draft?.test_links ?? {}, ...(answer.test?.read_only && answer.test.document ? {document:answer.test.document}: {}) };
 }
 
 function startOf(mode: "new" | "edit", answer: ItemDraftResult): EditorStart {
   return {
     mode,
+    project:answer.context.project,
     work: workOf(answer),
     context: answer.test ?? null,
     ...(mode === "edit" && answer.ref ? { ref: answer.ref } : {}),
@@ -111,7 +121,17 @@ function startOf(mode: "new" | "edit", answer: ItemDraftResult): EditorStart {
 }
 
 export type TestsProps = {
+  onOpenRun?: (run:ItemRef)=>void;
+  onOpenSuite?: ((suite:ItemRef)=>void)|undefined;
+  onOpenCapture?: ((capture:ItemRef)=>void)|undefined;
+  onOpenReport?: (report:ItemRef)=>void;
+  onCreateReport?: (run:ItemRef,comparison?:ItemRef)=>void;
+  onOpenExchange?: ((origin: import("./bindings").ExchangeTestProvenance) => void) | undefined;
+  onTargetSetup?: ((evidence: import("./routes").NavigationEvidence, selection?: string) => void) | undefined;
   root: string | null;
+ projectId?:string;
+ retainedDrafts?: EditorDraft[];
+ onResumeDraft?: ((draft:EditorDraft)=>void)|undefined;
   /** Whether a Tests page is the one shown now. */
   shown: boolean;
   place: TestsPlace;
@@ -136,12 +156,17 @@ export type TestsProps = {
 };
 
 /** Tests supplies its pages' titles, ways back, actions and bodies. */
-export function useTests({ root, shown: pageShown, place, go, back, busy, onRun, onLibrary, addCheckGroup = null, onCheckGroupAdded, restoreDraft = null, onRestored, seedTest = null, onSeeded, inspectedField }: TestsProps) {
+export function useTests({ root, projectId="", retainedDrafts=[],onResumeDraft, shown: pageShown, place, go, back, busy, onRun, onLibrary, addCheckGroup = null, onCheckGroupAdded, restoreDraft = null, onRestored, seedTest = null, onSeeded, inspectedField, onTargetSetup, onOpenExchange,onOpenRun=()=>undefined,onOpenSuite,onOpenCapture,onOpenReport=()=>undefined,onCreateReport=()=>undefined }: TestsProps) {
   // Tests reads under its own request scope, so its reads never make another
   // list's answer look stale.
   const scope = useRef(new RequestScope());
-  const context = useCallback(() => scope.current.enter(root ?? ""), [root]);
+  const context = useCallback(() => scope.current.enter(root ?? "",projectId), [root,projectId]);
   const [items, setItems] = useState<CatalogItem[] | null>(null);
+const [browse,setBrowse]=useState("all");
+const [recentRuns,setRecentRuns]=useState<CatalogItem[]|null>(null);
+const [runsFailure,setRunsFailure]=useState<string|null>(null);
+const [listedSuites,setListedSuites]=useState<CatalogItem[]|null>(null);
+const [suitesFailure,setSuitesFailure]=useState<string|null>(null);
   const [cases, setCases] = useState<CatalogItem[]>([]);
   const [environments, setEnvironments] = useState<CatalogItem[]>([]);
   const [checkGroups, setCheckGroups] = useState<CatalogItem[]>([]);
@@ -155,19 +180,24 @@ export function useTests({ root, shown: pageShown, place, go, back, busy, onRun,
   const [sheet, setSheet] = useState<null | "search" | "filter">(null);
   const [start, setStart] = useState<EditorStart | null>(null);
   const [opening, setOpening] = useState<string | null>(null);
+  const browseTests=useCallback((category:"all"|"drafts")=>{setBrowse(category);go({kind:"list"});},[go]);
 
   const refreshes = useRef(0);
   const refresh = useCallback(async () => {
     if (!root) return;
     const asked = ++refreshes.current;
     const request = context();
-    const [tests, caseList, environmentList, groupList] = await Promise.all([
+    const [tests, caseList, environmentList, groupList, runs, suites] = await Promise.all([
       listWholeCatalog({ context: request, kind: "test", filter: {} }),
       listWholeCatalog({ context: request, kind: "case", filter: {} }),
       listWholeCatalog({ context: request, kind: "environment", filter: {} }),
       listWholeCatalog({ context: request, kind: "check-group", filter: {} }),
+      listWholeCatalog({context:request,kind:"run",filter:{}}),
+      listWholeCatalog({context:request,kind:"suite",filter:{}}),
     ]);
     if (asked !== refreshes.current) return;
+    if(runs.state==="completed" || runs.state==="empty"){setRecentRuns(runs.page?.items??[]);setRunsFailure(null);}else{setRecentRuns(null);setRunsFailure(runs.reason??"Retained runs are unavailable.");}
+    if(suites.state==="completed" || suites.state==="empty"){setListedSuites(suites.page?.items??[]);setSuitesFailure(null);}else{setListedSuites(null);setSuitesFailure(suites.reason??"Suites are unavailable.");}
     if (groupList.state === "completed" || groupList.state === "empty") setCheckGroups(groupList.page?.items ?? []);
     if (tests.state === "completed" || tests.state === "empty") {
       setItems(tests.page?.items ?? []);
@@ -181,22 +211,26 @@ export function useTests({ root, shown: pageShown, place, go, back, busy, onRun,
   }, [context, root]);
 
   useEffect(() => {
-    setItems(null);
+    setItems(null);setRecentRuns(null);setListedSuites(null);setRunsFailure(null);setSuitesFailure(null);setFailure(null);
     setView(NO_TESTS_VIEW);
     return () => { refreshes.current += 1; };
   }, [refresh]);
+  useEffect(()=>{setStart(null);},[root]);
   // The list is read again each time it is shown, so a test saved elsewhere —
   // a suite, an import, another window — is listed.
   const listShown = pageShown && place.kind === "list";
+  // A restored saved-test route has no preceding collection read. Resolve its
+  // actual catalog identity through this same project-scoped read owner.
+  const savedTestId = pageShown && place.kind === "test" ? place.id : null;
   useEffect(() => {
-    if (listShown) void refresh();
-  }, [listShown, refresh]);
+    if (listShown || savedTestId !== null) void refresh();
+  }, [listShown, savedTestId, refresh]);
   // The editor offers the project's cases, environments and check groups as
   // they are now: one opened straight from a case's messages, without the
   // list shown first, reads them when it is shown.
   const editorShown = pageShown && (place.kind === "new" || place.kind === "edit");
   useEffect(() => {
-    if (editorShown && place.kind === "new") void refresh();
+    if (editorShown && (place.kind === "new" || place.kind === "edit" && start?.mode === "edit" && start.ref?.id === place.id)) void refresh();
   }, [editorShown, place.kind, refresh]);
 
   /** Opens the editor on a new test: from a case's chosen messages, a
@@ -205,7 +239,7 @@ export function useTests({ root, shown: pageShown, place, go, back, busy, onRun,
     async (origin?: TestOrigin) => {
       if (!origin) {
         // A new test left unfinished is still the new test to return to.
-        setStart((held) => (held?.mode === "new" && held.work ? held : { mode: "new", work: null, context: null }));
+        setStart((held) => (held?.mode === "new" && held.work ? held : { mode: "new", project:root??"", work: null, context: null }));
         go({ kind: "new" });
         return;
       }
@@ -271,15 +305,15 @@ export function useTests({ root, shown: pageShown, place, go, back, busy, onRun,
       const answer = editing
         ? await openItemDraft({ context: context(), ref: { kind: "test", id: restoreDraft.item!.ref.id } })
         : await openItemDraft({ context: context(), ref: { kind: "test", id: "" }, ...(content.case ? { from: { case: content.case, messages: content.draft.test?.messages ?? [] } } : {}) });
-      if (answer.state !== "completed") {
-        onRestored?.(answer.reason ?? "The test this draft edits cannot be opened.");
-        return;
-      }
-      const base = startOf(editing ? "edit" : "new", answer);
-      // An edit keeps the version it was based on, so a newer save is refused as a conflict.
-      setStart({ ...base, ...(editing ? { ref: restoreDraft.item!.ref } : {}), baseline: editing ? base.work : null, work: { name: content.draft.name, test: content.draft.test ?? base.work?.test ?? emptyTestDraft(content.draft.name), links: content.draft.test_links, ...(content.draft.connected_test ? { connected: content.draft.connected_test } : {}) }, retained: restoreDraft });
+      const base=startOf(editing ? "edit":"new",answer);
+      const pinned=content.draft.test?.case.identity;
+      const changed=!!pinned && !!answer.draft?.test && answer.draft.test.case.identity!==pinned;
+      const unavailable=answer.state!=="completed";
+      const problem=changed ? "The source evidence changed. Authored inputs and expectations are kept; restore their original source before publishing." : unavailable ? (answer.reason??"The draft's source or saved test is unavailable. Authored work is kept; correct its setup before publishing."):undefined;
+      const reopenedContext=problem && base.context ? {...base.context,messages:[],...(content.draft.test_document ? {document:content.draft.test_document,read_only:true}: {})}:base.context;
+      setStart({...base,context:reopenedContext,...(editing ? {ref:restoreDraft.item!.ref}:{}),baseline:editing ? base.work:null,work:{name:content.draft.name,test:content.draft.test??base.work?.test??emptyTestDraft(content.draft.name),links:content.draft.test_links,...(content.draft.connected_test ? {connected:content.draft.connected_test}:{}),...(content.draft.test_document ? {document:content.draft.test_document}: {})},...(problem ? {notices:[{field:"test.case",problem}]}:{}),retained:restoreDraft});
       go(editing ? { kind: "edit", id: restoreDraft.item!.ref.id } : { kind: "new" });
-      onRestored?.();
+      onRestored?.(problem);
     })();
   }, [restoreDraft]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -298,10 +332,16 @@ export function useTests({ root, shown: pageShown, place, go, back, busy, onRun,
     })();
   }, [seedTest]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const currentEditorShown=useRef(editorShown);currentEditorShown.current=editorShown;
   const editingItem = editId ? (items?.find((item) => item.ref.id === editId) ?? null) : null;
   const editor = useTestEditor({
     // The editor keeps its draft while another page is shown.
     start,
+    onTargetSetup,
+    onOpenExchange,
+    onReadSavedView:view=>{if(start?.ref)go({kind:"test",id:start.ref.id,view});},
+ ownerRoot:root??"",
+    onDraftSaved:()=>{if(currentEditorShown.current)go({kind:"list"});},
     inspectedField,
     context,
     cases,
@@ -336,7 +376,8 @@ export function useTests({ root, shown: pageShown, place, go, back, busy, onRun,
     busy,
     go,
     refresh,
-    onRun,
+    onRun,onOpenRun,onOpenReport,onCreateReport,
+    onOpenCapture,
     onImported: (answer) => {
       setStart(startOf("new", answer));
       go({ kind: "new" });
@@ -354,7 +395,12 @@ export function useTests({ root, shown: pageShown, place, go, back, busy, onRun,
     }
   };
 
-  if (!root) return { title: "Tests", back: null, actions: null, toolbar: null, body: null, startNew, importTest };
+  const listTools: MenuItem[] = [
+    { label: "Search tests", onSelect: () => setSheet("search") },
+    { label: "Filter tests", onSelect: () => setSheet("filter") },
+    { label: "Library", onSelect: onLibrary },
+  ];
+  if (!root) return { browseTests, title: "Test cases", back: null, actions: null, toolbar: null, body: null, startNew, importTest, listTools };
 
   if (place.kind === "new" || place.kind === "edit") {
     return {
@@ -364,11 +410,13 @@ export function useTests({ root, shown: pageShown, place, go, back, busy, onRun,
       toolbar: null,
       body: place.kind === "edit" && !start ? (editFailure ? <div role="alert"><p>{editFailure}</p><button type="button" onClick={() => setEditRetry(value => value + 1)}>Retry</button></div> : <p aria-live="polite">Reading…</p>) : editor.body,
       startNew,
+      browseTests,
       importTest,
+      listTools,
     };
   }
   if (place.kind === "test") {
-    return { ...detail, back: <BackLink label="Tests" onBack={back} />, toolbar: null, startNew, importTest };
+    return { ...detail, back: <BackLink label="Tests" onBack={back} />, toolbar: null, startNew, browseTests, importTest, listTools };
   }
 
   // ---------- The list ----------
@@ -390,8 +438,10 @@ export function useTests({ root, shown: pageShown, place, go, back, busy, onRun,
         </span>
       ),
     },
-    { key: "case", header: "Case", priority: 2, minWidth: 11.25, flex: true, render: (item) => caseName(summaryOf(item).source_case) },
-    { key: "result", header: "Result", priority: 1, minWidth: 7.5, render: (item) => resultLabel(summaryOf(item).latest_result) },
+    {key:"target",header:"Target",priority:1,minWidth:11,flex:true,render:item=>{const latest=recentRuns?.find(run=>run.ref.id===summaryOf(item).latest_run?.id);return <span title="Target recorded by the latest compatible retained execution">{latest?.summary.run?.environment_name||latest?.summary.run?.target||"Not recorded"}</span>;}},
+    { key: "case", header: "Case", priority: 4, minWidth: 11.25, flex: true, render: (item) => caseName(summaryOf(item).source_case) },
+    { key: "result", header: "Latest result", priority: 1, minWidth: 7.5, render: (item) => resultLabel(summaryOf(item).latest_result) },
+    {key:"open",header:"",priority:1,minWidth:6,render:item=><button type="button" className="quiet" onClick={event=>{event.stopPropagation();go({kind:"test",id:item.ref.id,view:"setup"});}}>Open</button>},
     { key: "updated", header: "Updated", priority: 4, minWidth: 8, sortable: true, render: (item) => listDate(item.updated_at) },
   ];
 
@@ -412,8 +462,8 @@ export function useTests({ root, shown: pageShown, place, go, back, busy, onRun,
       <EmptyState
         title="No tests yet"
         action={
-          <button type="button" className="primary" disabled={busy} onClick={() => void startNew()}>
-            New test
+          <button type="button" className="primary workflow-new-test-case" disabled={busy} onClick={() => void startNew()}>
+            New test case
           </button>
         }
       />
@@ -448,6 +498,10 @@ export function useTests({ root, shown: pageShown, place, go, back, busy, onRun,
     );
   }
 
+  const namedDrafts=retainedDrafts.filter(draft=>draft.workspace===root && draft.kind==="test-draft" && (draft.content_schema==="readmit-desktop-test-editor/v1" || draft.content_schema==="readmit-desktop-test-editor/v2" || draft.content_schema==="readmit-desktop-test-editor/v3"));
+ const draftName=(draft:EditorDraft)=>(draft.content as TestEditorContent).draft.name.trim()||"Untitled draft";
+ const draftColumns:Column<EditorDraft>[]=[{key:"name",header:"Test case",priority:1,minWidth:16,flex:true,render:draft=>draftName(draft)},{key:"state",header:"State",priority:1,minWidth:6,render:()=>"Draft"},{key:"setup",header:"Setup",priority:2,minWidth:14,render:()=>"Complete configuration before publishing"},{key:"resume",header:"",priority:1,minWidth:6,render:draft=><button type="button" disabled={busy} aria-label={`Resume ${draftName(draft)}`} onClick={()=>onResumeDraft?.(draft)}>Resume</button>}];
+
   const tags = [...new Set(all.flatMap((item) => summaryOf(item).tags ?? []))].sort();
   const listedCases = cases.filter((item) => all.some((test) => summaryOf(test).source_case?.id === item.ref.id));
   const chips: { label: string; remove: () => void }[] = [];
@@ -457,25 +511,19 @@ export function useTests({ root, shown: pageShown, place, go, back, busy, onRun,
   for (const tag of view.tags) chips.push({ label: tag, remove: () => setView({ ...view, tags: view.tags.filter((t) => t !== tag) }) });
 
   return {
-    title: "Tests",
+    browseTests,
+    title: "Test cases",
     back: null,
     actions:
       items && items.length > 0 ? (
-        <button type="button" className="primary" disabled={busy} onClick={() => void startNew()}>
-          New test
+        <button type="button" className="primary workflow-new-test-case" disabled={busy} onClick={() => void startNew()}>
+          New test case
         </button>
       ) : null,
-    toolbar: (
-      <div className="toolbar-group">
-        <IconButton icon="search" label="Search tests" onClick={() => setSheet("search")} />
-        <IconButton icon="filter" label="Filter tests" onClick={() => setSheet("filter")} />
-        <button type="button" className="quiet" onClick={onLibrary}>
-          Library
-        </button>
-      </div>
-    ),
+    toolbar: null,
+    listTools,
     body: (
-      <>
+      <div className="workflow-page workflow-workspace workflow-library"><aside className="workflow-rail" aria-label="Browse test cases"><h2>Browse</h2><button className="workflow-step" type="button" aria-current={browse==="all"?"page":undefined} onClick={()=>setBrowse("all")}><strong>All test cases</strong><span>{failure?"Unavailable":items===null?"Reading…":`${all.length} saved ${all.length===1?"test":"tests"}`}</span></button><button className="workflow-step" type="button" aria-current={browse==="drafts"?"page":undefined} onClick={()=>setBrowse("drafts")}><strong>Drafts</strong><span>Resume unfinished work</span></button>{suitesFailure?<p role="status">{suitesFailure}</p>:listedSuites===null?<p aria-live="polite">Reading suites…</p>:null}{listedSuites?.map(suite=><button key={suite.ref.id} type="button" className="workflow-step" disabled={!onOpenSuite || suite.availability!=="available"} onClick={()=>onOpenSuite?.(suite.ref)}><strong>{suite.name||suite.summary.suite?.entry||suite.ref.id}</strong><span>{suite.summary.suite?.tests??""} test cases</span></button>)}</aside><div className="workflow-content"><label className="workflow-search"><span className="workflow-search-icon"><img src={searchAsset} alt=""/></span><input type="search" aria-label="Search test cases" placeholder="Search test cases…" value={view.query} onChange={event=>setView({...view,query:event.target.value})}/></label>
         {incomplete.map((save) => (
           <div key={save.operation} className="notice danger" role="alert">
             <span>
@@ -511,7 +559,10 @@ export function useTests({ root, shown: pageShown, place, go, back, busy, onRun,
             </button>
           </div>
         ) : null}
-        {body}
+        {namedDrafts.length && browse==="drafts" ? <section aria-label="Drafts"><h2>Drafts</h2><DataTable label="Test drafts" className="page-table" rows={namedDrafts} rowId={draft=>draft.id} rowLabel={draftName} columns={draftColumns} selected={null} onSelect={()=>undefined} onOpen={id=>{const draft=namedDrafts.find(value=>value.id===id);if(draft)onResumeDraft?.(draft);}} /></section> : null}
+        {browse==="all" ? body : namedDrafts.length===0 ? <p>No retained test drafts</p>:null}
+        {browse==="all" ? <section className="workflow-recent-runs" aria-label="Recent runs"><h3>Recent runs</h3>{runsFailure?<p role="status">{runsFailure}</p>:recentRuns===null?<p aria-live="polite">Reading retained runs…</p>:recentRuns.length?<DataTable label="Recent runs" rows={[...recentRuns].sort((a,b)=>(b.summary.run?.started_at??"").localeCompare(a.summary.run?.started_at??"")).slice(0,8)} rowId={item=>item.ref.id} rowLabel={item=>item.name||item.summary.run?.entry||item.ref.id} selected={null} onSelect={()=>undefined} onOpen={id=>{const run=recentRuns?.find(row=>row.ref.id===id);if(run)onOpenRun(run.ref);}} columns={[{key:"run",header:"Run",priority:1,minWidth:15,flex:true,render:item=><span className="workflow-link">{item.name||item.summary.run?.entry||item.ref.id}</span>},{key:"result",header:"Result",priority:1,minWidth:8,render:item=>item.summary.run?.result??item.summary.run?.outcome??"Not recorded"},{key:"open",header:"",priority:1,minWidth:6,render:item=><button type="button" className="quiet" onClick={()=>onOpenRun(item.ref)}>Open</button>}]}/>:<p className="workflow-caption">No retained runs</p>}</section>:null}
+        <div className="toolbar-group"><button type="button" disabled={busy} onClick={()=>void importTest()}>Import test</button><button type="button" disabled={!opening||busy} onClick={()=>{const selected=all.find(item=>item.ref.id===opening);if(selected)onRun(selected.ref);}}>Run selected</button></div>
         <SearchSheet open={sheet === "search"} query={view.query} onClose={() => setSheet(null)} onApply={(query) => setView({ ...view, query })} />
         <FilterSheet
           open={sheet === "filter"}
@@ -521,7 +572,7 @@ export function useTests({ root, shown: pageShown, place, go, back, busy, onRun,
           onClose={() => setSheet(null)}
           onApply={setView}
         />
-      </>
+      </div></div>
     ),
     startNew,
     importTest,
@@ -632,11 +683,11 @@ function useTestDetail({
   go,
   refresh,
   onRun,
-  onImported,
+  onImported,onOpenRun,onOpenReport,onCreateReport,onOpenCapture,
 }: {
   item: CatalogItem | null;
   cases: CatalogItem[];
-  view: "setup" | "checks" | "history";
+  view: TestWorkspaceView;
   context: () => import("./bindings").RequestContext;
   environments: CatalogItem[];
   busy: boolean;
@@ -644,13 +695,21 @@ function useTestDetail({
   refresh: () => Promise<void>;
   onRun: (test: ItemRef) => void;
   onImported: (answer: ItemDraftResult) => void;
+  onOpenRun:(run:ItemRef)=>void;
+  onOpenReport:(report:ItemRef)=>void;
+  onCreateReport:(run:ItemRef,comparison?:ItemRef)=>void;
+  onOpenCapture?:((capture:ItemRef)=>void)|undefined;
 }) {
   const [opened, setOpened] = useState<ItemDraftResult | null>(null);
   const [history, setHistory] = useState<TestHistoryResult | null>(null);
+  const [associatedRuns,setAssociatedRuns]=useState<SelectedTestRun[]>([]);
+  const [associatedFailure,setAssociatedFailure]=useState<string|null>(null);
   const [sheet, setSheet] = useState<null | "duplicate" | "json" | "details">(null);
   const [inspectingConnected, setInspectingConnected] = useState<ReturnType<typeof connectedCheckRows>[number] | null>(null);
   const [notice, setNotice] = useState<{ text: string; problem?: boolean } | null>(null);
   const [inspecting, setInspecting] = useState<TestExpectation | null>(null);
+  const [selectedPair,setSelectedPair]=useState<{before:ItemRef;after:ItemRef}|null>(null);
+  const receivePair=useCallback((pair:{before:ItemRef;after:ItemRef}|null)=>setSelectedPair(pair),[]);
   const [chosenRun, setChosenRun] = useState<string | null>(null);
   const [runChecks, setRunChecks] = useState<TestRunChecksResult | null>(null);
   const ref = item?.ref ?? null;
@@ -659,17 +718,18 @@ function useTestDetail({
 
   useEffect(() => {
     setOpened(null);
-    setHistory(null);
+    setHistory(null);setAssociatedRuns([]);setAssociatedFailure(null);
     setNotice(null);
-    setChosenRun(null);
+    setChosenRun(null);setSelectedPair(null);
     setRunChecks(null);
     runRequest.current += 1;
     if (!ref) return;
     let live = true;
-    void Promise.all([openItemDraft({ context: context(), ref: { kind: "test", id: ref.id } }), testHistory({ context: context(), ref: { kind: "test", id: ref.id } })]).then(([draft, versions]) => {
+    void Promise.all([openItemDraft({ context: context(), ref: { kind: "test", id: ref.id } }), testHistory({ context: context(), ref: { kind: "test", id: ref.id } }),listWholeCatalog({context:context(),kind:"run",filter:{}})]).then(([draft, versions,recordedRuns]) => {
       if (!live) return;
       setOpened(draft);
       setHistory(versions);
+      if(recordedRuns.state==="completed" || recordedRuns.state==="empty")setAssociatedRuns(associatedTestRuns(recordedRuns.page?.items??[],ref));else setAssociatedFailure(recordedRuns.reason??"The retained run associations could not be verified.");
     });
     return () => {
       live = false;
@@ -700,23 +760,24 @@ function useTestDetail({
         label="Setup"
         rows={[
           { label: "Outcome", value: CONNECTED_BOUNDARIES[connected.boundary] ?? "—" },
-          { label: "Environment", value: environment?.name ?? (links.environment ? "Removed environment" : "—") },
-          ...(connected.server ? [{ label: "FHIR server", value: environmentOffer(offers, connected.server)?.name ?? "Removed environment" }] : []),
+          { label: environment || links.environment ? "Environment" : "Recorded target", value: environment?.name || test?.target || (links.environment ? "Unavailable target reference" : "Not configured") },
+          ...(connected.server ? [{ label: "FHIR server", value: environmentOffer(offers, connected.server)?.name || connected.server || "Unavailable server reference" }] : []),
           { label: "Reset", value: environmentOffer(offers, links.environment ?? "")?.isolation ?? "—" },
         ]}
       />
       <ConnectedInputs draft={connected} names={names} />
     </>
   ) : null;
+  const legacyInputRows=<DataTable label="Test inputs" rows={(test?.messages??[]).map((id,index)=>({id,index,message:messages.find(message=>message.id===id)}))} rowId={row=>row.id} rowLabel={row=>messageLabel(row.message,row.id)} selected={null} onSelect={()=>undefined} onOpen={()=>undefined} columns={[{key:"order",header:"Order",priority:1,minWidth:4,render:row=>String(row.index+1)},{key:"input",header:"Input",priority:1,minWidth:10,flex:true,render:row=>messageLabel(row.message,row.id)},{key:"source",header:"Source",priority:2,minWidth:10,render:()=>opened?.test?.case_name||test?.case.entry||"Unavailable original source"}]}/>;
   const setup = connectedSetup ?? (
     <ValueRows
       label="Setup"
       rows={[
-        { label: "Case", value: opened?.test?.case_name || "—" },
+        { label: "Case", value: opened?.test?.case_name || test?.case.entry || "Unavailable original source" },
         { label: "Messages", value: (test?.messages ?? []).map((id) => messageLabel(messages.find((m) => m.id === id), id)).join(", ") || "—" },
-        { label: "Environment", value: environment?.name ?? (links.environment ? "Removed environment" : "—") },
+        { label: environment || links.environment ? "Environment" : "Recorded target", value: environment?.name || test?.target || (links.environment ? "Unavailable target reference" : "Not configured") },
         { label: "Outcome", value: test?.boundary ? <DisplayTerm map={TEST_BOUNDARIES} code={test.boundary} /> : "—" },
-        ...(ledger ? [{ label: "Observation", value: observationName(links.observation, opened?.test?.observations ?? []) }] : []),
+        ...(ledger ? [{ label: "Observation", value: (links.observation ? observationName(links.observation, opened?.test?.observations ?? []):test?.observation||"Not configured") }] : []),
         {
           label: "Reset",
           value: links.reset === "environment" ? (environment?.summary.environment?.reset_name ?? "Environment reset") : test?.reset || "—",
@@ -731,7 +792,9 @@ function useTestDetail({
   ) : (
     <CheckRows checks={test?.expectations ?? []} messages={messages} onInspect={setInspecting} />
   );
-  const runs = history?.runs ?? [];
+  const runs=associatedRuns;
+  const compatibilityRuns=history?.runs??[];
+  const decideLegacyChecks=async(id:string)=>{const entry=compatibilityRuns.find(entry=>entry.run.id===id);if(!entry)return;const asked=++runRequest.current;setChosenRun(id);setRunChecks(null);const result=await testRunChecks({context:context(),test:{kind:"test",id:ref.id,...(entry.revision ? {revision:entry.revision}:{})},run:entry.run});if(asked===runRequest.current)setRunChecks(result);};
   // The groups this test links, decided against the chosen run's evidence.
   const decideChecks = async (runId: string) => {
     const entry = runs.find((row) => row.run.id === runId);
@@ -742,8 +805,7 @@ function useTestDetail({
     const answer = await testRunChecks({ context: context(), test: { kind: "test", id: ref.id, ...(entry.revision ? { revision: entry.revision } : {}) }, run: entry.run });
     if (request === runRequest.current) setRunChecks(answer);
   };
-  const historyBody = (
-    <>
+  const versionsBody=(<>
       <h2>Versions</h2>
       <DataTable
         label="Versions"
@@ -762,7 +824,10 @@ function useTestDetail({
           { key: "changes", header: "Changes", priority: 2, minWidth: 12, render: (entry) => entry.changes.map((code) => TEST_CHANGES[code]).join(", ") || "—" },
         ]}
       />
-      <h2>Runs</h2>
+  </>);
+  const runsBody = (
+    <>
+      <h2>Runs</h2>{associatedFailure ? <p role="alert">{associatedFailure}</p>:null}
       {history && runs.length === 0 ? (
         <EmptyState
           title="No runs yet"
@@ -783,12 +848,12 @@ function useTestDetail({
           rowLabel={(entry) => `Run ${listDate(entry.started_at)}`}
           selected={(links.checks ?? []).length > 0 ? chosenRun : null}
           onSelect={(id) => (links.checks ?? []).length > 0 && void decideChecks(id)}
-          onOpen={() => undefined}
+          onOpen={id=>{const row=runs.find(row=>row.run.id===id);if(row)onOpenRun(row.run);}}
           loading={history === null}
           columns={[
             { key: "started", header: "Started", priority: 1, minWidth: 8, render: (entry) => listDate(entry.started_at) },
             { key: "version", header: "Version", priority: 2, minWidth: 6, render: (entry) => (entry.revision ? `v${entry.revision}` : "—") },
-            { key: "result", header: "Result", priority: 1, minWidth: 7.5, render: (entry) => resultLabel(entry.outcome) },
+            { key: "result", header: "Result", priority: 1, minWidth: 7.5, render: (entry) => term(RUN_RESULTS,entry.outcome).text },
           ]}
         />
       )}
@@ -814,7 +879,7 @@ function useTestDetail({
   );
 
   const body = (
-    <div className="object-page">
+    <div className="object-page workflow-page workflow-saved-test">
       {opened && opened.state !== "completed" ? (
         <p role="alert" className="object-problem">
           {opened.reason ?? "This test could not be read."}
@@ -832,8 +897,8 @@ function useTestDetail({
           ))}
         </ul>
       ) : null}
-      <TaskTabs label="Test views" id="test-views" tabs={[...TEST_VIEWS]} selected={view} onSelect={(key) => go({ kind: "test", id: ref.id, view: key })}>
-        {view === "setup" ? setup : view === "checks" ? checks : historyBody}
+      <TaskTabs label="Test views" id="test-views" tabs={[...TEST_VIEWS]} selected={view==="history" ? "runs":view} onSelect={(key) => go({ kind: "test", id: ref.id, view: key })}>
+        {view === "setup" || view === "checks" ? <SavedTestWorkflow workspace={context().project} inputs={(test?.messages??[]).map(id=>messages.find(row=>row.id===id)).filter((row):row is TestMessage=>!!row)} source={opened?.test?.case_name||test?.case.entry||""} entry={test?.case.entry??""} identity={test?.case.identity??""} target={environment?.name||(test?.target?`Recorded target: ${test.target}`:"")} observation={opened?.test?.observations.find(row=>row.ref.id===links.observation)?.name||test?.observation||""} preparation={environment?.summary.environment?.reset_name??test?.reset??""} checksShown={view==="checks"} onInputs={()=>go({kind:"test",id:ref.id,view:"setup"})} onChecks={()=>go({kind:"test",id:ref.id,view:"checks"})}>{view==="setup" ? <>{setup}{!connected?legacyInputRows:null}</>:checks}</SavedTestWorkflow> : view==="history" ? <>{versionsBody}<p>Legacy content matches describe equivalent retained specifications. They do not establish this test as the original source.</p>{compatibilityRuns.length===0 ? <EmptyState title="No runs yet" action={runnable ? <button type="button" disabled={busy} onClick={()=>onRun(runRef)}>Run</button>:undefined}/> : <DataTable label="Runs" rows={compatibilityRuns} rowId={entry=>entry.run.id} rowLabel={entry=>`Run ${listDate(entry.started_at)}`} selected={chosenRun} onSelect={id=>void decideLegacyChecks(id)} onOpen={()=>undefined} columns={[{key:"started",header:"Started",priority:1,minWidth:8,render:entry=>listDate(entry.started_at)},{key:"version",header:"Version",priority:2,minWidth:6,render:entry=>entry.revision ? `v${entry.revision}`:"—"},{key:"result",header:"Result",priority:1,minWidth:7.5,render:entry=>resultLabel(entry.outcome)}]}/>} {runChecks?.state==="completed" ? <><h2>Check groups</h2><ValueRows label="Check groups" rows={runChecks.checks.map(set=>({label:set.name,value:set.explanation ? `${VERDICT_WORDS[set.explanation.verdict??""]??"Undecided"} · ${set.explanation.passed} passed, ${set.explanation.failed} failed, ${set.explanation.undecided} undecided`:set.reason??"Not decided"}))}/></>:null}</> : view==="runs" ? runsBody : view==="compare" ? <SelectedTestBeforeAfter key={ref.id} root={context().project} test={runRef} runs={runs} onOpenRun={onOpenRun} onPair={receivePair}/> : <SelectedTestExports key={ref.id} test={runRef} context={context} runs={runs} onOpenCapture={onOpenCapture} onOpenRun={onOpenRun} onOpenReport={onOpenReport} onCreateReport={onCreateReport} onExportDefinition={()=>void exportTestItem({context:context(),ref:runRef}).then(answer=>setNotice({text:answer.path ? `Exported ${fileName(answer.path)}`:answer.reason??"Not exported.",problem:answer.state!=="completed"}))}/>}
       </TaskTabs>
       <CheckDetails check={inspecting} messages={messages} onClose={() => setInspecting(null)} />
       {connected ? <ConnectedCheckDetails draft={connected} row={inspectingConnected} names={names} onClose={() => setInspectingConnected(null)} /> : null}
@@ -902,6 +967,7 @@ function useTestDetail({
   );
 
   const menu: MenuItem[] = [
+    {label:"Versions",onSelect:()=>go({kind:"test",id:ref.id,view:"history"})},
     { label: "Duplicate", onSelect: () => setSheet("duplicate"), disabled: busy || (!opened?.draft?.test && !connected) },
     {
       label: "Export test",
@@ -940,6 +1006,7 @@ function useTestDetail({
     },
     actions: (
       <>
+        {view==="compare" ? <button type="button" className="primary" disabled={busy || !selectedPair} onClick={()=>{if(selectedPair)onCreateReport(selectedPair.after,selectedPair.before);}}>Create report</button>:null}
         <Menu
           label="More test actions"
           items={menu}

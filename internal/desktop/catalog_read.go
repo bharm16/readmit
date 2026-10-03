@@ -44,6 +44,8 @@ import (
 // latest collection is found among, the identities of the project's cases —
 // are made at most once per load.
 type loadedCatalog struct {
+	observedReceivers map[string]*observedCapture
+
 	ctx        context.Context
 	root       string
 	project    *project.Project
@@ -382,6 +384,8 @@ func entryKind(root string, entry fs.DirEntry) (ItemKind, bool) {
 	path := filepath.Join(root, name)
 	if entry.IsDir() && entry.Type()&fs.ModeSymlink == 0 {
 		switch {
+		case connectedIndividualArtifact(path):
+			return RunItem, true
 		case declares(filepath.Join(path, "receipt.json"), connectedtransport.ReceiptSchema):
 			return RunItem, true
 		case declares(filepath.Join(path, "manifest.json"), replay.Schema), declares(filepath.Join(path, "manifest.json"), replay.ByteOnlySchema):
@@ -715,6 +719,14 @@ func (a *App) admitted(ctx context.Context) admissions {
 func capabilitiesFor(item CatalogItem, admitted admissions) []ActionID {
 	kind, availability := item.Ref.Kind, item.Availability
 	actions := []ActionID{}
+	if kind == InterfaceSpecItem || kind == ValueMapItem {
+		// Typed contextual readers require a retained exact revision. Current
+		// invalid, future and unpublished files remain visible with reasons.
+		if availability == ItemAvailable && item.Ref.Revision != "" {
+			return []ActionID{OpenAction}
+		}
+		return actions
+	}
 	if availability != ItemMissing {
 		actions = append(actions, OpenAction)
 	}
@@ -845,6 +857,10 @@ func (c *loadedCatalog) readRegistered(item catalog.Item) (view, Availability, s
 		}
 	}
 	if manifest, err := bundle.Describe(filepath.Join(c.root, item.Entry)); err == nil {
+		if read.summary.Case != nil && state == operation.EvidenceVerified && read.summary.Case.Protocol != "fhir-r4" {
+			count := manifest.EventCount
+			read.summary.Case.Occurrences = &count
+		}
 		read.createdAt = provenanceTime(manifest.Provenance)
 		read.updatedAt = read.createdAt
 		if registered != nil {
@@ -852,6 +868,14 @@ func (c *loadedCatalog) readRegistered(item catalog.Item) (view, Availability, s
 			for _, source := range manifest.Sources {
 				read.summary.Case.Sources = append(read.summary.Case.Sources, project.Source{ID: source.ID, Name: registered.SourceNamed(source.ID)})
 			}
+		}
+	}
+	if read.summary.Case != nil && state == operation.EvidenceVerified && read.summary.Case.Protocol != "fhir-r4" {
+		ref := ItemRef{Kind: CaseItem, ID: item.ID, Revision: read.revision}
+		value, _, err := c.captureSourceContext(ref, item.Entry, facts.Identity)
+		if err == nil {
+			c.resolveCaptureAssociations(value)
+			read.summary.Case.CaptureContext = value
 		}
 	}
 	switch state {

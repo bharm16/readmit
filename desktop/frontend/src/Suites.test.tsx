@@ -265,10 +265,11 @@ test("a saved suite opens read-only with Tests, Data, Coverage and Versions and 
   expect(page().queryAllByRole("textbox")).toHaveLength(0);
   const tests = await page().findByRole("table", { name: "Tests" });
   expect(rowsOf(tests).map((row) => row.slice(0, 4))).toEqual([
-    [BOOKING.name, "v2", "Scheduling cases", "Passed"],
-    [RESCHEDULE.name, "v4", "Scheduling cases", "Failed"],
+    [BOOKING.name, `${QA.name} · ${STAGING.name}`, "Passed", "Open"],
+    [RESCHEDULE.name, `${QA.name} · ${STAGING.name}`, "Failed", "Open"],
   ]);
-  // Every binding of both environments is its own named row.
+  // Every binding remains available through its real recorded-configuration owner.
+  await user.click(page().getByText("Recorded execution bindings",{selector:"summary"}));
   expect(rowsOf(page().getByRole("table", { name: "Environments" }))).toEqual([
     ["Scheduling QA", "acknowledgements", QA.name, "—"],
     ["Scheduling QA", "records", QA.name, APPOINTMENTS.name],

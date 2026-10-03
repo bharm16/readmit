@@ -8,15 +8,22 @@ import { CATEGORY_RAIL_MIN_REM } from "./geometry";
 import { useMeasured } from "./measure";
 import { ViewScope } from "./viewstate";
 import type { Destination } from "./routes";
+import messageIcon from "./assets/workbench/messages.svg";
+import captureIcon from "./assets/workbench/captures.svg";
+import testIcon from "./assets/workbench/tests.svg";
+import targetIcon from "./assets/workbench/targets.svg";
+import settingsIcon from "./assets/workbench/settings.svg";
+import helpIcon from "./assets/workbench/help.svg";
+import switcherIcon from "./assets/workbench/chevrons.svg";
+import currentIcon from "./assets/workbench/right.svg";
 
 export type { Destination } from "./routes";
 
 export const PROJECT_DESTINATIONS: { id: Destination; label: string }[] = [
-  { id: "cases", label: "Cases" },
-  { id: "tests", label: "Tests" },
-  { id: "runs", label: "Runs" },
-  { id: "environments", label: "Environments" },
-  { id: "reports", label: "Reports" },
+  { id: "messages", label: "Messages" },
+  { id: "cases", label: "Captures" },
+  { id: "tests", label: "Test cases" },
+  { id: "environments", label: "Targets" },
 ];
 
 export const GLOBAL_DESTINATIONS: { id: Destination; label: string }[] = [
@@ -124,7 +131,7 @@ export function Page({
  * shows; the accessible name says where it goes. */
 export function BackLink({ label, name, onBack }: { label: string; name?: string; onBack: () => void }) {
   return (
-    <button type="button" className="back-link quiet" aria-label={`Back to ${name ?? label.toLowerCase()}`} onClick={onBack}>
+    <button type="button" className="back-link quiet" aria-label={name ? `Back to ${name}` : label === "Back" ? "Back" : `Back to ${label.toLowerCase()}`} onClick={onBack}>
       <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
         <path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
@@ -159,6 +166,7 @@ export function Reveal({ revealed, onToggle, disabled = false }: { revealed: boo
 
 const navIcons: Record<Destination, ReactElement> = {
   home: <path d="M2.5 4.5h4l1.2 1.5h5.8v6.5h-11z" />,
+  messages: <path d="M4 2.5h5.5L12 5v8.5H4z" />,
   cases: (
     <>
       <rect x="2.5" y="3" width="11" height="10" rx="1" />
@@ -200,6 +208,8 @@ const navIcons: Record<Destination, ReactElement> = {
   ),
 };
 
+const workbenchIcons: Partial<Record<Destination, string>> = { messages: messageIcon, cases: captureIcon, tests: testIcon, environments: targetIcon, settings: settingsIcon, help: helpIcon };
+
 /** One destination in the sidebar. The current one is marked for assistive
  * technology as the current page, and by a filled row rather than colour
  * alone. In the icon rail its name is the accessible name and a tooltip. */
@@ -217,12 +227,13 @@ export function NavItem({
   return (
     <li>
       <button type="button" className="nav-item" aria-label={label} aria-current={current ? "page" : undefined} onClick={() => onSelect(id)}>
-        <svg className="nav-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+        {workbenchIcons[id] ? <img className="nav-icon workbench-icon" src={workbenchIcons[id]} width="16" height="16" alt="" /> : <svg className="nav-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
           {navIcons[id]}
-        </svg>
+        </svg>}
         <span className="nav-label" aria-hidden="true">
           {label}
         </span>
+        {current && workbenchIcons[id] ? <img className="nav-current workbench-icon" src={currentIcon} width="12" height="12" alt="" /> : null}
         <span className="nav-tooltip" aria-hidden="true">
           {label}
         </span>
@@ -241,6 +252,7 @@ export function ProjectSwitcher({
   onNew,
   onSettings,
   onFiles,
+  onProjects,
   disabled,
 }: {
   name: string;
@@ -251,6 +263,8 @@ export function ProjectSwitcher({
   onSettings: () => void;
   /** The project's other files, read-only. */
   onFiles?: () => void;
+  /** The complete project library remains available from the source card. */
+  onProjects?: () => void;
   disabled?: boolean;
 }) {
   return (
@@ -258,14 +272,13 @@ export function ProjectSwitcher({
       label={`Project: ${name}`}
       trigger={
         <>
-          <span className="switcher-name">{name}</span>
-          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
-            <path d="M4.5 6.5 8 10l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
+          <span className="switcher-caption"><span className="switcher-name">{name}</span><span className="switcher-kind">Project</span></span>
+          <img className="workbench-icon" src={switcherIcon} width="12" height="12" alt="" />
         </>
       }
       className="project-switcher"
       items={[
+        ...(onProjects ? [{ label: "Projects", onSelect: onProjects }] : []),
         ...recent.map((project) => ({ label: project.name, onSelect: () => onOpenRecent(project.key), disabled })),
         { label: "Open project…", onSelect: onOpen, disabled, separated: recent.length > 0 },
         { label: "New project…", onSelect: onNew, disabled },
@@ -483,6 +496,7 @@ export function Modal({
   title,
   onClose,
   size = "normal",
+  className = "",
   footer,
   inert = false,
   children,
@@ -491,13 +505,14 @@ export function Modal({
   title: string;
   onClose: () => void;
   size?: SheetSize;
+  className?: string;
   footer?: ReactNode;
   /** Another dialog is open over this one. */
   inert?: boolean;
   children: ReactNode;
 }) {
   return (
-    <Dialog open={open} label={title} onClose={onClose} className={`modal sheet-${size}`} inert={inert}>
+    <Dialog open={open} label={title} onClose={onClose} className={`modal sheet-${size}${className ? ` ${className}` : ""}`} inert={inert}>
       <header className="modal-header">
         <h2>{title}</h2>
         <IconButton icon="close" label={`Close ${title.toLowerCase()}`} onClick={onClose} />
@@ -557,6 +572,7 @@ export function FormDialog({
   dirty = false,
   onDiscard,
   size = "normal",
+  className = "",
   tone = "primary",
   status,
   secondary,
@@ -574,6 +590,7 @@ export function FormDialog({
   /** Throws the unsaved changes away, before the sheet closes. */
   onDiscard?: () => void;
   size?: SheetSize;
+  className?: string;
   /** A destructive action reads as one. */
   tone?: "primary" | "danger";
   /** An answer to show beside the actions: a refusal or a validation message. */
@@ -636,6 +653,7 @@ export function FormDialog({
         title={title}
         onClose={requestClose}
         size={size}
+        className={className}
         footer={
           <>
             {failure ? (

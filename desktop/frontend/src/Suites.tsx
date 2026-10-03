@@ -1,3 +1,6 @@
+import searchAsset from "./assets/workbench/search.svg";
+import "./workflow.css";
+import {SuiteRetainedExecution} from "./SuiteRetainedExecution";
 // Suites: the project's suites as one list; a saved suite's Tests, Data,
 // Coverage and Versions; the one whole-suite editor its Edit and Add actions
 // open, with one Save; and the review of two versions, where a version is
@@ -86,7 +89,7 @@ export type SuitesPlace =
 
 /** What Run hands the run review: one exact saved version and the suite
  * environment chosen. The review preflights it and asks its own Send. */
-export type SuiteRunHandoff = { target: SuiteRunTarget; name: string; version: string; environment: string; environments: { id: string; name: string }[] };
+export type SuiteRunHandoff = { connected?:boolean; target: SuiteRunTarget; name: string; version: string; environment: string; environments: { id: string; name: string }[] };
 
 /** A suite editor's unsaved work as the drafts store keeps it. */
 export const SUITE_EDITOR_DRAFT = "readmit-suite-editor/v1";
@@ -128,7 +131,7 @@ type EditStart = {
 const REMOVE = "\u0000remove:";
 
 /** The project's objects a suite names, read once per list. */
-type Lists = { tests: CatalogItem[]; cases: CatalogItem[]; environments: CatalogItem[]; observations: CatalogItem[] };
+type Lists = { testsReady?:boolean; tests: CatalogItem[]; cases: CatalogItem[]; environments: CatalogItem[]; observations: CatalogItem[] };
 const NO_LISTS: Lists = { tests: [], cases: [], environments: [], observations: [] };
 /** How many more times a list still busy is read before it is left unread. */
 const BUSY_LIST_READS = 4;
@@ -223,12 +226,13 @@ export type SuitesProps = {
   /** Opens this suite's schedules. */
   onSchedule: (suite: string) => void;
   /** A retained editor draft to reopen, once. */
+  onTestLibrary?: ((category:"all"|"drafts")=>void)|undefined;
   restoreDraft?: EditorDraft | null;
   onRestored?: (reason?: string) => void;
 };
 
 /** Suites supplies its pages' titles, ways back, actions and bodies. */
-export function useSuites({ root, shown: pageShown, place, go, back, busy, onRun, onLibrary, onSchedule, restoreDraft = null, onRestored }: SuitesProps) {
+export function useSuites({ root, shown: pageShown, place, go, back, busy, onRun, onLibrary, onSchedule, onTestLibrary, restoreDraft = null, onRestored }: SuitesProps) {
   const scope = useRef(new RequestScope());
   const context = useCallback(() => scope.current.enter(root ?? ""), [root]);
   const [items, setItems] = useState<CatalogItem[] | null>(null);
@@ -274,6 +278,7 @@ export function useSuites({ root, shown: pageShown, place, go, back, busy, onRun
     }
     // A list that could not be read keeps what was last read of it.
     setLists((held) => ({
+      testsReady:ok(tests),
       tests: ok(tests) ? (tests!.page?.items ?? []) : held.tests,
       cases: ok(cases) ? (cases!.page?.items ?? []) : held.cases,
       environments: ok(environments) ? (environments!.page?.items ?? []) : held.environments,
@@ -368,6 +373,7 @@ export function useSuites({ root, shown: pageShown, place, go, back, busy, onRun
     refresh,
     onRun,
     onSchedule,
+    onTestLibrary,
     onEdit: (opened, sheet) => {
       if (!opened.draft?.suite || !opened.ref) return;
       setStart({ ref: opened.ref, name: opened.draft.name ?? item?.name ?? "", draft: opened.draft.suite, versions: opened.suite?.tests ?? [], ...(sheet ? { sheet } : {}) });
@@ -639,9 +645,10 @@ function rowMenu(label: string, items: MenuItem[]) {
   );
 }
 
-function TestsSection({ draft, versions, lists, problems, onSheet, results, onAdd, onOpen, onSchedule }: SectionProps & { results?: SuiteHistoryResult["results"]; onAdd: () => void; onOpen: (id: string) => void; onSchedule?: () => void }) {
+function TestsSection({ draft, versions, lists, problems, onSheet, results, onAdd, onOpen, onSchedule, compact=false }: SectionProps & { compact?:boolean; results?: SuiteHistoryResult["results"]; onAdd: () => void; onOpen: (id: string) => void; onSchedule?: () => void }) {
   const names = namer(draft, versions, lists);
-  const rows = draft.tests.map((test, index) => ({ test, index }));
+  const [query,setQuery]=useState("");
+  const rows = draft.tests.map((test, index) => ({ test, index })).filter(row=>!compact||names.testName(row.test.id).toLowerCase().includes(query.toLowerCase()));
   // An environment with no binding yet is still a row, so it is seen and can
   // be bound or removed.
   const bindings = draft.environments.flatMap((env, envIndex) =>
@@ -738,9 +745,13 @@ function TestsSection({ draft, versions, lists, problems, onSheet, results, onAd
         ]
       : []),
   ];
+  const targets=(test:SuiteTestDraft)=>[...new Set(draft.environments.flatMap(env=>env.bindings.filter(binding=>binding.parameter===test.parameter).map(binding=>names.targetName(binding.target,binding.target_source))))];
+  const primaryColumns:Column<(typeof rows)[number]>[]=[testColumns[0]!,{key:"target",header:"Target",priority:1,minWidth:11,flex:true,render:({test})=>targets(test).join(" · ")||"Not bound"},testColumns.at(-1)!,{key:"open",header:"",priority:1,minWidth:6,render:({test})=><button type="button" className="quiet" onClick={()=>onOpen(test.id)}>Open</button>}];
+  const bindingBody=<><div className="section-heading"><h2>Environments</h2>{onSheet?<button type="button" className="quiet" onClick={()=>onSheet({kind:"binding",at:null})}>Add binding</button>:null}</div>{bindings.length===0?<p>No environments</p>:<DataTable label="Environments" className="values-table" rows={bindings} rowId={({envIndex,bindingIndex})=>`${envIndex}/${bindingIndex}`} rowLabel={({env,binding})=>`${env.name} ${binding?.parameter??""}`.trim()} columns={bindingColumns} selected={null} onSelect={()=>{}} onOpen={id=>{const [environment,binding]=id.split("/").map(Number);if(binding!>=0)onSheet?.({kind:"binding",at:{environment:environment!,binding:binding!}});}}/>}{problemsUnder(problems,"environments").filter(()=>bindings.length===0).map(problem=><p key={problem} className="field-error" role="alert">{problem}</p>)}</>;
   return (
     <>
-      <div className="section-toolbar">
+      {compact?<label className="workflow-search"><span className="workflow-search-icon"><img src={searchAsset} alt=""/></span><input type="search" aria-label="Search suite test cases" placeholder="Search test cases…" value={query} onChange={event=>setQuery(event.target.value)}/></label>:null}
+      <div className={compact?"section-toolbar workflow-suite-secondary":"section-toolbar"}>
         <button type="button" onClick={onAdd}>
           Add tests
         </button>
@@ -760,41 +771,9 @@ function TestsSection({ draft, versions, lists, problems, onSheet, results, onAd
           }
         />
       ) : (
-        <DataTable label="Tests" className="values-table" rows={rows} rowId={({ test }) => test.id} rowLabel={({ test }) => names.testName(test.id)} columns={testColumns} selected={null} onSelect={() => {}} onOpen={onOpen} />
+        <DataTable label="Tests" className="values-table" rows={rows} rowId={({ test }) => test.id} rowLabel={({ test }) => names.testName(test.id)} columns={compact?primaryColumns:testColumns} selected={null} onSelect={() => {}} onOpen={onOpen} />
       )}
-      <div className="section-heading">
-        <h2>Environments</h2>
-        {onSheet ? (
-          <button type="button" className="quiet" onClick={() => onSheet({ kind: "binding", at: null })}>
-            Add binding
-          </button>
-        ) : null}
-      </div>
-      {bindings.length === 0 ? (
-        <p>No environments</p>
-      ) : (
-        <DataTable
-          label="Environments"
-          className="values-table"
-          rows={bindings}
-          rowId={({ envIndex, bindingIndex }) => `${envIndex}/${bindingIndex}`}
-          rowLabel={({ env, binding }) => `${env.name} ${binding?.parameter ?? ""}`.trim()}
-          columns={bindingColumns}
-          selected={null}
-          onSelect={() => {}}
-          onOpen={(id) => {
-            const [environment, binding] = id.split("/").map(Number);
-            if (binding! >= 0) onSheet?.({ kind: "binding", at: { environment: environment!, binding: binding! } });
-          }}
-        />
-      )}
-      {problemsUnder(problems, "environments")
-        .filter(() => bindings.length === 0)
-        .map((problem) => (
-          <p key={problem} className="field-error" role="alert">
-            {problem}
-          </p>
-        ))}
+      {compact?<details className="workflow-suite-bindings"><summary>Recorded execution bindings</summary>{bindingBody}</details>:bindingBody}
     </>
   );
 }
@@ -1134,6 +1113,7 @@ function useSuiteDetail({
   onSchedule,
   onEdit,
   onImport,
+  onTestLibrary,
 }: {
   item: CatalogItem | null;
   view: SuiteView;
@@ -1146,6 +1126,7 @@ function useSuiteDetail({
   onSchedule: (suite: string) => void;
   onEdit: (opened: ItemDraftResult, sheet?: EditSheet) => void;
   onImport: () => void;
+  onTestLibrary?: ((category:"all"|"drafts")=>void)|undefined;
 }) {
   const [opened, setOpened] = useState<ItemDraftResult | null>(null);
   const [history, setHistory] = useState<SuiteHistoryResult | null>(null);
@@ -1204,7 +1185,7 @@ function useSuiteDetail({
   const title = original || !revision ? item.name : `${item.name} · v${revision}`;
   const edit = (next?: EditSheet) => opened && onEdit(opened, next);
   const handoff = (environment: string) =>
-    version && onRun({ target: { context: context(), suite: version }, name: item.name, version: revision, environment, environments });
+    version && onRun({ connected:!!draft?.connected || versions.some(test=>!!test.connected), target: { context: context(), suite: version }, name: item.name, version: revision, environment, environments });
   const run = () => (environments.length === 1 ? handoff(environments[0]!.id) : setSheet("run"));
   const versionRuns = (history?.runs ?? []).filter((row) => row.revision === revision);
   const latestEnvironmentApproval = (environment: string) =>
@@ -1213,6 +1194,7 @@ function useSuiteDetail({
   const sections = draft ? (
     view === "tests" ? (
       <TestsSection
+        compact
         draft={draft}
         versions={versions}
         lists={lists}
@@ -1270,7 +1252,7 @@ function useSuiteDetail({
   ];
 
   const body = (
-    <div className="object-page">
+    <div className="object-page workflow-page workflow-suite-detail">
       {opened && opened.state !== "completed" ? (
         <p role="alert" className="object-problem">
           {opened.reason ?? "This suite could not be read."}
@@ -1281,9 +1263,12 @@ function useSuiteDetail({
           {notice.text}
         </p>
       ) : null}
+      <div className="workflow-workspace workflow-library"><aside className="workflow-rail" aria-label="Suite browse"><h2>Suite</h2>{onTestLibrary?<><button type="button" className="workflow-step" onClick={()=>onTestLibrary("all")}><strong>All test cases</strong><span>{lists.testsReady?`${lists.tests.length} saved test cases`:"Reading test cases…"}</span></button><button type="button" className="workflow-step" onClick={()=>onTestLibrary("drafts")}><strong>Drafts</strong><span>Resume unfinished work</span></button></>:null}<div className="workflow-step-summary" aria-current="page"><strong>{item.name||item.summary.suite?.entry||item.ref.id}</strong><span>{draft?`${draft.tests.length} test cases`:"Reading test cases…"}</span></div></aside><div className="workflow-content">
       <TaskTabs label="Suite views" id="suite-views" tabs={SUITE_VIEWS} selected={view} onSelect={(key) => go({ kind: "suite", id: ref.id, view: key })}>
         {sections ?? <p aria-live="polite">Reading…</p>}
       </TaskTabs>
+      {view==="tests"?(history===null?<p aria-live="polite">Reading retained executions…</p>:history.state!=="completed"?<p role="status">{history.reason||"Retained executions are unavailable."}</p>:<SuiteRetainedExecution key={ref.id} runs={versionRuns} context={context}/>):null}
+      </div></div>
       <RunSuiteSheet
         open={sheet === "run"}
         title="Run suite"
@@ -1298,6 +1283,7 @@ function useSuiteDetail({
       {sheet === "ci" ? (
         <SetUpCISheet
           suite={item.name}
+          connected={!!draft?.connected || versions.some(test=>!!test.connected)}
           version={original || !revision ? "Original" : `Version ${revision}`}
           environments={environments}
           context={context}

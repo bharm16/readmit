@@ -225,7 +225,7 @@ test("an active capture shows the bound address, elapsed time and Waiting for me
   expect(await capturePage().findByText("Waiting for messages", undefined, { timeout: 3000 })).toBeTruthy();
   // Setup closes once the capture is recording.
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "New capture" })).toBeNull());
-  expect(capturePage().getByText("127.0.0.1:2575")).toBeTruthy();
+  expect(within(capturePage().getByRole("complementary",{name:"Receiver"})).getByText("127.0.0.1:2575")).toBeTruthy();
   expect(capturePage().getByText(/^00:3\d$/)).toBeTruthy();
   expect(capturePage().queryByText("Received")).toBeNull();
   expect(capturePage().getByText("Recording")).toBeTruthy();
@@ -425,7 +425,7 @@ test("Escape closes a sheet without stopping capture and the indicator returns t
   expect(facade.callsTo("Cancel")).toHaveLength(0);
   await user.click(indicator);
   expect(await page().findByText("Waiting for messages", undefined, { timeout: 3000 })).toBeTruthy();
-  expect(page().getByRole("heading", { level: 1, name: "Capture" })).toBeTruthy();
+  expect(page().getByRole("heading", { level: 1, name: "Messages" })).toBeTruthy();
 });
 
 

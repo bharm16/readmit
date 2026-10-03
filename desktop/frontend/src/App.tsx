@@ -1,3 +1,8 @@
+import type {ReactNode} from "react";
+import type { ValueMapEditorDraft } from "./bindings";
+import { ValueMaps } from "./ValueMaps";
+import { InterfaceRequirements } from "./InterfaceRequirements";
+import { FieldValues } from "./FieldValues";
 import { DiagnosticsSheet, HelpTopics, SearchHelpSheet, useHelpArticle } from "./Help";
 import { DemoTask } from "./DemoTask";
 import { useBenchmarks } from "./Benchmarks";
@@ -7,6 +12,7 @@ import { ComputerLicense } from "./ComputerLicense";
 import { GeneralView, SecurityView, usePreferences, type ConnectionRoute } from "./Settings";
 import { useEncryption } from "./Encryption";
 import { HubPanel } from "./HubPanel";
+import { CIResultsSheet } from "./CISheets";
 import { RunnerPanel } from "./RunnerPanel";
 import { useRunComparison } from "./RunComparison";
 import { SendReview, sendTitle, type SendRequest } from "./RunPanel";
@@ -21,7 +27,7 @@ import { CONNECTED_SUITE_EDITOR_DRAFT, SUITE_EDITOR_DRAFT, SUITE_VIEWS, useSuite
 import { environmentPlace, useEnvironments } from "./Environments";
 import { onRetentionResult } from "./drafting";
 import { IndicatorsContext, useLifecycle, useWindowBusy } from "./lifecycle";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { cloneElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement } from "react";
 import { useLayoutEffect } from "react";
 import {
@@ -77,9 +83,15 @@ import {
   type TestExpectation,
   inspectOccurrence,
   type InspectionResult,
+  type HL7ReferenceSelection,
+  type ExchangeOrigin,
+  type ExchangeTestProvenance,
   openProjectOverview,
   openWorkspace,
   recordView,
+  workingSession,
+  readReferenceCatalog,
+  readHL7ReferenceSelection,
   type EditorDraft,
   search,
   selectWorkspace,
@@ -107,20 +119,22 @@ import { useCaseComparison, type ComparedCase, type ComparisonTab } from "./Case
 import { useMinimize, useMinimizeActivity } from "./Minimize";
 import { useTimeline } from "./Timeline";
 import { MessageReader } from "./Inspector";
+import { ExchangePanel } from "./ExchangePanel";
+import { SelectedMessagesExportPanel, SourceExportHistory } from "./SelectedMessagesExport";
 import { MessageList, NO_QUERY, sameQuery, SearchSettingsSheet, type FilterSeed } from "./Messages";
 import { LibraryList, UseInTestSheet, importDraft, useCheckGroup, useLibraryItems, type LibraryKind } from "./Library";
 import { PacksSheet, useProfile } from "./ProfileLibrary";
 import { SCENARIO_DRAFT_KIND, SCENARIO_DRAFT_SCHEMA, scenarioDraftObject, useScenario } from "./ScenarioLibrary";
 import { SampleFixture, ScenarioLibraryCheck, SyntheticFamilies } from "./SampleData";
 import { SyntheticPackets } from "./SyntheticPackets";
-import { useTests, type TestsPlace } from "./Tests";
-import { CONNECTED_EDITOR_DRAFT, TEST_EDITOR_DRAFT } from "./TestEditor";
+import { useTests,isTestWorkspaceView, type TestsPlace } from "./Tests";
+import { CONNECTED_EDITOR_DRAFT, EXCHANGE_EDITOR_DRAFT, TEST_EDITOR_DRAFT } from "./TestEditor";
 import { useFindings, useSimilarFindings, type EvidenceRef } from "./Findings";
 import { Report, Separator, Status } from "./shell";
 import { CommandPalette, isMac, shortcut, type PaletteEntry } from "./CommandPalette";
 import { ReturnAnchor, firstShownRow, type SortState } from "./DataTable";
 import { ViewKey, forgetViewState } from "./viewstate";
-import { sidebarOf, useRoutes, viewOf, type ReturnContext, type Route } from "./routes";
+import { sidebarOf, workspaceDestination, useRoutes, viewOf, isPlace, type ReturnContext, type Route, type NavigationEvidence } from "./routes";
 import { rootFontSize, useMeasured } from "./measure";
 import {
   ICON_RAIL_REM,
@@ -131,12 +145,24 @@ import {
   NARROW_WINDOW_REM,
   RAIL_BREAKPOINT_REM,
   SIDEBAR_REM,
+  READER_COMPACT_WINDOW_REM,
+  READER_COMPACT_SIDEBAR_REM,
+  MESSAGE_BROWSER_REM,
+  MESSAGE_BROWSER_COMPACT_REM,
+  READER_REFERENCE_REM,
+  READER_REFERENCE_COMPACT_REM,
 } from "./geometry";
 import { VocabularyContext } from "./vocabulary";
+import { useSourceSelection } from "./sourceSelection";
+import { SelectedMessageComparison } from "./SelectedMessageComparison";
+import { ReceiveConfigurations } from "./ReceiveConfigurations";
+import { CaptureSourceContext } from "./CaptureSourceContext";
 import { ImportFlow, importDrop } from "./Import";
 import { useCapture } from "./Capture";
 import { DeleteSourceSheet, StorageView } from "./Storage";
 import { useFileReader } from "./RawInspection";
+import chevronsAsset from "./assets/workbench/chevrons.svg";
+import moreAsset from "./assets/workbench/more.svg";
 import type { CaptureObservationBinding } from "./bindings";
 import { TaskPanel, TaskTabs } from "./TaskTabs";
 import { IconButton } from "./IconButton";
@@ -186,7 +212,7 @@ type Running =
  * one survives looking at another. */
 type CaseView = "messages" | "timeline" | "findings";
 /** What a person does to a case, each on its own page with a way back. */
-type CaseFlow = "variant" | "compare";
+type CaseFlow = "variant" | "compare" | "field-values" | "requirements" | "value-maps";
 type TestsView = "tests" | "suites";
 type LibraryView = "checks" | "profiles" | "scenarios";
 type SettingsView = "general" | "license" | "team" | "runners" | "security" | "storage";
@@ -197,7 +223,7 @@ const CASE_VIEWS: { key: CaseView; label: string }[] = [
   { key: "findings", label: "Findings" },
 ];
 const TESTS_VIEWS: { key: TestsView; label: string }[] = [
-  { key: "tests", label: "Tests" },
+  { key: "tests", label: "Test cases" },
   { key: "suites", label: "Suites" },
 ];
 const LIBRARY_VIEWS: { key: LibraryView; label: string }[] = [
@@ -231,6 +257,8 @@ const PROGRESS: Record<Running, string> = {
   sample: "Importing the demo fixtures…",
 };
 
+const NO_SELECTED_ROWS:import("./bindings").MessageRow[]=[];
+
 export default function App() {
   const [described, setDescribed] = useState<Shell | null>(null);
   const [windowState, setWindowState] = useState<State>("busy");
@@ -249,11 +277,34 @@ export default function App() {
   });
   // Each counts the palette's requests to open that screen in the inspector.
   const [rawRequest, setRawRequest] = useState(0);
+  const [readerReferenceRequest,setReaderReferenceRequest]=useState(0);
+  const [readerDensityOverride,setReaderDensityOverride]=useState<boolean|null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceResult | null>(null);
   const [evidence, setEvidence] = useState<CaseResult | null>(null);
+  const [sourceKind, setSourceKind] = useState<"case" | "file">("case");
+  const [fileNavigation, setFileNavigation] = useState<Partial<import("./bindings.gen").ViewNavigation> | null>(null);
+  const [sessionReady, setSessionReady] = useState(false);
+  const pendingSessionOwner=useRef<number|null>(null);
+  const [pendingSession, setPendingSession] = useState<import("./bindings").View | null>(null);
+  const [sessionNotice, setSessionNotice] = useState<string | null>(null);
+ const [sessionWriteNotice,setSessionWriteNotice]=useState<string|null>(null);
+  const restoredScroll = useRef<number | null>(null);
+  const restoreStarted = useRef(false);
+  const [scrollRevision, setScrollRevision] = useState(0);
   const [investigation, setInvestigation] = useState<ProjectOverviewResult | null>(null);
   const [found, setFound] = useState<SearchResult | null>(null);
   const [inspectionResult, setInspectionResult] = useState<InspectionResult | null>(null);
+  const referenceCatalog = useRef("");
+  const referenceIdentity = useRef("");
+  const referenceSelection = useRef<HL7ReferenceSelection | undefined>(undefined);
+  const [exchangeSource, setExchangeSource] = useState<{ project: string; entry: string; identity: string; ref: ItemRef } | null>(null);
+  const [exchangeDetails,setExchangeDetails]=useState<{key:string;node:ReactNode}|null>(null);
+  const [exchangeUIRequest,setExchangeUIRequest]=useState<{kind:"setup"|"history";serial:number}|null>(null);
+  const receiveExchangeContext=useCallback((node:ReactNode|null,scope:{caseID:string;identity:string;occurrence:string}|null)=>setExchangeDetails(node&&scope?{key:JSON.stringify([scope.caseID,scope.identity,scope.occurrence]),node}:null),[]);
+  const [requestedExchange, setRequestedExchange] = useState<{ project: string; origin: ExchangeOrigin } | null>(null);
+  const [selectedExportOpen, setSelectedExportOpen] = useState(false);
+  const [sourceExportsOpen, setSourceExportsOpen] = useState(false);
+  const [ciResultsOpen,setCIResultsOpen]=useState(false);
   const [selectedOccurrence, setSelectedOccurrence] = useState<string | null>(null);
   // The open case's messages: the transient query and order they were read
   // under, and the rows read so far, window by window.
@@ -264,6 +315,7 @@ export default function App() {
   const [messageView, setMessageView] = useState("");
   const [views, setViews] = useState<GridView[]>([]);
   const [checkedMessages, setCheckedMessages] = useState<Set<string>>(new Set());
+  const messageSelectionOwner = useRef("");
   // The messages a finding's evidence names, shown on their own until cleared.
   const [evidenceFocus, setEvidenceFocus] = useState<EvidenceRef[] | null>(null);
   // Where the evidence shown was opened from: this case's Findings, or a
@@ -276,6 +328,7 @@ export default function App() {
   // rest of an interrupted run or a reviewed test. Its Send is the only thing
   // that sends.
   const [sendRequest, setSendRequest] = useState<SendRequest | null>(null);
+ const [reviewSetup,setReviewSetup]=useState<{project:string;request:SendRequest}|null>(null);
   // A review whose license refusal sent the person to activate: it is
   // prepared again, fresh, once they leave Settings.
   // Counts the runs that ended, so Runs reads its list again.
@@ -299,6 +352,11 @@ export default function App() {
   const [drafts, setDrafts] = useState<EditorDraft[] | null>(null);
   const [capturing, setCapturing] = useState(false);
   const [importing, setImporting] = useState(false);
+ const [looseRetention,setLooseRetention]=useState<import("./bindings").ImportInvestigation | null>(null);
+ const retentionStarted=useRef("");
+ const [captureContextSource,setCaptureContextSource]=useState<ItemRef|null>(null);
+ const [receivingSetup,setReceivingSetup]=useState(false);
+ const [selectedComparison,setSelectedComparison]=useState(false);
   // Each new count opens Capture's setup sheet once.
   const [captureSetup, setCaptureSetup] = useState(0);
   // The retained capture Add observation starts from, when a capture started it.
@@ -340,14 +398,17 @@ export default function App() {
   // The inspector width each project was last given, in rem. The shown width
   // is clamped to the room there is now without overwriting the wider choice.
   const [inspectorWidths, setInspectorWidths] = useState<Record<string, number>>({});
+  const [messageBrowserWidths, setMessageBrowserWidths] = useState<Record<string, number>>({});
 
   // Where the window is: one route, with the way back kept per destination.
   // Only the shown destination is mounted; what a page holds unsaved is kept
   // in the view state for this project.
   const { route, dispatch: routeTo } = useRoutes({ destination: "home" });
   const place = route.destination;
-  const destination = sidebarOf(place);
+  const destination = workspaceDestination(route);
+  const captureCollection = place === "cases" && route.objectId === undefined;
   const currentRoute = useRef<Route>(route);
+  const navigationSerial = useRef(0);
   currentRoute.current = route;
   const scenarioNavigation = useRef<((exit: () => void) => void) | null>(null);
   const caseView = viewOf(route, "cases", CASE_VIEWS);
@@ -375,18 +436,27 @@ export default function App() {
   useLayoutEffect(() => {
     const returned = route.returnContext;
     if (!returned) return;
-    if (returned.selection !== undefined) setSelectedCase(returned.selection);
+    if (route.destination === "cases" && returned.selection !== undefined) setSelectedCase(returned.selection);
     const body = document.querySelector<HTMLElement>(`.page[data-page="${route.destination}"] .page-body`);
     if (body && returned.scrollTop !== undefined) body.scrollTop = returned.scrollTop;
   }, [route]);
   const [caseFlow, setCaseFlow] = useState<CaseFlow | null>(null);
+  const [fieldValuesContext, setFieldValuesContext] = useState<{
+    workspace: string; case: string; identity: string; selector: string; label?: string;
+    occurrence: string | null; path: string; nodeOffset: number; byteOffset: number; scrollTop: number;
+  } | null>(null);
+  const [fieldValuesInspecting, setFieldValuesInspecting] = useState(false);
+  const [requirementsContext, setRequirementsContext] = useState<{
+    workspace: string; case: string; identity: string; source: ItemRef; occurrence: string; selector: string; edition:string;
+    originOccurrence: string | null; originPath: string; nodeOffset: number; byteOffset: number; scrollTop: number; view: CaseView;
+  } | null>(null);
   // Create variant and Compare (#558): the case each was started for, the
   // messages or the other case chosen first, and a serial per start.
   const [variantFlow, setVariantFlow] = useState<{ source: VariantSource; seed: string[]; serial: number } | null>(null);
   const [compareFlow, setCompareFlow] = useState<{ current: ComparedCase; other: ItemRef | null; tab?: ComparisonTab | undefined; serial: number } | null>(null);
   // The open case as the project names it and, for a variant, the case it
   // was made from.
-  const [openObject, setOpenObject] = useState<{ ref: ItemRef; name: string; parent: ItemRef | null } | null>(null);
+  const [openObject, setOpenObject] = useState<{ ref: ItemRef; name: string; parent: ItemRef | null; project:string;entry:string;identity:string } | null>(null);
   const [fileDetails, setFileDetails] = useState(false);
   const [creatingProject, setCreatingProject] = useState(false);
   // The projects this viewer has opened, as the catalog lists them, and the
@@ -436,6 +506,7 @@ export default function App() {
   const [resuming, setResuming] = useState<EditorDraft | null>(null);
   const [restored, setRestored] = useState<EditorDraft | null>(null);
   // Why a draft chosen to resume found nothing to reopen.
+  const [unavailableMapDraft,setUnavailableMapDraft]=useState<{draft:EditorDraft;reason:string}|null>(null);
   const [resumeNotice, setResumeNotice] = useState<string | null>(null);
   // A retained test editor draft the Tests editor reopens.
   const [restoringTest, setRestoringTest] = useState<EditorDraft | null>(null);
@@ -535,16 +606,36 @@ export default function App() {
   // can never land after a later one and leave the session remembering a place
   // the viewer has already left.
   const workspaceRoot = workspace?.workspace?.root ?? "";
-  const view = useCallback((run: string) => ({
-    workspace: workspaceRoot,
-    region: focused,
-    case: workspaceRoot === "" ? "" : (selected ?? ""),
-    run,
-  }), [workspaceRoot, focused, selected]);
+  const view = useCallback((run: string): import("./bindings").View => {
+    const source = evidence?.case;
+    const inspected = inspectionResult?.inspection;
+    const origin = caseFlow === "field-values" ? fieldValuesContext : (caseFlow === "requirements" || caseFlow === "value-maps") && requirementsContext ? { occurrence: requirementsContext.originOccurrence, path: requirementsContext.originPath, nodeOffset: requirementsContext.nodeOffset, scrollTop: requirementsContext.scrollTop } : null;
+    const occurrence = origin ? origin.occurrence : selectedOccurrence;
+    const body = document.querySelector<HTMLElement>(`.page[data-page="${route.destination}"] .page-body`);
+    const projectIdentity = projects.find((project) => project.summary.project?.folder === workspaceRoot)?.ref.id;
+    const navigation: import("./bindings.gen").ViewNavigation = {
+      destination: route.destination, source_kind: sourceKind,
+      ...(workspaceRoot && projectIdentity ? { project_identity: projectIdentity } : {}),
+      ...(route.objectId ? { object: route.objectId } : {}),
+      ...(route.view ? { local_view: route.view } : {}),
+      ...(source && workspaceRoot ? { source_identity: source.identity } : {}),
+      ...(source && occurrence ? { occurrence } : {}),
+ ...(source && sourceKind==="case" && checkedMessages.size ? {checked_occurrences:[...checkedMessages]} : {}),
+      ...(source && origin ? { field_path: origin.path, node_offset: origin.nodeOffset } : source && inspected ? { field_path: inspected.fhir?.selected?.field.id ?? inspected.selected.path, node_offset: inspected.node_offset } : {}),
+      ...(messageView ? { filter: messageView } : {}),
+      ...(messageSort?.column === "time" ? { sort: messageSort.direction === "ascending" ? "time-ascending" : "time-descending" } : {}),
+      scroll_top: Math.trunc(origin?.scrollTop ?? body?.scrollTop ?? 0),
+      ...(referenceCatalog.current && referenceIdentity.current ? { reference_path: referenceCatalog.current, reference_identity: referenceIdentity.current, ...(inspected?.reference?.edition ? { reference_edition: inspected.reference.edition } : {}) } : {}),
+      ...(referenceSelection.current ? { reference_selection: referenceSelection.current } : {}),
+      ...(sourceKind === "file" && fileNavigation ? fileNavigation : {}),
+    };
+    return { workspace: workspaceRoot, region: focused, case: workspaceRoot === "" ? "" : selected ?? "", run, navigation };
+  }, [workspaceRoot, focused, selected, route, sourceKind, evidence?.case, selectedOccurrence, inspectionResult, checkedMessages, messageView, messageSort, fileNavigation, scrollRevision, projects, caseFlow, fieldValuesContext, requirementsContext]);
 
   const recording = useRef(false);
   const pendingRecord = useRef<ReturnType<typeof view> | null>(null);
   const flushDone = useRef<Promise<void>>(Promise.resolve());
+  const lastRecordedView = useRef<{ view: import("./bindings").View; result: import("./bindings").SessionResult } | null>(null);
   const pushRecord = useCallback((recorded: ReturnType<typeof view>) => {
     pendingRecord.current = recorded;
     if (recording.current) {
@@ -558,7 +649,10 @@ export default function App() {
         while (pendingRecord.current) {
           const next = pendingRecord.current;
           pendingRecord.current = null;
-          await recordView(next);
+          const result=await recordView(next);
+          lastRecordedView.current = { view: next, result };
+ if(result.state!=="completed" && result.state!=="empty")setSessionWriteNotice(result.reason??"The current navigation could not be retained for restart. Reduce the selection or retry after storage is available.");
+ else setSessionWriteNotice(null);
         }
       } finally {
         recording.current = false;
@@ -568,11 +662,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (workspaceRoot === "" && watchedRun === "") {
+    if (!sessionReady || workspaceRoot === "" && watchedRun === "" && !fileNavigation?.file) {
       return;
     }
     void pushRecord(view(watchedRun));
-  }, [pushRecord, view, watchedRun]);
+  }, [pushRecord, view, watchedRun, sessionReady, fileNavigation?.file]);
 
   // Naming the run folder is the one recording that has to have landed before
   // the action it describes runs, so it is awaited rather than left to the
@@ -585,6 +679,10 @@ export default function App() {
     const folder = workspaceRoot === "" ? entry : `${workspaceRoot}/${entry}`;
     setWatchedRun(folder);
     await pushRecord(view(folder));
+    const recorded = lastRecordedView.current;
+    if (!recorded || recorded.view.workspace !== workspaceRoot || recorded.view.run !== folder || recorded.result.state !== "completed") {
+      return recorded?.result.reason ?? "The recovery location could not be recorded. The reviewed action has not started.";
+    }
   }, [pushRecord, view, workspaceRoot]);
 
   // Whether an operation holds the window's one slot: this window's own, or a
@@ -594,6 +692,7 @@ export default function App() {
   const fileReader = useFileReader({
     busy,
     request: rawRequest,
+    onNavigation: setFileNavigation,
     onCancelled: () => {
       if (currentRoute.current.destination === "inspect-file") routeTo({ type: "back" });
     },
@@ -608,6 +707,9 @@ export default function App() {
   const opened = workspace?.workspace;
   const overview = investigation?.overview ?? null;
   const verified = evidence?.case ?? null;
+ const sourceSelection=useSourceSelection(sourceKind==="case" && root && verified ? {root,entry:verified.name,identity:verified.identity}:null,checkedMessages,messages?.rows??NO_SELECTED_ROWS);
+  const selectedSourceRef = exchangeSource?.project === root && exchangeSource.entry === verified?.name && exchangeSource.identity === verified?.identity ? exchangeSource.ref : null;
+  useEffect(() => { setSelectedExportOpen(false); setSourceExportsOpen(false);setCaptureContextSource(null);setReceivingSetup(false);setSelectedComparison(false);setCIResultsOpen(false); }, [root, verified?.name, verified?.identity]);
 
   const focusRegion = useCallback((region: RegionId, afterRead = false) => {
     // A navigation read may finish after the person opened a sheet. Its
@@ -645,12 +747,19 @@ export default function App() {
    * panel whose results derive from the open case registers its setter here
    * and nowhere else. */
   const clearCase = useCallback(() => {
+    setFieldValuesContext(null);
+    setRequirementsContext(null);
+    setFieldValuesInspecting(false);
+    referenceCatalog.current = "";
+    referenceIdentity.current = "";
+    referenceSelection.current = undefined;
     setEvidence(null);
     setMessages(null);
     setMessageQuery(NO_QUERY);
     setMessageSort(null);
     setMessageView("");
     setCheckedMessages(new Set());
+    messageSelectionOwner.current = "";
     setRevealed(false);
     setFilterSeed(null);
     setInspectionResult(null);
@@ -672,12 +781,15 @@ export default function App() {
   // with the refusal shown beside it; nothing here clears first, so no
   // cancellation can silently drop the open workspace, its case or an edit.
   const openFolder = useCallback(
-    async (operation: () => Promise<WorkspaceResult>) => {
+    async (operation: () => Promise<WorkspaceResult>, navigationOwner?:number) => {
       setOpenNotice(null);
       let opened = false;
       await run("workspace", async () => {
         const result = await operation();
+        if(navigationOwner!==undefined && navigationOwner!==navigationSerial.current)return;
         if (result.workspace) {
+          navigationSerial.current += 1;
+          const openedOwner=navigationSerial.current;
           clearWorkspace();
           setSelected(null);
           setWorkspace(result);
@@ -693,10 +805,13 @@ export default function App() {
           setCaptureBinding(null);
           opened = true;
           await refreshDemo(result.workspace.root);
+          if(navigationOwner!==undefined && navigationSerial.current!==openedOwner)return;
           // A folder that holds a project opens as that project: its cases and
           // settings are read now rather than behind another button.
           if (result.workspace.artifacts.some((artifact) => artifact.kind === "project")) {
-            setInvestigation(await openProjectOverview(result.workspace.root));
+            const project=await openProjectOverview(result.workspace.root);
+            if(navigationOwner!==undefined && navigationSerial.current!==openedOwner)return;
+            setInvestigation(project);
             // Opening records it among this viewer's projects, newest first.
             await openNamedProject(result.workspace.root);
           }
@@ -727,7 +842,6 @@ export default function App() {
         if (offset === 0) {
           setInspectionResult(null);
           setSelectedOccurrence(null);
-          setCheckedMessages(new Set());
         }
         const result = await readMessages({
           workspace: folder,
@@ -740,6 +854,13 @@ export default function App() {
           ...(occurrences ? { occurrences } : {}),
         });
         if (!current()) return;
+        if (result.state === "completed" || result.state === "empty") {
+          const owner = JSON.stringify([folder, open.case, open.identity]);
+          if (messageSelectionOwner.current !== owner) {
+            setCheckedMessages(new Set());
+            messageSelectionOwner.current = owner;
+          }
+        }
         // A later page that is refused leaves the rows already read on
         // screen, with the reason and a way to ask again.
         if (offset > 0 && result.state !== "completed") {
@@ -761,14 +882,20 @@ export default function App() {
   // line says that a read is running — and they stay, marked stale by the
   // refusal beside them, when the new one is refused.
   const verifyCase = useCallback(
-    async (folder: string, name: string, options?: { skipAutoGrid?: boolean }): Promise<CaseResult | null> => {
+    async (folder: string, name: string, options?: { skipAutoGrid?: boolean; navigationOwner?: number; expectedIdentity?: string }): Promise<CaseResult | null> => {
       setCaseNotice(null);
       let autoIndex: string | null = null;
       let outcome: CaseResult | null = null;
       await run("case", async () => {
         const result = await openCase(folder, name);
+        if (options?.navigationOwner !== undefined && options.navigationOwner !== navigationSerial.current) return;
+        if (options?.expectedIdentity && result.case?.identity !== options.expectedIdentity) {
+          setCaseNotice({ state: "failed", reason: "The previous capture changed or is unavailable. The current work is kept." });
+          return;
+        }
         if (result.case) {
           clearCase();
+          setSourceKind("case");
           setSelected(name);
           setEvidence(result);
           const at = currentRoute.current;
@@ -814,6 +941,9 @@ export default function App() {
       targetCase?: { case: string; identity: string },
       reveal: boolean = revealed,
       rawOffset = -1,
+      catalogPath?: string,
+      selection?: HL7ReferenceSelection,
+      catalogIdentity?: string,
     ): Promise<InspectionResult | null> => {
       const grid = messages;
       const open =
@@ -824,6 +954,12 @@ export default function App() {
             ? { case: evidence.case.name, identity: evidence.case.identity }
             : null);
       if (!root || !open) return null;
+      if (catalogPath !== undefined) {
+        if (catalogPath !== referenceCatalog.current) referenceIdentity.current = catalogIdentity ?? "";
+        referenceCatalog.current = catalogPath;
+      }
+      if (catalogIdentity !== undefined) referenceIdentity.current = catalogIdentity;
+      if (selection !== undefined) referenceSelection.current = selection;
       let answer: InspectionResult | null = null;
       await run("inspect", async (current) => {
         const moving = occurrence !== selectedOccurrence;
@@ -839,10 +975,14 @@ export default function App() {
           byte_offset: byteOffset,
           raw_offset: rawOffset,
           reveal,
+          ...(referenceCatalog.current ? { reference_catalog: referenceCatalog.current } : {}),
+          ...(referenceIdentity.current ? { reference_identity: referenceIdentity.current } : {}),
+          ...(referenceSelection.current ? { reference_selection: referenceSelection.current } : {}),
         });
         answer = result;
         // A field that is not in the message leaves the message as it was.
         if (current() && (result.state === "completed" || moving || path === "")) {
+          if (!referenceIdentity.current && result.inspection?.reference?.identity) referenceIdentity.current = result.inspection.reference.identity;
           setInspectionResult(result);
         }
       });
@@ -850,6 +990,52 @@ export default function App() {
     },
     [evidence, messages, revealed, root, run, selectedOccurrence],
   );
+
+  const openFieldValues = (selector: string) => {
+    if (!root || !verified || verified.protocol === "fhir-r4") return;
+    const at = inspectionResult?.inspection;
+    const body = document.querySelector<HTMLElement>('.page[data-page="cases"] .page-body');
+    setFieldValuesContext({ workspace: root, case: verified.name, identity: verified.identity, selector,
+      ...(at?.metadata.label ? { label: at.metadata.label } : {}),
+      occurrence: selectedOccurrence, path: at?.selected.path ?? "", nodeOffset: at?.node_offset ?? 0,
+      byteOffset: at?.byte_offset ?? -1, scrollTop: body?.scrollTop ?? 0 });
+    setFieldValuesInspecting(false);
+    setRevealed(false);
+    setCaseFlow("field-values");
+  };
+  const leaveFieldValues = () => {
+    const origin = fieldValuesContext;
+    setFieldValuesInspecting(false);
+    setCaseFlow(null);
+    setFieldValuesContext(null);
+    setRevealed(false);
+    if (!origin || root !== origin.workspace || verified?.name !== origin.case || verified.identity !== origin.identity) return;
+    restoredScroll.current = origin.scrollTop;
+    if (origin.occurrence) void inspect(origin.occurrence, origin.path, origin.nodeOffset, origin.byteOffset,
+      { case: origin.case, identity: origin.identity }, false);
+    else { setSelectedOccurrence(null); setInspectionResult(null); }
+  };
+
+  const openRequirements = (occurrence: string, selector: string, flow:"requirements"|"value-maps"="requirements") => {
+    if (!root || !verified || verified.protocol === "fhir-r4" || !selectedSourceRef) return;
+    const at = inspectionResult?.inspection;
+    const body = document.querySelector<HTMLElement>('.page[data-page="cases"] .page-body');
+    setRequirementsContext({ workspace: root, case: verified.name, identity: verified.identity, source: selectedSourceRef,
+      occurrence, selector, edition:at?.metadata.hl7_version??"", originOccurrence: selectedOccurrence, originPath: at?.selected.path ?? "",
+      nodeOffset: at?.node_offset ?? 0, byteOffset: at?.byte_offset ?? -1, scrollTop: body?.scrollTop ?? 0, view: caseView });
+    setRevealed(false);
+    setCaseFlow(flow);
+  };
+  const leaveRequirements = () => {
+    const origin = requirementsContext;
+    setCaseFlow(null);
+    setRequirementsContext(null);
+    setRevealed(false);
+    if (!origin || root !== origin.workspace || verified?.name !== origin.case || verified.identity !== origin.identity) return;
+    restoredScroll.current = origin.scrollTop;
+    if (origin.view !== "findings" && origin.originOccurrence) void inspect(origin.originOccurrence, origin.originPath,
+      origin.nodeOffset, origin.byteOffset, { case: origin.case, identity: origin.identity }, false);
+  };
 
   // One practice run of the demo against its defective or fixed receiver. It
   // sends only on loopback; what the project then holds is read back, and the
@@ -877,7 +1063,7 @@ export default function App() {
   // Run on a suite opens the reviewed send of that exact saved version at the
   // environment chosen; its Send is the only thing that sends.
   const handoff = useCallback((selection: SuiteRunHandoff) => {
-    setSendRequest({ kind: "suite", suite: selection.target.suite, environment: selection.environment });
+    setSendRequest({ kind: "suite", suite: selection.target.suite, environment: selection.environment,connectedRequired:selection.connected===true });
   }, []);
 
   // The project overview re-reads the project from disk every time: what the
@@ -921,12 +1107,39 @@ export default function App() {
   const resumeDraft = useCallback(
     async (draft: EditorDraft) => {
       if (draft.workspace !== root && !(await openFolder(() => openWorkspace(draft.workspace)))) return;
+      if((draft.kind==="interface-association"&&draft.content_schema==="readmit-interface-association-editor/v1") || (draft.kind==="capture-source-context"&&draft.content_schema==="readmit-capture-source-context-editor/v1")) {
+        const content=draft.content as import("./bindings").InterfaceAssociationEditorDraft|import("./bindings").CaptureSourceEditorDraft;
+        const owner=navigationSerial.current;const request=new RequestScope().enter(draft.workspace,content.project_id);
+        const listing=await listWholeCatalog({context:request,kind:content.source.kind,filter:{}});
+        if(navigationSerial.current!==owner || currentRoute.current.projectId!==draft.workspace)return;
+        const item=listing.page?.items.find(item=>item.ref.id===content.source.id);const entry=item?.summary.case?.entry??item?.summary.variant?.entry;
+        if(!entry){setResumeNotice("The original source is unavailable. Authored context work stays retained without rebinding.");return;}
+        const opened=await verifyCase(draft.workspace,entry,{navigationOwner:owner,expectedIdentity:content.identity,skipAutoGrid:true});
+        if(!opened?.case){setResumeNotice("The original source changed. Authored context work stays retained without adopting replacement evidence.");return;}
+        if(draft.kind==="capture-source-context")setCaptureContextSource(content.source);
+        else if("occurrence" in content){setRequirementsContext({workspace:draft.workspace,case:entry,identity:content.identity,source:content.source,occurrence:content.occurrence,selector:content.selector,edition:"",originOccurrence:content.occurrence,originPath:content.selector,nodeOffset:0,byteOffset:-1,scrollTop:0,view:"messages"});setRevealed(false);setCaseFlow("requirements");}
+        return;
+      }
+      if (draft.kind === "field-value-map" && draft.content_schema === "readmit-field-value-map-editor/v1") {
+        const content = draft.content as ValueMapEditorDraft;
+        const owner = navigationSerial.current;
+        const context = new RequestScope().enter(draft.workspace);
+        const listed = await listWholeCatalog({context,kind:content.source.kind,filter:{}});
+        if (navigationSerial.current !== owner || currentRoute.current.projectId !== draft.workspace) return;
+        const item=listed.page?.items.find(candidate=>candidate.ref.id===content.source.id);
+        const entry=item?.summary.case?.entry??item?.summary.variant?.entry;
+        if(!entry){setUnavailableMapDraft({draft,reason:"The original source is missing or unavailable. Authored map work is kept without repinning to another source."});return;}
+        const opened=await verifyCase(draft.workspace,entry,{navigationOwner:owner,expectedIdentity:content.identity,skipAutoGrid:true});
+        if(!opened?.case){setUnavailableMapDraft({draft,reason:"The original source changed or cannot be verified. Authored map work is kept; contextual inspection is unavailable."});return;}
+        setRequirementsContext({workspace:draft.workspace,case:entry,identity:content.identity,source:content.source,occurrence:content.occurrence,selector:content.selector,edition:content.edition,originOccurrence:content.occurrence,originPath:content.selector,nodeOffset:0,byteOffset:-1,scrollTop:0,view:"messages"});
+        setRevealed(false);setCaseFlow("value-maps");setResumeNotice(null);return;
+      }
       if (SHEET_DRAFTS.has(draft.kind)) {
         setResumeNotice(null);
         setResuming(draft);
         return;
       }
-      if (draft.kind === "test-draft" && (draft.content_schema === TEST_EDITOR_DRAFT || draft.content_schema === CONNECTED_EDITOR_DRAFT)) {
+      if (draft.kind === "test-draft" && (draft.content_schema === TEST_EDITOR_DRAFT || draft.content_schema === CONNECTED_EDITOR_DRAFT || draft.content_schema === EXCHANGE_EDITOR_DRAFT)) {
         setResumeNotice(null);
         setRestoringTest(draft);
         return;
@@ -1047,6 +1260,10 @@ export default function App() {
   // that arrives after the person moved to another project is dropped.
   const projectScope = useRef(new RequestScope());
   const projectContext = useCallback(() => projectScope.current.enter(root ?? ""), [root]);
+  const exchangeScope = useRef(new RequestScope());
+  const exchangeContext = useCallback(() => exchangeScope.current.enter(root ?? ""), [root]);
+  const exportScope = useRef(new RequestScope());
+  const exportContext = useCallback(() => exportScope.current.enter(root ?? ""), [root]);
 
   const casesScope = useRef(new RequestScope());
   const refreshCases = useCallback(async () => {
@@ -1073,19 +1290,40 @@ export default function App() {
 
   // The project object one case entry is: a variant, or a case, with its
   // name and, for a variant, the case it was made from.
+  const objectScope = useRef(new RequestScope());
+  const sourceProjectId = projects.find((project) => project.summary.project?.folder === root)?.ref.id ?? "";
   const objectAt = useCallback(
-    async (entry: string): Promise<{ ref: ItemRef; name: string; parent: ItemRef | null } | null> => {
+    async (entry: string, scope = objectScope.current): Promise<{ ref: ItemRef; name: string; parent: ItemRef | null } | null> => {
+      const context = scope.enter(root ?? "", sourceProjectId);
       const [variants, listed] = await Promise.all([
-        listWholeCatalog({ context: projectContext(), kind: "variant", filter: {} }),
-        listWholeCatalog({ context: projectContext(), kind: "case", filter: {} }),
+        listWholeCatalog({ context, kind: "variant", filter: {} }),
+        listWholeCatalog({ context, kind: "case", filter: {} }),
       ]);
+      // The facade fills an omitted project identity after resolving the folder.
+      // Request ownership belongs to the issued context; a normalized reply must
+      // still name this project and agree with its known immutable identity.
+      const matchesProject = (reply: RequestContext) => reply.project === context.project && (!context.project_id || reply.project_id === context.project_id);
+      if (currentRoute.current.projectId !== root || !scope.current({ context }) || !matchesProject(variants.context) || !matchesProject(listed.context)) return null;
       const variant = variants.page?.items.find((item) => item.summary.variant?.entry === entry);
       if (variant) return { ref: variant.ref, name: variant.name, parent: variant.summary.variant?.parent ?? null };
       const held = listed.page?.items.find((item) => item.summary.case?.entry === entry);
       return held ? { ref: held.ref, name: held.name, parent: null } : null;
     },
-    [projectContext],
+    [root, sourceProjectId],
   );
+  useEffect(() => {
+    let current = true;
+    setExchangeSource(null);
+    if (!root || !verified || verified.protocol === "fhir-r4") return;
+    const source = verified;
+    // Source association and the case's displayed object are independent read
+    // owners; the latter must not invalidate this source's generation.
+    const associationScope = new RequestScope();
+    void objectAt(source.name, associationScope).then((object) => {
+      if (current && object) setExchangeSource({ project: root, entry: source.name, identity: source.identity, ref: object.ref });
+    });
+    return () => { current = false; };
+  }, [root, verified?.name, verified?.identity, verified?.protocol, objectAt]);
   // Create variant starts from the case open now and the messages chosen in
   // it; Compare from the case open now and, when named, the other case.
   const startVariant = useCallback(
@@ -1112,6 +1350,7 @@ export default function App() {
   const caseAction = useCallback(
     (item: CatalogItem, action: CaseAction) => {
       const entry = caseEntry(item);
+ if(action==="source-context") {setCaptureContextSource(item.ref);return;}
       if ((action === "variant" || action === "compare") && root && entry) {
         void verifyCase(root, entry).then((opened) => {
           if (!opened?.case) return;
@@ -1262,14 +1501,23 @@ export default function App() {
   // The case an import or a finished capture published opens on its
   // Messages, once the project lists it.
   const openImportedCase = useCallback(
-    async (ref: ItemRef) => {
+    async (ref: ItemRef, selection?: import("./bindings").RetainedImportSelection) => {
       await leaveImport();
       await refreshCases();
       const entry = listedCases.current.find((item) => item.ref.id === ref.id)?.summary.case?.entry;
-      if (root && entry) await verifyCase(root, entry);
+      if (root && entry && currentRoute.current.projectId===root) {
+ const opened=await verifyCase(root,entry,selection ? {skipAutoGrid:true,expectedIdentity:selection.identity} : undefined);
+ if(selection && opened?.case && currentRoute.current.projectId===root) {
+  await loadMessages(root,{case:entry,identity:selection.identity},NO_QUERY,null,0);
+  setCheckedMessages(new Set(selection.messages));
+  if(selection.selected) await inspect(selection.selected,selection.path??"",selection.node_offset??0,-1,{case:entry,identity:selection.identity},false);
+ }
+}
     },
-    [leaveImport, refreshCases, root, verifyCase],
+    [leaveImport, refreshCases, root, verifyCase, loadMessages,inspect],
   );
+
+
 
   // Files dropped on the window go to the Import flow while it is open. One
   // listener is registered for the window's life, which also stops the
@@ -1305,13 +1553,9 @@ export default function App() {
     void discardEditorDraft(id);
   }, []);
 
-  // Reopening where a person was is their own decision, made by pressing the
-  // one button that offers it; nothing restores a workspace by itself. The
-  // restore is read-only — it opens folders, verifies evidence and moves
-  // focus, and it never resumes or resends anything — and where the retained
-  // artifacts have moved or changed, the ordinary refusals are shown and the
-  // listing is there to reopen from, so a draft is never bound to different
-  // evidence silently.
+  // Reopening a private session verifies its sources before restoring local
+  // navigation. Unstored work remains in the existing draft store; external
+  // execution and consent are never resumed by that restoration.
   // Closing the window is safe while every edit is durably acknowledged. After
   // a retention the facade refused, there is text that was typed and never
   // acknowledged, so closing asks first instead of losing it quietly.
@@ -1332,20 +1576,30 @@ export default function App() {
   // to the page, so a keyboard user lands where the page now is.
   const go = useCallback(
     (to: Destination) => {
+      navigationSerial.current += 1;
       const exit = () => {
-        routeTo({ type: "destination", destination: to, leaving: leaving() });
+        if (to === "messages") {
+          routeTo({ type: "go", to: sourceKind === "case" && evidence?.case ? { destination: "cases", objectId: evidence.case.name, view: "messages" } : fileReader.navigation?.file ? { destination: "inspect-file" } : { destination: "messages" }, leaving: leaving() });
+        } else if (to === "cases") {
+          routeTo({ type: "go", to: { destination: "cases" }, leaving: leaving() });
+        } else routeTo({ type: "destination", destination: to, leaving: leaving() });
         focusRegion("evidence");
       };
       if (scenarioNavigation.current) scenarioNavigation.current(exit);
       else exit();
     },
-    [focusRegion, leaving, routeTo],
+    [evidence?.case, sourceKind, fileReader.navigation?.file, focusRegion, leaving, routeTo],
   );
+
+  useEffect(()=>{
+ if(root && looseRetention && retentionStarted.current!==root) {retentionStarted.current=root;go("cases");setImporting(true);}
+ },[root,looseRetention,go]);
 
   // Opens a place reached from inside another: a child destination, or a
   // destination at one of its views.
   const open = useCallback(
     (to: Route) => {
+      navigationSerial.current += 1;
       const exit = () => {
         routeTo({ type: "go", to, leaving: leaving() });
         focusRegion("evidence");
@@ -1357,6 +1611,7 @@ export default function App() {
   );
 
   const back = useCallback(() => {
+    navigationSerial.current += 1;
     const exit = () => {
       routeTo({ type: "back" });
       focusRegion("evidence");
@@ -1365,22 +1620,96 @@ export default function App() {
     else exit();
   }, [focusRegion, routeTo]);
 
+  const configureTargetFromSource=()=>{
+ if(!root)return;
+ const from=currentRoute.current;
+ open({destination:"environments",view:"add",origin:{projectId:root,destination:from.destination,...(from.objectId ? {objectId:from.objectId}:{}),...(from.view ? {view:from.view}:{}),returnContext:leaving(selectedOccurrence??undefined),...(verified ? {evidence:{entry:verified.name,identity:verified.identity}}:{})}});
+ };
+
+  useEffect(()=>{if(reviewSetup && reviewSetup.project!==root)setReviewSetup(null);},[root,reviewSetup]);
+
+  const [returnNotice, setReturnNotice] = useState<string | null>(null);
+  const returnFromSetup = useCallback(async () => {
+    const setup = currentRoute.current;
+    const origin = setup.origin;
+    if (!origin || !root || origin.projectId !== root || setup.projectId !== root) {
+      setReturnNotice("The originating project is no longer open. Your current work is kept.");
+      return;
+    }
+    setReturnNotice(null);
+    let evidence: NavigationEvidence | undefined;
+    if (origin.evidence) {
+      const answer = await openCase(root, origin.evidence.entry);
+      // Another navigation or project switch owns the window now.
+      if (currentRoute.current !== setup) return;
+      if (answer.state !== "completed" || !answer.case || answer.case.identity !== origin.evidence.identity) {
+        setReturnNotice(origin.destination==="new-test" || origin.destination==="edit-test" ? "The originating evidence changed or is unavailable. Your test draft and current work are kept." : "The originating evidence changed or is unavailable. Your originating work is kept.");
+        return;
+      }
+      evidence = { entry: origin.evidence.entry, identity: answer.case.identity };
+    }
+    routeTo({ type: "return", ...(evidence ? { evidence } : {}) });
+ if(reviewSetup?.project===root) {setSendRequest(reviewSetup.request);setReviewSetup(null);}
+    focusRegion("evidence");
+  }, [root, routeTo, focusRegion,reviewSetup]);
+
   // Environments reads under its own request scope, so its reads never make
   // another list's answer look stale.
   const environmentScope = useRef(new RequestScope());
   const environmentContext = useCallback(() => environmentScope.current.enter(root ?? ""), [root]);
   // Tests reads under its own request scope. A saved test, a new test and an
   // edit are each their own place, with Back to where they were opened.
+  const testRoute = route.origin && (route.origin.destination === "new-test" || route.origin.destination === "edit-test") ? route.origin : route;
   const testsPlace: TestsPlace =
-    place === "new-test"
+    testRoute.destination === "new-test"
       ? { kind: "new" }
-      : place === "edit-test" && route.objectId
-        ? { kind: "edit", id: route.objectId }
+      : testRoute.destination === "edit-test" && testRoute.objectId
+        ? { kind: "edit", id: testRoute.objectId }
         : place === "tests" && route.objectId
-          ? { kind: "test", id: route.objectId, view: route.view === "checks" || route.view === "history" ? route.view : "setup" }
+          ? { kind: "test", id: route.objectId, view: isTestWorkspaceView(route.view) ? route.view : "setup" }
           : { kind: "list" };
+  const openPromotedExchange = async (provenance: ExchangeTestProvenance) => {
+    if (!root) return;
+    const project = root;
+    const owner = navigationSerial.current;
+    const source = provenance.inputs;
+    const request = projectContext();
+    const listing = await listWholeCatalog({ context: request, kind: source.case.kind, filter: {} });
+    if (navigationSerial.current !== owner || currentRoute.current.projectId !== project) return;
+    const item = listing.page?.items.find((candidate) => candidate.ref.id === source.case.id);
+    const entry = item?.summary.variant?.entry ?? item?.summary.case?.entry;
+    if (!entry) { setReturnNotice("The retained exchange source is unavailable. The draft is kept."); return; }
+    const opened = await verifyCase(project, entry, { navigationOwner: owner, expectedIdentity: source.identity });
+    if (!opened?.case) { setReturnNotice("The retained exchange source changed or is unavailable. The draft is kept."); return; }
+    setRequestedExchange({ project, origin: provenance.origin });
+  };
+
+  const openSelectedTestWork=(destination:"runs"|"reports",objectId?:string)=>{
+    const from=currentRoute.current;
+    open({destination,...(objectId ? {objectId}:{}),...(root ? {origin:{projectId:root,destination:from.destination,...(from.objectId ? {objectId:from.objectId}:{}),...(from.view ? {view:from.view}:{}),returnContext:leaving()}}:{})});
+  };
   const tests = useTests({
+    onOpenRun:run=>openSelectedTestWork("runs",run.id),
+    onOpenSuite:suite=>open({destination:"suite",objectId:suite.id,view:"tests"}),
+    onOpenCapture:ref=>void openObjectRef(ref),
+    onOpenReport:report=>openSelectedTestWork("reports",report.id),
+    onCreateReport:(run,comparison)=>{setReportSeed(held=>({run,...(comparison ? {comparison}:{}),count:(held?.count??0)+1}));openSelectedTestWork("reports");},
     root,
+ projectId:currentProject?.ref.id??"",
+ retainedDrafts:drafts??[],
+ onResumeDraft:draft=>void resumeDraft(draft),
+    onOpenExchange: (provenance) => { void openPromotedExchange(provenance); },
+    onTargetSetup: (evidence, selection) => {
+      if (!root || currentRoute.current.projectId !== root) return;
+      const from = currentRoute.current;
+      setReturnNotice(null);
+      open({ destination: "environments", view: "add", origin: {
+        projectId: root, destination: from.destination,
+        ...(from.objectId ? { objectId: from.objectId } : {}),
+        ...(from.view ? { view: from.view } : {}),
+        returnContext: leaving(selection), evidence,
+      } });
+    },
     addCheckGroup: pendingCheckGroup,
     onCheckGroupAdded: () => setPendingCheckGroup(null),
     restoreDraft: restoringTest,
@@ -1456,7 +1785,8 @@ export default function App() {
     busy,
     onRun: handoff,
     onLibrary: () => open({ destination: "library" }),
-    onSchedule: (suite) => open({ destination: "schedules", objectId: `suite:${suite}` }),
+    onSchedule: (suite) => openReusable("schedules",undefined,`suite:${suite}`),
+    onTestLibrary: category=>tests.browseTests(category),
     restoreDraft: restoringSuite,
     onRestored: (reason) => {
       setRestoringSuite(null);
@@ -1658,7 +1988,7 @@ export default function App() {
     root,
     shown: place === "reports",
     place: reportsPlace,
-    go: (to) => (to.kind === "report" ? open({ destination: "reports", objectId: to.id }) : open({ destination: "reports" })),
+    go: (to) => open({destination:"reports",...(to.kind==="report" ? {objectId:to.id}:{}),...(route.origin ? {origin:route.origin}:{})}),
     busy,
     seed: reportSeed,
   });
@@ -1698,7 +2028,7 @@ export default function App() {
     if (!root || !verified) return;
     let live = true;
     void objectAt(verified.name).then((object) => {
-      if (live) setOpenObject(object);
+      if (live && object) setOpenObject({...object,project:root,entry:verified.name,identity:verified.identity});
     });
     return () => {
       live = false;
@@ -1736,7 +2066,7 @@ export default function App() {
       return;
     }
     // With nothing chosen, the facade selects every message of the case a test can send.
-    const chosen = messages ? messages.rows.filter((row) => checkedMessages.has(row.id) && row.kind === "message").map((row) => row.id) : [];
+    const chosen = [...checkedMessages];
     void tests.startNew({ case: origin.ref, messages: chosen, ...(origin.variant ? { source: { kind: "variant", variant: origin.ref } } : {}) });
   };
 
@@ -1780,6 +2110,10 @@ export default function App() {
     onSimilar: () => open({ destination: "similar-findings" }),
     onOpenComparison: (ref) => open({ destination: "similar-findings", objectId: ref.id }),
     onCreateTest: (status, review, reportSHA256, title) => void promoteFinding(status, review, reportSHA256, title),
+    ...(verified?.protocol !== "fhir-r4" && selectedSourceRef ? { onRequirements: (finding: import("./bindings").FindingRow) => {
+      const at = finding.evidence.find((entry) => entry.occurrence !== "");
+      openRequirements(at?.occurrence ?? "", at?.field ?? "");
+    } } : {}),
   });
   const similar = useSimilarFindings({
     root: place === "similar-findings" ? root : null,
@@ -1909,15 +2243,26 @@ export default function App() {
     onImport: () => setImporting(true),
   });
 
-  const environments = useEnvironments({
+  const environmentPage = useEnvironments({
+    shown:place==="environments",
     root,
     context: environmentContext,
     place: environmentPlace(place === "environments" ? route.objectId : undefined, route.view),
     go: (objectId, view) => open({ destination: "environments", objectId, ...(view ? { view } : {}) }),
-    back,
+    back: route.origin ? () => void returnFromSetup() : back,
     busy,
-    onAdded: (ref) => returnToSecurity(ref),
+    onAdded: (ref) => currentRoute.current.origin ? void returnFromSetup() : returnToSecurity(ref),
     capture: captureBinding,
+    onChooseCapture: async (item) => {
+      if(!root)return;
+      const project=root;const from=currentRoute.current;const owner=navigationSerial.current;
+      const entry=caseEntry(item);
+      if(!entry || item.availability!=="available") {setReturnNotice("The selected capture is unavailable; the target context is kept.");return;}
+      const origin={projectId:project,destination:from.destination,...(from.objectId ? {objectId:from.objectId}:{}),...(from.view ? {view:from.view}:{}),returnContext:leaving()};
+      const opened=await verifyCase(project,entry,{navigationOwner:owner});
+      if(!opened?.case || currentRoute.current.projectId!==project || currentRoute.current.destination!=="cases" || currentRoute.current.objectId!==entry)return;
+      routeTo({type:"replace",to:{destination:"cases",objectId:entry,view:"messages",origin}});
+    },
     onObservationClosed: () => {
       setCaptureBinding(null);
       if (observingFromSecurity) {
@@ -1939,6 +2284,12 @@ export default function App() {
     },
   });
 
+  const environments = route.origin ? {
+    ...environmentPage,
+    actions: <><button type="button" disabled={busy} onClick={() => void returnFromSetup()}>{reviewSetup ? "Return to review":route.origin?.destination==="new-test" || route.origin?.destination==="edit-test" ? "Return to test":"Return to messages"}</button>{environmentPage.actions}</>,
+    body: <>{returnNotice ? <p role="alert" className="object-problem">{returnNotice}</p> : null}{environmentPage.body}</>,
+  } : environmentPage;
+
   const encryption = useEncryption({ root: place === "encryption" ? root : null, busy, onChanged: () => void refreshListing() });
 
   // The shown test's or environment's own actions, for the palette.
@@ -1951,6 +2302,15 @@ export default function App() {
   const storageContext = useCallback(() => storageScope.current.enter(root ?? ""), [root]);
 
   const openSettings = useCallback((view: SettingsView) => open({ destination: "settings", view }), [open]);
+  const openReusable = (destination:"settings"|"schedules",view?:string,objectId?:string) => {
+    const from=currentRoute.current;
+    open({destination,...(view ? {view}:{}),...(objectId ? {objectId}:{}),...(root ? {origin:{projectId:root,destination:from.destination,...(from.objectId ? {objectId:from.objectId}:{}),...(from.view ? {view:from.view}:{}),returnContext:leaving()}}:{})});
+  };
+  const backFromReusable = () => {
+    if(route.origin && root===route.origin.projectId) routeTo({type:"return"});
+    else back();
+  };
+
 
   const openStorage = useCallback(() => openSettings("storage"), [openSettings]);
 
@@ -2132,7 +2492,7 @@ export default function App() {
 
   const artifacts = opened?.artifacts ?? [];
   const projectName = overview?.title || (root ? folderName(root) : "");
-  const caseTitle = verified ? overview?.cases.find((entry) => entry.name === verified.name)?.title || verified.name : "";
+  const caseTitle = verified ? (openObject?.project===root && openObject.entry===verified.name && openObject.identity===verified.identity ? openObject.name:"") || overview?.cases.find((entry) => entry.name === verified.name)?.title || verified.name : "";
   const subpage = capturing && root ? "capture" : null;
   // The open case's own menu, which the palette also lists while the case is
   // on screen. A variant also links the case it was made from and its
@@ -2169,7 +2529,7 @@ export default function App() {
     busy,
     onCompareRuns: (ids) => open({ destination: "compare-runs", objectId: ids.join("..") }),
   });
-  useOfferedActions(registerActions, place === "cases" && verified !== null && subpage === null && caseFlow === null ? { object: caseTitle, items: caseMenu } : null);
+  useOfferedActions(registerActions, place === "cases" && !captureCollection && verified !== null && subpage === null && caseFlow === null ? { object: caseTitle, items: caseMenu } : null);
   const inspecting = selectedOccurrence !== null || inspectionResult !== null || running === "inspect";
   // The rows chosen for Create test and Send selected: only message rows, so an
   // ACK or unparsed row is never counted as outbound; none chosen is all rows.
@@ -2177,11 +2537,12 @@ export default function App() {
   const selectedRow = messages?.rows.find((row) => row.id === selectedOccurrence) ?? null;
   const fileSelection = place === "inspect-file" && fileReader.details !== null;
   const benchmarkSelection = place === "benchmarks" && benchmarks.details !== null;
-  const findingShown = place === "cases" && verified !== null && subpage === null && caseView === "findings" && findings.selected !== null;
-  const linkShown = place === "cases" && verified !== null && subpage === null && caseView === "timeline" && timeline.selectedLink !== null;
-  const detailsShown =
-    (place === "cases" && verified !== null && subpage === null && caseView !== "findings" && inspecting && !linkShown) || findingShown || linkShown || fileSelection || benchmarkSelection;
+  const findingShown = place === "cases" && !captureCollection && verified !== null && subpage === null && caseView === "findings" && findings.selected !== null;
+  const linkShown = place === "cases" && !captureCollection && verified !== null && subpage === null && caseView === "timeline" && timeline.selectedLink !== null;
+  const detailsShown = caseFlow !== "requirements" && caseFlow !== "value-maps" && (
+    (place === "cases" && !captureCollection && verified !== null && subpage === null && caseView !== "findings" && inspecting && !linkShown && (caseFlow !== "field-values" || fieldValuesInspecting)) || findingShown || linkShown || fileSelection || benchmarkSelection);
   const closeDetails = () => {
+    if (caseFlow === "field-values") { setFieldValuesInspecting(false); return; }
     if (fileSelection) {
       fileReader.closeDetails();
     } else if (benchmarkSelection) {
@@ -2210,7 +2571,7 @@ export default function App() {
   );
   const interruptible = running === "workspace";
 
-  // The window's own width decides the sidebar: a labelled 13rem sidebar where
+  // The window's own width decides the sidebar: a labelled 14rem sidebar where
   // there is room, an icon rail below that with the project switcher moved
   // into the page header, never both gone.
   const [frame, setFrame] = useState<HTMLDivElement | null>(null);
@@ -2230,17 +2591,127 @@ export default function App() {
       onNew={() => perform("new-project")}
       onSettings={() => perform("open-project")}
       onFiles={() => open({ destination: "project-files" })}
+      onProjects={() => go("home")}
     />
   ) : null;
 
   // The inspector keeps the width chosen for this project, clamped to the room
   // there is now. When the list beside it would fall below its useful width,
   // the selection is shown on its own with the way back to the list.
-  const sidebarRem = compact ? ICON_RAIL_REM : SIDEBAR_REM;
+  const readerLayout = detailsShown && (fileSelection || (place === "cases" && caseFlow !== "field-values" && caseView === "messages" && verified?.protocol !== "fhir-r4"));
+  const compactReader = readerLayout && (readerDensityOverride ?? (frameWidth > 0 && frameWidth / rem <= READER_COMPACT_WINDOW_REM));
+  const sidebarRem = compact ? ICON_RAIL_REM : compactReader ? READER_COMPACT_SIDEBAR_REM : SIDEBAR_REM;
   const workareaRem = frameWidth > 0 ? frameWidth / rem - sidebarRem : Number.POSITIVE_INFINITY;
   const preferredInspector = (root !== null ? inspectorWidths[root] : undefined) ?? INSPECTOR_REM;
   const inspectorRem = Math.max(INSPECTOR_MIN_REM, Math.min(preferredInspector, INSPECTOR_MAX_REM, workareaRem - LIST_MIN_REM - 1 / rem));
-  const detailOnly = detailsShown && workareaRem - inspectorRem - 1 / rem < LIST_MIN_REM;
+  const messageBrowserRem = Math.max(10, Math.min(messageBrowserWidths[root ?? "standalone-file"] ?? (compactReader ? MESSAGE_BROWSER_COMPACT_REM : MESSAGE_BROWSER_REM), 25));
+  const readerMinRem = 37;
+  const readerRem = Number.isFinite(workareaRem) ? Math.max(readerMinRem, workareaRem - messageBrowserRem - 1 / rem) : readerMinRem;
+  const readerMaxRem = Number.isFinite(workareaRem) ? Math.max(readerMinRem, workareaRem - 10 - 1 / rem) : 80;
+  const detailOnly = detailsShown && (readerLayout ? workareaRem < messageBrowserRem + readerMinRem + 1 / rem : workareaRem - inspectorRem - 1 / rem < LIST_MIN_REM);
+
+  useEffect(() => {
+    if (place === "inspect-file" && fileNavigation?.file) setSourceKind("file");
+  }, [place, fileNavigation?.file]);
+
+  useEffect(() => {
+    if (!described || restoreStarted.current) return;
+    restoreStarted.current = true;
+    const restoreOwner=navigationSerial.current;
+    void (async () => {
+      const answer = await workingSession();
+      // A person who already chose another location owns that navigation.
+      if (restoreOwner!==navigationSerial.current || currentRoute.current.destination !== "home" || currentRoute.current.projectId) { setSessionReady(true); return; }
+      if (answer.state !== "completed" || !answer.session) {
+        if (answer.state !== "completed" && answer.state !== "empty") setSessionNotice(answer.reason ?? "The previous session could not be read. It remains intact.");
+        setSessionReady(true); return;
+      }
+      const saved = answer.session.view;
+      if (!saved.workspace && !saved.navigation?.file) { setSessionReady(true); return; }
+      if (saved.workspace && !(await openFolder(() => openWorkspace(saved.workspace),restoreOwner))) { setSessionReady(true); return; }
+      const expectedOwner=restoreOwner+(saved.workspace ? 1:0);
+      if(navigationSerial.current!==expectedOwner){setSessionReady(true);return;}
+      pendingSessionOwner.current=expectedOwner;
+      setPendingSession(saved);
+    })();
+  }, [described]); // Restore once; later navigation belongs to the viewer.
+
+  useEffect(() => {
+    const saved = pendingSession;
+    if (!saved || (saved.workspace && root !== saved.workspace)) return;
+    setPendingSession(null);
+    const owner = pendingSessionOwner.current;
+    pendingSessionOwner.current=null;
+    if(owner===null || owner!==navigationSerial.current){setSessionReady(true);return;}
+    void (async () => {
+      const nav = saved.navigation;
+      const stillOwned = () => navigationSerial.current === owner;
+      const abandon = () => { setSessionReady(true); };
+      let sourceAvailable = true;
+      if (nav?.project_identity && nav.project_identity !== currentProject?.ref.id) {
+        setSessionNotice("The previous project identity changed. Choose its source explicitly; no navigation was rebound.");
+        setSessionReady(true); return;
+      }
+      if (nav?.source_kind === "file" && nav.file) {
+        sourceAvailable = await fileReader.restore(nav);
+        if (!sourceAvailable) setSessionNotice("The previous message file changed or is unavailable. Open it explicitly; no selection was rebound.");
+        if (!stillOwned()) { abandon(); return; }
+        setSourceKind("file");
+      } else if (saved.case && root) {
+        const opened = await verifyCase(root, saved.case, { skipAutoGrid: true, navigationOwner: owner, ...(nav?.source_identity ? { expectedIdentity: nav.source_identity } : {}) });
+        if (!stillOwned()) { abandon(); return; }
+        sourceAvailable = !!opened?.case;
+        if (opened?.case) {
+          const available = await listViews(root);
+          if (!stillOwned()) { abandon(); return; }
+          setViews(available.views);
+          const chosen = nav?.filter ? available.views.find((view) => view.name === nav.filter) : undefined;
+          if (nav?.filter && !chosen) setSessionNotice("The previous saved view is unavailable. The source stays inspectable.");
+          const query = chosen?.query ?? NO_QUERY;
+          const sort: SortState | null = nav?.sort === "time-ascending" || nav?.sort === "time-descending" ? { column: "time", direction: nav.sort === "time-ascending" ? "ascending" : "descending" } : null;
+          setMessageView(chosen?.name ?? ""); setMessageQuery(query); setMessageSort(sort);
+          await loadMessages(root, { case: opened.case.name, identity: opened.case.identity }, query, sort, 0);
+          if (!stillOwned()) { abandon(); return; }
+          setCheckedMessages(new Set(nav?.checked_occurrences??[]));
+          const catalog = nav?.reference_path ?? "";
+          if (nav?.reference_path) {
+            const reference = await readReferenceCatalog(nav.reference_path);
+            if (!stillOwned()) { abandon(); return; }
+            if (reference.reference?.identity !== nav.reference_identity) setSessionNotice("The previous reference catalog changed or is unavailable. Select it again explicitly.");
+          }
+          referenceCatalog.current = catalog;
+          referenceIdentity.current = catalog ? nav?.reference_identity ?? "" : "";
+          let selection = nav?.reference_selection;
+          if (selection) {
+            const checked = await readHL7ReferenceSelection(selection);
+            if (!stillOwned()) { abandon(); return; }
+            if (checked.state !== "completed" || checked.overlay?.status === "not_available") setSessionNotice("A previous profile or documentation file changed or is unavailable. Select it again explicitly; the source stays inspectable.");
+            // Retain the saved pins even when unavailable; inspection reports the
+            // refusal instead of silently binding replacement bytes.
+          }
+          referenceSelection.current = selection;
+          if (nav?.occurrence) await inspect(nav.occurrence, nav.field_path ?? "", nav.node_offset ?? 0, -1, { case: opened.case.name, identity: opened.case.identity }, false, -1, catalog, selection, referenceIdentity.current);
+        } else setSessionNotice("The previous capture changed or is unavailable. Choose a source explicitly; no selection was rebound.");
+      }
+      if (!stillOwned()) { abandon(); return; }
+      if (sourceAvailable) {
+        const to: Route = nav && isPlace(nav.destination) ? { destination: nav.destination, ...(nav.object ? { objectId: nav.object } : {}), ...(nav.local_view ? { view: nav.local_view } : {}), ...(nav.scroll_top !== undefined ? { returnContext: { scrollTop: nav.scroll_top } } : {}) } : { destination: "cases", ...(saved.case ? { objectId: saved.case, view: "messages" } : {}) };
+        // A review is recreated only by a deliberate action, never from session consent.
+        if (to.objectId === "active" && to.destination === "runs") delete to.objectId;
+        routeTo({ type: "replace", to });
+        restoredScroll.current = nav?.scroll_top ?? 0;
+        if (saved.region === "navigation" || saved.region === "evidence" || saved.region === "inspector") focusRegion(saved.region, true);
+      }
+      setSessionReady(true);
+    })();
+  }, [pendingSession, root]); // staged after the real project has opened
+
+  useLayoutEffect(() => {
+    if (restoredScroll.current === null || !sessionReady) return;
+    const body = document.querySelector<HTMLElement>(`.page[data-page="${route.destination}"] .page-body`);
+    if (body) body.scrollTop = restoredScroll.current;
+    restoredScroll.current = null;
+  }, [sessionReady, route, caseFlow]);
 
   // Every region the facade declares has an element here, for the same reason
   // every command has an action: a region the window forgot is a type error.
@@ -2249,11 +2720,13 @@ export default function App() {
   const content: Record<RegionId, ReactElement> = {
     navigation: (
       <>
-        <ul className="nav-list">
+        {!readerLayout && (!root || compact) ? <ul className="nav-list">
           <NavItem id="home" label="Projects" current={destination === "home"} onSelect={go} />
-        </ul>
-        {root && !compact ? <div className="sidebar-switcher">{switcher}</div> : null}
-        {root ? (
+        </ul> : null}
+        {readerLayout && !compact ? <div className="sidebar-switcher reader-source-switcher"><Menu className="project-switcher" label={`Source: ${root ? projectName : fileReader.title}`} trigger={<><span className="reader-switcher-caption"><strong>{root ? projectName : fileReader.title}</strong><span>{root ? "Project" : "Local files"}</span></span><img className="workbench-icon" src={chevronsAsset} alt="" /></>} items={[{label:"Projects",onSelect:()=>go("home")},{label:"Open project…",onSelect:()=>perform("open-workspace"),disabled:busy},{label:"New project…",onSelect:()=>perform("new-project"),disabled:busy},{label:"Tools",onSelect:()=>go("tools")},...(root ? [{label:"Project settings",onSelect:()=>perform("open-project")},{label:"Files",onSelect:()=>open({destination:"project-files"})}] : [])]}/></div> : null}
+        {root && !readerLayout && !compact ? <div className="sidebar-switcher">{switcher}</div> : null}
+        {!root && !readerLayout ? <ul className="nav-list"><NavItem id="messages" label="Messages" current={destination === "messages"} onSelect={go} /></ul> : null}
+        {root || readerLayout ? (
           <ul className="nav-list">
             {PROJECT_DESTINATIONS.map((item) => (
               <NavItem key={item.id} id={item.id} label={item.label} current={destination === item.id} onSelect={go} />
@@ -2261,7 +2734,7 @@ export default function App() {
           </ul>
         ) : null}
         <ul className="nav-list nav-footer">
-          {GLOBAL_DESTINATIONS.map((item) => (
+          {GLOBAL_DESTINATIONS.filter(item=>item.id!=="tools" || (!root && !readerLayout)).map((item) => (
             <NavItem key={item.id} id={item.id} label={item.label} current={destination === item.id} onSelect={go} />
           ))}
         </ul>
@@ -2308,6 +2781,8 @@ export default function App() {
     ),
     evidence: (
       <>
+        {sessionNotice ? <p role="alert" className="object-problem">{sessionNotice}</p> : null}
+ {sessionWriteNotice ? <p role="alert" className="object-problem">{sessionWriteNotice}</p> : null}
         <Page
           id="home"
           shown={place === "home"}
@@ -2370,32 +2845,33 @@ export default function App() {
         <Page
           id="cases"
           shown={place === "cases"}
-          details={verified && subpage === null && caseFlow === null ? { name: caseTitle, open: () => setFileDetails(true) } : undefined}
+          details={verified && !captureCollection && subpage === null && caseFlow === null ? { name: caseTitle, open: () => setFileDetails(true) } : undefined}
           back={
-            subpage !== null ? (
-              <BackLink label="Cases" onBack={leaveSubpage} />
+            readerLayout ? null : subpage !== null ? (
+              <BackLink label="Captures" onBack={leaveSubpage} />
             ) : verified && caseFlow !== null ? (
-              <BackLink label={caseTitle} name={caseTitle} onBack={() => caseFlow === "variant" ? variantEditor.leave(() => setCaseFlow(null)) : setCaseFlow(null)} />
-            ) : verified ? (
-              <BackLink label="Cases" onBack={backToProject} />
+              <BackLink label={caseTitle} name={caseTitle} onBack={() => (caseFlow === "requirements" || caseFlow === "value-maps") ? leaveRequirements() : caseFlow === "field-values" ? leaveFieldValues() : caseFlow === "variant" ? variantEditor.leave(() => setCaseFlow(null)) : setCaseFlow(null)} />
+            ) : verified && !captureCollection ? (
+              <BackLink label="Captures" onBack={backToProject} />
             ) : null
           }
           title={
-            subpage === "capture"
+            readerLayout ? "Messages" : subpage === "capture"
               ? capture.title
-              : verified
+              : verified && !captureCollection
                     ? caseFlow === "variant"
                       ? variantEditor.title
                       : caseFlow === "compare"
                         ? caseComparison.title
-                        : caseTitle
-                    : "Cases"
+                        : caseFlow === "value-maps" ? "Value maps" : caseFlow === "requirements" ? "Interface requirements" : caseFlow === "field-values" ? "Field values" : caseTitle
+                    : "Captures"
           }
           actions={
-            subpage === "capture" ? (
+            readerLayout ? <>{route.origin?.destination==="environments"?<button type="button" disabled={busy} onClick={()=>void returnFromSetup()}>Return to target</button>:null}<span className="reader-toolbar-edition">HL7 {inspectionResult?.inspection?.metadata.hl7_version || "not declared"}</span><button type="button" className="link reader-toolbar-reference" disabled={busy} onClick={()=>setReaderReferenceRequest(count=>count+1)}>Reference</button><span className="reader-toolbar-space"/><button type="button" disabled={busy} onClick={()=>{setSourceKind("file");open({destination:"inspect-file",view:"messages"});setRawRequest(count=>count+1);}}>Open</button><button type="button" disabled={busy || !root} onClick={startCaptureSetup}>Receive</button><button type="button" disabled={busy || !selectedSourceRef || checkedMessages.size!==2} onClick={()=>setSelectedComparison(true)}>Compare</button><button type="button" className="primary" disabled={busy || !selectedSourceRef} onClick={()=>void createTest()}>Create test case</button><Menu className="reader-menu" trigger={<img className="workbench-icon" src={moreAsset} alt="" />} label="More case actions" items={[...caseMenu,{label:"Receive and send selected",onSelect:()=>setExchangeUIRequest(old=>({kind:"setup",serial:(old?.serial??0)+1})),disabled:busy||!selectedSourceRef||checkedMessages.size===0},{label:"Exchange history",onSelect:()=>setExchangeUIRequest(old=>({kind:"history",serial:(old?.serial??0)+1})),disabled:busy||!selectedSourceRef},{label:"Source context",onSelect:()=>{if(selectedSourceRef)setCaptureContextSource(selectedSourceRef);},disabled:busy || !selectedSourceRef},{label:"Export selected",onSelect:()=>setSelectedExportOpen(true),disabled:busy || !selectedSourceRef || checkedMessages.size===0},{label:"Capture exports",onSelect:()=>setSourceExportsOpen(true),disabled:busy || !selectedSourceRef},{label:"Captures",onSelect:backToProject},{label:"Timeline",onSelect:()=>setView("timeline")},{label:"Findings",onSelect:()=>setView("findings")}]}/></> : subpage === "capture" ? (
               capture.actions
-            ) : root && subpage === null && !verified ? (
+            ) : root && subpage === null && (!verified || captureCollection) ? (
               <>
+ <button type="button" disabled={busy} onClick={()=>{setSourceKind("file");open({destination:"inspect-file",view:"messages"});setRawRequest(count=>count+1);}}>Open file</button>
                 <button type="button" disabled={busy} onClick={startCaptureSetup}>
                   Capture
                 </button>
@@ -2403,41 +2879,45 @@ export default function App() {
                   Import
                 </button>
               </>
-            ) : verified && subpage === null && caseFlow === null ? (
+            ) : verified && !captureCollection && subpage === null && caseFlow === null ? (
               <>
+                {route.origin?.destination==="environments"?<button type="button" disabled={busy} onClick={()=>void returnFromSetup()}>Return to target</button>:null}
                 <Menu
                   label="More case actions"
                   items={caseMenu}
                 />
               </>
-            ) : verified && subpage === null && caseFlow === "variant" ? (
+            ) : verified && !captureCollection && subpage === null && caseFlow === "variant" ? (
               variantEditor.actions
-            ) : verified && subpage === null && caseFlow === "compare" ? (
+            ) : verified && !captureCollection && subpage === null && caseFlow === "compare" ? (
               caseComparison.actions
             ) : null
           }
         >
           {!root ? noProject("cases") : null}
           {capturing && root ? capture.body : null}
+          {captureContextSource ? <CaptureSourceContext projectID={currentProject?.ref.id??""} source={captureContextSource} context={exportContext} onClose={()=>setCaptureContextSource(null)} onChanged={()=>void refreshCases()} /> : null}
           {root ? (
             <ImportFlow
               open={importing}
+              seed={looseRetention}
               root={root}
               context={importContext}
               drafts={drafts}
               busy={busy}
               onClose={() => {
                 setImporting(false);
+ if(looseRetention) {setLooseRetention(null);open({destination:"inspect-file",view:"messages"});}
                 void leaveImport();
               }}
-              onImported={(ref) => {
-                setImporting(false);
-                void openImportedCase(ref);
+              onImported={(ref,selection) => {
+                setImporting(false);setLooseRetention(null);
+                void openImportedCase(ref,selection);
               }}
             />
           ) : null}
 
-          {root && subpage === null && verified === null ? (
+          {root && subpage === null && (verified === null || captureCollection) ? (
             <>
               {resumeNotice ? (
                 <div className="notice danger" role="alert">
@@ -2449,11 +2929,8 @@ export default function App() {
                   <Report indicators={indicators} progress={null} result={caseNotice} />
                 </div>
               ) : null}
-              <div className="toolbar page-toolbar">
-                <IconButton icon="search" label="Search cases" onClick={() => setSearchingCases(true)} />
-                <IconButton icon="filter" label="Filter cases" onClick={() => setFilteringCases(true)} />
-              </div>
               <CaseList
+                toolbarActions={<><IconButton icon="filter" label="Filter cases" onClick={()=>setFilteringCases(true)}/><Menu label="Capture list actions" items={[{label:"Search cases",onSelect:()=>setSearchingCases(true)}]}/></>}
                 cases={cases}
                 revisions={currentProject?.summary.project?.revisions ?? []}
                 notices={caseNotices}
@@ -2483,7 +2960,7 @@ export default function App() {
             </>
           ) : null}
 
-          {verified && root ? (
+          {verified && root && !captureCollection ? (
             <ViewKey id={verified.identity}>
             <div className="case-view" hidden={subpage !== null}>
               {caseNotice ? (
@@ -2526,7 +3003,36 @@ export default function App() {
                       )}
                     </div>
                   ) : null}
+                  {verified.protocol !== "fhir-r4" ? <ExchangePanel
+                    context={exchangeContext}
+                    readerMode={readerLayout}
+                    inspectOwner={verified ? {identity:verified.identity,occurrence:selectedOccurrence??""}:null}
+                    request={exchangeUIRequest}
+                    onContext={receiveExchangeContext}
+                    caseRef={exchangeSource?.project === root && exchangeSource.entry === verified.name && exchangeSource.identity === verified.identity ? exchangeSource.ref : null}
+                    selected={sourceSelection.rows.filter(row=>row.kind==="message").map(row=>row.id)}
+                    busy={busy}
+                    onCreateVariant={() => void startVariant(verified.name, verified.identity, [...checkedMessages], verified.protocol)}
+                    requestedExchange={requestedExchange?.project === root ? requestedExchange.origin : null}
+                    onCreateTest={(exchange) => {
+                      if (!exchange.inputs || !exchange.identity) return;
+                      void tests.startNew({ case: exchange.inputs.case, messages: exchange.inputs.messages, exchange: { id: exchange.id, identity: exchange.identity } });
+                    }}
+                  /> : null}
+                  {verified.protocol !== "fhir-r4" && !readerLayout ? (
+                  <div className="toolbar toolbar-group source-export-actions">
+ <button type="button" disabled={busy || !selectedSourceRef} onClick={()=>setCaptureContextSource(selectedSourceRef)}>Source context</button>
+                    <button type="button" disabled={busy || !selectedSourceRef || checkedMessages.size!==2} onClick={()=>setSelectedComparison(true)}>Compare selected</button>
+                    <button type="button" disabled={busy || !root} onClick={configureTargetFromSource}>Configure target</button>
+                    <button type="button" disabled={busy || !root} onClick={()=>setReceivingSetup(true)}>Receive setup</button>
+                    <button type="button" disabled={busy || !selectedSourceRef || checkedMessages.size === 0} onClick={() => setSelectedExportOpen(true)}>Export selected</button>
+                    <button type="button" disabled={busy || !selectedSourceRef} onClick={() => setSourceExportsOpen(true)}>Capture exports</button>
+                  </div>
+                  ) : null}
                   <MessageList
+                    browser={readerLayout && !detailOnly}
+                    browserSourceName={caseTitle}
+                    {...(selectedSourceRef ? {browserSourceKind:selectedSourceRef.kind === "variant" ? "derived" as const : "retained" as const} : {})}
                     {...(verified?.protocol ? { protocol: verified.protocol } : {})}
                     result={messages?.result ?? null}
                     rows={messages?.rows ?? []}
@@ -2578,12 +3084,15 @@ export default function App() {
                     }}
                     selected={selectedOccurrence}
                     onInspect={(occurrence) => void inspect(occurrence, evidenceFocus?.find((entry) => entry.occurrence === occurrence)?.field ?? "", 0, -1)}
+                    sourceSendableCount={sourceSelection.rows.filter(row=>row.kind==="message").length}
+ selectionReading={sourceSelection.loading}
+ selectionReason={sourceSelection.reason}
                     checked={checkedMessages}
                     onCheck={setCheckedMessages}
                     onCreateTest={() => void createTest()}
                     onSendSelected={() => {
                       const caseRef = listedCases.current.find((item) => item.summary.case?.entry === verified?.name)?.ref;
-                      const chosen = (messages?.rows ?? []).filter((row) => checkedMessages.has(row.id) && row.kind === "message").map((row) => row.id);
+                      const chosen = sourceSelection.rows.filter(row=>row.kind==="message").map(row=>row.id);
                       if (caseRef && chosen.length > 0) setSendRequest({ kind: "messages", case: { kind: "case", id: caseRef.id }, messages: chosen });
                     }}
                     onCreateVariant={() => verified && void startVariant(verified.name, verified.identity, [...checkedMessages], verified.protocol)}
@@ -2630,6 +3139,18 @@ export default function App() {
               </div>
                 {caseFlow === "variant" && variantFlow ? <div className="view-panel case-flow">{variantEditor.body}</div> : null}
                 {caseFlow === "compare" && compareFlow ? <div className="view-panel case-flow">{caseComparison.body}</div> : null}
+                {caseFlow === "requirements" && requirementsContext && root === requirementsContext.workspace && verified.name === requirementsContext.case && verified.identity === requirementsContext.identity ? (
+                  <InterfaceRequirements projectID={currentProject?.ref.id??""} context={exportContext} source={requirementsContext.source} identity={requirementsContext.identity}
+                    occurrence={requirementsContext.occurrence} selector={requirementsContext.selector} busy={busy} onBack={leaveRequirements} />
+                ) : null}
+                {caseFlow === "value-maps" && requirementsContext && root === requirementsContext.workspace && verified.name === requirementsContext.case && verified.identity === requirementsContext.identity ? (
+                  <ValueMaps context={exportContext} source={requirementsContext.source} identity={requirementsContext.identity} occurrence={requirementsContext.occurrence} selector={requirementsContext.selector} edition={requirementsContext.edition} busy={busy} onBack={leaveRequirements}/>
+                ) : null}
+                {caseFlow === "field-values" && fieldValuesContext && root === fieldValuesContext.workspace && verified.name === fieldValuesContext.case && verified.identity === fieldValuesContext.identity ? (
+                  <FieldValues scope={{ workspace: root, case: verified.name, identity: verified.identity, query: messageQuery }}
+                    selector={fieldValuesContext.selector} {...(fieldValuesContext.label ? { label: fieldValuesContext.label } : {})} busy={busy} onBack={leaveFieldValues}
+                    onInspectOccurrence={(occurrence, selector) => { setFieldValuesInspecting(true); setRevealed(false); void inspect(occurrence, selector, 0, -1, undefined, false); }} />
+                ) : null}
             </div>
             </ViewKey>
           ) : null}
@@ -2642,19 +3163,31 @@ export default function App() {
         <Page
           id="tests"
           shown={place === "tests"}
-          title={testsPlace.kind === "list" && testsView === "suites" ? suites.title : tests.title}
+          title={testsPlace.kind === "list" ? testsView === "suites" ? suites.title : "Test cases" : tests.title}
           details={"details" in tests ? tests.details : undefined}
           back={tests.back}
           actions={
             !root ? null : testsPlace.kind === "list" && testsView === "suites" ? (
               <>
                 {suites.actions}
+                <button type="button" onClick={()=>open({destination:"runs"})}>Run history</button>
+                <button type="button" onClick={()=>openReusable("schedules")}>Schedules</button>
+                <Menu label="Reusable work" items={[{label:"Import CI results",onSelect:()=>setCIResultsOpen(true)},{label:"Runners",onSelect:()=>openReusable("settings","runners")},{label:"Team",onSelect:()=>openReusable("settings","team")},{label:"Library",onSelect:()=>open({destination:"library"})}]}/>
                 <Menu label="Suite page actions" items={[{ label: "Import suite", onSelect: () => void suites.importSuite() }]} />
               </>
             ) : (
               <>
                 {tests.actions}
-                {testsPlace.kind === "list" ? <Menu label="Test page actions" items={[{ label: "Import test", onSelect: () => void tests.importTest() }]} /> : null}
+                {testsPlace.kind === "list" ? <Menu label="Test page actions" items={[
+                  ...tests.listTools,
+                  {label:"Run history",onSelect:()=>open({destination:"runs"})},
+                  {label:"Exports",onSelect:()=>go("reports")},
+                  {label:"Schedules",onSelect:()=>openReusable("schedules")},
+                  {label:"Import test",onSelect:()=>void tests.importTest(),separated:true},
+                  {label:"Import CI results",onSelect:()=>setCIResultsOpen(true)},
+                  {label:"Runners",onSelect:()=>openReusable("settings","runners")},
+                  {label:"Team",onSelect:()=>openReusable("settings","team")},
+                ]}/> : null}
               </>
             )
           }
@@ -2666,7 +3199,6 @@ export default function App() {
           ) : (
             <TaskTabs label="Test views" id="tests-views" tabs={TESTS_VIEWS} selected={testsView} onSelect={setView} panels>
               <TaskPanel tabs="tests-views" tab="tests" className="task-panel view-panel" shown={testsView === "tests"}>
-                <div className="toolbar list-toolbar">{tests.toolbar}</div>
                 {testsPlace.kind === "list" ? tests.body : null}
               </TaskPanel>
               <TaskPanel tabs="tests-views" tab="suites" className="task-panel view-panel" shown={testsView === "suites"}>
@@ -2677,11 +3209,11 @@ export default function App() {
           )}
         </Page>
 
-        <Page id="new-test" shown={place === "new-test"} title={tests.title} back={tests.back} actions={tests.actions}>
+        <Page id="new-test" shown={place === "new-test"} title={tests.title} back={tests.back} actions={<>{tests.actions}{root ? <button type="button" disabled={busy} onClick={()=>setReceivingSetup(true)}>Receive setup</button>:null}</>}>
           {root && place === "new-test" ? tests.body : null}
         </Page>
 
-        <Page id="edit-test" shown={place === "edit-test"} title={tests.title} back={tests.back} actions={tests.actions}>
+        <Page id="edit-test" shown={place === "edit-test"} title={tests.title} back={tests.back} actions={<>{tests.actions}{root ? <button type="button" disabled={busy} onClick={()=>setReceivingSetup(true)}>Receive setup</button>:null}</>}>
           {root && place === "edit-test" ? tests.body : null}
         </Page>
 
@@ -2761,7 +3293,7 @@ export default function App() {
           id="runs"
           shown={place === "runs"}
           title={runsPlace.kind === "list" ? runsList.title : runPage.title}
-          back={runsPlace.kind === "list" ? undefined : <BackLink label="Runs" onBack={back} />}
+          back={runsPlace.kind === "list" ? undefined : <BackLink label={route.origin ? "Test":"Runs"} onBack={route.origin ? backFromReusable:back} />}
           actions={root ? (runsPlace.kind === "list" ? runsList.actions : runPage.actions) : null}
         >
           {!root ? (
@@ -2776,11 +3308,11 @@ export default function App() {
           )}
         </Page>
 
-        <Page id="schedules" shown={place === "schedules"} title="Schedules" back={<BackLink label="Back" onBack={back} />} actions={schedules.actions}>
+        <Page id="schedules" shown={place === "schedules"} title="Schedules" back={<BackLink label="Back" onBack={backFromReusable} />} actions={schedules.actions}>
           {schedules.body}
         </Page>
 
-        <Page id="compare-runs" shown={place === "compare-runs"} title={runComparison.title} back={<BackLink label="Runs" onBack={back} />} actions={root ? runComparison.actions : null}>
+        <Page id="compare-runs" shown={place === "compare-runs"} title={runComparison.title} back={<BackLink label={route.origin ? "Test":"Runs"} onBack={route.origin ? backFromReusable:back} />} actions={root ? runComparison.actions : null}>
           {root ? runComparison.body : noProject("runs")}
         </Page>
 
@@ -2799,9 +3331,10 @@ export default function App() {
               runActivity.start(started);
               open({ destination: "runs", objectId: "active" });
             }}
-            onEditEnvironment={(environment) => {
-              setSendRequest(null);
-              open({ destination: "environments", objectId: environment.id });
+            onEditEnvironment={(environment,request) => {
+ const from=currentRoute.current;
+ setReviewSetup({project:root,request});setSendRequest(null);
+ open({destination:"environments",objectId:environment.id,view:"edit",origin:{projectId:root,destination:from.destination,...(from.objectId ? {objectId:from.objectId}:{}),...(from.view ? {view:from.view}:{}),returnContext:leaving(selectedOccurrence??undefined)}});
             }}
             onActivate={() => {
               const requested = sendRequest;
@@ -2829,9 +3362,9 @@ export default function App() {
         <Page
           id="environments"
           shown={place === "environments"}
-          title={environments.title}
+          title={place === "environments" && route.objectId === undefined ? "Targets" : environments.title}
           back={environments.back}
-          actions={root ? environments.actions : null}
+          actions={root ? <>{environments.actions}<button type="button" disabled={busy} onClick={()=>setReceivingSetup(true)}>Receive configurations</button></> : null}
         >
           {opened ? environments.body : noProject("environments")}
         </Page>
@@ -2840,7 +3373,7 @@ export default function App() {
           id="reports"
           shown={place === "reports"}
           title={reportsPlace.kind === "list" ? "Reports" : reportPage.title}
-          back={reportsPlace.kind === "list" ? undefined : <BackLink label="Reports" onBack={back} />}
+          back={route.origin ? <BackLink label="Test" onBack={backFromReusable}/> : reportsPlace.kind === "list" ? undefined : <BackLink label="Reports" onBack={back}/>}
           actions={
             root ? (
               reportsPlace.kind === "list" ? (
@@ -2880,11 +3413,11 @@ export default function App() {
           {root ? share.body : noProject("reports")}
         </Page>
 
-        <Page id="share-templates" shown={place === "share-templates"} title={shareTemplates.title} back={<BackLink label="Reports" onBack={back} />} actions={root ? shareTemplates.actions : null}>
+        <Page id="share-templates" shown={place === "share-templates"} title={shareTemplates.title} back={<BackLink label={route.origin ? "Test":"Reports"} onBack={route.origin ? backFromReusable:back} />} actions={root ? shareTemplates.actions : null}>
           {root ? shareTemplates.body : noProject("reports")}
         </Page>
 
-        <Page id="encrypted-packages" shown={place === "encrypted-packages"} title={packages.title} back={<BackLink label="Reports" onBack={back} />}>
+        <Page id="encrypted-packages" shown={place === "encrypted-packages"} title={packages.title} back={<BackLink label={route.origin ? "Test":"Reports"} onBack={route.origin ? backFromReusable:back} />}>
           {root ? packages.body : noProject("reports")}
         </Page>
 
@@ -2972,6 +3505,10 @@ export default function App() {
           )}
         </Page>
 
+        <Page id="messages" shown={place === "messages"} title="Messages">
+          <EmptyState title="No messages open" action={<><button type="button" onClick={() => { open({ destination: "inspect-file", view: "messages" }); setRawRequest((count) => count + 1); }}>Open file</button>{root ? <button type="button" onClick={() => go("cases")}>Open capture</button> : null}</>} />
+        </Page>
+
         <Page id="tools" shown={place === "tools"} title="Tools">
           <ul className="launcher" aria-label="Tools">
             {TOOLS.map((tool) => (
@@ -2994,7 +3531,7 @@ export default function App() {
           </ul>
         </Page>
 
-        <Page id="inspect-file" shown={place === "inspect-file"} title={fileReader.title} back={<BackLink label="Tools" onBack={back} />} actions={fileReader.actions}>
+        <Page id="inspect-file" shown={place === "inspect-file"} title={readerLayout ? "Messages" : fileReader.title} back={readerLayout ? undefined : <BackLink label={route.view === "messages" ? "Messages" : "Tools"} onBack={route.view === "messages" ? () => open({ destination: "messages" }) : back} />} actions={<>{readerLayout ? <><span className="reader-toolbar-edition">HL7 {fileReader.edition || "not declared"}</span><button type="button" className="link reader-toolbar-reference" disabled={busy} onClick={fileReader.chooseReference}>Reference</button><span className="reader-toolbar-space"/></> : null}{fileReader.actions}{readerLayout ? <><button type="button" disabled={busy || !root} onClick={startCaptureSetup}>Receive</button><button type="button" disabled title="Retain the loose file as a capture to compare messages">Compare</button><button type="button" className="primary" disabled title="Retain the loose file as a capture to create a test case">Create test case</button></> : null}{fileReader.retention ? <button type="button" className={readerLayout ? "link" : "primary"} disabled={busy} onClick={()=>{retentionStarted.current="";setLooseRetention(fileReader.retention);if(!root)go("home");}}>Retain capture</button> : null}</>}>
           {fileReader.body}
         </Page>
 
@@ -3032,7 +3569,7 @@ export default function App() {
           {root ? benchmarks.body : noProject("benchmarks")}
         </Page>
 
-        <Page id="settings" shown={place === "settings"} title="Settings">
+        <Page id="settings" shown={place === "settings"} title="Settings" back={<BackLink label="Back" onBack={backFromReusable}/>} actions={<button type="button" onClick={()=>open({destination:"tools"})}>Tools</button>}>
           <Categories label="Settings categories" categories={SETTINGS_VIEWS} selected={settingsView} onSelect={setView}>
             <TaskPanel tabs="settings-views" tab="general" className="task-panel view-panel" shown={settingsView === "general"}>
               <GeneralView
@@ -3046,6 +3583,7 @@ export default function App() {
                   openSettings("storage");
                 }}
               />
+              <section aria-label="Execution setup"><h2>Execution setup</h2><div className="toolbar-group"><button type="button" className="link" onClick={()=>open({destination:"environments"})}>Manage targets</button><button type="button" className="link" onClick={()=>openSettings("team")}>Team and runners</button></div></section>
             </TaskPanel>
             <TaskPanel tabs="settings-views" tab="license" className="task-panel view-panel" shown={settingsView === "license"}>
               <ComputerLicense
@@ -3149,7 +3687,7 @@ export default function App() {
             </>
           }
         >
-          <HelpTopics onOpen={openHelpArticle} />
+          <HelpTopics onOpen={openHelpArticle} onDemo={tryDemo} busy={busy} />
           <SearchHelpSheet open={helpSheet === "search"} onClose={() => setHelpSheet(null)} onOpen={openHelpArticle} />
           <DiagnosticsSheet
             open={helpSheet === "diagnostics"}
@@ -3179,7 +3717,7 @@ export default function App() {
         {detailOnly && compact && switcher ? <div className="header-switcher detail-switcher">{switcher}</div> : null}
         {fileSelection ? (
       <>
-        {fileReader.details}
+        {fileReader.details ? cloneElement(fileReader.details,{toolbarReference:!detailOnly,compactReader,onCompactReader:()=>setReaderDensityOverride(!compactReader)}) : null}
       </>
     ) : benchmarkSelection ? (
       <>
@@ -3202,16 +3740,29 @@ export default function App() {
       <>
         {verified ? (
           <MessageReader
+            key={`${root ?? ""}/${messages?.case ?? verified?.name ?? ""}/${messages?.identity ?? verified?.identity ?? ""}`}
+            onValidationFindings={()=>setView("findings")}
+            {...(root && verified.protocol !== "fhir-r4" ? {onCreateVariant:()=>void startVariant(verified.name,verified.identity,checkedMessages.size ? [...checkedMessages] : selectedOccurrence ? [selectedOccurrence] : [],verified.protocol)} : {})}
+            compactReader={compactReader}
+            onCompactReader={()=>setReaderDensityOverride(!compactReader)}
+            toolbarReference={readerLayout && !detailOnly}
+            referenceRequest={readerReferenceRequest}
+            contextDetails={exchangeDetails?.key===JSON.stringify([selectedSourceRef?.id??"",verified.identity,selectedOccurrence??""])?exchangeDetails.node:undefined}
+            contextDetailsTitle="Recorded exchange"
             result={inspectionResult}
+            referenceCatalog={referenceCatalog.current}
+            referenceIdentity={referenceIdentity.current}
+            {...(referenceSelection.current ? { referenceSelection: referenceSelection.current } : {})}
             {...(selectedRow ? { kind: selectedRow.kind, source: selectedRow.source_name || selectedRow.source_id } : {})}
             loading={running === "inspect"}
             busy={busy}
-            onInspect={(path, nodeOffset, byteOffset, rawOffset) => (selectedOccurrence ? inspect(selectedOccurrence, path, nodeOffset, byteOffset, undefined, revealed, rawOffset) : Promise.resolve(null))}
+            onInspect={(path, nodeOffset, byteOffset, rawOffset, catalogPath?: string, selection?: HL7ReferenceSelection, catalogIdentity?: string) => (selectedOccurrence ? inspect(selectedOccurrence, path, nodeOffset, byteOffset, undefined, revealed, rawOffset, catalogPath, selection, catalogIdentity) : Promise.resolve(null))}
             onReveal={(next) => {
               setRevealed(next);
               const at = inspectionResult?.inspection;
               if (selectedOccurrence) void inspect(selectedOccurrence, at?.fhir?.selected?.field.id ?? at?.selected.path ?? "", at?.node_offset ?? 0, at?.byte_offset ?? -1, undefined, next);
             }}
+            {...(root && verified.protocol !== "fhir-r4" && caseFlow === null ? { onFieldValues: openFieldValues, onValueMaps:(selector:string)=>openRequirements(selectedOccurrence??"",selector,"value-maps"), onRequirements: (selector: string) => openRequirements(selectedOccurrence ?? "", selector) } : {})}
             onFilterByField={(selector: string, value: string | null, state: FieldState) => {
               setView("messages");
               setFilterSeed({ selector, value, state });
@@ -3237,7 +3788,7 @@ export default function App() {
               open({ destination: "library", view: "checks", objectId: "import" });
             }}
             onClose={closeDetails}
-            {...(detailOnly ? { backLabel: caseView === "timeline" ? "Timeline" : "Messages", onBack: closeDetails } : {})}
+            {...(detailOnly ? { backLabel: caseFlow === "field-values" ? "Field values" : caseView === "timeline" ? "Timeline" : "Messages", onBack: closeDetails } : {})}
           />
         ) : null}
       </>
@@ -3341,7 +3892,7 @@ export default function App() {
     );
   };
 
-  const panes = { "--inspector-width": `${inspectorRem}rem` } as CSSProperties;
+  const panes = { "--inspector-width": `${inspectorRem}rem`, "--message-browser-width": `${messageBrowserRem}rem` } as CSSProperties;
 
   return (
     <IndicatorsContext.Provider value={indicators}>
@@ -3349,20 +3900,21 @@ export default function App() {
         <FrameContext.Provider value={{ compact, switcher }}>
           <ReturnAnchor.Provider value={returnAnchor}>
           <PaletteActionsContext.Provider value={registerActions}>
-              <div className={compact ? "app compact" : "app"} ref={setFrame}>
+              <div className={`${compact ? "app compact" : "app"}${root ? " app-workbench" : ""}${readerLayout ? ` app-reader${compactReader ? " app-reader-compact" : " app-reader-wide"}` : ""}`} style={readerLayout ? { "--sidebar": `${sidebarRem}rem`, "--reader-reference-width": `${compactReader ? READER_REFERENCE_COMPACT_REM : READER_REFERENCE_REM}rem` } as CSSProperties : undefined} ref={setFrame} onScrollCapture={(event) => { if (event.target instanceof HTMLElement && event.target.classList.contains("page-body")) setScrollRevision((revision) => revision + 1); }}>
                 <nav className="sidebar" aria-label="Main">
                   {region("navigation")}
                 </nav>
-                <div className={`workarea${detailsShown ? (detailOnly ? " detail-only" : " with-details") : ""}`} style={panes}>
+                <div className={`workarea${detailsShown ? (detailOnly ? " detail-only" : " with-details") : ""}${readerLayout ? " reader-layout" : ""}`} style={panes}>
                   {region("evidence", detailOnly)}
                   {detailsShown && !detailOnly ? (
                     <Separator
-                      value={inspectorRem}
-                      min={INSPECTOR_MIN_REM}
-                      max={INSPECTOR_MAX_REM}
+                      value={readerLayout ? readerRem : inspectorRem}
+                      min={readerLayout ? readerMinRem : INSPECTOR_MIN_REM}
+                      max={readerLayout ? readerMaxRem : INSPECTOR_MAX_REM}
                       step={INSPECTOR_STEP}
                       onChange={(width) => {
-                        if (root !== null) setInspectorWidths((held) => ({ ...held, [root]: width }));
+                        if (readerLayout) setMessageBrowserWidths((held) => ({ ...held, [root ?? "standalone-file"]: workareaRem - width - 1 / rem }));
+                        else if (root !== null) setInspectorWidths((held) => ({ ...held, [root]: width }));
                       }}
                       edge={() => regionElements.current.inspector?.getBoundingClientRect().right ?? null}
                       rem={rootFontSize}
@@ -3375,6 +3927,15 @@ export default function App() {
           </ReturnAnchor.Provider>
         </FrameContext.Provider>
 
+        {selectedComparison && selectedSourceRef ? <SelectedMessageComparison source={selectedSourceRef} identity={verified?.identity??""} messages={[...checkedMessages]} context={exportContext} onClose={()=>setSelectedComparison(false)} onCreateTest={()=>{setSelectedComparison(false);void createTest();}} />:null}
+        {receivingSetup && root ? <ReceiveConfigurations context={captureContext} onClose={()=>setReceivingSetup(false)} />:null}
+        {selectedExportOpen ? <SelectedMessagesExportPanel open context={exportContext} source={selectedSourceRef} identity={verified?.identity ?? ""} messages={[...checkedMessages]} sourceName={caseTitle} onClose={() => setSelectedExportOpen(false)} /> : null}
+        {ciResultsOpen ? <CIResultsSheet onClose={()=>setCIResultsOpen(false)}/>:null}
+        {sourceExportsOpen && selectedSourceRef ? <SourceExportHistory open context={exportContext} source={selectedSourceRef} onClose={() => setSourceExportsOpen(false)} /> : null}
+        <Modal open={Boolean(unavailableMapDraft)} title="Retained value map draft" onClose={()=>setUnavailableMapDraft(null)} footer={<button type="button" onClick={async()=>{if(!unavailableMapDraft)return;const id=unavailableMapDraft.draft.id;const result=await discardEditorDraft(id);if(result.state!=="completed"){setUnavailableMapDraft(held=>held?{...held,reason:result.reason||"The private draft could not be discarded."}:null);return;}setDrafts(held=>held?.filter(draft=>draft.id!==id)||null);setUnavailableMapDraft(null);}}>Discard retained map draft</button>}>
+          <p>{unavailableMapDraft?.reason}</p><p>This is authored declaration content only. No contextual value or consent is restored.</p>
+          {unavailableMapDraft?<pre className="value">{JSON.stringify(unavailableMapDraft.draft.content,null,2)}</pre>:null}
+        </Modal>
         <Modal open={fileDetails && verified !== null} title="File details" onClose={() => setFileDetails(false)}>
           {verified ? (
             <dl className="facts">
@@ -3728,10 +4289,13 @@ const SHEET_DRAFTS = new Set(["case", "project", "note"]);
  * an earlier release's editor, or a note that names nothing it is about, is
  * offered only for Discard. */
 function resumable(draft: EditorDraft): boolean {
+  if(draft.kind==="interface-association")return draft.content_schema==="readmit-interface-association-editor/v1";
+  if(draft.kind==="capture-source-context")return draft.content_schema==="readmit-capture-source-context-editor/v1";
+  if(draft.kind==="field-value-map")return draft.content_schema==="readmit-field-value-map-editor/v1";
   if (SHEET_DRAFTS.has(draft.kind)) return draft.item !== undefined;
   // A test draft reopens only in the editor that wrote it; an earlier
   // release's test drafts are offered for Discard.
-  if (draft.kind === "test-draft") return draft.content_schema === TEST_EDITOR_DRAFT || draft.content_schema === CONNECTED_EDITOR_DRAFT;
+  if (draft.kind === "test-draft") return draft.content_schema === TEST_EDITOR_DRAFT || draft.content_schema === CONNECTED_EDITOR_DRAFT || draft.content_schema === EXCHANGE_EDITOR_DRAFT;
   if (draft.kind === "suite-editor") return draft.content_schema === SUITE_EDITOR_DRAFT || draft.content_schema === CONNECTED_SUITE_EDITOR_DRAFT;
   if (draft.kind === SCENARIO_DRAFT_KIND) return draft.content_schema === SCENARIO_DRAFT_SCHEMA && scenarioDraftObject(draft) !== undefined;
   return draft.kind in DRAFT_PLACES;

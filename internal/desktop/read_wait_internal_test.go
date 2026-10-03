@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bharm16/readmit/internal/grid"
 	"github.com/bharm16/readmit/internal/operationguard"
 )
 
@@ -131,5 +132,41 @@ func TestBusyCatalogReadRetainsItsRequestContext(t *testing.T) {
 	answer := app.ListCatalog(CatalogQuery{Context: request, Kind: CaseItem})
 	if answer.State != Busy || answer.Context != request {
 		t.Fatalf("busy answer lost its caller: %+v", answer)
+	}
+}
+
+// Saving an explicit view is a single local mutation: it waits for automatic
+// navigation reads without retrying the write or admitting a competing action.
+func TestSaveViewWaitsForBackgroundReadBeforeWritingOnce(t *testing.T) {
+	app := New(nil, ShellDocuments{Folder: t.TempDir()})
+	reading, finish := make(chan struct{}), make(chan struct{})
+	readDone := make(chan CatalogResult, 1)
+	go func() {
+		readDone <- runRead(app, false, func(context.Context) CatalogResult {
+			close(reading)
+			<-finish
+			return CatalogResult{State: Completed}
+		})
+	}()
+	<-reading
+	done := make(chan ViewsResult, 1)
+	workspace := t.TempDir()
+	go func() { done <- app.SaveView(workspace, "Retained selection", grid.Query{}) }()
+	deadline := time.Now().Add(time.Second)
+	for !app.readsYield() && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if !app.readsYield() {
+		close(finish)
+		<-readDone
+		t.Fatalf("SaveView bypassed owned read waiting: %+v", <-done)
+	}
+	close(finish)
+	<-readDone
+	if saved := <-done; saved.State != Completed || len(saved.Views) != 1 {
+		t.Fatalf("saved view: %+v", saved)
+	}
+	if saved := app.ListViews(workspace); saved.State != Completed || len(saved.Views) != 1 || saved.Views[0].Name != "Retained selection" {
+		t.Fatalf("retained view: %+v", saved)
 	}
 }

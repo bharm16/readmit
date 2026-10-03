@@ -365,7 +365,10 @@ test("View messages selects the evidence field and Back to findings restores the
   const ids = Array.from({ length: 60 }, (_, i) => `f${String(i + 1).padStart(6, "0")}`);
   const { facade } = await openFindings(user, {
     OpenCaseFindings: (request) => ({ ...findings(ids), context: request.context }),
-    InspectOccurrence: (request) => inspectionResult(request.occurrence, { selected: { segment: "MSH", field: 10, path: request.path, parent: "MSH", kind: "field", state: "present", start: 0, end: 8 } }),
+    InspectOccurrence: (request) => {
+      const selected = { segment: "MSH", field: 10, path: request.path, parent: "MSH", kind: "field", state: "present" as const, start: 0, end: 8 };
+      return inspectionResult(request.occurrence, { selected, grid: { segment: "MSH", offset: 0, field_count: 1, rows: [{ node: selected, label: "Message Control ID", selector: request.path, segment_name: "Message Header", value: "", truncated: false }] } });
+    },
   });
   const table = await page().findByRole("table", { name: "Findings" });
   await user.click(page().getByRole("button", { name: "Filter findings" }));
@@ -388,7 +391,7 @@ test("View messages selects the evidence field and Back to findings restores the
   expect(await page().findByText("Finding evidence")).toBeTruthy();
   // The evidence field opens selected in the inspector, not the message root.
   await waitFor(() => expect(facade.callsTo("InspectOccurrence").at(-1)?.args[0]).toMatchObject({ occurrence: GRID_OCCURRENCE, path: "MSH-10" }));
-  expect(await screen.findByText("MSH-10", { selector: "[aria-current=location]" })).toBeTruthy();
+  expect((await details().findByRole("button", { name: /^MSH-10 / })).getAttribute("aria-current")).toBe("location");
   await user.click(page().getByRole("button", { name: "Back to findings" }));
   // The finding chosen before is still selected, with the list where it was left.
   expect(await screen.findByRole("region", { name: "Details" })).toBeTruthy();
@@ -955,4 +958,17 @@ test("a similar group lists its member cases and opens one on exactly its eviden
   expect(page().queryByRole("button", { name: "Back to findings" })).toBeNull();
   await user.click(page().getByRole("button", { name: "Back to similar findings" }));
   expect(await page().findByRole("heading", { level: 1, name: "Similar findings" })).toBeTruthy();
+});
+
+test("a finding without code or occurrence opens whole-interface requirements and returns to the same finding",async()=>{
+ const user=userEvent.setup();
+ const row=findingRow("pathless-owned","message.duplicate-control-id",{evidence:[],labels:{},summary:"Owned diagnostic shape without field evidence"});
+ const {facade}=await openFindings(user,{OpenCaseFindings:request=>({...findingsOf([row]),context:request.context}),ListInterfaceSpecs:context=>({state:"completed",context,items:[]})});
+ const table=await page().findByRole("table",{name:"Findings"});
+ await user.click(table.querySelector<HTMLElement>('[data-row-id="pathless-owned"]')!);
+ await user.click(details().getByRole("button",{name:"Interface requirements"}));
+ expect(await screen.findByText(/Whole retained interface case; no field occurrence/)).toBeTruthy();
+ expect(facade.callsTo("InspectOccurrence")).toHaveLength(0);
+ await user.click(screen.getByRole("button",{name:"Return to selected message"}));
+ await waitFor(()=>expect(details().getByText("Owned diagnostic shape without field evidence")).toBeTruthy());
 });

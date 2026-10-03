@@ -1,6 +1,7 @@
 package desktop
 
 import (
+	"bytes"
 	"context"
 	"encoding/json/v2"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"github.com/bharm16/readmit/internal/catalog"
 	"github.com/bharm16/readmit/internal/diff"
 	"github.com/bharm16/readmit/internal/hl7"
+	"github.com/bharm16/readmit/internal/reportshare"
 	"github.com/bharm16/readmit/internal/reproducer"
 	"github.com/bharm16/readmit/internal/transform"
 )
@@ -118,17 +120,23 @@ func ruleProblem(rule diff.Rule) string {
 // none comparing every field; Policy names the normalization policy the
 // differences are read under, and Original shows every raw difference however
 // the policy presents it. Reveal asks for the values each side holds.
+type SelectedMessagePair struct {
+	Left  string `json:"left"`
+	Right string `json:"right"`
+}
+
 type CaseComparisonRequest struct {
-	Context  RequestContext `json:"context"`
-	Current  ItemRef        `json:"current"`
-	Other    ItemRef        `json:"other"`
-	Keys     []string       `json:"keys"`
-	Fields   []string       `json:"fields"`
-	Policy   *ItemRef       `json:"policy,omitzero"`
-	Original bool           `json:"original"`
-	Reveal   bool           `json:"reveal"`
-	Offset   int            `json:"offset"`
-	Limit    int            `json:"limit"`
+	Pair     *SelectedMessagePair `json:"pair,omitzero"`
+	Context  RequestContext       `json:"context"`
+	Current  ItemRef              `json:"current"`
+	Other    ItemRef              `json:"other"`
+	Keys     []string             `json:"keys"`
+	Fields   []string             `json:"fields"`
+	Policy   *ItemRef             `json:"policy,omitzero"`
+	Original bool                 `json:"original"`
+	Reveal   bool                 `json:"reveal"`
+	Offset   int                  `json:"offset"`
+	Limit    int                  `json:"limit"`
 }
 
 // CaseComparisonResult answers one comparison. One the engine refuses to
@@ -145,9 +153,13 @@ func (r *CaseComparisonResult) refuse(state State, reason string) { r.State, r.R
 // ComparisonSide is one compared case: its reference and version, its name
 // and how many messages it holds.
 type ComparisonSide struct {
-	Ref      ItemRef `json:"ref"`
-	Name     string  `json:"name"`
-	Messages int     `json:"messages"`
+	Occurrence string  `json:"occurrence,omitzero"`
+	Identity   string  `json:"identity,omitzero"`
+	RawSHA256  string  `json:"raw_sha256,omitzero"`
+	RawBytes   int     `json:"raw_bytes,omitzero"`
+	Ref        ItemRef `json:"ref"`
+	Name       string  `json:"name"`
+	Messages   int     `json:"messages"`
 }
 
 // CaseComparison is one comparison, windowed: the two sides, the keys and
@@ -155,6 +167,8 @@ type ComparisonSide struct {
 // the window, every count over the whole comparison, and the lineage of each
 // side that is a variant.
 type CaseComparison struct {
+	PairOutput  *ShareOutput        `json:"pair_output,omitzero"`
+	RawEqual    *bool               `json:"raw_equal,omitzero"`
 	Current     ComparisonSide      `json:"current"`
 	Other       ComparisonSide      `json:"other"`
 	Keys        []string            `json:"keys"`
@@ -234,7 +248,7 @@ func (a *App) CompareCases(request CaseComparisonRequest) CaseComparisonResult {
 			result.refuse(Failed, "a comparison renders a window beginning at or after its first row, of between 1 and "+strconv.Itoa(MaxComparisonRows)+" rows")
 			return result
 		}
-		if request.Current.ID == request.Other.ID {
+		if request.Current.ID == request.Other.ID && (request.Pair == nil || request.Pair.Left == request.Pair.Right) {
 			result.refuse(Failed, "choose another case to compare with")
 			return result
 		}
@@ -290,7 +304,31 @@ func (a *App) CompareCases(request CaseComparisonRequest) CaseComparisonResult {
 		options := diff.Options{Keys: request.Keys, Fields: request.Fields}
 		shown := options
 		shown.ShowValues = request.Reveal
-		report, err := diff.Compare(diff.Input{Path: paths[0]}, diff.Input{Path: paths[1]}, shown)
+		var report diff.Report
+		var err error
+		if request.Pair != nil {
+			if request.Policy != nil {
+				return refuseAligned("an explicit message pair shows original differences; choose the two-capture view to apply a named normalization policy")
+			}
+			leftBytes, leftKnown := sides[0].Raw(request.Pair.Left)
+			rightBytes, rightKnown := sides[1].Raw(request.Pair.Right)
+			if leftKnown != nil || rightKnown != nil {
+				return refuseAligned("the selected source occurrence is unavailable")
+			}
+			equal := bytes.Equal(leftBytes, rightBytes)
+			comparison.RawEqual = &equal
+			comparison.Current.Occurrence, comparison.Other.Occurrence = request.Pair.Left, request.Pair.Right
+			comparison.Current.Identity, comparison.Other.Identity = sides[0].Identity, sides[1].Identity
+			comparison.Current.RawSHA256, comparison.Other.RawSHA256 = digestOf(leftBytes), digestOf(rightBytes)
+			comparison.Current.RawBytes, comparison.Other.RawBytes = len(leftBytes), len(rightBytes)
+			if request.Reveal && len(leftBytes)+len(rightBytes) <= reportshare.MaxSelectedMessageBytes {
+				output := shareOutput(&reportshare.Share{SourceValues: true, Files: []reportshare.File{{Name: "Left original message", Kind: reportshare.MessageType, Data: leftBytes}, {Name: "Right original message", Kind: reportshare.MessageType, Data: rightBytes}}}, "original-message-bytes", ReportShareOptions{Format: "original-message-bytes"})
+				comparison.PairOutput = &output
+			}
+			report, err = diff.CompareSelected(diff.Input{Path: paths[0]}, diff.Input{Path: paths[1]}, request.Pair.Left, request.Pair.Right, shown)
+		} else {
+			report, err = diff.Compare(diff.Input{Path: paths[0]}, diff.Input{Path: paths[1]}, shown)
+		}
 		if err != nil {
 			return refuseAligned(refusedComparison(err))
 		}

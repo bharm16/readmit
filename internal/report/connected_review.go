@@ -396,7 +396,7 @@ func reportPhase(section string, e connectedrun.FlowEvidence, phase connectedrun
 	}
 	for _, id := range slices.Sorted(maps.Keys(pe.Tables)) {
 		t := pe.Tables[id]
-		o := ReportObservation{Dataset: id, Boundary: pe.Boundaries[id], Meaning: "Typed application or engine-output state as the declared source returned it.", Usable: t.Usable, Columns: []string{}, Records: []ReportRecord{}, Evidence: base + pe.Observations[id]}
+		o := ReportObservation{Dataset: id, Boundary: pe.Boundaries[id], Meaning: "Typed application or engine-output state as the declared source returned it.", Usable: t.Usable && (pe.Intervals[id].Schema == "" || pe.Intervals[id].Sufficient()), Columns: []string{}, Records: []ReportRecord{}, Evidence: base + pe.Observations[id]}
 		if q, ok := claims[id]; ok {
 			o.Boundary, o.Meaning = q.Boundary+" ("+pe.Boundaries[id]+")", q.Meaning
 		}
@@ -667,4 +667,22 @@ func renderConnected(doc ConnectedReport) (map[string][]byte, error) {
 		return nil, err
 	}
 	return map[string][]byte{"report.html": []byte(page.String()), "report.md": []byte(md.String()), "report.json": document, "junit.xml": append([]byte(xml.Header), junit...), "report.pdf": pdfReport(lines)}, nil
+}
+
+// RenderConnectedReport renders a verified packet through the same typed
+// report and inert renderers as ExportConnectedReview, without writing a review.
+func RenderConnectedReport(p *ConnectedPacket, format string) ([]byte, error) {
+	doc, err := BuildConnectedReport(p)
+	if err != nil {
+		return nil, err
+	}
+	files, err := renderConnected(doc)
+	if err != nil {
+		return nil, err
+	}
+	name, ok := reviewFormats[format]
+	if !ok {
+		return nil, errors.New("unsupported connected report format")
+	}
+	return bytes.Clone(files[name]), nil
 }

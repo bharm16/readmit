@@ -743,6 +743,9 @@ func verifierFor(kind ItemKind) catalog.Verifier {
 		case ReportReviewItem:
 			_, err := readReportApprovalFile(files[string(ReportReviewItem)])
 			return err
+		case CaptureContextItem:
+			_, err := readCaptureContextFile(files[string(CaptureContextItem)])
+			return err
 		case ReportShareItem:
 			data, err := boundedFile(files[string(ReportShareItem)], catalog.MaxMemberBytes)
 			if err != nil {

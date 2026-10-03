@@ -422,3 +422,5 @@ and displayed names across later edits. Older runs with ambiguous equal
 publications keep their historical publication unavailable. Suite reviews
 include inherited environment resets; a suite job has read-only recovery
 and scoped stale-lock cleanup, while a new suite execution needs a new review.
+
+Connected individual desktop runs retain `readmit-run-origin/v2` with exact original capture references bound to the retained plan digest. History can still link those captures when the authored test publication is missing. The v1 reader preserves its existing readable-publication fallback; missing original pins remain unlinked rather than inferred from matching names or content. This record restores no execution consent.

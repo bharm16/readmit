@@ -567,8 +567,9 @@ test("Raw shows the whole message with the selected field marked, a window at a 
   }
   render(<Paged />);
   expect(screen.getByText(/Outbound/)).toBeTruthy();
-  await user.click(screen.getByRole("tab", { name: "Raw" }));
-  expect(screen.getByText("Hidden")).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "More message actions" }));
+  await user.click(screen.getByRole("menuitem", { name: "Raw" }));
+  expect(within(screen.getByRole("tabpanel",{name:"Raw"})).getByText("Hidden")).toBeTruthy();
   await user.click(screen.getByRole("button", { name: "Show values" }));
   expect(screen.getByText("FIELD").tagName).toBe("MARK");
   expect(screen.getByText("1–4096 of 9000 bytes")).toBeTruthy();
@@ -617,9 +618,10 @@ test("every part of a message is reached from the keyboard, and Raw and Hex stay
   while (document.activeElement !== sch) await user.tab();
   await user.keyboard("{Enter}");
   await waitFor(() => expect(facade.callsTo("InspectOccurrence").at(-1)?.args[0]).toMatchObject({ occurrence: GRID_OCCURRENCE, path: "SCH[1]" }));
-  // The views are keyboard tabs over the same occurrence.
-  await user.click(within(details).getByRole("tab", { name: "Fields" }));
-  await user.keyboard("{ArrowRight}");
+  // The default fields chrome has no tabs; More opens the same occurrence in Raw.
+  await user.click(within(details).getByRole("button", { name: "More message actions" }));
+  await user.click(screen.getByRole("menuitem", { name: "Raw" }));
+  within(details).getByRole("tab", { name: "Raw" }).focus();
   expect(within(details).getByRole("tab", { name: "Raw", selected: true })).toBeTruthy();
   await user.keyboard("{ArrowRight}");
   expect(within(details).getByRole("tab", { name: "Hex", selected: true })).toBeTruthy();
@@ -637,7 +639,7 @@ test("Create variant from checked messages opens the variant editor with exactly
     await user.click(within(await findMessageRow(id)).getByRole("checkbox"));
   }
   await user.click(screen.getByRole("button", { name: "Create variant" }));
-  expect(await screen.findByRole("heading", { name: "Case variant" })).toBeTruthy();
+  expect(await screen.findByRole("heading", { name: "Create variant" })).toBeTruthy();
   await waitFor(() => expect(facade.callsTo("ResolveVariant").length).toBeGreaterThan(0));
   const resolved = facade.callsTo("ResolveVariant")[0]!.args[0] as { draft: { plan: { steps: unknown[] } } };
   // A new plan holding exactly the chosen messages, and nothing kept as a

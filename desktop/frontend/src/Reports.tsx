@@ -1,3 +1,6 @@
+import "./workflow.css";
+import searchAsset from "./assets/workbench/search.svg";
+import { ConnectedReportEvidence } from "./ConnectedReportEvidence";
 // Reports (views 09 and 26): the project's reports as one list, and one
 // report as a readable document. New report and Create report make a report
 // from actual runs; the report's page verifies its evidence and reads it,
@@ -39,7 +42,7 @@ export type ReportsPlace = { kind: "list" } | { kind: "report"; id: string };
 
 /** What Create report on a run hands Reports: the run, and the job of a
  * suite run, each time it is pressed. */
-export type ReportSeed = { run: ItemRef; job?: string | undefined; count: number };
+export type ReportSeed = { run: ItemRef; job?: string | undefined; comparison?:ItemRef|undefined; count: number };
 
 type Filters = { query: string; reviews: string[]; cases: string[] };
 const NO_FILTERS: Filters = { query: "", reviews: [], cases: [] };
@@ -106,7 +109,7 @@ export function useReports({ root, shown: pageShown, place, go, busy, seed }: Re
   const [sort, setSort] = useState<SortState | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [sheet, setSheet] = useState<null | "search" | "filter" | "new">(null);
-  const [preselected, setPreselected] = useState<{ run: ItemRef; job?: string | undefined } | null>(null);
+  const [preselected, setPreselected] = useState<{ run: ItemRef; job?: string | undefined; comparison?:ItemRef|undefined } | null>(null);
 
   const refresh = useCallback(async () => {
     if (!root) return;
@@ -139,7 +142,7 @@ export function useReports({ root, shown: pageShown, place, go, busy, seed }: Re
   useEffect(() => {
     if (!seed || seed.count === seeded.current) return;
     seeded.current = seed.count;
-    setPreselected({ run: seed.run, job: seed.job });
+    setPreselected({ run: seed.run, job: seed.job, comparison:seed.comparison });
     setSheet("new");
     void refresh();
   }, [seed, refresh]);
@@ -204,7 +207,7 @@ export function useReports({ root, shown: pageShown, place, go, busy, seed }: Re
       sortable: true,
       render: (item) => (
         <span className="case-name">
-          <span>{item.name || "Report"}</span>
+          <span className="workflow-link">{item.name || "Report"}</span>
           {item.availability === "available" ? null : <span className="row-reason">{item.reason ?? "Cannot be read"}</span>}
         </span>
       ),
@@ -290,7 +293,8 @@ export function useReports({ root, shown: pageShown, place, go, busy, seed }: Re
       </div>
     ) : null,
     body: (
-      <>
+      <div className="workflow-page workflow-content workflow-export-history">
+        <label className="workflow-search"><span className="workflow-search-icon"><img src={searchAsset} alt=""/></span><input type="search" aria-label="Search exports" placeholder="Search exports…" value={filters.query} onChange={event=>setFilters({...filters,query:event.target.value})}/></label>
         {chips.length > 0 ? (
           <div className="chips" role="group" aria-label="Applied filters">
             {chips.map((chip) => (
@@ -308,7 +312,7 @@ export function useReports({ root, shown: pageShown, place, go, busy, seed }: Re
         <SearchSheet open={sheet === "search"} query={filters.query} onClose={() => setSheet(null)} onApply={(value) => setFilters({ ...filters, query: value })} />
         <FilterSheet open={sheet === "filter"} filters={filters} cases={listedCases} onClose={() => setSheet(null)} onApply={setFilters} />
         {newReport}
-      </>
+      </div>
     ),
     refresh,
     listed: all,
@@ -392,7 +396,7 @@ function NewReportSheet({
 }: {
   open: boolean;
   runs: CatalogItem[];
-  preselected: { run: ItemRef; job?: string | undefined } | null;
+  preselected: { run: ItemRef; job?: string | undefined; comparison?:ItemRef|undefined } | null;
   onClose: () => void;
   onCreate: (draft: ReportDraft, intent: string) => Promise<null | { reason: string; field?: string }>;
 }) {
@@ -410,7 +414,7 @@ function NewReportSheet({
     if (!open) return;
     const chosen = preselected?.run.id ?? "";
     setRun(chosen);
-    setComparison("");
+    setComparison(preselected?.comparison?.id??"");
     setName(defaultName(chosen));
     setNamed(false);
     setNotes("");
@@ -489,6 +493,7 @@ function NewReportSheet({
         }}
       >
         <option value="">None</option>
+        {preselected?.comparison && comparison===preselected.comparison.id && !runs.some(item=>item.ref.id===comparison) ? <option value={comparison}>Retained comparison {comparison}</option>:null}
         {runs
           .filter((item) => item.ref.id !== run)
           .map((item) => (
@@ -713,7 +718,7 @@ export function useReportPage({ root, id, busy, listed, onOpenRun, onViewMessage
         <Menu label="More report actions" items={menu} />
       </>
     ),
-    body: (
+    body: view.connected ? <ConnectedReportEvidence view={view} onReveal={setReveal}/>:(
       <div className="report-reader">
         {line ? <p className="report-line">{line}</p> : null}
         {!view.current ? <p className="report-line">Version {view.revision}</p> : null}

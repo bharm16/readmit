@@ -82,8 +82,9 @@ test("a row opens its project; a missing one stays listed with its reason and Lo
   expect(open).toHaveBeenCalledTimes(1);
   await user.click(within(missing).getByRole("button", { name: "Locate" }));
   expect(locate).toHaveBeenCalledTimes(1);
-  // No Open button per row; the rarer actions are in its menu.
-  expect(screen.queryByRole("button", { name: /^Open/ })).toBeNull();
+  // Available rows expose their existing open action; missing rows require Locate.
+  expect(screen.getAllByRole("button", {name:"Open"})).toHaveLength(2);
+  expect(within(missing).getByRole("button", {name:"Open"}).hasAttribute("disabled")).toBe(true);
   await user.click(screen.getByRole("button", { name: "More actions for Scheduling investigation" }));
   expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Project settings", expect.stringMatching(/^Show in (Finder|folder)$/), "Remove from recents", "Delete from this computer…"]);
   await user.click(screen.getByRole("menuitem", { name: "Remove from recents" }));
@@ -184,10 +185,10 @@ test("applied filters show as chips, and a filtered empty list offers Clear filt
 
 test("no cases yet offers Import, and the columns are Case, Status, Owner and Updated", () => {
   const { rerender } = render(<Cases view={NO_VIEW} cases={[]} />);
-  expect(screen.getByText("No cases yet")).toBeTruthy();
+  expect(screen.getByText("No captures yet")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Import" })).toBeTruthy();
   rerender(<Cases view={NO_VIEW} />);
-  expect(screen.getAllByRole("columnheader").map((header) => header.textContent).filter(Boolean)).toEqual(["Case", "Status", "Owner", "Updated"]);
+  expect(screen.getAllByRole("columnheader").map((header) => header.textContent).filter(Boolean)).toEqual(["Capture", "Source", "Received at", "Status", "Owner", "Updated"]);
   expect(within(screen.getByRole("row", { name: "Cancellation rejected" })).getByText("Unassigned")).toBeTruthy();
 });
 
@@ -206,9 +207,9 @@ test("a column sorts ascending first and then descending", async () => {
   const user = userEvent.setup();
   render(<Cases view={NO_VIEW} />);
   const names = () => screen.getAllByRole("row").filter((row) => row.hasAttribute("data-row-id")).map((row) => row.getAttribute("aria-label"));
-  await user.click(screen.getByRole("button", { name: "Case" }));
+  await user.click(screen.getByRole("button", { name: "Capture" }));
   expect(names()).toEqual(["Cancellation rejected", "Duplicate appointment after reschedule", "Never touched"]);
-  await user.click(screen.getByRole("button", { name: /Case/ }));
+  await user.click(screen.getByRole("button", { name: /Capture/ }));
   expect(names()).toEqual(["Never touched", "Duplicate appointment after reschedule", "Cancellation rejected"]);
 });
 
@@ -266,11 +267,11 @@ test("at compact widths Updated then Owner drop and the case's Details still sho
   try {
     const headers = () => screen.getAllByRole("columnheader").map((header) => header.textContent).filter(Boolean);
     const { rerender } = render(<WithDetails />);
-    expect(headers()).toEqual(["Case", "Status", "Owner"]);
+    expect(headers()).toEqual(["Capture", "Status", "Owner"]);
     width = 480;
     rerender(<WithDetails />);
     fireEvent(window, new Event("resize"));
-    await waitFor(() => expect(headers()).toEqual(["Case", "Status"]));
+    await waitFor(() => expect(headers()).toEqual(["Capture", "Status"]));
     // The case's Details carries what the list has no room for.
     await user.click(screen.getByRole("button", { name: "More actions for Duplicate appointment after reschedule" }));
     await user.click(screen.getByRole("menuitem", { name: "Details" }));
@@ -330,4 +331,15 @@ test("a thousand projects with long names stay one keyboard-operable list", asyn
   } finally {
     vi.restoreAllMocks();
   }
+});
+
+test("a contextual capture row selects its source card while named open controls and keyboard Enter open the real capture",async()=>{
+ const user=userEvent.setup();const opened=vi.fn();const item=CASES[0]!;const capture:CatalogItem={...item,summary:{case:{...item.summary.case!,occurrences:2,capture_context:{schema:"readmit-capture-context/v1",case:item.ref,identity:"a".repeat(64),sources:[{source_id:"s0001",source:"Owned feed",channel:"",basis:"unknown"}]}}}};
+ function Harness(){const[selected,setSelected]=useState<string|null>(null);return <CaseList cases={[capture,CASES[1]!]} revisions={[]} notices={{}} loading={false} view={NO_VIEW} onView={()=>undefined} selected={selected} onSelect={setSelected} onOpen={opened} onAction={()=>undefined} onRetry={()=>undefined} onLocate={()=>undefined} onImport={()=>undefined} sort={null} onSort={()=>undefined} busy={false}/>;}
+ render(<Harness/>);const row=screen.getByRole("row",{name:item.name});await user.click(row);expect(opened).not.toHaveBeenCalled();expect(screen.getByRole("region",{name:"Selected capture"})).toBeTruthy();expect(within(row).getByText("2")).toBeTruthy();await user.click(within(row).getByRole("button",{name:item.name}));expect(opened).toHaveBeenLastCalledWith(capture);opened.mockClear();await user.click(within(row).getByRole("button",{name:"Open messages"}));expect(opened).toHaveBeenCalledTimes(1);opened.mockClear();row.focus();await user.keyboard("{Enter}");expect(opened).toHaveBeenCalledTimes(1);opened.mockClear();await user.click(screen.getByRole("row",{name:CASES[1]!.name}));expect(opened).toHaveBeenLastCalledWith(CASES[1]);
+});
+
+test("an unnamed unregistered capture is labelled by its actual source entry and opens without renaming the catalog object",async()=>{
+ const user=userEvent.setup();const opened=vi.fn();const item:CatalogItem={...CASES[0]!,name:"",summary:{case:{...CASES[0]!.summary.case!,registered:false,entry:"demo/retained-source",provenance:"synthetic"}}};
+ render(<CaseList cases={[item]} revisions={[]} notices={{}} loading={false} view={NO_VIEW} onView={()=>undefined} selected={null} onSelect={()=>undefined} onOpen={opened} onAction={()=>undefined} onRetry={()=>undefined} onLocate={()=>undefined} onImport={()=>undefined} sort={null} onSort={()=>undefined} busy={false}/>);await user.click(screen.getByRole("row",{name:"demo/retained-source"}));expect(opened).toHaveBeenLastCalledWith(item);expect(item.name).toBe("");
 });

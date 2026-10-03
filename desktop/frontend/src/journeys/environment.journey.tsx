@@ -340,6 +340,7 @@ test("a send policy and a reset plan are saved under the identity of their bytes
   // A reset: an action that checks an observation names one, or is refused
   // before it is added; the reset saved without it is the plan the reset
   // reader runs, by identity.
+  await press(user, page().getByRole("tab", { name: "Reset" }));
   await press(user, within(page().getByRole("region", { name: "Reset" })).getByRole("button", { name: "Add reset" }));
   let sheet = within(await screen.findByRole("dialog", { name: "Edit reset" }));
   await enter(user, sheet.getByRole("textbox", { name: "Name" }), "Fresh listener");

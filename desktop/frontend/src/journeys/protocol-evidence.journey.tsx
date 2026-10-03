@@ -120,7 +120,7 @@ test("R4 Bundle import retains bytes, typed multiplicity and passive reader cont
   await screen.findByRole("heading", { level: 1, name: "Synthetic R4 Bundle" });
   expect(await findMessageRow("r000002")).toBeTruthy();
   await goTo(user, "Tests");
-  await press(user, screen.getByRole("button", { name: "Library" }));
+  await goTo(user,"Library");
   await press(user, screen.getByRole("tab", { name: "Checks" }));
   const checks = await screen.findByRole("table", { name: "Check groups" });
   await user.dblClick(await within(checks).findByText("Repeated identifiers"));

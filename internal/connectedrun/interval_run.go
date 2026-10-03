@@ -210,6 +210,9 @@ func ExecuteWithClock(ctx context.Context, p *Prepared, instance, output string,
 		if err != nil || state.session.Append(ctx, baseline) != nil || state.session.StimulusStarted() != nil {
 			return finish()
 		}
+		if state.capture != nil {
+			state.capture.ScopeAfter(state.session.StimulusTime())
+		}
 	}
 	observeCtx, stopObserving := context.WithCancel(ctx)
 	defer stopObserving()

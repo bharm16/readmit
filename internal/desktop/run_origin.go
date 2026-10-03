@@ -1,6 +1,7 @@
 package desktop
 
 import (
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"io/fs"
@@ -15,16 +16,18 @@ import (
 // written before execution and binds its references to the retained input.
 // Equal specs in different publications do not establish the same origin.
 type runOriginRecord struct {
-	Schema          string   `json:"schema"`
-	Entry           string   `json:"entry"`
-	Source          ItemRef  `json:"source"`
-	Name            string   `json:"name"`
-	Environment     *ItemRef `json:"environment,omitzero"`
-	EnvironmentName string   `json:"environment_name,omitzero"`
-	InputDigest     string   `json:"input_digest"`
+	Schema          string    `json:"schema"`
+	Entry           string    `json:"entry"`
+	Source          ItemRef   `json:"source"`
+	Name            string    `json:"name"`
+	Environment     *ItemRef  `json:"environment,omitzero"`
+	EnvironmentName string    `json:"environment_name,omitzero"`
+	InputDigest     string    `json:"input_digest"`
+	SourceCases     []ItemRef `json:"source_cases,omitzero"`
 }
 
 const runOriginSchema = "readmit-run-origin/v1"
+const connectedRunOriginSchema = "readmit-run-origin/v2"
 
 func runOriginPath(root, entry string) string {
 	return filepath.Join(root, ".readmit", "run-origins", keyDigest(entry)+".json")
@@ -51,6 +54,17 @@ func recordRunOrigin(run *runBinding, review *RunReview) error {
 		record.Source = *review.Test
 		record.InputDigest = run.specDigest
 	}
+	if run.lifecycle != nil {
+		record.Schema = connectedRunOriginSchema
+		seen := map[ItemRef]bool{}
+		for _, step := range run.lifecycle.draft.Steps {
+			ref := step.Source.Case
+			if !seen[ref] {
+				seen[ref] = true
+				record.SourceCases = append(record.SourceCases, ref)
+			}
+		}
+	}
 	data, err := json.Marshal(record, json.Deterministic(true))
 	if err != nil {
 		return err
@@ -70,8 +84,9 @@ func (c *loadedCatalog) recordedRunOrigin(path, inputDigest string) (runOriginRe
 		return record, false, nil
 	}
 	data, err := boundedFile(originPath, 16<<10)
+	var members map[string]jsontext.Value
 	if err != nil || json.Unmarshal(data, &record, json.RejectUnknownMembers(true)) != nil ||
-		record.Schema != runOriginSchema || record.Entry != entry || record.InputDigest != inputDigest {
+		json.Unmarshal(data, &members) != nil || !validRunOriginMembership(record, members) || record.Entry != entry || record.InputDigest != inputDigest {
 		return runOriginRecord{}, false, errors.New("the selected historical publication could not be verified")
 	}
 	index := c.document.Find(record.Source.ID)
@@ -79,6 +94,31 @@ func (c *loadedCatalog) recordedRunOrigin(path, inputDigest string) (runOriginRe
 		return runOriginRecord{}, false, errors.New("the selected historical publication is no longer in the project")
 	}
 	return record, true, nil
+}
+
+// v1 cannot adopt v2 source membership even through an empty/null member.
+// v2 pins the finite source references chosen by the connected review; its
+// retained plan digest remains the authority for this project-side origin.
+func validRunOriginMembership(record runOriginRecord, members map[string]jsontext.Value) bool {
+	switch record.Schema {
+	case runOriginSchema:
+		_, present := members["source_cases"]
+		return !present
+	case connectedRunOriginSchema:
+		if record.Source.Kind != TestItem || len(record.SourceCases) == 0 || len(record.SourceCases) > maxConnectedSteps {
+			return false
+		}
+		seen := map[ItemRef]bool{}
+		for _, ref := range record.SourceCases {
+			if ref.ID == "" || ref.Kind != CaseItem && ref.Kind != VariantItem || seen[ref] {
+				return false
+			}
+			seen[ref] = true
+		}
+		return true
+	default:
+		return false
+	}
 }
 
 func (c *loadedCatalog) originOfRun(path string, spec testrunner.Spec) runOrigin {

@@ -18,6 +18,7 @@ import { useReviewedAction } from "./reviewedAction";
 export function ReviewSheet({
   open,
   title,
+  className = "",
   action,
   finalLabel,
   context,
@@ -42,6 +43,7 @@ export function ReviewSheet({
 }: {
   open: boolean;
   title: string;
+  className?: string;
   action: ActionReview["action"];
   finalLabel: string;
   context: () => RequestContext;
@@ -106,6 +108,7 @@ export function ReviewSheet({
       <Modal
         open
         title={title}
+        className={className}
         onClose={onClose}
         footer={
           <div className="dialog-footer">
@@ -125,6 +128,7 @@ export function ReviewSheet({
     <FormDialog
       open={open}
       title={title}
+      className={className}
       submitLabel={finalLabel}
       tone={tone}
       submitDisabled={!review || !review.ready || !review.token || unmet}

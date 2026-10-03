@@ -5,17 +5,20 @@ package desktop_test
 // sending, resuming or changing anything.
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/bharm16/readmit/internal/desktop"
+	"github.com/bharm16/readmit/internal/guide"
+	"github.com/bharm16/readmit/internal/runresult"
 	"github.com/bharm16/readmit/internal/testauthor"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
 
-// The retained runs of the native acceptance project, as the saved test they
-// executed: the baseline whose ledger check failed beside acknowledged
-// messages, and the post-fix run that passed.
+// The retained runs of the native acceptance project, copied before a
+// content-compatible test is published: the baseline whose ledger check
+// failed beside acknowledged messages, and the post-fix run that passed.
 func acceptanceRuns(t *testing.T) (*desktop.App, desktop.RequestContext, desktop.ItemRef, map[string]desktop.CatalogItem) {
 	t.Helper()
 	app, context, retained := runsProject(t)
@@ -25,17 +28,42 @@ func acceptanceRuns(t *testing.T) (*desktop.App, desktop.RequestContext, desktop
 
 // A downstream check that failed is Failed with what it expected and what
 // was observed, even though every message was acknowledged; the run is
-// listed as the saved test version it executed.
+// source-linked without inventing an original test publication from equal content.
 func TestARunPageShowsAFailedDownstreamCheckBesideAcknowledgedMessages(t *testing.T) {
 	app, context, test, runs := acceptanceRuns(t)
 	baseline := runs["@baseline"]
 	summary := baseline.Summary.Run
 	if baseline.Name != "Native acceptance reschedule" || summary.Kind != desktop.TestRunKind || summary.Result != desktop.RunFailed ||
-		summary.Test == nil || summary.Test.ID != test.ID || summary.Version != "1" || summary.DeliveryUncertain {
+		summary.Test != nil || summary.TestAssociation != "unlinked" || summary.Version != "" || summary.SourceAssociation != "linked" || summary.DeliveryUncertain {
 		t.Fatalf("the baseline in history: %+v %+v", baseline, summary)
 	}
 	if passed := runs["@post-fix"].Summary.Run; passed.Result != desktop.RunPassed {
 		t.Fatalf("the post-fix run in history: %+v", passed)
+	}
+	// The exact original capture remains linked even though no reviewed
+	// writer recorded a selected test before these imported runs existed.
+	var source desktop.ItemRef
+	for _, item := range listed(t, app, context.Project, desktop.CaseItem) {
+		if item.Summary.Case != nil && item.Summary.Case.Entry == guide.CaseName {
+			source = item.Ref
+		}
+	}
+	retained, err := runresult.Open(filepath.Join(context.Project, "baseline"))
+	capture := app.OpenCase(context.Project, guide.CaseName)
+	if source.ID == "" || summary.SourceCase == nil || summary.SourceCase.ID != source.ID || len(summary.SourceCases) != 1 || summary.SourceCases[0].ID != source.ID || err != nil || retained.Artifact == nil || capture.Case == nil || capture.Case.Identity != retained.Artifact.Result.InputBundleIdentity {
+		t.Fatalf("the baseline's exact retained source association: %+v source=%+v (%v)", summary, source, err)
+	}
+	// The historical compatibility view remains available, explicitly
+	// separate from the original-publication association on the run.
+	history := app.TestHistory(desktop.ItemRequest{Context: context, Ref: test})
+	compatible := false
+	for _, row := range history.Runs {
+		if row.Run.ID == baseline.Ref.ID && row.Revision == "1" {
+			compatible = true
+		}
+	}
+	if history.State != desktop.Completed || !compatible {
+		t.Fatalf("the imported baseline disappeared from compatibility history: %+v", history)
 	}
 
 	opened := app.OpenRun(desktop.RunRequest{Context: context, Run: baseline.Ref})

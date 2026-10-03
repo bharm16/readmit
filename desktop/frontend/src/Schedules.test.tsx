@@ -211,3 +211,13 @@ test("a claimed occurrence has a pending result and does not claim that dispatch
   expect(within(recent).getByText("Pending result")).toBeTruthy();
   expect(within(recent).queryByText("Running")).toBeNull();
 });
+
+test("a connected schedule forwards exact installed references for preparation without substituting a policy export",async()=>{
+ const facade=installFacade(base(()=>[],{OpenItemDraft:(request:{context:RequestContext})=>{const opened=base(()=>[]).OpenItemDraft(request);return {...opened,draft:{...opened.draft,suite:{...opened.draft.suite,connected:{document:{schema:"readmit-suite/v2",id:"owned",owner:"interop",tags:[],parallelism:1,tests:[],environments:[]}}}}};},PrepareSchedule:(request:{context:RequestContext})=>({state:"completed",context:request.context,review:REVIEW,problems:[]})}));
+ const user=userEvent.setup();render(<Page suite="s1"/>);await user.click((await screen.findAllByRole("button",{name:"New schedule"}))[0]!);
+ const sheet=within(await screen.findByRole("dialog",{name:"New schedule"}));await user.selectOptions(sheet.getByLabelText("Runner"),"r1");await user.selectOptions(sheet.getByLabelText("Time zone"),"UTC");
+ for(const [label,value] of [["Runner configuration","runner.json"],["Installed authority","authority.json"],["Approved promotion","promotion.json"],["Promotion SHA-256","a".repeat(64)],["Target revision","r1"]])await user.type(await sheet.findByLabelText(label!),value!);
+ await user.click(sheet.getByRole("button",{name:"Review"}));await sheet.findByText(REVIEW.consequence);
+ expect(facade.oneCall("PrepareSchedule")[0].draft.connected).toEqual({runner_config:"runner.json",authority:"authority.json",promotion:"promotion.json",promotion_identity:"a".repeat(64),revision:"r1",instance:""});
+ expect(facade.callsTo("CommandSchedule")).toHaveLength(0);expect(facade.callsTo("SaveSchedulePolicy")).toHaveLength(0);
+});

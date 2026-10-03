@@ -282,3 +282,36 @@ test("a reopened FHIR-only observation obtains Go editing defaults and saves no 
   expect(request.draft.observation?.window).toBeUndefined();
   expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
 });
+
+test("live received HL7 authoring selects an exact listener and retains strict marker and output identity through refusal",async()=>{
+ const listener:CatalogItem={ref:{kind:"source",id:"listener-under-test",revision:"rev-1"},name:"Owned listener",availability:"available",created_at:null,updated_at:null,last_opened_at:null,capabilities:[],summary:{source:{type:"mllp-listener",transport:"plain"}}};
+ const facade=installFacade({...observationHandlers(DRAFT),ListCatalog:query=>({state:"completed",context:query.context,page:{items:query.kind==="source"?[listener]:[],total:query.kind==="source"?1:0,snapshot:"s",recorded:true,incomplete:[]}}),ObservationFields:request=>({state:"empty",context:request.context,fields:[],choices:[],projection:{schema:"readmit-dataset-projection/v1",id:"received",format:"hl7",order:"source",columns:[],limits:{max_rows:100,max_bytes:1<<20,timeout_ms:30000}}}),SaveItem:request=>({state:"failed",outcome:"invalid",replayed:false,context:request.context,problems:[{field:"observation.connected.projection",problem:"Choose the received fields"}],referring:[]})});
+ const user=userEvent.setup();render(<NewObservationEditor open context={context} onClose={()=>{}} onSaved={()=>{}}/>,{wrapper:vocabularyWrapper()});
+ const sheet=within(await screen.findByRole("dialog",{name:"Add observation"}));await user.selectOptions(await sheet.findByLabelText("Type"),"live-hl7-capture");
+ await user.selectOptions(await sheet.findByLabelText("Saved listener"),"listener-under-test");await user.type(sheet.getByLabelText("Runtime marker HL7 selector"),"MSH-3");await user.type(sheet.getByLabelText("Output occurrence identity HL7 selector"),"MSH-10");await user.type(sheet.getByLabelText("Original input identity HL7 selector"),"MSH-10");
+ await user.type(sheet.getByLabelText("Name"),"Captured fields");await user.click(sheet.getByRole("button",{name:"Save"}));await sheet.findByText("Choose the received fields");
+ expect(facade.oneCall("SaveItem")[0].draft.observation?.connected).toMatchObject({phase:"after",capture:{source:listener.ref,run_selector:"MSH-3",output_key_selector:"MSH-10",input_key_selector:"MSH-10",include:[]},completion:{mode:"stream",freshness:"ingress"}});
+ expect((sheet.getByLabelText("Runtime marker HL7 selector") as HTMLInputElement).value).toBe("MSH-3");expect(facade.callsTo("StartCapture")).toHaveLength(0);expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
+});
+
+test("database projection repair retains its registered reference, business key and completion scope through a refused save", async () => {
+  const user = userEvent.setup();
+  const source: ObservationSource = { ...DRAFT.observation.source, schema: "readmit-observation-source/v3", source: { kind: "database-query", identity: "actual-view", scope: "appointments" }, extraction: null, file: null, http: null, capture: null, database: { driver: "postgresql", address: "127.0.0.1:5432", classification: "nonproduction", name: "application", username: "observer", ca_file: "/local-ca.pem", server_name: "localhost", credential: { store: "customer-managed", address: "127.0.0.1:5432", purpose: "database-observation", command: "/local-reference-provider", arguments: [] }, view: ["public", "observed"], record_key: "appointment", key_type: "text", filters: [], limits: { timeout: "5s", max_rows: 10, max_bytes: 65536 } } };
+  const projection: DatasetProjection = { schema: "readmit-dataset-projection/v1", id: "appointments", format: "database", order: "unordered", columns: [{ name: "appointment", type: "text", locator: ["appointment"], key: true, required: true, repeated: false }, { name: "status", type: "text", locator: ["legacy_status"], key: false, required: true, repeated: false }], limits: { max_rows: 10, max_bytes: 65536, timeout_ms: 5000 } };
+  const connected = { ...VOCABULARY.connected.observation, namespace: "appointments", phase: "after", projection, business_keys: [{ field: "appointment", variable: "appointment-key" }], completion: { ...VOCABULARY.connected.observation.completion, horizon_ms: 42000 } };
+  const draft: ItemDraft = { ...DRAFT, observation: { ...DRAFT.observation, source, credential: "database-observer", connected } };
+  const facade = installFacade({ ...observationHandlers(draft), ChooseEnvironmentFile: () => ({ state: "completed", paths: ["/local-driver-schema.json"] }), ObservationFields: request => ({ state: "completed", context: request.context, fields: [], projection: { ...projection, columns: [] }, choices: request.schema_sample ? [{ id: "appointment", locator: ["appointment"] }, { id: "status", locator: ["status"] }] : [] }), SaveItem: request => ({ state: "failed", context: request.context, outcome: "invalid", replayed: false, problems: [{ field: "observation.source.database.view", problem: "Approve this exact view before save" }] }) });
+  render(<NewObservationEditor open context={context} onClose={() => {}} onSaved={() => {}} />, { wrapper: vocabularyWrapper() });
+  const sheet = within(await screen.findByRole("dialog", { name: "Add observation" }));
+  await user.type(sheet.getByRole("textbox", { name: "Name" }), "Actual database fields");
+  await user.click(sheet.getByRole("button", { name: "Choose schema sample" }));
+  await within(sheet.getByRole("combobox", { name: "Source field 2" })).findByRole("option", { name: "status" });
+  await user.selectOptions(sheet.getByRole("combobox", { name: "Source field 2" }), "status");
+  await user.click(sheet.getByRole("button", { name: "Save" }));
+  await sheet.findByText("Approve this exact view before save");
+  const saved = facade.oneCall("SaveItem")[0].draft.observation;
+  expect(saved?.credential).toBe("database-observer");
+  expect(saved?.source).toEqual(source);
+  expect(saved?.connected).toEqual({ ...connected, projection: { ...projection, columns: [projection.columns[0], { ...projection.columns[1], locator: ["status"] }] } });
+  expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
+});

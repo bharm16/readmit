@@ -109,6 +109,8 @@ export function useProfile({
   onSaved,
   onImport,
   onImported,
+  initialField,
+  evaluationCase,
 }: {
   /** Imports another profile, as the list's Import does. */
   onImport: () => void;
@@ -121,6 +123,8 @@ export function useProfile({
   shown: boolean;
   busy: boolean;
   onSaved: (ref: ItemRef) => void;
+  initialField?: {segment:string;position:number};
+  evaluationCase?: ItemRef;
 }): LibraryPage {
   const vocabulary = useVocabulary()?.profiles;
   const unbounded = vocabulary?.unbounded ?? "*";
@@ -152,7 +156,7 @@ export function useProfile({
       const answer = await openItemDraft({ context: context(), ref });
       if (current()) setOpened(answer);
     });
-  }, [id, context]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [id, ref?.revision, context]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setOpened(null);
@@ -165,12 +169,13 @@ export function useProfile({
       setOpened(imported);
       setEditing({ name: imported.draft.name ?? "", draft: imported.draft.profile });
     } else void read();
-  }, [id, shown, imported]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [id, ref?.revision, shown, imported]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const saved = opened?.draft?.profile;
   const draft = editing?.draft ?? saved;
   const profile = draft?.profile;
   const name = editing?.name ?? opened?.draft?.name ?? "";
+  useEffect(()=>{if(initialField&&profile)setSelected(initialField);},[id,opened?.ref?.revision,initialField?.segment,initialField?.position,Boolean(profile)]);
 
   // What the base pack declares for this draft: origins and support.
   const content = JSON.stringify(draft ?? null);
@@ -444,7 +449,7 @@ export function useProfile({
       {sheet === "affected" && ref && opened.ref ? <AffectedTestsSheet context={context} profile={{ ...ref, ...(opened.ref.revision ? { revision: opened.ref.revision } : {}) }} onClose={() => setSheet(null)} /> : null}
       {sheet === "packs" ? <PacksSheet context={context} onClose={() => setSheet(null)} onImported={onImported} /> : null}
       {sheet === "evaluate" && ref && opened.ref ? (
-        <EvaluateSheet context={context} profile={{ ...ref, ...(opened.ref.revision ? { revision: opened.ref.revision } : {}) }} onClose={() => setSheet(null)} />
+        <EvaluateSheet context={context} initialCase={evaluationCase} profile={{ ...ref, ...(opened.ref.revision ? { revision: opened.ref.revision } : {}) }} onClose={() => setSheet(null)} />
       ) : null}
       {sheet === "json" && draft ? (
         <JsonSheet
@@ -1169,9 +1174,9 @@ const VERDICTS: Record<string, string> = { pass: "Conforms", fail: "Does not con
 const SUPPORT: Record<string, string> = { supported: "Supported", unsupported: "Unsupported", undeclared: "Not declared", untested: "Untested", unknown: "Unknown" };
 
 /** A case evaluated against this profile version, as `readmit profile evaluate` does. */
-function EvaluateSheet({ context, profile, onClose }: { context: () => RequestContext; profile: ItemRef; onClose: () => void }) {
+function EvaluateSheet({ context, profile, initialCase, onClose }: { context: () => RequestContext; profile: ItemRef; initialCase?: ItemRef | undefined; onClose: () => void }) {
   const [cases, setCases] = useState<CatalogItem[]>([]);
-  const [chosen, setChosen] = useState("");
+  const [chosen, setChosen] = useState(initialCase?.id ?? "");
   const [complete, setComplete] = useState(false);
   const [report, setReport] = useState<ProfileEvaluationResult | null>(null);
   useEffect(() => {

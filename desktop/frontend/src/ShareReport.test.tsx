@@ -189,7 +189,7 @@ test("Export opens the preview of the report alone, and a changed choice withdra
     ExecuteReviewedAction: (request) => ({ state: "failed", context: request.context, outcome: "stale", replayed: false, reason: "the report changed; review it again" }),
   });
   await user.click(page().getByRole("button", { name: "Export" }));
-  const steps = await page().findByRole("list", { name: "Steps" });
+  const steps = await page().findByLabelText("Steps",{selector:"ol"});
   expect(within(steps).getByText("Preview").getAttribute("aria-current")).toBe("step");
   await waitFor(() => expect(prepared(facade).at(-1)!.report_share).toMatchObject({ contents: {}, format: "pdf" }));
   expect(prepared(facade).at(-1)!.report_share!.template).toBeUndefined();
@@ -530,4 +530,24 @@ test("Encrypt package writes the share as an encrypted package under an active c
   await waitFor(() => expect(prepared(facade).at(-1)!.report_share!.encrypt).toEqual({ entry: "protection.json", control: "lab-evidence", generation: 3 }));
   expect(await page().findByText("lab-evidence · security · Generation 3")).toBeTruthy();
   expect(page().getByText(/^Encrypted package · PDF/)).toBeTruthy();
+});
+
+
+test("connected output offers supported formats and refuses unsupported paper choices before review", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openReport(user, {
+    PrepareAction: request => ({ state: "completed", context: request.context, review: reviewed(request, share({connected_mode:request.report_share?.connected_mode ?? "original-report"}), false) }),
+  });
+  await user.click(page().getByRole("button", {name:"Share"}));
+  await page().findByRole("radio", {name:"Original report with retained values"});
+  await user.click(page().getAllByRole("button", {name:"Change"})[0]!);
+  const format = await screen.findByRole("dialog", {name:"Format"});
+  expect(within(format).getByRole("radio", {name:"A4"}).hasAttribute("disabled")).toBe(true);
+  await user.click(within(format).getByRole("button", {name:"Apply"}));
+  await user.click(page().getByRole("radio", {name:"Value-free extract"}));
+  await waitFor(()=>expect(prepared(facade).at(-1)?.report_share?.connected_mode).toBe("value-free-extract"));
+  await user.click(page().getAllByRole("button", {name:"Change"})[0]!);
+  const extractFormat = await screen.findByRole("dialog", {name:"Format"});
+  expect(within(extractFormat).getByRole("radio", {name:"PDF"}).hasAttribute("disabled")).toBe(true);
+  expect(within(extractFormat).getByRole("radio", {name:"JSON"}).hasAttribute("disabled")).toBe(false);
 });

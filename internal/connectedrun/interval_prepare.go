@@ -98,7 +98,7 @@ func prepareIntervalMode(planPath, configPath string, plan *connectedtest.Plan, 
 			return nil, invalid
 		}
 		var item sourcePlan
-		if head.Schema == observeinterval.CaptureSourceSchema {
+		if head.Schema == observeinterval.CaptureSourceSchema || head.Schema == observeinterval.CaptureSourceSchemaV2 {
 			if d.Phase != "after" || projection.Format != "hl7" || definition.Mode != "stream" || dataset.Digest(sourceRaw) != d.Source || selected.Grant == nil || selected.CredentialGeneration != "" {
 				return nil, invalid
 			}

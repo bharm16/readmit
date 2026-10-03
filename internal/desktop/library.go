@@ -691,7 +691,7 @@ func (r *ProfileResolutionResult) refuse(state State, reason string) {
 // chosen or, with none chosen, the project's pack its pin names. It is a read:
 // nothing is saved, and a field no pack supports is reported as it is.
 func (a *App) ResolveProfileDraft(request DraftRequest) ProfileResolutionResult {
-	return run(a, false, false, func(ctx context.Context) ProfileResolutionResult {
+	return runRead(a, false, func(ctx context.Context) ProfileResolutionResult {
 		result := ProfileResolutionResult{Context: request.Context, Problems: []FieldProblem{}}
 		if request.Kind != ProfileItem || request.Draft.Profile == nil {
 			result.refuse(Failed, "a profile draft is resolved")

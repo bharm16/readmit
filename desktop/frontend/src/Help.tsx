@@ -42,7 +42,7 @@ function ArticleRows({ label, articles, onOpen }: { label: string; articles: Hel
 }
 
 /** Help's landing: the five tasks, in order. */
-export function HelpTopics({ onOpen }: { onOpen: (id: string) => void }) {
+export function HelpTopics({ onOpen, onDemo, busy=false }: { onOpen: (id: string) => void; onDemo?: () => void; busy?: boolean }) {
   const [topics, setTopics] = useState<HelpSummary[] | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   useEffect(() => {
@@ -58,7 +58,7 @@ export function HelpTopics({ onOpen }: { onOpen: (id: string) => void }) {
       </p>
     );
   }
-  return topics ? <ArticleRows label="Help topics" articles={topics} onOpen={onOpen} /> : null;
+  return topics ? <div className="help-workspace"><aside className="help-topic-rail"><h2>Help topics</h2><ArticleRows label="Help topics" articles={topics} onOpen={onOpen} /></aside><section className="help-start" aria-label="Get started"><h2>Try the scheduling demo</h2><p>Follow synthetic messages through the existing capture, test, and report workflow.</p>{onDemo ? <button type="button" className="primary" disabled={busy} onClick={onDemo}>Open demo</button>:null}<h3>Common tasks</h3><ul className="help-common-tasks">{topics.map(topic=><li key={topic.id}><button type="button" className="link" onClick={()=>onOpen(topic.id)}>{({"import-messages":"Import captures","investigate-a-case":"Read selected messages","create-a-regression-test":"Create a test case","connect-a-test-system":"Set up targets","share-a-report":"Export retained evidence"} as Record<string,string>)[topic.id] || `Read ${topic.title}`}</button></li>)}</ul></section></div> : null;
 }
 
 /** Search help: a query over the bundled articles' titles and content. A

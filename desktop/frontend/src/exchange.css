@@ -1,0 +1,9 @@
+.exchange-actions { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.exchange-setup, .exchange-review { display: flex; flex-direction: column; gap: var(--s6); }
+.exchange-setup label { display: flex; flex-direction: column; gap: var(--s2); }
+.exchange-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: var(--s6); }
+.exchange-setup input, .exchange-setup select { min-width: 0; width: 100%; }
+.exchange-history-row { display: block; width: 100%; text-align: left; margin-bottom: var(--s2); }
+.exchange-evidence { border-top: 1px solid var(--line); margin-top: var(--s4); padding-top: var(--s4); }
+.exchange-setup .exchange-marker-choice { flex-direction: row; align-items: start; }
+.exchange-setup .exchange-marker-choice input { width: auto; margin-top: var(--s1); }

@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
@@ -27,10 +28,13 @@ import (
 	"github.com/bharm16/readmit/internal/fhirobserve"
 	"github.com/bharm16/readmit/internal/fhirr4"
 	"github.com/bharm16/readmit/internal/fhirrest"
+	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/networkaction"
 	"github.com/bharm16/readmit/internal/observeinterval"
 	"github.com/bharm16/readmit/internal/observesource"
+	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/replay"
+	"github.com/bharm16/readmit/internal/reproducer"
 	"github.com/bharm16/readmit/internal/secret"
 	"github.com/bharm16/readmit/internal/sendpolicy"
 	"github.com/bharm16/readmit/internal/smartbackend"
@@ -69,7 +73,8 @@ type connectedEnvironments struct {
 	server      string
 	// promoted says a suite binds the test to environments in place of its
 	// own: its FHIR observations then reach the bound FHIR server.
-	promoted bool
+	promoted      bool
+	runtimeMarker string
 }
 
 // connectedCompiled is one connected test compiled against its environments:
@@ -77,28 +82,32 @@ type connectedEnvironments struct {
 // the selection for a folder, given how a file of the project is named from
 // that folder; files are the selection's own documents, by their names in it.
 type connectedCompiled struct {
-	plan   *connectedtest.FlowPlan
-	flow   connectedtest.FlowTest
-	files  map[string][]byte
-	config func(place func(string) string) connectedrun.FHIRFlowConfig
+	plan         *connectedtest.FlowPlan
+	flow         connectedtest.FlowTest
+	files        map[string][]byte
+	runtimeEdits map[string][]reproducer.Step
+	config       func(place func(string) string) connectedrun.FHIRFlowConfig
 }
 
 // connectedObservationRead is one saved version of a connected observation as
 // a connected test reads it.
 type connectedObservationRead struct {
-	ref        ItemRef
-	name       string
-	setup      ConnectedObservation
-	paths      map[string]string
-	kind       string
-	source     string
-	projection string
-	columns    []ConnectedColumn
-	member     []byte
-	interval   []byte
-	definition observeinterval.Definition
-	fhir       *fhirobserve.Observation
-	typed      *observesource.Source
+	ref                  ItemRef
+	name                 string
+	setup                ConnectedObservation
+	paths                map[string]string
+	kind                 string
+	source               string
+	projection           string
+	columns              []ConnectedColumn
+	member               []byte
+	interval             []byte
+	definition           observeinterval.Definition
+	fhir                 *fhirobserve.Observation
+	credentialGeneration string
+	credentialName       string
+	capture              *observeinterval.CaptureSource
+	typed                *observesource.Source
 }
 
 // connectedObservation reads one saved version of a named observation, or
@@ -116,7 +125,7 @@ func (c *loadedCatalog) connectedObservation(id, revision string) (*connectedObs
 	if availability != ItemAvailable {
 		return nil, errors.New(reason)
 	}
-	read := &connectedObservationRead{ref: ItemRef{Kind: ObservationItem, ID: id, Revision: revision}, name: c.read(item).Name, paths: paths}
+	read := &connectedObservationRead{ref: ItemRef{Kind: ObservationItem, ID: id, Revision: revision}, name: item.Name, paths: paths}
 	if _, held := paths["setup"]; !held {
 		return read, errors.New("only an observation with typed fields and a completion rule can be read by a connected test")
 	}
@@ -163,11 +172,43 @@ func (c *loadedCatalog) connectedObservation(id, revision string) (*connectedObs
 	if err != nil {
 		return read, err
 	}
+	if read.setup.Capture != nil {
+		source, _, err := c.connectedCaptureSource(read.setup.Capture.Source, read.definition, read.setup.Capture.RunSelector, read.setup.Capture.OutputKeySelector, read.setup.Capture.Include)
+		if err != nil {
+			return read, err
+		}
+		current, _ := encodeMember(source)
+		if !bytes.Equal(current, sourceRaw) {
+			return read, errors.New("the selected capture source changed; save its observation again")
+		}
+		read.kind, read.capture, read.member, read.source, read.projection = "capture", &source, raw, dataset.Digest(sourceRaw), projection.Identity()
+		for _, column := range projection.Columns {
+			read.columns = append(read.columns, ConnectedColumn{Name: column.Name, Type: column.Type, Key: column.Key, Required: column.Required, Repeated: column.Repeated, States: hl7States})
+		}
+		return read, nil
+	}
 	source, err := observesource.DecodeSource(sourceRaw)
 	if err != nil {
 		return read, err
 	}
 	read.kind, read.typed, read.member, read.source, read.projection = "typed", &source, raw, source.Identity(), projection.Identity()
+	if source.Database != nil {
+		links, err := readObservationLinks(paths["links"])
+		if err != nil || links.Credential == "" {
+			return read, errors.New("a connected database observation names its registered project credential")
+		}
+		document, err := operation.ReadSecrets(filepath.Join(c.root, ProjectSecrets))
+		if err != nil {
+			return read, errors.New("the project database credential reference is unavailable")
+		}
+		reference, err := secret.Find(document, links.Credential)
+		if err != nil || reference.Purpose != secret.SourceEndpoint || reference.Address != source.Database.Address || reference.Store != source.Database.Credential.Store || reference.Command != source.Database.Credential.Command || !slices.Equal(reference.Arguments, source.Database.Credential.Arguments) || reference.Generation < 1 || reference.Rotation(time.Now()) == secret.RotationOverdue {
+			return read, errors.New("the registered database credential changed or is out of scope; save its observation and review again")
+		}
+		read.credentialGeneration = strconv.Itoa(reference.Generation)
+		read.credentialName = reference.Name
+	}
+
 	for _, column := range projection.Columns {
 		read.columns = append(read.columns, ConnectedColumn{Name: column.Name, Type: column.Type, CodeSystem: column.CodeSystem, Key: column.Key, Required: column.Required, Repeated: column.Repeated, States: hl7States})
 	}
@@ -208,7 +249,7 @@ func (c *loadedCatalog) connectedEnvironment(id string) (*connectedEnvironmentRe
 	if err != nil {
 		return nil, errors.New("that environment cannot be read: " + err.Error())
 	}
-	return &connectedEnvironmentRead{ref: ItemRef{Kind: EnvironmentItem, ID: id, Revision: item.RevisionLabel()}, name: c.read(item).Name, members: members}, nil
+	return &connectedEnvironmentRead{ref: ItemRef{Kind: EnvironmentItem, ID: id, Revision: item.RevisionLabel()}, name: item.Name, members: members}, nil
 }
 
 // connectedSourceRead is the bytes one step sends, read from its case.
@@ -279,6 +320,22 @@ func (c *loadedCatalog) connectedSource(source ConnectedSource) (*connectedSourc
 // the field it is about.
 func (c *loadedCatalog) compileConnected(d ConnectedTestDraft, id, revision string, bind connectedEnvironments) (*connectedCompiled, []FieldProblem) {
 	problems := []FieldProblem{}
+	// One compilation owns a fresh verified observation snapshot per exact
+	// selection; each new authority check creates a new compilation and cache.
+	type observationRead struct {
+		read *connectedObservationRead
+		err  error
+	}
+	snapshots := map[string]observationRead{}
+	readObservation := func(id, revision string) (*connectedObservationRead, error) {
+		key := id + "@" + revision
+		if held, ok := snapshots[key]; ok {
+			return held.read, held.err
+		}
+		read, err := c.connectedObservation(id, revision)
+		snapshots[key] = observationRead{read, err}
+		return read, err
+	}
 	add := func(field, problem string) {
 		if !slices.ContainsFunc(problems, func(p FieldProblem) bool { return p.Field == field && p.Problem == problem }) {
 			problems = append(problems, FieldProblem{Field: field, Problem: problem})
@@ -296,7 +353,7 @@ func (c *loadedCatalog) compileConnected(d ConnectedTestDraft, id, revision stri
 	}
 	for _, phase := range d.Phases {
 		for _, observed := range phase.Observations {
-			if read, err := c.connectedObservation(observed.Observation.ID, observed.Observation.Revision); err == nil && read.kind == "fhir" {
+			if read, err := readObservation(observed.Observation.ID, observed.Observation.Revision); err == nil && read.kind == "fhir" {
 				usesFHIR = true
 			}
 		}
@@ -409,7 +466,28 @@ func (c *loadedCatalog) compileConnected(d ConnectedTestDraft, id, revision stri
 	if server != nil && capability != nil {
 		flow.Servers = []connectedtest.FHIRServer{{ID: connectedServer, Base: connection.Base, Capability: ref("capability", "fhir-r4-json", "capability.json", capability)}}
 	}
+	captureOnly := false
+	for _, phase := range d.Phases {
+		for _, observation := range phase.Observations {
+			if read, err := readObservation(observation.Observation.ID, observation.Observation.Revision); err == nil && read.capture != nil {
+				captureOnly = true
+			}
+		}
+	}
+	marker := bind.runtimeMarker
+	if marker == "" {
+		marker = "run-00000000000000000000000000000000"
+	}
+	if captureOnly {
+		if server != nil || connection != nil || slices.ContainsFunc(d.Steps, func(s ConnectedStep) bool { return s.FHIR != nil }) {
+			add("connected", "live HL7 capture is supported by v2-only tests; capture and FHIR observations/requests cannot be composed in this release")
+		}
+		flow.Schema = connectedtest.FlowTestSchema
+		flow.Servers = nil
+		flow.Variables = append(flow.Variables, connectedtest.Variable{ID: "readmit-runtime-marker", Kind: "literal", Value: marker})
+	}
 	cases := map[string]string{}
+	runtimeEdits := map[string][]reproducer.Step{}
 	for i, s := range d.Steps {
 		field := connectedField("steps", i, "source")
 		read, err := c.connectedSource(s.Source)
@@ -429,6 +507,17 @@ func (c *loadedCatalog) compileConnected(d ConnectedTestDraft, id, revision stri
 			}
 			step.Endpoint = connectedReceiver
 			step.V2 = &connectedtest.V2Stimulus{Input: ref(s.ID+"-input", "hl7", "inputs/"+s.ID+".hl7", read.raw), Occurrence: s.Source.Occurrence, Assignments: []connectedtest.Assignment{}}
+			if captureOnly {
+				if s.V2.RuntimeMarkerSelector == "" {
+					add(field, "explicitly choose the derived runtime marker field for every v2 stimulus")
+				} else {
+					step.V2.Assignments = []connectedtest.Assignment{{Selector: s.V2.RuntimeMarkerSelector, Variable: "readmit-runtime-marker"}}
+					runtimeEdits[read.path] = append(runtimeEdits[read.path], reproducer.Step{Operator: reproducer.SetField, Occurrence: s.Source.Occurrence, Selector: s.V2.RuntimeMarkerSelector, Value: marker})
+				}
+			} else if s.V2.RuntimeMarkerSelector != "" {
+				add(field, "runtime marker derivation requires a scoped live HL7 capture")
+			}
+
 			cases[s.ID] = read.path
 		case s.FHIR != nil:
 			if read.protocol != "fhir" {
@@ -477,6 +566,8 @@ func (c *loadedCatalog) compileConnected(d ConnectedTestDraft, id, revision stri
 		flow.Steps = append(flow.Steps, step)
 	}
 
+	phaseCaptureKeys := map[string]string{}
+	captureConfigurations := map[string][]byte{}
 	observations := map[string]*connectedObservationRead{}
 	sources := map[string]map[string]string{}
 	for p, phase := range d.Phases {
@@ -489,7 +580,7 @@ func (c *loadedCatalog) compileConnected(d ConnectedTestDraft, id, revision stri
 		budget := 0
 		for o, observed := range phase.Observations {
 			field := connectedField("phases", p, "observations", o)
-			read, err := c.connectedObservation(observed.Observation.ID, observed.Observation.Revision)
+			read, err := readObservation(observed.Observation.ID, observed.Observation.Revision)
 			if err != nil {
 				add(field, "this observation cannot be read: "+err.Error())
 				continue
@@ -500,6 +591,71 @@ func (c *loadedCatalog) compileConnected(d ConnectedTestDraft, id, revision stri
 				continue
 			}
 			name := phase.ID + "-" + observed.Dataset
+
+			if read.capture != nil {
+				scoped := *read.capture
+				scoped.PhaseKeys = []string{}
+				keys := map[string]bool{}
+				selector, err := hl7.ParseSelector(read.setup.Capture.InputKeySelector)
+				if err != nil {
+					add(field, "choose the exact original input identity selector")
+					continue
+				}
+				for _, stepID := range phase.Steps {
+					index := slices.IndexFunc(d.Steps, func(step ConnectedStep) bool { return step.ID == stepID })
+					if index < 0 {
+						continue
+					}
+					step := d.Steps[index]
+					runtime := hl7.Selector{}
+					if step.V2 != nil {
+						runtime, _ = hl7.ParseSelector(step.V2.RuntimeMarkerSelector)
+					}
+					wanted, changed := selector.Parts(), runtime.Parts()
+					overlaps := wanted.Segment == changed.Segment && wanted.Occurrence == changed.Occurrence && wanted.Field == changed.Field && wanted.Repetition == changed.Repetition
+					if step.V2 == nil || overlaps {
+						add(field, "the phase input identity is separate from its explicitly derived runtime marker")
+						continue
+					}
+					original, err := c.connectedSource(step.Source)
+					if err != nil {
+						add(field, err.Error())
+						continue
+					}
+					doc, err := hl7.Parse(original.raw, hl7.Options{})
+					if err != nil || len(doc.Messages) != 1 {
+						add(field, "the intended input identity cannot be read losslessly")
+						continue
+					}
+					key, err := doc.Read(0, selector, hl7.EnforceMSH18)
+					if err != nil || key.State != hl7.Present || key.Reason != "" || len(key.Decoded) == 0 || keys[string(key.Decoded)] {
+						add(field, "each intended phase input needs one readable, nonempty and unique original identity")
+						continue
+					}
+					value := string(key.Decoded)
+					if earlier := phaseCaptureKeys[value]; earlier != "" && earlier != phase.ID {
+						add(field, "captured phases cannot reuse an input identity under one run marker; late prior-phase output would be indistinguishable")
+						continue
+					}
+					phaseCaptureKeys[value] = phase.ID
+					keys[value] = true
+					scoped.PhaseKeys = append(scoped.PhaseKeys, value)
+				}
+				raw, _ := encodeMember(scoped)
+				captureConfigurations["capture-"+name+".json"] = raw
+				copied := *read
+				copied.capture = &scoped
+				copied.source = dataset.Digest(raw)
+				copied.definition.Source = copied.source
+				copied.interval, _ = encodeMember(copied.definition)
+				copiedPaths := map[string]string{}
+				for role, path := range read.paths {
+					copiedPaths[role] = path
+				}
+				copiedPaths["source"] = "capture-" + name + ".json"
+				copied.paths = copiedPaths
+				read = &copied
+			}
 			interval := ref(name+"-window", observeinterval.Schema, "observations/"+name+"-window.json", read.interval)
 			ds := connectedtest.Dataset{ID: observed.Dataset, Namespace: read.setup.Namespace, Phase: observed.When, Source: read.source, Completion: connectedtest.Completion{Kind: "full-horizon", HorizonMS: read.definition.HorizonMS, MaxRecords: read.definition.MaxRecords, MaxBytes: read.definition.MaxBytes, Policy: &interval}}
 			budget += read.definition.MaxBytes
@@ -516,6 +672,35 @@ func (c *loadedCatalog) compileConnected(d ConnectedTestDraft, id, revision stri
 				projection := ref(name, fhirobserve.Schema, "observations/"+name+".json", read.member)
 				ds.Kind, ds.Projection = "fhir-resources", &projection
 				allow("connected.server", observed.Dataset, httpsAddress(connection.Base), server.members.policy, sendpolicy.FHIRMetadata, sendpolicy.FHIRSearch)
+			} else if read.capture != nil {
+				if observed.When != "after" || read.definition.Mode != "stream" {
+					add(field, "live capture binds an after-phase stream")
+					continue
+				}
+				for _, stepID := range phase.Steps {
+					for _, step := range d.Steps {
+						if step.ID == stepID && (step.V2 == nil || step.V2.RuntimeMarkerSelector != read.capture.RunSelector) {
+							add(field, "the capture's run selector must equal every stimulus's explicit derived runtime marker selector")
+						}
+					}
+				}
+				projection := ref(name, dataset.ProjectionSchema, "observations/"+name+".json", read.member)
+				ds.Kind, ds.Projection = "typed-rows", &projection
+				sources[phase.ID][observed.Dataset] = read.paths["source"]
+				allow(field, observed.Dataset, read.capture.Address, &sendpolicy.Policy{ApprovedDestinations: []string{"127.0.0.1/32", "::1/128"}}, sendpolicy.CaptureListen)
+			} else if read.typed.Database != nil && read.typed.Observes.Kind == observesource.DatabaseQuery {
+				if read.typed.Database.Classification != "nonproduction" || read.credentialGeneration == "" {
+					add(field, "choose a nonproduction database observation with a current registered reference")
+					continue
+				}
+				if read.setup.Environment != "" && read.setup.Environment != primary.ref.ID {
+					add(field, "this database observation's authority belongs to another selected environment")
+					continue
+				}
+				projection := ref(name, dataset.ProjectionSchema, "observations/"+name+".json", read.member)
+				ds.Kind, ds.Projection = "typed-rows", &projection
+				sources[phase.ID][observed.Dataset] = read.paths["source"]
+				allow(field, observed.Dataset, read.typed.Database.Address, primary.members.policy, sendpolicy.ObservationRead)
 			} else {
 				if read.typed.Observes.Kind != observesource.FileExport || read.typed.File == nil {
 					add(field, "this observation reads its source through a collector that needs its own authority; a connected test in this release reads file exports and FHIR observations")
@@ -645,6 +830,9 @@ func (c *loadedCatalog) compileConnected(d ConnectedTestDraft, id, revision stri
 	registryRaw, _ := encodeMember(registry)
 	isolationRaw, _ := encodeMember(isolationPolicy)
 	own := map[string][]byte{"address-policy.json": policyRaw, "isolation-registry.json": registryRaw, "isolation-policy.json": isolationRaw}
+	for name, raw := range captureConfigurations {
+		own[name] = raw
+	}
 	var targetFile string
 	if primary.members.fhir == nil {
 		copied := target
@@ -687,7 +875,7 @@ func (c *loadedCatalog) compileConnected(d ConnectedTestDraft, id, revision stri
 		}
 	}
 	compiledPlan := plan
-	return &connectedCompiled{plan: plan, flow: flow, files: own, config: func(place func(string) string) connectedrun.FHIRFlowConfig {
+	return &connectedCompiled{plan: plan, flow: flow, files: own, runtimeEdits: runtimeEdits, config: func(place func(string) string) connectedrun.FHIRFlowConfig {
 		config := connectedrun.FHIRFlowConfig{Schema: connectedrun.FHIRFlowConfigSchema, Policy: "address-policy.json", Servers: servers, Phases: map[string]connectedrun.FHIRPhaseSelection{}, Validation: validation, Seed: d.Generation.Seed,
 			Isolation: connectedrun.IsolationSelection{Registry: "isolation-registry.json", Policy: "isolation-policy.json", Read: connectedGrant("isolation:read"), Setup: connectedGrant("isolation:setup"), Cleanup: connectedGrant("isolation:cleanup")}}
 		if validation != nil {
@@ -719,7 +907,34 @@ func (c *loadedCatalog) compileConnected(d ConnectedTestDraft, id, revision stri
 					selection.Grants["dataset:"+ds.ID] = connectedGrant(phase.ID + ":dataset:" + ds.ID)
 					continue
 				}
-				selection.Sources[ds.ID] = connectedrun.SourceSelection{Path: place(sources[phase.ID][ds.ID])}
+				sourcePath := sources[phase.ID][ds.ID]
+				if _, owned := own[sourcePath]; !owned {
+					sourcePath = place(sourcePath)
+				}
+				selection.Sources[ds.ID] = connectedrun.SourceSelection{Path: sourcePath}
+				var selectedObservation *connectedObservationRead
+				for _, declaration := range d.Phases {
+					if declaration.ID == phase.ID {
+						for _, observed := range declaration.Observations {
+							if observed.Dataset == ds.ID {
+								selectedObservation = observations[observed.Observation.ID+"@"+observed.Observation.Revision]
+							}
+						}
+					}
+				}
+				if selectedObservation != nil && selectedObservation.typed != nil && selectedObservation.typed.Database != nil {
+					g := connectedGrant(phase.ID + ":dataset:" + ds.ID)
+					selected := selection.Sources[ds.ID]
+					selected.Grant = &g
+					selected.CredentialGeneration = selectedObservation.credentialGeneration
+					selection.Sources[ds.ID] = selected
+				}
+				if captureOnly {
+					g := connectedGrant(phase.ID + ":dataset:" + ds.ID)
+					selected := selection.Sources[ds.ID]
+					selected.Grant = &g
+					selection.Sources[ds.ID] = selected
+				}
 			}
 			config.Phases[phase.ID] = selection
 		}
@@ -835,7 +1050,44 @@ func (compiled *connectedCompiled) write(ctx context.Context, folder, root strin
 		relative, err := filepath.Rel(root, path)
 		return root != "" && err == nil && filepath.IsLocal(relative)
 	}
+	derivedPaths := map[string]string{}
+	for path, edits := range compiled.runtimeEdits {
+		source, err := bundle.Open(path)
+		if err != nil {
+			return "", "", err
+		}
+		variant, err := reproducer.NewPlan(source.Identity)
+		if err != nil {
+			return "", "", err
+		}
+		for _, event := range source.Events {
+			variant, err = reproducer.Append(variant, reproducer.Step{Operator: reproducer.SelectOccurrence, Occurrence: event.ID})
+			if err != nil {
+				return "", "", err
+			}
+		}
+		for _, edit := range edits {
+			variant, err = reproducer.Append(variant, edit)
+			if err != nil {
+				return "", "", err
+			}
+		}
+		output := filepath.Join(config, "runtime-input-"+binding(path)[:16])
+		manifest, err := reproducer.Create(source, path, variant, output)
+		if err != nil {
+			return "", "", err
+		}
+		for _, retained := range manifest.Occurrences {
+			if retained.Parent != retained.Derived {
+				return "", "", errors.New("the explicit runtime derivation cannot preserve this source's occurrence mapping")
+			}
+		}
+		derivedPaths[path] = filepath.Join("runtime-input-"+binding(path)[:16], reproducer.CaseName)
+	}
 	selection := compiled.config(func(path string) string {
+		if derived, ok := derivedPaths[path]; ok {
+			return derived
+		}
 		if inside(path) && inside(config) {
 			if relative, err := filepath.Rel(config, path); err == nil {
 				return relative
@@ -843,7 +1095,18 @@ func (compiled *connectedCompiled) write(ctx context.Context, folder, root strin
 		}
 		return path
 	})
-	raw, err := encodeMember(selection)
+	var selected any = selection
+	if compiled.flow.Schema == connectedtest.FlowTestSchema {
+		legacy := connectedrun.FlowConfig{Schema: connectedrun.FlowConfigSchema, Isolation: selection.Isolation, Seed: selection.Seed, Phases: map[string]connectedrun.ConfigV2{}}
+		for id, phase := range selection.Phases {
+			if phase.Send == nil {
+				return "", "", errors.New("capture phase needs a v2 stimulus")
+			}
+			legacy.Phases[id] = connectedrun.ConfigV2{Schema: connectedrun.ConfigSchemaV2, Definition: connectedrun.Config{Schema: connectedrun.ConfigSchema, Case: phase.Case, Target: phase.Target, Credential: phase.Credential, Send: *phase.Send, Policy: selection.Policy, Sources: phase.Sources}, Barriers: phase.Barriers}
+		}
+		selected = legacy
+	}
+	raw, err := encodeMember(selected)
 	if err != nil {
 		return "", "", err
 	}
@@ -912,4 +1175,24 @@ func withIdentity(raw []byte, variable string) ([]byte, error) {
 		member("id", identity)
 	}
 	return append(out, '}'), nil
+}
+
+// localInputIdentity fences the compiler's current plan and exact local
+// selection before each effect. It avoids recreating a review and its temporary
+// prepared flow; the executing prepared owner independently rechecks runtime
+// dependency bytes through its unchanged guard.
+func (compiled *connectedCompiled) localInputIdentity() (string, error) {
+	if compiled == nil {
+		return "", errors.New("missing connected inputs")
+	}
+	raw, err := json.Marshal(struct {
+		Plan   string                       `json:"plan"`
+		Config connectedrun.FHIRFlowConfig  `json:"config"`
+		Files  map[string][]byte            `json:"files"`
+		Edits  map[string][]reproducer.Step `json:"edits"`
+	}{compiled.plan.Identity(), compiled.config(func(path string) string { return path }), compiled.files, compiled.runtimeEdits}, json.Deterministic(true))
+	if err != nil {
+		return "", err
+	}
+	return networkaction.Digest(raw), nil
 }

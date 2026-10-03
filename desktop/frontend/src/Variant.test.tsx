@@ -128,7 +128,7 @@ test.each(["fhir-r4", "v2"])("%s variant Back keeps the preview and whole retain
     await user.click(await findCaseRow());
     await user.click(within(await findMessageRow(occurrence)).getByRole("checkbox"));
     await user.click(screen.getByRole("button", { name: "Create variant" }));
-    await screen.findByRole("heading", { name: "Case variant" });
+    await screen.findByRole("heading", { name: /^(Case variant|Create variant)$/ });
     await screen.findByRole("button", { name: "Add change" });
   };
   const first = await launch();
@@ -178,7 +178,7 @@ test.each(["fhir-r4", "v2"])("%s variant Back keeps the preview and whole retain
   expect((within(await findMessageRow(occurrence)).getByRole("checkbox") as HTMLInputElement).checked).toBe(true);
   expect(reopened.facade.callsTo("SaveItem")).toHaveLength(0);
   await user.click(screen.getByRole("button", { name: "Create variant" }));
-  await screen.findByRole("heading", { name: "Case variant" });
+  await screen.findByRole("heading", { name: /^(Case variant|Create variant)$/ });
   expect(screen.queryByRole("list", { name: "Changes in order" })).toBeNull();
   expect(lastDraft()?.fhir?.steps ?? lastDraft()?.plan.steps.filter((step) => step.operator === "set-field/v1")).toEqual([]);
   expect(held.every((draft) => draft.workspace === WORKSPACE_ROOT)).toBe(true);
@@ -211,7 +211,7 @@ test.each(["fresh", "held"])("switching to %s case B cannot adopt or discard cas
     await user.click(await findCaseRow(entry));
     await user.click(within(await findMessageRow("r000001")).getByRole("checkbox"));
     await user.click(screen.getByRole("button", { name: "Create variant" }));
-    await screen.findByRole("heading", { name: "Case variant" });
+    await screen.findByRole("heading", { name: /^(Case variant|Create variant)$/ });
   };
   const addFalse = async () => {
     await user.click(screen.getByRole("button", { name: "Add change" }));

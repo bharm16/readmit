@@ -59,6 +59,9 @@ func TestR4UnrevealedViewsWithholdUnrecognizedResourceTypeValues(t *testing.T) {
 	if named.Item == nil || named.Item.Summary.Case == nil {
 		t.Fatalf("unsupported named case: %+v", named)
 	}
+	if named.Item.Summary.Case.Occurrences != nil {
+		t.Fatal("FHIR resource counts must not be presented as retained HL7 occurrences")
+	}
 	assertHidden("named case labels", named)
 	entry := named.Item.Summary.Case.Entry
 	opened := app.OpenCase(root, entry)

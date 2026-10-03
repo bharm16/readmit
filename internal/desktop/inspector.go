@@ -10,6 +10,7 @@ import (
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/dictionary"
 	"github.com/bharm16/readmit/internal/hl7"
+	"github.com/bharm16/readmit/internal/hl7reference"
 )
 
 // InspectorByteWindow is how many original bytes one inspector window shows,
@@ -37,15 +38,18 @@ const HexRowBytes = 16
 // the hex rows; without it, the inspection carries positions, states, labels
 // and hex but no value text.
 type InspectRequest struct {
-	Workspace  string `json:"workspace"`
-	Case       string `json:"case"`
-	Identity   string `json:"identity"`
-	Occurrence string `json:"occurrence"`
-	Path       string `json:"path"`
-	NodeOffset int    `json:"node_offset"`
-	ByteOffset int    `json:"byte_offset"`
-	RawOffset  int    `json:"raw_offset"`
-	Reveal     bool   `json:"reveal"`
+	ReferenceSelection *HL7ReferenceSelection `json:"reference_selection,omitzero"`
+	ReferenceIdentity  string                 `json:"reference_identity,omitzero"`
+	ReferenceCatalog   string                 `json:"reference_catalog,omitzero"`
+	Workspace          string                 `json:"workspace"`
+	Case               string                 `json:"case"`
+	Identity           string                 `json:"identity"`
+	Occurrence         string                 `json:"occurrence"`
+	Path               string                 `json:"path"`
+	NodeOffset         int                    `json:"node_offset"`
+	ByteOffset         int                    `json:"byte_offset"`
+	RawOffset          int                    `json:"raw_offset"`
+	Reveal             bool                   `json:"reveal"`
 }
 
 // RawWindow is one window of the whole message's original bytes as escaped
@@ -90,10 +94,15 @@ type FieldMetadata struct {
 // field label where the bundled labels name it, the canonical selector a field
 // filter names it by (empty for a segment), and a segment's readable name.
 type InspectorNode struct {
-	Node        hl7.Node `json:"node"`
-	Label       string   `json:"label"`
-	Selector    string   `json:"selector"`
-	SegmentName string   `json:"segment_name"`
+	Depth           int                  `json:"depth,omitzero"`
+	Reference       *hl7reference.Record `json:"reference,omitzero"`
+	ReferenceStatus string               `json:"reference_status,omitzero"`
+	Raw             string               `json:"raw,omitzero"`
+	DecodeState     string               `json:"decode_state,omitzero"`
+	Node            hl7.Node             `json:"node"`
+	Label           string               `json:"label"`
+	Selector        string               `json:"selector"`
+	SegmentName     string               `json:"segment_name"`
 	// Value is the child's decoded text, escaped, only when values were
 	// revealed and the child is a present field or part of one that decodes.
 	// It is bounded to InspectorChildValueLimit bytes; Truncated says so.
@@ -116,34 +125,43 @@ const InspectorChildValueLimit = 128
 // Direction the direction the case recorded for it; a standalone file has
 // neither.
 type Inspection struct {
-	FHIR         *FHIRInspection  `json:"fhir,omitzero"`
-	Metadata     FieldMetadata    `json:"metadata"`
-	Identity     string           `json:"identity"`
-	Occurrence   string           `json:"occurrence"`
-	Message      int              `json:"message"`
-	SourceID     string           `json:"source_id"`
-	SourceName   string           `json:"source_name"`
-	Direction    bundle.Direction `json:"direction,omitzero"`
-	SourceOffset int              `json:"source_offset"`
-	Size         int              `json:"size"`
-	MessageCode  string           `json:"message_code"`
-	TriggerEvent string           `json:"trigger_event"`
-	ObservedAt   *time.Time       `json:"observed_at"`
-	Selected     hl7.Node         `json:"selected"`
-	Selector     string           `json:"selector"`
-	SegmentName  string           `json:"segment_name"`
-	Children     []InspectorNode  `json:"children"`
-	NodeOffset   int              `json:"node_offset"`
-	ChildCount   int              `json:"child_count"`
-	Bytes        []HexRow         `json:"bytes"`
-	ByteOffset   int              `json:"byte_offset"`
-	Revealed     bool             `json:"revealed"`
-	Raw          string           `json:"raw"`
-	RawWindow    *RawWindow       `json:"raw_window,omitzero"`
-	Decoded      string           `json:"decoded"`
-	Encoding     string           `json:"encoding"`
-	DecodeState  string           `json:"decode_state"`
-	Notice       string           `json:"notice"`
+	Grid             *HL7InspectorGrid            `json:"grid,omitzero"`
+	MessageContext   *hl7reference.MessageContext `json:"message_context,omitzero"`
+	ReferenceOverlay *HL7ReferenceOverlay         `json:"reference_overlay,omitzero"`
+	// ReadableWindow uses the same original spans as RawWindow, displaying CR/CRLF
+	// as line breaks and printable ASCII literally. Other bytes stay escaped.
+	ReadableWindow        *RawWindow           `json:"readable_window,omitzero"`
+	ReferenceValues       []HL7ReferenceValue  `json:"reference_values,omitzero"`
+	ReferenceValuesNotice string               `json:"reference_values_notice,omitzero"`
+	Reference             *hl7reference.Answer `json:"reference,omitzero"`
+	FHIR                  *FHIRInspection      `json:"fhir,omitzero"`
+	Metadata              FieldMetadata        `json:"metadata"`
+	Identity              string               `json:"identity"`
+	Occurrence            string               `json:"occurrence"`
+	Message               int                  `json:"message"`
+	SourceID              string               `json:"source_id"`
+	SourceName            string               `json:"source_name"`
+	Direction             bundle.Direction     `json:"direction,omitzero"`
+	SourceOffset          int                  `json:"source_offset"`
+	Size                  int                  `json:"size"`
+	MessageCode           string               `json:"message_code"`
+	TriggerEvent          string               `json:"trigger_event"`
+	ObservedAt            *time.Time           `json:"observed_at"`
+	Selected              hl7.Node             `json:"selected"`
+	Selector              string               `json:"selector"`
+	SegmentName           string               `json:"segment_name"`
+	Children              []InspectorNode      `json:"children"`
+	NodeOffset            int                  `json:"node_offset"`
+	ChildCount            int                  `json:"child_count"`
+	Bytes                 []HexRow             `json:"bytes"`
+	ByteOffset            int                  `json:"byte_offset"`
+	Revealed              bool                 `json:"revealed"`
+	Raw                   string               `json:"raw"`
+	RawWindow             *RawWindow           `json:"raw_window,omitzero"`
+	Decoded               string               `json:"decoded"`
+	Encoding              string               `json:"encoding"`
+	DecodeState           string               `json:"decode_state"`
+	Notice                string               `json:"notice"`
 }
 
 type InspectionResult struct {
@@ -169,7 +187,7 @@ func (a *App) inspectOccurrence(request InspectRequest) InspectionResult {
 		if root == "" {
 			return InspectionResult{State: declined.state, Reason: declined.reason}
 		}
-		return inspectFHIR(context.Background(), source.Identity, request.Occurrence, source.Manifest.Declaration, source.Raw(), source.Document, inspectorWindow{Path: request.Path, NodeOffset: request.NodeOffset, ByteOffset: request.ByteOffset, RawOffset: request.RawOffset, Reveal: request.Reveal})
+		return inspectFHIR(context.Background(), source.Identity, request.Occurrence, source.Manifest.Declaration, source.Raw(), source.Document, inspectorWindow{Path: request.Path, NodeOffset: request.NodeOffset, ByteOffset: request.ByteOffset, RawOffset: request.RawOffset, Reveal: request.Reveal, ReferenceCatalog: request.ReferenceCatalog, ReferenceIdentity: request.ReferenceIdentity, ReferenceSelection: request.ReferenceSelection})
 	}
 	fail := func(reason string) InspectionResult { return InspectionResult{State: Failed, Reason: reason} }
 	if request.NodeOffset < 0 || request.ByteOffset < -1 || request.RawOffset < -1 {
@@ -207,7 +225,7 @@ func (a *App) inspectOccurrence(request InspectRequest) InspectionResult {
 		}
 	}
 	view, reason := inspectDocument(raw, doc, 0, inspectorWindow{Path: request.Path, NodeOffset: request.NodeOffset, ByteOffset: request.ByteOffset,
-		RawOffset: request.RawOffset, Reveal: request.Reveal})
+		RawOffset: request.RawOffset, Reveal: request.Reveal, ReferenceCatalog: request.ReferenceCatalog, ReferenceIdentity: request.ReferenceIdentity, ReferenceSelection: request.ReferenceSelection})
 	if view == nil {
 		return fail(reason)
 	}
@@ -221,11 +239,14 @@ func (a *App) inspectOccurrence(request InspectRequest) InspectionResult {
 // one parsed message: the tree path, the child, byte and Raw windows, and
 // whether values are revealed.
 type inspectorWindow struct {
-	Path       string
-	NodeOffset int
-	ByteOffset int
-	RawOffset  int
-	Reveal     bool
+	ReferenceSelection *HL7ReferenceSelection
+	ReferenceIdentity  string
+	ReferenceCatalog   string
+	Path               string
+	NodeOffset         int
+	ByteOffset         int
+	RawOffset          int
+	Reveal             bool
 }
 
 // inspectDocument is the one inspector over one message of parsed original
@@ -236,6 +257,8 @@ func inspectDocument(raw []byte, doc *hl7.Document, message int, window inspecto
 	view := &Inspection{Message: message, Size: len(raw), Children: []InspectorNode{}, Bytes: []HexRow{}, Revealed: window.Reveal,
 		Selected: hl7.Node{Kind: "occurrence", State: hl7.Present, End: len(raw)}, DecodeState: "unparsed",
 		Notice: "The occurrence could not be parsed; original bytes remain available."}
+	catalog, reference := inspectionReference(window.ReferenceCatalog, window.ReferenceIdentity)
+	view.Reference = &reference
 	if doc != nil {
 		if message < 0 || message >= len(doc.Messages) {
 			return nil, "the selected message is not one this file holds"
@@ -251,19 +274,33 @@ func inspectDocument(raw []byte, doc *hl7.Document, message int, window inspecto
 		view.MessageCode, view.TriggerEvent = messageType(doc, message)
 		labels := labelsFor(doc, message)
 		view.Metadata = fieldMetadata(doc, message, selected)
+		if catalog != nil {
+			attachMessageContext(view, doc, message, catalog)
+		}
+		if window.ReferenceSelection != nil {
+			view.ReferenceOverlay = readReferenceOverlay(*window.ReferenceSelection, selected, view.Metadata.HL7Version, view.MessageCode)
+		}
+		if catalog != nil {
+			answer := referenceFor(catalog, selected)
+			view.Reference = &answer
+			if answer.Record != nil {
+				view.Metadata.Label = answer.Record.Name
+				view.Metadata.Contract = catalog.Schema()
+				view.Metadata.Provenance = answer.Record.Source
+				view.Metadata.Status = answer.Status
+				view.SegmentName = answer.Record.Name
+			}
+		}
 		view.ChildCount = len(children)
 		view.NodeOffset = window.NodeOffset
 		for _, child := range children[window.NodeOffset:min(len(children), window.NodeOffset+InspectorNodeWindow)] {
-			described := InspectorNode{Node: child, Selector: nodeSelector(child), SegmentName: dictionary.SegmentName(child.Segment)}
-			if labels != nil && child.Kind != "segment" {
-				described.Label = labels.At(dictionary.Position{Kind: child.Kind, Segment: child.Segment, Field: child.Field}).Label
-			}
-			if window.Reveal {
-				described.Value, described.Truncated = childValue(doc, message, child)
-			}
-			view.Children = append(view.Children, described)
+			view.Children = append(view.Children, describeInspectorNode(doc, message, child, labels, catalog, window.Reveal))
 		}
 		describeValue(view, doc, message)
+		if catalog != nil {
+			attachReferenceValues(view, doc, message, catalog)
+		}
+		attachInspectorGrid(view, doc, message, labels, catalog)
 		if !window.Reveal {
 			view.Raw, view.Decoded = "", ""
 		}
@@ -289,6 +326,7 @@ func inspectDocument(raw []byte, doc *hl7.Document, message int, window inspecto
 			return nil, "the Raw window is outside the message"
 		}
 		view.RawWindow = shown
+		view.ReadableWindow, _ = readableWindow(raw, bounds, view.Selected, window.RawOffset)
 	}
 	return view, ""
 }
@@ -298,6 +336,32 @@ func inspectDocument(raw []byte, doc *hl7.Document, message int, window inspecto
 // where an offset before the message, such as its MLLP start block, is its
 // first window.
 func rawWindow(raw []byte, message hl7.Span, selected hl7.Node, offset int) (*RawWindow, bool) {
+	return textWindow(raw, message, selected, offset, func(from, to int) string { return escapeBytes(raw[from:to]) })
+}
+
+func readableWindow(raw []byte, message hl7.Span, selected hl7.Node, offset int) (*RawWindow, bool) {
+	return textWindow(raw, message, selected, offset, func(from, to int) string {
+		var out strings.Builder
+		for i := from; i < to; i++ {
+			b := raw[i]
+			switch {
+			case b == '\r':
+				out.WriteByte('\n')
+			case b == '\n':
+				if i == 0 || raw[i-1] != '\r' {
+					out.WriteByte('\n')
+				}
+			case b >= 32 && b < 127 || b == '\t':
+				out.WriteByte(b)
+			default:
+				fmt.Fprintf(&out, `\x%02x`, b)
+			}
+		}
+		return out.String()
+	})
+}
+
+func textWindow(raw []byte, message hl7.Span, selected hl7.Node, offset int, render func(int, int) string) (*RawWindow, bool) {
 	if offset == -1 {
 		offset = min(max(selected.Start, message.Start), message.End)
 	}
@@ -315,7 +379,7 @@ func rawWindow(raw []byte, message hl7.Span, selected hl7.Node, offset int) (*Ra
 		markFrom, markTo = end, end
 	}
 	return &RawWindow{Offset: start, End: end, MessageStart: message.Start, MessageEnd: message.End,
-		Before: escapeBytes(raw[start:markFrom]), Selected: escapeBytes(raw[markFrom:markTo]), After: escapeBytes(raw[markTo:end])}, true
+		Before: render(start, markFrom), Selected: render(markFrom, markTo), After: render(markTo, end)}, true
 }
 
 // hexRows renders at most limit original bytes from offset, which is the

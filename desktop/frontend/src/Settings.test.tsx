@@ -341,7 +341,7 @@ test("Add connection's Source opens Add observation, and closing it unsaved retu
   expect(facade.callsTo("SaveItem")).toHaveLength(0);
   const starts = facade.callsTo("OpenItemDraft").filter((call) => (call.args[0] as ItemRequest).ref.kind === "observation" && (call.args[0] as ItemRequest).ref.id === "").length;
   await goTo(user, "Environments");
-  expect(await page().findByRole("heading", { level: 1, name: "Environments" })).toBeTruthy();
+  expect(await page().findByRole("heading", { level: 1, name: "Targets" })).toBeTruthy();
   expect(screen.queryByRole("dialog", { name: "Add observation" })).toBeNull();
   expect(facade.callsTo("OpenItemDraft").filter((call) => (call.args[0] as ItemRequest).ref.kind === "observation" && (call.args[0] as ItemRequest).ref.id === "")).toHaveLength(starts);
   expect(facade.callsTo("CheckEnvironment")).toHaveLength(0);
@@ -592,7 +592,7 @@ test("a source saved from Security leaves Environments on its read-only saved ob
   expect(page().queryByRole("textbox", { name: "Name" })).toBeNull();
   expect(facade.callsTo("OpenItemDraft").filter((call) => (call.args[0] as ItemRequest).ref.kind === "observation" && (call.args[0] as ItemRequest).ref.id === "")).toHaveLength(starts);
   await user.click(page().getByRole("button", { name: "Back to environments" }));
-  expect(await page().findByRole("heading", { level: 1, name: "Environments" })).toBeTruthy();
+  expect(await page().findByRole("heading", { level: 1, name: "Targets" })).toBeTruthy();
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(facade.callsTo("SaveItem")).toHaveLength(1);
   expect(facade.callsTo("CheckEnvironment")).toHaveLength(0);
@@ -623,7 +623,7 @@ test("discarding a dirty source started from Security clears the remembered new-
   await page().findByRole("heading", { level: 1, name: "Settings" });
   const starts = facade.callsTo("OpenItemDraft").filter((call) => (call.args[0] as ItemRequest).ref.kind === "observation" && (call.args[0] as ItemRequest).ref.id === "").length;
   await goTo(user, "Environments");
-  expect(await page().findByRole("heading", { level: 1, name: "Environments" })).toBeTruthy();
+  expect(await page().findByRole("heading", { level: 1, name: "Targets" })).toBeTruthy();
   expect(screen.queryByRole("dialog", { name: "Add observation" })).toBeNull();
   expect(facade.callsTo("OpenItemDraft").filter((call) => (call.args[0] as ItemRequest).ref.kind === "observation" && (call.args[0] as ItemRequest).ref.id === "")).toHaveLength(starts);
   expect(facade.callsTo("SaveItem")).toHaveLength(0);
@@ -842,7 +842,7 @@ test("an active connection is still Active after going to Environments and back"
   let table = await openSecurity(user);
   await waitFor(() => expect(rowsOf(table)[0]).toEqual(["Scheduling QA", "qa.example.test:2575", "Active"]));
   await goTo(user, "Environments");
-  expect(await page().findByRole("heading", { level: 1, name: "Environments" })).toBeTruthy();
+  expect(await page().findByRole("heading", { level: 1, name: "Targets" })).toBeTruthy();
   table = await openSecurity(user);
   await waitFor(() => expect(rowsOf(table)[0]).toEqual(["Scheduling QA", "qa.example.test:2575", "Active"]));
 });

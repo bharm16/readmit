@@ -75,6 +75,7 @@ export function useRetainer(owner?: string, { reuseOwners = false }: { reuseOwne
   currentId: () => string;
   keepId: (id: string) => void;
   chain: (work: () => Promise<void>) => void;
+  flush: () => Promise<Retention>;
 } {
   // Ordinary flows replace their owner buffer. An editor which can return to
   // an earlier object opts into keeping unresolved buffers, so queued writes
@@ -300,7 +301,10 @@ export function useRetainer(owner?: string, { reuseOwners = false }: { reuseOwne
     chainRef.current = chainRef.current.then(work);
   }, []);
 
-  return { retention, save, drop, dropCurrent, retry, keepAsNew, clear, currentId, keepId, chain };
+  const flush=useCallback(async():Promise<Retention>=>{
+    for(;;) {const pending=chainRef.current;await pending;if(pending===chainRef.current)return buffer.retention;}
+  },[buffer]);
+  return { retention, save, drop, dropCurrent, retry, keepAsNew, clear, currentId, keepId, chain,flush };
 }
 
 /** The kind and workspace a draft belongs to: the scope one identity serves. */

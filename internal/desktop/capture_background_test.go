@@ -30,6 +30,7 @@ import (
 func TestReadsAreAnsweredWhileACaptureRecordsAndWritesWait(t *testing.T) {
 	app, context := namedProject(t)
 	root := context.Project
+	retained := writeCase(t, root, "retained-read", framed(sampleImportHL7))
 	source := listenerSource(t, app, context)
 	done, progress := startedCapture(t, app, context, source, "background-1")
 	deliver(t, progress.BoundAddress)
@@ -62,6 +63,12 @@ func TestReadsAreAnsweredWhileACaptureRecordsAndWritesWait(t *testing.T) {
 	plan := validDesktopPlan()
 	if previewed := app.PreviewImport(desktop.ImportRequest{Context: context, Mode: "plan", Plan: &plan, Files: []string{export}}); previewed.State != desktop.Completed {
 		t.Fatalf("a preview while a capture records: %+v", previewed)
+	}
+	// Field aggregation names its own cancellation, but reads only this
+	// retained scope; it neither reveals values nor takes the capture's slot.
+	values := app.ReadFieldValues(desktop.FieldValuesRequest{Scope: desktop.FieldValueScope{Workspace: root, Case: "retained-read", Identity: retained.Identity}, Selector: "MSH-10"})
+	if values.State != desktop.Completed || values.Total != 1 || !values.ScanComplete || values.Revealed || len(values.Rows) != 1 || !values.Rows[0].Hidden || values.Rows[0].Value != "" {
+		t.Fatalf("hidden field counts beside a capture: %+v", values)
 	}
 	// The capture itself is still read and still recording.
 	if now := app.CaptureProgress(); now.Progress == nil || now.Progress.Received != 1 {
@@ -130,9 +137,9 @@ func TestCancellingTheCaptureStillStopsItWhileAReadRuns(t *testing.T) {
 	}
 }
 
-// Only local reads run beside a capture: every bound method that may is
-// unnamed, and reaches no destination by the facade's own reviewed
-// inventory of what does.
+// Only local reads run beside a capture. Named reads keep their own cancel
+// controls but take no author/execution admission and reach no destination,
+// as the facade's reviewed inventory requires.
 func TestAReadThatRunsBesideACaptureReachesNothing(t *testing.T) {
 	declared := desktop.DeclaredProfilesForTest()
 	reaching, _ := reachingOf(t)
@@ -166,11 +173,13 @@ func TestAReadThatRunsBesideACaptureReachesNothing(t *testing.T) {
 		}
 	}
 	// A read that names itself for its cancel control takes no admission.
-	if !slices.Equal(named, []string{"PreviewImport", "ProbeImport"}) && !slices.Equal(named, []string{"ProbeImport", "PreviewImport"}) {
+	slices.Sort(named)
+	if !slices.Equal(named, []string{"PreviewImport", "ProbeImport", "ReadFieldValues"}) {
 		t.Errorf("the named reads beside a capture are %v", named)
 	}
 	for _, method := range named {
-		if profile := declared[method]; profile.Author || profile.Execution != operationguard.NoExecution {
+		profile, known := declared[method]
+		if !known || profile.Name == "" || profile.Author || profile.Execution != operationguard.NoExecution {
 			t.Errorf("%s runs beside a capture and takes admission: %+v", method, profile)
 		}
 		if why := reaching[method]; len(why) > 0 {

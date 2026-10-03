@@ -226,7 +226,7 @@ export function ConnectedObservationFields({
       <input id="observation-connected-namespace" type="text" value={setup.namespace} onChange={(event) => onChange((value) => { value.namespace = event.target.value; })} />
       <label htmlFor="observation-connected-phase">Observe</label>
       <select id="observation-connected-phase" value={setup.phase} onChange={(event) => onChange((value) => { value.phase = event.target.value; })}>
-        {vocabulary.phases.map((phase) => <option key={phase} value={phase}>{PHASES[phase] ?? "Unsupported phase"}</option>)}
+        {(setup.capture?["after"]:vocabulary.phases).map((phase) => <option key={phase} value={phase}>{PHASES[phase] ?? "Unsupported phase"}</option>)}
         {!vocabulary.phases.includes(setup.phase) ? <option value={setup.phase}>Unsupported saved phase</option> : null}
       </select>
       <fieldset id="observation-connected-business-keys" tabIndex={-1}>
@@ -248,7 +248,7 @@ export function ConnectedObservationFields({
     </> : <>
       <ValueRows rows={[{ label: "Baseline", value: setup.baseline === "before-run" ? "Recorded before this run" : "Unsupported saved baseline" }]} />
       <label htmlFor="observation-connected-barrier">Processing barrier</label>
-      <select id="observation-connected-barrier" value={setup.barrier_observation ?? ""} onChange={(event) => onChange((value) => {
+      <select disabled={!!setup.capture} id="observation-connected-barrier" value={setup.barrier_observation ?? ""} onChange={(event) => onChange((value) => {
         if (event.target.value) value.barrier_observation = event.target.value;
         else { delete value.barrier_observation; delete value.barrier_destination; delete value.barrier_work; delete value.completion.barrier; }
       })}>
@@ -272,7 +272,7 @@ export function ConnectedObservationFields({
       {number("observation-connected-samples", "Maximum samples", setup.completion.max_samples, "completion", (value, n) => { value.completion.max_samples = n; })}
       {number("observation-connected-records", "Maximum interval records", setup.completion.max_records, "completion", (value, n) => { value.completion.max_records = n; })}
       {number("observation-connected-bytes", "Maximum interval bytes", setup.completion.max_bytes, "completion", (value, n) => { value.completion.max_bytes = n; })}
-      <p className="consequence">A run records the baseline before input and observes the full horizon or its declared processing barrier. A standalone collection records one snapshot.</p>
+      <p className="consequence">A run records the baseline before input and observes the full horizon or its declared processing barrier. A standalone collection records one snapshot. Live capture runs only inside its owned connected lifecycle.</p>
     </>}
   </>;
 }

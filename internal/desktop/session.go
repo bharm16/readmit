@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 )
@@ -15,7 +16,8 @@ import (
 // what they had open. It is the third local shell document, beside the recent
 // workspace list and the saved filters, and like both of them it is per-viewer
 // state rather than evidence: no case, run, result, review or report ever holds
-// it, and nothing in it is read out of a case bundle.
+// it. Only navigation identities are retained; source values are never copied
+// into it.
 //
 // A document written by an earlier release may also carry drafts, the note
 // edits that release retained here. They are read past and never written
@@ -26,7 +28,9 @@ import (
 // added to readmit-filters/v2, readmit-revisions/v1
 // or readmit-job/v1, none of which this file touches. See
 // [ADR-0003](../../docs/adr/0003-specs-are-strict-json-with-typed-operators.md).
-const SessionSchema = "readmit-desktop-session/v1"
+const SessionSchema = "readmit-desktop-session/v3"
+const navigationSessionSchema = "readmit-desktop-session/v2"
+const legacySessionSchema = "readmit-desktop-session/v1"
 
 const (
 	maxSessionBytes = 1 << 18
@@ -47,24 +51,57 @@ var errUnsupportedSession = errors.New("unsupported working session document ver
 // anything. The run named here is reopened read-only, exactly as
 // OpenDurableRun reopens one.
 type View struct {
-	Workspace string `json:"workspace"`
-	Region    string `json:"region"`
-	Case      string `json:"case"`
-	Run       string `json:"run"`
+	Workspace  string          `json:"workspace"`
+	Region     string          `json:"region"`
+	Case       string          `json:"case"`
+	Run        string          `json:"run"`
+	Navigation *ViewNavigation `json:"navigation,omitzero"`
+}
+
+// ViewNavigation stores bounded identities and layout choices. Saved filters
+// are referenced by name; source values, consent and reveal state have no fields.
+type ViewNavigation struct {
+	CheckedOccurrences []string              `json:"checked_occurrences,omitzero"`
+	FileMessages       []int                 `json:"file_messages,omitzero"`
+	ReferenceSelection HL7ReferenceSelection `json:"reference_selection,omitzero"`
+	ProjectIdentity    string                `json:"project_identity,omitzero"`
+	SourceKind         string                `json:"source_kind,omitzero"`
+	FileFormat         string                `json:"file_format,omitzero"`
+	FileTerminator     string                `json:"file_terminator,omitzero"`
+	Destination        string                `json:"destination"`
+	Object             string                `json:"object,omitzero"`
+	LocalView          string                `json:"local_view,omitzero"`
+	SourceIdentity     string                `json:"source_identity,omitzero"`
+	Occurrence         string                `json:"occurrence,omitzero"`
+	FieldPath          string                `json:"field_path,omitzero"`
+	NodeOffset         int                   `json:"node_offset,omitzero"`
+	Filter             string                `json:"filter,omitzero"`
+	Sort               string                `json:"sort,omitzero"`
+	ScrollTop          int                   `json:"scroll_top,omitzero"`
+	ReferencePath      string                `json:"reference_path,omitzero"`
+	ReferenceIdentity  string                `json:"reference_identity,omitzero"`
+	ReferenceEdition   string                `json:"reference_edition,omitzero"`
+	File               string                `json:"file,omitzero"`
+	FileIdentity       string                `json:"file_identity,omitzero"`
+	FileMessage        int                   `json:"file_message,omitzero"`
+}
+
+// WorkingSession reads private navigation without opening a source or resuming
+// an effect. A v1 session is adapted in memory without rewriting its bytes.
+func (a *App) WorkingSession() SessionResult {
+	a.sessionMu.Lock()
+	defer a.sessionMu.Unlock()
+	session, declined := a.retainedSession()
+	if declined.state != "" {
+		return SessionResult{State: declined.state, Reason: declined.reason}
+	}
+	return SessionResult{State: Completed, Session: &session}
 }
 
 // Session is the whole retained working state of one viewer.
 type Session struct {
 	Schema string `json:"schema"`
 	View   View   `json:"view"`
-}
-
-// storedSession is a session document as it is read: an earlier release's
-// drafts member is accepted and ignored.
-type storedSession struct {
-	Schema string         `json:"schema"`
-	View   View           `json:"view"`
-	Drafts jsontext.Value `json:"drafts,omitzero"`
 }
 
 // SessionResult carries one state and the working session as it now stands.
@@ -97,8 +134,9 @@ func (a *App) RecordView(view View) SessionResult {
 		return SessionResult{State: declined.state, Reason: declined.reason}
 	}
 	if err := validateView(view); err != nil {
-		return a.sessionFailure(refusal{Failed, "the view was not recorded: a workspace and a run are absolute folder paths, a case is one entry of the open workspace, and a region is one the window declares"})
+		return a.sessionFailure(refusal{Failed, "the view was not recorded: " + err.Error()})
 	}
+	session.Schema = SessionSchema
 	session.View = view
 	return a.storeSession(session)
 }
@@ -179,14 +217,45 @@ func decodeSession(data []byte) (Session, error) {
 	if err := json.Unmarshal(data, &declared); err != nil {
 		return Session{}, errors.New("invalid retained working session")
 	}
-	if declared.Schema != SessionSchema {
+	if declared.Schema != SessionSchema && declared.Schema != navigationSessionSchema && declared.Schema != legacySessionSchema {
 		return Session{}, errUnsupportedSession
 	}
-	var stored storedSession
-	if err := json.Unmarshal(data, &stored, json.RejectUnknownMembers(true)); err != nil {
+	var session Session
+	if declared.Schema == legacySessionSchema {
+		var legacy struct {
+			Schema string `json:"schema"`
+			View   struct {
+				Workspace string `json:"workspace"`
+				Region    string `json:"region"`
+				Case      string `json:"case"`
+				Run       string `json:"run"`
+			} `json:"view"`
+			Drafts jsontext.Value `json:"drafts,omitzero"`
+		}
+		if err := json.Unmarshal(data, &legacy, json.RejectUnknownMembers(true)); err != nil {
+			return Session{}, errors.New("invalid legacy working session")
+		}
+		session = Session{Schema: SessionSchema, View: View{Workspace: legacy.View.Workspace, Region: legacy.View.Region, Case: legacy.View.Case, Run: legacy.View.Run}}
+	} else if err := json.Unmarshal(data, &session, json.RejectUnknownMembers(true)); err != nil {
 		return Session{}, errors.New("invalid retained working session")
 	}
-	session := Session{Schema: stored.Schema, View: stored.View}
+
+	if declared.Schema == navigationSessionSchema {
+		var wire struct {
+			View struct {
+				Navigation map[string]jsontext.Value `json:"navigation"`
+			} `json:"view"`
+		}
+		if err := json.Unmarshal(data, &wire); err != nil {
+			return Session{}, err
+		}
+		for _, member := range []string{"reference_selection", "file_messages", "checked_occurrences"} {
+			if _, added := wire.View.Navigation[member]; added {
+				return Session{}, errors.New("retained reader selections require working session v3")
+			}
+		}
+		session.Schema = SessionSchema
+	}
 	if err := validateSession(session); err != nil {
 		return Session{}, err
 	}
@@ -246,6 +315,77 @@ func validateView(view View) error {
 	}
 	if view.Region != "" && !slices.ContainsFunc(regions, func(region Region) bool { return string(region.ID) == view.Region }) {
 		return errors.New("a recorded region must be one the window declares")
+	}
+	if nav := view.Navigation; nav != nil {
+		if nav.ProjectIdentity != "" && view.Workspace == "" {
+			return errors.New("a recorded project identity names its workspace")
+		}
+		if nav.SourceKind != "" && nav.SourceKind != "case" && nav.SourceKind != "file" {
+			return errors.New("a recorded source must be case evidence or a loose file")
+		}
+		if nav.FileFormat != "" && !slices.Contains([]string{"auto", "raw", "mllp"}, nav.FileFormat) || nav.FileTerminator != "" && !slices.Contains([]string{"auto", "cr", "lf", "crlf"}, nav.FileTerminator) {
+			return errors.New("recorded file framing must be a declared choice")
+		}
+
+		places := []string{"home", "messages", "cases", "tests", "runs", "environments", "reports", "tools", "settings", "help", "library", "suite", "edit-suite", "suite-review", "compare-runs", "minimize-failure", "schedules", "share-report", "share-templates", "encrypted-packages", "notes", "case-notes", "case-attachments", "project-files", "inspect-file", "sample-data", "benchmarks", "encryption", "license-setup", "new-test", "edit-test", "similar-findings", "help-article"}
+		if !slices.Contains(places, nav.Destination) {
+			return errors.New("a recorded destination must have a route owner")
+		}
+		for _, id := range []string{nav.ProjectIdentity, nav.Object, nav.LocalView, nav.SourceIdentity, nav.Occurrence, nav.Filter, nav.Sort, nav.ReferenceIdentity, nav.ReferenceEdition, nav.FileIdentity} {
+			if id != "" && !printable(id, 255) {
+				return errors.New("recorded navigation identities must be bounded printable tokens")
+			}
+		}
+		if nav.FieldPath != "" && !printable(nav.FieldPath, 4096) {
+			return errors.New("a recorded field path must be bounded and printable")
+		}
+		if nav.ScrollTop < 0 || nav.ScrollTop > 1<<26 || nav.NodeOffset < 0 || nav.NodeOffset > 1<<20 || nav.FileMessage < 0 || nav.FileMessage > 1<<20 {
+			return errors.New("recorded layout and occurrence offsets must be bounded")
+		}
+		for _, path := range []string{nav.ReferencePath, nav.File} {
+			if path != "" && (!filepath.IsAbs(path) || !printable(path, maxRootBytes)) {
+				return errors.New("a recorded source and reference must have an absolute bounded path")
+			}
+		}
+		if nav.ReferencePath != "" && !strings.HasPrefix(nav.ReferenceIdentity, "sha256:") {
+			return errors.New("a recorded reference must retain its verified identity")
+		}
+		if len(nav.CheckedOccurrences) > 1024 || len(nav.CheckedOccurrences) > 0 && (nav.SourceIdentity == "" || view.Case == "") {
+			return errors.New("recorded checked occurrences require a verified case and at most 1024 entries")
+		}
+		seenOccurrences := make(map[string]bool, len(nav.CheckedOccurrences))
+		for _, id := range nav.CheckedOccurrences {
+			if strings.TrimSpace(id) == "" || !printable(id, 255) || seenOccurrences[id] {
+				return errors.New("recorded checked occurrences require distinct bounded printable identities")
+			}
+			seenOccurrences[id] = true
+		}
+		if len(nav.FileMessages) > 1024 || len(nav.FileMessages) > 0 && (nav.File == "" || nav.FileIdentity == "") {
+			return errors.New("recorded file selections require a verified source and at most 1024 occurrences")
+		}
+		seenMessages := make(map[int]bool, len(nav.FileMessages))
+		for _, index := range nav.FileMessages {
+			if index < 0 || index > 1<<20 || seenMessages[index] {
+				return errors.New("recorded file selections require distinct bounded occurrence indexes")
+			}
+			seenMessages[index] = true
+		}
+		for _, selected := range []struct{ path, identity string }{{nav.ReferenceSelection.Profile, nav.ReferenceSelection.ProfileIdentity}, {nav.ReferenceSelection.Pack, nav.ReferenceSelection.PackIdentity}, {nav.ReferenceSelection.Documentation, nav.ReferenceSelection.DocumentationIdentity}} {
+			if selected.path == "" && selected.identity == "" {
+				continue
+			}
+			if !filepath.IsAbs(selected.path) || !printable(selected.path, maxRootBytes) || len(selected.identity) != 71 || !strings.HasPrefix(selected.identity, "sha256:") {
+				return errors.New("recorded reference selections require absolute paths and exact verified SHA-256 identities")
+			}
+			for _, digit := range selected.identity[7:] {
+				if digit < '0' || digit > '9' && digit < 'a' || digit > 'f' {
+					return errors.New("recorded reference identities must be lowercase SHA-256")
+				}
+			}
+		}
+		if nav.SourceIdentity != "" && view.Case == "" || nav.Occurrence != "" && nav.SourceIdentity == "" || nav.File != "" && nav.FileIdentity == "" {
+			return errors.New("recorded selections must name their verified source identity")
+		}
 	}
 	return nil
 }

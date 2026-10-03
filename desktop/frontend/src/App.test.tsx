@@ -56,8 +56,8 @@ test("the window draws every region the facade declares and its privacy disclosu
   }
   expect(screen.queryByRole("region", { name: "Details" })).toBeNull();
   expect(screen.queryByRole("region", { name: "Status" })).toBeNull();
-  // With no project open the sidebar offers Projects and the utilities only.
-  expect(sidebar().getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual(["Projects", "Tools", "Settings", "Help"]);
+  // Loose files are reachable through Messages before project setup.
+  expect(sidebar().getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual(["Projects", "Messages", "Tools", "Settings", "Help"]);
   // The privacy statement and lists are Help › Diagnostics', as given.
   const user = userEvent.setup();
   await goTo(user, "Help");
@@ -166,7 +166,7 @@ test("a prepared rerun is not a case: it is named among the project's files, and
     ProjectFiles: (request) => ({ state: "completed", context: request.context, files: [{ name: "prepared-rerun", kind: "prepared-rerun" }] }),
   });
   await openFolder(user);
-  expect(await page().findByText("No cases yet")).toBeTruthy();
+  expect(await page().findByText("No captures yet")).toBeTruthy();
   await user.click(sidebar().getByRole("button", { name: /^Project: / }));
   await user.click(screen.getByRole("menuitem", { name: "Files" }));
   expect(await within(page().getByRole("table", { name: "Files" })).findByRole("row", { name: "prepared-rerun" })).toBeTruthy();
@@ -811,29 +811,35 @@ test("a window under 40rem wide, counted at its text size, keeps sheets closer t
   document.documentElement.style.fontSize = "";
 });
 
-test("at 1100px details open 22.5rem wide beside a 33.2rem list; a wider choice narrowed by the window comes back when it widens", async () => {
+test("reader browser resizing survives wider windows and switches to details alone at narrow effective text widths", async () => {
   const user = userEvent.setup();
   const { facade } = await renderApp({ InspectOccurrence: () => inspectionResult(GRID_OCCURRENCE) });
   await openWorkspaceWithVerifiedCase(facade, user);
   windowWidth(1100);
   await user.click(await findMessageRow(GRID_OCCURRENCE));
   await screen.findByRole("region", { name: "Details" });
-  const width = () => (document.querySelector(".workarea") as HTMLElement).style.getPropertyValue("--inspector-width");
-  // 1100 − 208 sidebar − 360 details − 1 divider leaves the list 531px.
-  expect(width()).toBe("22.5rem");
-  const separator = screen.getByRole("separator", { name: "Resize details" });
-  separator.focus();
-  await user.keyboard("{Home}");
-  // The widest choice is clamped so the list keeps its 30rem.
-  expect(width()).toBe(`${1100 / 16 - 13 - 30 - 1 / 16}rem`);
-  // Wider, the choice itself shows; narrower again, it is clamped, not overwritten.
-  windowWidth(1300);
-  expect(width()).toBe("27.5rem");
-  windowWidth(1100);
-  expect(Number.parseFloat(width())).toBeLessThan(27.5);
-  windowWidth(1300);
-  expect(width()).toBe("27.5rem");
+  const width = () => (document.querySelector(".workarea") as HTMLElement).style.getPropertyValue("--message-browser-width");
+  expect(document.querySelector(".workarea")?.classList.contains("reader-layout")).toBe(true);
+  expect(width()).toBe("11rem");
+  const separator=screen.getByRole("separator", { name: "Resize details" });
+  separator.focus();await user.keyboard("{Home}");
+  expect(width()).toBe("10rem");
+  separator.focus();await user.keyboard("{End}");
+  // At1100/16, the compact11.5rem sidebar leaves57.25rem. The
+  // reader keeps37rem plus the1px divider, so20.1875rem goes to browsing.
+  expect(Number.parseFloat(width())).toBeCloseTo(1100/16-11.5-37-1/16);
+  const chosen=width();
+  windowWidth(1300);expect(width()).toBe(chosen);
+  windowWidth(1000);expect(document.querySelector(".workarea")?.classList.contains("detail-only")).toBe(true);
+  windowWidth(1300);expect(width()).toBe(chosen);
+  expect(document.querySelector(".workarea")?.classList.contains("with-details")).toBe(true);
+  document.documentElement.style.fontSize="32px";windowWidth(1300);
+  expect(document.querySelector(".workarea")?.classList.contains("detail-only")).toBe(true);
+  document.documentElement.style.fontSize="";windowWidth(1300);
+  expect(width()).toBe(chosen);
+  expect(facade.callsTo("InspectOccurrence")).toHaveLength(1);
 });
+
 
 test("a narrow window keeps the project switcher, in the page header beside an icon rail", async () => {
   const user = userEvent.setup();
@@ -848,7 +854,7 @@ test("a narrow window keeps the project switcher, in the page header beside an i
   expect(sidebar().queryByRole("button", { name: /^Project: / })).toBeNull();
   expect(page().getByRole("button", { name: /^Project: / })).toBeTruthy();
   // The rail's destinations keep their names.
-  expect(sidebar().getByRole("button", { name: "Cases" })).toBeTruthy();
+  expect(sidebar().getByRole("button", { name: "Captures" })).toBeTruthy();
 });
 
 test("details sit beside a list that fits and are shown alone, with the way back, when it does not", async () => {
@@ -876,7 +882,7 @@ test("a delayed project-list refresh cannot take focus from an open sheet", asyn
   const { facade } = await renderApp({ SelectWorkspace: () => folderWithCase() });
   const pending = facade.park("ListCatalog");
   await openFolder(user);
-  await page().findByRole("heading", { level: 1, name: "Cases" });
+  await page().findByRole("heading", { level: 1, name: "Captures" });
   await user.keyboard("{Control>}k{/Control}");
   const field = screen.getByRole("combobox", { name: "Search commands" });
   await user.type(field, "hel");

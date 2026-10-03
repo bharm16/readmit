@@ -284,3 +284,13 @@ test("returning to Runners retains the opened runner while a different project c
   await screen.findByRole("table", { name: "Runners" });
   expect(screen.queryByRole("heading", { name: "QA runner" })).toBeNull();
 });
+
+test("a late runner list that restores detail keeps the active add form and its typed name",async()=>{
+ let reads=0;let finish:((answer:RunnerListResult)=>void)|undefined;
+ const facade=installFacade({...base(()=>[row()]),ListRunners:context=>{reads++;if(reads===2)return listing(context,[]);if(reads===3)return new Promise(resolve=>{finish=resolve;});return listing(context,[row()]);}});
+ const user=userEvent.setup();const first=render(<RunnerPanel root={ROOT}/>);await user.dblClick(await screen.findByRole("row",{name:"QA runner"}));await screen.findByRole("heading",{name:"QA runner"});first.unmount();
+ render(<RunnerPanel root={ROOT}/>);await screen.findByText("No runners");await user.click(screen.getAllByRole("button",{name:"Add runner"})[0]!);
+ const sheet=within(await screen.findByRole("dialog",{name:"Add runner"}));const name=sheet.getByLabelText("Name");await user.type(name,"New authored runner");
+ await waitFor(()=>expect(finish).toBeTruthy());finish!(listing({project:ROOT,generation:1},[row()]));await screen.findByRole("heading",{name:"QA runner"});
+ expect(sheet.getByLabelText("Name")).toBe(name);expect((name as HTMLInputElement).value).toBe("New authored runner");expect(facade.callsTo("SaveItem")).toHaveLength(0);
+});

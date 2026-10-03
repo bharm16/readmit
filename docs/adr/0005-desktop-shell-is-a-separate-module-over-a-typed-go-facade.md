@@ -296,3 +296,149 @@ no entry and reads Not checked. The alternative, keeping it in the project,
 would have tied one machine's view of a host to every copy of the project.
 Schedule changes the hub has not acknowledged are kept in the project instead
 (`readmit-schedule-intents/v1`), because they belong to the project's schedules.
+
+## Verified workspace navigation (amended 2026-10-03)
+
+The private working session now writes `readmit-desktop-session/v2` and reads
+`/v1` through a strict compatible reader. Reading an older document derives the
+current view in memory and leaves its bytes intact; the next deliberate view
+recording writes the current contract. Unknown versions and members remain
+refusals, including navigation members added to a `/v1` document.
+
+The optional navigation record names the existing route owner, local view,
+project identity, retained source identity or explicitly selected loose file
+and its digest, message occurrence, lossless field path, saved-view name, time
+sort, scroll offset, and an explicitly selected reference catalog's path,
+identity and edition. It carries no source values, definitions, credentials,
+reveal state, approvals, execution tokens or consent. A saved-view name refers
+to the existing private saved-view store; filter terms are not copied into
+navigation. The document remains bounded, atomic and private to its viewer,
+outside evidence and browser storage.
+
+The window restores navigation only after reading the session and verifying
+the named project and sources through the existing facade owners. A changed
+or missing source cannot inherit a saved selection. A catalog at the same path
+with a different identity needs explicit reselection; evidence remains
+inspectable. Restoration never starts a receiver, resumes a send or reset, or
+restores a reviewed action. New user navigation fences an older restoration.
+Messages, Captures, Test cases and Targets adapt existing readers, collections,
+test editors and environments. Run history, exports and schedules remain
+concrete contextual routes; Tools, Settings, Help and their administration,
+privacy, licensing and recovery owners remain reachable.
+
+The reader's explicitly selected profile, pack and local documentation pins
+extend the private session as `readmit-desktop-session/v3`. The reader accepts
+v1 and v2 without rewriting their bytes; v2 rejects the new member. Only the
+selection paths, exact SHA-256 identities and bounded ordered loose-file
+occurrence indexes and checked case occurrence identities survive. On reopening, the facade
+verifies those pins again. Changed or unavailable files remain unavailable until
+explicitly selected again. Overlay constraints, documentation text, message
+values, consent, effect state and reference browsing results are never retained
+in the session.
+
+### Amendment — 2026-10-03: retained intake investigation and source context
+
+An explicit loose-file retention uses the existing probe, preview-token, intake
+receipt, quarantine and atomic import owners. Optional investigation navigation
+pins the original file digest, framing, terminator, ordered checked indexes and
+selected field. The import admits that navigation only for an unchanged single
+original-byte source and maps it to verified retained occurrence identities.
+It neither copies values into private navigation nor constructs substitute
+source identities. Private session v3 stores bounded ordered loose and retained
+selection identities; a refused navigation write is visible independently of a
+restoration refusal.
+
+Source-associated Received at is catalog context, not a sending destination or
+successful-exchange result. `readmit-capture-context/v1` revisions use the existing
+catalog publication, readback, recovery and base-conflict owner beside evidence.
+Source/channel labels from an exact retained mapping receipt can resolve one
+explicit remembered association to an exact target revision. Multiple candidates,
+a missing target, changed revision or absent retained intake metadata remain
+unknown. A manual correction cannot claim observed or mapped provenance, change
+original evidence, or grant send authority. Received target names are descriptive;
+the typed target reference and exact revision remain the association identity.
+
+### Amendment — 2026-10-03: discoverable incomplete test authoring
+
+Named incomplete tests remain private editor drafts under the existing strict
+`readmit-desktop-test-editor/v1` or `/v2` contract. They are displayed separately
+from published runnable test revisions, and Save draft waits the existing
+retention queue through its latest acknowledgement. Each editor flow/object owns
+its buffer; changing projects cannot copy the prior draft into the new project.
+An unavailable or changed source cannot replace retained authored inputs, and an
+unsupported imported contract keeps its exact document bytes beside the form's
+representable state. Such a form cannot publish a lossy partial replacement.
+
+Checked input identity and structural row metadata belong to one verified
+project, source entry and evidence digest. Filtering or paging changes only the
+presentation. Unknown selected rows are re-read through the existing source
+reader under that identity. Explicit order is preserved by the existing HL7 and
+FHIR authoring constructors and editors; an unselected default remains source
+order. Step-scoped ACK expectations retain their original occurrence identity
+when an input moves, while final ledger observations retain their existing
+whole-exercise semantics. No observed result becomes an expectation without the
+existing explicit authoring/review decision.
+
+### Amendment — 2026-10-03: contextual target and receive configuration
+
+Targets retain their existing environment/configuration, classification, TLS
+credential-reference, observation/reset, transport approval, isolation and
+connection-check owners. The target list displays actual check outcome/time and
+its relation to the current revision. A transport-only connection check proves
+no HL7 or application result. Configuration opened from a reader or test returns
+through the shared project/evidence-fenced origin. Configuration opened from a
+send review retains only window-owned input choices; returning prepares a new
+review and carries no confirmation, reveal, token or execution authority.
+
+Reusable receive configurations are the existing SourceItem and source editor,
+kept separate from send targets. Their supported listener bind scope, explicit
+remote opt-in, message/connection bounds, idle timeout, ACK/responder behavior
+and TLS credential references are composed through the existing typed writer.
+Saving starts neither receiving nor acquisition. No total-duration field is
+substituted for the listener's actual idle timeout.
+
+A finalized owned receiver capture may display observed Received at by joining
+its retained collection evidence to the finished `readmit-capture-session/v1`
+record for that exact published entry and the exact historical SourceItem
+revision. This association names a receiving configuration, not an inferred
+sending destination. An imported capture without that intake evidence remains
+unknown; source names and MSH fields cannot invent the association.
+
+### Amendment — 2026-10-03: explicit occurrence comparison
+
+Selected-message comparison supplies two exact retained occurrence identities to
+`CompareCases`. The existing verified input readers and field/segment comparator
+own the result; this explicit pairing accepts no alignment keys and chooses no
+normalization policy. Original raw byte counts and SHA-256 identities accompany
+the field comparison, with bounded exact originals visible only after Reveal.
+No run, report or new comparison artifact is fabricated. Capture comparison
+keeps its existing declared-key, unmatched and ambiguous meanings. Variant
+publication and retained lineage remain owned by the existing variant writer;
+the shared reader uses its source-owned catalog name.
+
+### Amendment — 2026-10-03: reusable work retains its installed authority
+
+Test cases and Suites expose the existing schedule, CI, runner and team owners
+through explicit contextual routes. Window-only route origins keep the exact
+project, object, view and selection for Back; they convey no consent or token.
+Connected dispatch inputs use the existing `ConnectedSuiteRunOptions`,
+`ScheduleDraft.Connected` and `CIHandoffRequest.Connected` contracts. References
+name customer-installed finite authority and exact promotion; the facade still
+verifies their pins and admission. A changed visible dispatch input withdraws
+its old review. Every declared job remains in the reviewed denominator.
+Scheduled occurrences keep their existing scheduler-owned dispatch identities,
+CAS acknowledgments, pause and pending-command semantics. CI configuration is
+an exported handoff, never an acknowledged schedule or installed authority.
+
+Automated workspace restoration retains its initiating navigation generation
+through the workspace read and source restoration. A deliberate destination
+change takes ownership before any later reply may install an old route. A CI
+folder chooser similarly has one owner across effect replay, and a runner's
+active add form keeps its identity while a list refresh restores detail.
+
+Plain saved scenario plans use the existing deterministic `CreateScenarioCase`
+writer. A saved profile/generation selection or FHIR scenario uses
+`GenerateScenarioCases`. This is an explicit language/owner choice before any
+call; a refused encoder never falls back to a different generator. Create case
+is offered only for the exact completed saved read after publication cleanup,
+so a changing source owner cannot offer an already detached action.

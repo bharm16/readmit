@@ -1,3 +1,4 @@
+import {StrictMode} from "react";
 import { expect, test } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -103,4 +104,22 @@ test("a retained change gate is verified against its pinned identity, and what c
   expect(await within(sheet).findAllByText("Not verified")).toHaveLength(2);
   expect(within(sheet).getAllByText(/never a pass/).length).toBeGreaterThan(0);
   expect(facade.oneCall("VerifyCIGate")).toEqual(["/Users/qa/gate", identity]);
+});
+
+test("connected CI carries exact installed authority and one stable dispatch instead of legacy release flags",async()=>{
+ const user=userEvent.setup();const facade=installFacade({ListRunners:()=>({state:"completed",context:CONTEXT,runners:[]}),SaveCIHandoff:()=>({state:"completed",output:"/handoff.sh"})});
+ render(<SetUpCISheet suite="Connected suite" version="Version 1" connected environments={[{id:"qa",name:"QA"}]} context={()=>CONTEXT} onClose={()=>{}} onDone={()=>{}}/>);
+ const sheet=within(await screen.findByRole("dialog",{name:"Set up CI"}));
+ for(const [label,value] of [["Readmit program","/bin/readmit"],["Operation policy","/etc/operation.json"],["Suite file","/srv/suite.json"],["Run folder","/srv/run"],["Runner configuration","/srv/runner.json"],["Installed authority","/srv/authority.json"],["Approved promotion","/srv/promotion.json"],["Promotion SHA-256","a".repeat(64)],["Target revision","revision-1"],["Dispatch identity","dispatch-1"]])await user.type(sheet.getByLabelText(label!),value!);
+ await user.click(sheet.getByRole("button",{name:"Next"}));await user.click(sheet.getByRole("button",{name:"Generate configuration"}));
+ expect(facade.oneCall("SaveCIHandoff")[0]).toMatchObject({coverage_file:"",connected:{runner_config:"/srv/runner.json",authority:"/srv/authority.json",promotion:"/srv/promotion.json",promotion_identity:"a".repeat(64),revision:"revision-1",instance:"dispatch-1"}});
+});
+
+
+test("CI folder selection has one owner across strict effect replay and retains a refused read",async()=>{
+ const close=()=>{throw new Error("A refusal closed the CI reader");};
+ const facade=installFacade({ChooseRunnerPath:kind=>({state:"completed",kind,paths:["/owned/ci"]}),InspectCIResults:()=>({state:"failed",reason:"Original retained CI proof is unavailable"})});
+ render(<StrictMode><CIResultsSheet onClose={close}/></StrictMode>);
+ const sheet=within(await screen.findByRole("dialog",{name:"CI results"}));await sheet.findByText("Original retained CI proof is unavailable");
+ expect(facade.callsTo("ChooseRunnerPath")).toHaveLength(1);expect(facade.callsTo("InspectCIResults")).toHaveLength(1);
 });

@@ -602,6 +602,31 @@ func (p *RetainedPacket) verified() (*RetainedPacket, error) {
 	return &RetainedPacket{Manifest: p.snapshot.manifest, Identity: p.snapshot.identity, snapshot: p.snapshot}, nil
 }
 
+// RunSpecification returns the exact archived specification for one declared
+// report role from the verified snapshot, without reopening the source run.
+func (p *RetainedPacket) RunSpecification(role string) ([]byte, error) {
+	held, err := p.verified()
+	if err != nil {
+		return nil, err
+	}
+	section := "current"
+	switch role {
+	case CurrentRole:
+	case ComparisonRole:
+		if held.Manifest.Baseline == nil {
+			return nil, errors.New("the packet has no comparison run")
+		}
+		section = "baseline"
+	default:
+		return nil, errors.New("unsupported retained report run role")
+	}
+	raw := held.snapshot.files[retainedResultPrefix(held.snapshot.files, section)+"/spec.json"]
+	if len(raw) == 0 {
+		return nil, errors.New("the retained run has no specification")
+	}
+	return bytes.Clone(raw), nil
+}
+
 // Case returns detached evidence from this packet's captured bytes, never the
 // folder a caller separately names. Sharing uses the same reading as rendering.
 func (p *RetainedPacket) Case() (*bundle.Bundle, error) {

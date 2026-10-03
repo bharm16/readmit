@@ -264,10 +264,9 @@ func TestTheDemoSavesItsTestWithoutALicense(t *testing.T) {
 }
 
 // A new test starts over the case its origin names, sending the selected
-// messages it can send in the order the case records them, whatever order
-// they were selected in; an acknowledgement is listed but never selected,
+// messages it can send in the explicit chosen order; an acknowledgement is listed but never selected,
 // and proposals arrive undecided and outside the draft.
-func TestATestDraftStartsFromItsCaseInSourceOrderWithSendableMessagesOnly(t *testing.T) {
+func TestATestDraftStartsFromItsCaseInExplicitOrderWithSendableMessagesOnly(t *testing.T) {
 	app, context := namedProject(t)
 	ack := "MSH|^~\\&|FIXTURE|LAB|READMIT|TEST|20260101120000||ACK|ACK-1|P|2.5.1\rMSA|AA|LISTEN-BOOK\r"
 	writeCase(t, context.Project, "incident", framed(fixture(t, "listen-s12.hl7"))+framed(ack)+framed(fixture(t, "listen-s13.hl7")))
@@ -285,7 +284,7 @@ func TestATestDraftStartsFromItsCaseInSourceOrderWithSendableMessagesOnly(t *tes
 		t.Fatalf("a new test: %+v", opened)
 	}
 	test := opened.Draft.Test
-	if !slices.Equal(test.Messages, []string{"s0001-e000001", "s0001-e000003"}) || test.Case.Entry != "incident" || test.Target != "" || len(test.Expectations) != 0 {
+	if !slices.Equal(test.Messages, []string{"s0001-e000003", "s0001-e000001"}) || test.Case.Entry != "incident" || test.Target != "" || len(test.Expectations) != 0 {
 		t.Fatalf("the draft: %+v", test)
 	}
 	if !slices.Equal(fields(opened.Problems), []string{"test.messages"}) {

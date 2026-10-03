@@ -1,0 +1,56 @@
+import {afterEach,beforeEach,expect,test} from "vitest";
+import {screen,waitFor,within} from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import {enter,Journey,press} from "../testkit/journey";
+import {details,page} from "../testkit/navigation";
+import {EXPORTED_BOOKING,EXPORTED_RESCHEDULE,importExport,licensedProject} from "./steps";
+let journey:Journey;beforeEach(()=>{journey=Journey.create();});afterEach(async()=>{await journey.dispose();});
+
+test("selected message comparison preserves explicit sides, reveals exact original bytes and returns to its checked reader selection without execution",async()=>{
+ const user=userEvent.setup();journey.writeFile("exports/pair.hl7",EXPORTED_BOOKING+EXPORTED_RESCHEDULE);
+ await licensedProject(journey,user);await importExport(user,journey,"exports/pair.hl7","Compared source");
+ const original=journey.digest("exports/pair.hl7");const table=await screen.findByRole("table",{name:"Messages"});await waitFor(()=>expect(table.querySelectorAll('tbody tr[data-row-id]')).toHaveLength(2));
+ const rows=table.querySelectorAll<HTMLElement>('tbody tr[data-row-id]');const ids=[rows[1]!.dataset.rowId!,rows[0]!.dataset.rowId!];
+ await user.click(rows[1]!.querySelector<HTMLInputElement>('input[type="checkbox"]')!);await user.click(rows[0]!.querySelector<HTMLInputElement>('input[type="checkbox"]')!);
+ await press(user,rows[1]!);await press(user,details().getByRole("button",{name:"More message actions"}));await press(user,screen.getByRole("menuitem",{name:"Go to field…"}));
+ const field=within(await screen.findByRole("dialog",{name:"Go to field"}));await enter(user,field.getByLabelText("Field path"),"MSH-9.2");await press(user,field.getByRole("button",{name:"Go"}));await details().findAllByTitle("MSH[1]-9[1].2");
+ await press(user,page().getByRole("button",{name:"Compare"}));const pair=within(await screen.findByRole("dialog",{name:"Compare messages"}));
+ await pair.findByText(/Explicit occurrence pair/);expect(pair.getByText(ids[0]!)).toBeTruthy();expect(pair.getByText(ids[1]!)).toBeTruthy();
+ await press(user,pair.getByRole("button",{name:"Show values"}));
+ await waitFor(()=>expect(pair.getAllByText(/MSH-7|MSH\[1\]-7/).length).toBeGreaterThan(0));
+ const raw=screen.getByRole("dialog",{name:"Compare messages"}).querySelectorAll("pre");expect([...raw].some(panel=>panel.textContent?.includes("OWN-MOVE-1"))).toBe(true);expect([...raw].some(panel=>panel.textContent?.includes("OWN-BOOK-1"))).toBe(true);
+ const request=journey.callsTo("CompareCases").at(-1)?.args[0];expect(request).toMatchObject({pair:{left:ids[0],right:ids[1]},keys:[],fields:[],original:true});
+ await press(user,pair.getByRole("button",{name:"Back to reader"}));await details().findAllByTitle("MSH[1]-9[1].2");
+ expect([...table.querySelectorAll<HTMLInputElement>('tbody tr[data-row-id] input[type="checkbox"]')].every(input=>input.checked)).toBe(true);
+ expect(journey.digest("exports/pair.hl7")).toBe(original);expect(journey.callsTo("ExecuteReviewedAction")).toHaveLength(0);expect(journey.callsTo("StartDurableRun")).toHaveLength(0);
+});
+
+test("selected variant preview publishes separate lineage, opens its derived reader and keeps original hashes unchanged before capture comparison",async()=>{
+ const user=userEvent.setup();journey.writeFile("exports/variant.hl7",EXPORTED_BOOKING+EXPORTED_RESCHEDULE);
+ const project=await licensedProject(journey,user);const entry=await importExport(user,journey,"exports/variant.hl7","Original capture");
+ const {filesUnder}=await import("./probes.js");const originalFiles=filesUnder(`${project}/${entry}`);const witnesses=originalFiles.map(file=>({file,digest:journey.digest(`${project.slice(journey.path().length+1)}/${entry}/${file}`)}));
+ const table=await screen.findByRole("table",{name:"Messages"});await waitFor(()=>expect(table.querySelectorAll('tbody tr[data-row-id]')).toHaveLength(2));
+ await user.click(table.querySelector<HTMLInputElement>('tbody tr[data-row-id]:nth-child(2) input[type="checkbox"]')!);
+ await press(user,within(screen.getByRole("group",{name:"Selected messages"})).getByRole("button",{name:"Create variant"}));
+ await page().findByRole("table",{name:"Included messages"});await press(user,page().getByRole("button",{name:"Preview"}));
+ await waitFor(()=>expect(page().getByRole("button",{name:"Save variant"}).hasAttribute("disabled")).toBe(false));
+ await press(user,page().getByRole("button",{name:"Save variant"}));
+ await page().findByRole("heading",{name:"Original capture variant"});
+ const derived=await screen.findByRole("table",{name:"Messages"});await waitFor(()=>expect(derived.querySelectorAll('tbody tr[data-row-id]')).toHaveLength(1));
+ await press(user,derived.querySelector<HTMLElement>('tbody tr[data-row-id]')!);await screen.findByRole("region",{name:"Details"});
+ for(const witness of witnesses)expect(journey.digest(`${project.slice(journey.path().length+1)}/${entry}/${witness.file}`)).toBe(witness.digest);
+ await press(user,page().getByRole("button",{name:"More case actions"}));await press(user,screen.getByRole("menuitem",{name:"Compare"}));
+ const chooser=within(await screen.findByRole("dialog",{name:"Compare with"}));await user.selectOptions(await chooser.findByLabelText("Case"),await chooser.findByRole("option",{name:"Original capture"}));await press(user,chooser.getByRole("button",{name:"Compare"}));
+ await page().findByText(/name the fields that identify one record/);
+ await press(user,page().getAllByRole("button",{name:"Comparison options"})[0]!);
+ const options=within(await screen.findByRole("dialog",{name:"Comparison options"}));
+ const picker=options.getByRole("combobox",{name:"Add to record keys"}) as HTMLSelectElement;
+ await waitFor(()=>expect(picker.disabled).toBe(false));
+ await user.selectOptions(picker,"\u0000other");await user.type(options.getByRole("textbox",{name:"Add to record keys path"}),"MSH-10");await press(user,options.getByRole("button",{name:"Add"}));
+ await journey.settled();await press(user,options.getByRole("button",{name:"Apply"}));
+ await page().findByRole("table",{name:"Differences"});await journey.settled();
+ const compared=journey.callsTo("CompareCases").at(-1)!.result;
+ expect(compared).toMatchObject({state:"completed",comparison:{keys:["MSH[1]-10[1]"],summary:{paired:1,inserted:1,missing:0,ambiguous:0}}});
+ await page().findByText(/1 only in later/);
+ expect(journey.callsTo("ExecuteReviewedAction")).toHaveLength(0);expect(journey.callsTo("StartDurableRun")).toHaveLength(0);
+});

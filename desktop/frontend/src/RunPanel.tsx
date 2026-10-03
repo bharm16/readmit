@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   listWholeCatalog,
+  issueExchangeRuntimeMarker,
   type ActionReview,
   type CatalogItem,
   type ItemRef,
@@ -15,22 +16,25 @@ import {
   type RequestContext,
   type ReviewedActionResult,
   type RunReview,
+  type ConnectedSuiteRunOptions,
 } from "./bindings";
 import { useReviewedAction } from "./reviewedAction";
 import { HIDDEN_VALUE, STATE_SHARING, term } from "./display";
 import { FormDialog, Reveal, ValueRows } from "./layout";
 import { messageLabel } from "./TestEditor";
 import "./runs.css";
+import "./workflow.css";
+import {ConnectedRunnerOptionsEditor} from "./ConnectedRunnerOptions";
 
 /** What a send is asked for: a saved test or suite version, the messages
  * chosen in a case, the rest of an interrupted run, or a test rebound to an
  * approved review. */
-export type SendRequest =
+export type SendRequest = (
   | { kind: "test"; test: ItemRef; environment?: ItemRef | undefined }
-  | { kind: "suite"; suite: ItemRef; environment?: string | undefined }
+  | { kind: "suite"; connectedRequired?:boolean; suite: ItemRef; environment?: string | undefined }
   | { kind: "messages"; case: ItemRef; messages: string[]; environment?: ItemRef | undefined }
   | { kind: "resume"; run: ItemRef }
-  | { kind: "reviewed"; review: ItemRef; packet: ItemRef; test?: ItemRef; phase: "failure" | "pass" };
+  | { kind: "reviewed"; review: ItemRef; packet: ItemRef; test?: ItemRef; phase: "failure" | "pass" }) & {resumeChoices?: Omit<Chosen,"reveal">};
 
 const TITLES: Record<SendRequest["kind"], string> = {
   test: "Run test",
@@ -48,7 +52,7 @@ export function sendTitle(request: SendRequest): string {
  * it, and the call that answers when the run ends. */
 export type StartedSend = { request: SendRequest; review: ActionReview; intent: string; execution: Promise<ReviewedActionResult> };
 
-type Chosen = { environment?: ItemRef | undefined; suiteEnvironment?: string | undefined; transformations: ReplayTransformation[]; reveal: boolean };
+type Chosen = { connected?:ConnectedSuiteRunOptions; environment?: ItemRef | undefined; suiteEnvironment?: string | undefined; transformations: ReplayTransformation[]; reveal: boolean };
 
 function preparing(request: SendRequest, chosen: Chosen): Omit<PrepareActionRequest, "context"> {
   switch (request.kind) {
@@ -58,7 +62,7 @@ function preparing(request: SendRequest, chosen: Chosen): Omit<PrepareActionRequ
     }
     case "suite": {
       const environment = chosen.suiteEnvironment ?? request.environment;
-      return { action: "run.suite", items: [request.suite], ...(environment ? { run: { environment } } : {}) };
+      return { action: "run.suite", items: [request.suite], run:{...(environment ? { environment }:{}),...(chosen.connected ? {connected:chosen.connected}:{})} };
     }
     case "messages": {
       const environment = chosen.environment ?? request.environment;
@@ -84,6 +88,8 @@ export function messages(count: number): string {
 /** The one line a review states at its Send: what leaves, where, and once. */
 export function consequence(review: RunReview): string {
   const where = review.environment_name || "the environment";
+  if(review.connected)return `Dispatches all ${review.connected.jobs.length} declared jobs through the reviewed installed connected runner authority once. Refused, skipped and uncertain work stays visible.`;
+ if(review.lifecycle)return `Runs the reviewed setup, ${messages(review.message_count??0)} and declared observations once, then guarded cleanup. Transport, profile and application outcomes remain separate.`;
   if (review.resets.length > 0) {
     const targets = [...new Set(review.resets.map((reset) => reset.environment_name || where))].join(", ");
     const sent = review.kind === "suite" || review.message_count == null ? "the selected suite" : messages(review.message_count);
@@ -115,11 +121,12 @@ export function SendReview({
   onStarted: (started: StartedSend) => void;
   /** Awaited before Send reaches the facade: the window names the run's
    * folder in its session first, so an interruption is recovered against it. */
-  onBeforeSend?: (output: string) => Promise<void>;
-  onEditEnvironment: (environment: ItemRef) => void;
+  onBeforeSend?: (output: string) => Promise<void | string>;
+  onEditEnvironment: (environment: ItemRef, request:SendRequest) => void;
   onActivate: () => void;
 }) {
   const open = request !== null;
+  const [markerFailure,setMarkerFailure]=useState<string|null>(null);
   const [chosen, setChosen] = useState<Chosen>({ transformations: [], reveal: false });
   const [confirmed, setConfirmed] = useState<string[]>([]);
   const [changing, setChanging] = useState(false);
@@ -151,19 +158,32 @@ export function SendReview({
       setChanging(true);
       return;
     }
-    void reviewed.prepare({ context: context(), ...preparing(request, chosen) }, environmentRead.current);
+    let current=true;
+    setMarkerFailure(null);
+    const planned:PrepareActionRequest={context:context(),...preparing(request,chosen)};
+    void reviewed.prepare(planned,environmentRead.current,(review)=>{
+      if(!current || !review.run?.lifecycle?.runtime_marker_required)return;
+      void (async()=>{
+        const issued=await issueExchangeRuntimeMarker(planned.context);
+        if(!current)return;
+        if(issued.state!=="completed" || !issued.marker){setMarkerFailure(issued.reason??"A fresh runtime marker could not be issued.");return;}
+        await reviewed.prepare({...planned,run:{...planned.run,runtime_marker:issued.marker}});
+      })();
+    });
+    return ()=>{current=false;};
     // Domain choices own preparation; callbacks do not create new reviews.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
   useEffect(() => {
+    if(open && request?.resumeChoices) {setChosen({...request.resumeChoices,reveal:false});}
     if (!open) {
       setChosen({ transformations: [], reveal: false });
       setChanging(false);
       setExpanded(null);
       setEditingChanges(false);
     }
-  }, [open]);
+  }, [open,request]);
 
   if (!request) return null;
   const run = review?.run ?? null;
@@ -277,7 +297,7 @@ export function SendReview({
   const sent = messageRow();
   if (sent) rows.push(sent);
   if (run?.kind === "suite") {
-    rows.push({ label: "Tests", value: String(run.jobs.length) });
+    rows.push({ label: "Tests", value: String(run.connected?.jobs.length ?? run.jobs.length) });
     if (run.targets.length > 0) rows.push({ label: "Targets", value: run.targets.map((target) => `${target.name} · ${target.address}`).join(", ") });
   }
   if (run && run.resets.length > 0) rows.push({ label: "Reset", value: run.resets.map((reset) => reset.name || term(RESET_NAMES, reset.type).text).join(", ") });
@@ -300,6 +320,7 @@ export function SendReview({
     <FormDialog
       open={open}
       title={sendTitle(request)}
+      className="workflow-sheet workflow-run-review"
       size={suite ? "wide" : "normal"}
       submitLabel="Send"
       submitDisabled={!review || !review.ready || !review.token || unmarked}
@@ -309,7 +330,7 @@ export function SendReview({
           <span className="review-refusal">
             <span role="alert">{refusal}</span>
             {run?.refusal === "environment" && (run.environment ?? run.targets[0]?.environment) ? (
-              <button type="button" onClick={() => onEditEnvironment((run.environment ?? run.targets[0]!.environment)!)}>
+              <button type="button" onClick={() => onEditEnvironment((run.environment ?? run.targets[0]!.environment)!, {...(request.kind==="messages" || request.kind==="test" ? {...request,environment:(run.environment ?? run.targets[0]!.environment)!}:request),resumeChoices:{...(chosen.environment ? {environment:chosen.environment}:{}),...(chosen.suiteEnvironment ? {suiteEnvironment:chosen.suiteEnvironment}:{}),transformations:structuredClone(chosen.transformations)}})}>
                 Edit environment
               </button>
             ) : run?.refusal === "license" ? (
@@ -322,15 +343,19 @@ export function SendReview({
       }
       onSubmit={async () => {
         if (!review?.token) return { reason: "This review is not ready." };
-        if (onBeforeSend && review.destination.output) await onBeforeSend(review.destination.output);
+        if (onBeforeSend && review.destination.output) {
+          const failure = await onBeforeSend(review.destination.output);
+          if (failure) return { reason: failure };
+        }
         const started = reviewed.begin(context(), { confirmed });
         if (!started) return { reason: "What this review covered changed. Review it again." };
         onStarted({ request, review: started.review, intent: started.intent, execution: started.execution });
         return null;
       }}
     >
-      {failure ? <p role="alert">{failure}</p> : null}
-      {!review && !failure && !changing ? (
+      {suite && (request.connectedRequired || run?.connected) ? <ConnectedRunnerOptionsEditor value={chosen.connected} onDirty={()=>{const {connected:_previous,...rest}=chosen;setChosen(rest);}} onApply={connected=>setChosen({...chosen,connected})}/>:null}
+      {failure || markerFailure ? <p role="alert">{failure??markerFailure}</p> : null}
+      {!review && !failure && !markerFailure && !changing ? (
         <div className="skeleton" aria-busy="true" aria-label="Preparing">
           <span />
           <span />
@@ -338,7 +363,12 @@ export function SendReview({
         </div>
       ) : null}
       {rows.length > 0 ? <ValueRows rows={rows} label="Review" /> : request.kind === "messages" && changing ? <ValueRows rows={[environment!]} label="Review" /> : null}
-      {run && expanded === "messages" ? (
+      {run?.connected ? <section aria-label="Connected suite jobs"><p>Every declared job stays in this dispatch, including refused, skipped and uncertain work.</p><table className="data-table plain"><thead><tr><th>Job</th><th>State</th><th>After</th></tr></thead><tbody>{run.connected.jobs.map(job=><tr key={job.id}><td>{job.id}</td><td>{job.state}</td><td>{job.after.join(", ")||"None"}</td></tr>)}</tbody></table></section>:null}
+      {run?.lifecycle ? <section aria-label="Connected execution review">
+ <ValueRows rows={[{label:"Observation boundary",value:run.lifecycle.boundary},{label:"Runtime identity",value:run.lifecycle.instance},{label:"Explicit derived input",value:run.lifecycle.derived_inputs?.map(input=>`${input.step} · ${input.selector} → ${input.value}`).join(" · ")??"None"},{label:"Observation collectors",value:run.lifecycle.collectors?.map(collector=>`${collector.phase} · ${collector.dataset}: ${collector.kind} · ${collector.address??"local"}${collector.credential?` · reference ${collector.credential} v${collector.generation??""}`:""} · ${collector.horizon_ms} ms horizon`).join(" · ")??"None"},{label:"Phases",value:run.lifecycle.phases.map(phase=>`${phase.id}: ${phase.steps.length} steps, ${phase.checks} checks`).join(" · ")},{label:"Actual endpoints",value:run.lifecycle.endpoints.map(endpoint=>`${endpoint.name}: ${endpoint.address??""}`).join(" · ")},{label:"Setup and cleanup effects",value:run.lifecycle.effects.map(effect=>`${effect.phase}: ${effect.operation} ${effect.resource}`).join(" · ")}]} />
+ {run.lifecycle.instance.startsWith("run-")?<p className="consequence">The explicitly selected marker field is derived with this locally issued runtime identity. Original inputs remain retained. Outputs must carry this marker unchanged; it is not external authentication or proof of unique causation.</p>:null}
+ </section>:null}
+ {run && expanded === "messages" ? (
         <ol className="review-list" aria-label="Messages in send order">
           {run.messages.map((message, index) => (
             <li key={`${message.id}-${index}`}>{messageLabel(message, message.id)}</li>

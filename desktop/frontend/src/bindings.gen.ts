@@ -63,6 +63,7 @@ export type ActionID =
   | "run.suite"
   | "run.resume"
   | "run.reviewed-test"
+  | "capture.export-selected"
   | "storage.restore-backup"
   | "storage.delete-backup"
   | "storage.archive-copy"
@@ -77,6 +78,8 @@ export type ActionID =
 
 /** internal/desktop.ActionReview */
 export interface ActionReview {
+  selected_export?: SelectedExportReview;
+  exchange?: ExchangeReview;
   isolation?: IsolationActionReview;
   fhir_check?: FHIRConnectionReview;
   token?: string;
@@ -779,6 +782,45 @@ export interface CanonicalTestResult {
   identity?: string;
 }
 
+/** internal/desktop.CaptureAssociation */
+export interface CaptureAssociation {
+  received_at_name?: string;
+  source_id: string;
+  source: string;
+  channel: string;
+  received_at?: ItemRef;
+  basis: string;
+  receipt_identity?: string;
+  remember?: boolean;
+}
+
+/** internal/desktop.CaptureContext */
+export interface CaptureContext {
+  schema: string;
+  case: ItemRef;
+  identity: string;
+  sources: CaptureAssociation[];
+}
+
+/** internal/desktop.CaptureContextResult */
+export interface CaptureContextResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  ref?: ItemRef;
+  capture?: CaptureContext;
+}
+
+/** internal/desktop.CaptureContextSaveRequest */
+export interface CaptureContextSaveRequest {
+  context: RequestContext;
+  source: ItemRef;
+  identity: string;
+  base?: ItemRef;
+  intent_id: string;
+  sources: CaptureAssociation[];
+}
+
 /** internal/capturejournal.Summary */
 export interface CaptureJournalSummary {
   schema: string;
@@ -925,6 +967,16 @@ export interface CaptureSourceDraft {
   responder_choices?: ResponderChoices;
 }
 
+/** internal/desktop.CaptureSourceEditorDraft */
+export interface CaptureSourceEditorDraft {
+  schema: string;
+  project_id: string;
+  source: ItemRef;
+  identity: string;
+  base?: ItemRef;
+  sources: CaptureAssociation[];
+}
+
 /** internal/desktop.CaptureSourceType */
 export type CaptureSourceType = "local-folder" | "transfer" | "mllp-listener" | "api";
 
@@ -936,6 +988,8 @@ export interface CaptureSourceTypeChoice {
 
 /** internal/desktop.CaseComparison */
 export interface CaseComparison {
+  pair_output?: ShareOutput;
+  raw_equal?: boolean;
   current: ComparisonSide;
   other: ComparisonSide;
   keys: string[];
@@ -958,6 +1012,7 @@ export interface CaseComparison {
 
 /** internal/desktop.CaseComparisonRequest */
 export interface CaseComparisonRequest {
+  pair?: SelectedMessagePair;
   context: RequestContext;
   current: ItemRef;
   other: ItemRef;
@@ -1065,6 +1120,8 @@ export type CaseStatus = "open" | "investigating" | "resolved" | "closed";
 
 /** internal/desktop.CaseSummary */
 export interface CaseSummary {
+  occurrences?: number;
+  capture_context?: CaptureContext;
   protocol?: string;
   protocol_version?: string;
   source_kind?: string;
@@ -1563,6 +1620,10 @@ export interface ComparisonRow {
 
 /** internal/desktop.ComparisonSide */
 export interface ComparisonSide {
+  occurrence?: string;
+  identity?: string;
+  raw_sha256?: string;
+  raw_bytes?: number;
   ref: ItemRef;
   name: string;
   messages: number;
@@ -1637,6 +1698,24 @@ export interface ConnectedActionOptions {
   credential?: string;
 }
 
+/** internal/desktop.ConnectedCaptureObservation */
+export interface ConnectedCaptureObservation {
+  source: ItemRef;
+  input_key_selector: string;
+  output_key_selector: string;
+  run_selector: string;
+  include: ObserveintervalScopeFilter[];
+}
+
+/** internal/desktop.ConnectedCaptureRequest */
+export interface ConnectedCaptureRequest {
+  context: RequestContext;
+  run: ItemRef;
+  phase: string;
+  dataset: string;
+  identity: string;
+}
+
 /** internal/desktop.ConnectedCheck */
 export interface ConnectedCheck {
   name: string;
@@ -1661,6 +1740,13 @@ export interface ConnectedColumn {
   required: boolean;
   repeated: boolean;
   states: string[];
+}
+
+/** internal/desktop.ConnectedDerivedInputReview */
+export interface ConnectedDerivedInputReview {
+  step: string;
+  selector: string;
+  value: string;
 }
 
 /** internal/desktop.ConnectedEnvironmentOffer */
@@ -1698,6 +1784,54 @@ export interface ConnectedFHIRTarget {
 export interface ConnectedIdentifier {
   system: string;
   value: string;
+}
+
+/** internal/desktop.ConnectedIndividualCheck */
+export interface ConnectedIndividualCheck {
+  phase: string;
+  id: string;
+  kind: string;
+  operator: string;
+  outcome: AssertionOutcome;
+  expected_count?: number;
+  observed_count?: number;
+  expected?: DatasetValue;
+  observed?: DatasetValue;
+  dataset?: string;
+  hidden: boolean;
+  unavailable?: string;
+}
+
+/** internal/desktop.ConnectedIndividualEvidence */
+export interface ConnectedIndividualEvidence {
+  lifecycle: ConnectedLifecycleView;
+  identity: string;
+  checks: ConnectedIndividualCheck[];
+  steps: ConnectedIndividualStep[];
+  observations: ConnectedObservationEvidence[];
+}
+
+/** internal/desktop.ConnectedIndividualStep */
+export interface ConnectedIndividualStep {
+  phase: string;
+  step: string;
+  protocol: string;
+  outcome: string;
+  uncertain: boolean;
+  ack?: string;
+  http_status?: number;
+}
+
+/** internal/desktop.ConnectedLifecycleView */
+export interface ConnectedLifecycleView {
+  output: string;
+  state: string;
+  verdict: AssertionVerdict;
+  boundary: string;
+  setup: string;
+  cleanup: string;
+  qualification: ConnectedrunFlowClaim[];
+  phases: ConnectedPhaseView[];
 }
 
 /** internal/desktop.ConnectedMinimizeChoice */
@@ -1738,6 +1872,7 @@ export interface ConnectedMinimizeReview {
 
 /** internal/desktop.ConnectedObservation */
 export interface ConnectedObservation {
+  capture?: ConnectedCaptureObservation;
   schema: string;
   environment?: string;
   namespace: string;
@@ -1750,6 +1885,24 @@ export interface ConnectedObservation {
   completion: ObserveintervalDefinition;
   projection?: DatasetProjection;
   fhir?: FHIRSearchDraft;
+}
+
+/** internal/desktop.ConnectedObservationColumn */
+export interface ConnectedObservationColumn {
+  name: string;
+  type: string;
+}
+
+/** internal/desktop.ConnectedObservationEvidence */
+export interface ConnectedObservationEvidence {
+  reason?: string;
+  capture_identity?: string;
+  phase: string;
+  dataset: string;
+  identity: string;
+  records: number;
+  boundary: string;
+  available: boolean;
 }
 
 /** internal/desktop.ConnectedObservationOffer */
@@ -1765,6 +1918,44 @@ export interface ConnectedObservationOffer {
   barrier?: boolean;
   readable: boolean;
   reason?: string;
+}
+
+/** internal/desktop.ConnectedObservationRequest */
+export interface ConnectedObservationRequest {
+  family?: RetainedObservationFamily;
+  identity?: string;
+  source_identity?: string;
+  job?: string;
+  context: RequestContext;
+  run: ItemRef;
+  phase: string;
+  dataset: string;
+  offset: number;
+  limit: number;
+  reveal: boolean;
+}
+
+/** internal/desktop.ConnectedObservationResult */
+export interface ConnectedObservationResult {
+  context: RequestContext;
+  state: State;
+  reason?: string;
+  available: boolean;
+  identity?: string;
+  phase: string;
+  dataset: string;
+  columns: ConnectedObservationColumn[];
+  rows: ConnectedObservationRow[];
+  total: number;
+  offset: number;
+  hidden: boolean;
+}
+
+/** internal/desktop.ConnectedObservationRow */
+export interface ConnectedObservationRow {
+  occurrence?: string;
+  id: string;
+  values: DatasetValue[];
 }
 
 /** internal/desktop.ConnectedOperatorChoice */
@@ -1795,6 +1986,15 @@ export interface ConnectedPhaseObservation {
   when: string;
 }
 
+/** internal/desktop.ConnectedPhaseView */
+export interface ConnectedPhaseView {
+  id: string;
+  state: string;
+  verdict: AssertionVerdict;
+  checks: ConnectedrunFlowCheck[];
+  steps: ConnectedtestAttempt[];
+}
+
 /** internal/desktop.ConnectedProposal */
 export interface ConnectedProposal {
   id: string;
@@ -1807,6 +2007,47 @@ export interface ConnectedProposal {
 export interface ConnectedResponseCheck {
   name: string;
   check: ConnectedtestResponseCheck;
+}
+
+/** internal/desktop.ConnectedRunCollectorReview */
+export interface ConnectedRunCollectorReview {
+  phase: string;
+  dataset: string;
+  kind: string;
+  address?: string;
+  credential?: string;
+  generation?: string;
+  horizon_ms: number;
+  meaning: string;
+}
+
+/** internal/desktop.ConnectedRunEffect */
+export interface ConnectedRunEffect {
+  phase: string;
+  resource: string;
+  operation: string;
+}
+
+/** internal/desktop.ConnectedRunPhaseReview */
+export interface ConnectedRunPhaseReview {
+  id: string;
+  steps: string[];
+  checks: number;
+  observations: string[];
+}
+
+/** internal/desktop.ConnectedRunReview */
+export interface ConnectedRunReview {
+  collectors?: ConnectedRunCollectorReview[];
+  derived_inputs?: ConnectedDerivedInputReview[];
+  runtime_marker_required?: boolean;
+  plan: string;
+  input: string;
+  boundary: string;
+  instance: string;
+  phases: ConnectedRunPhaseReview[];
+  effects: ConnectedRunEffect[];
+  endpoints: ReviewDestination[];
 }
 
 /** internal/desktop.ConnectedSource */
@@ -1942,6 +2183,7 @@ export interface ConnectedTestVocabulary {
 
 /** internal/desktop.ConnectedV2 */
 export interface ConnectedV2 {
+  runtime_marker_selector?: string;
 }
 
 /** internal/desktop.ConnectedValidationCheck */
@@ -2052,6 +2294,15 @@ export interface ConnectedtestPhaseDependency {
   requires: string;
 }
 
+/** internal/connectedtest.Reference */
+export interface ConnectedtestReference {
+  project: string;
+  id: string;
+  schema: string;
+  file: string;
+  sha256: string;
+}
+
 /** internal/connectedtest.ResponseBinding */
 export interface ConnectedtestResponseBinding {
   variable: string;
@@ -2065,6 +2316,13 @@ export interface ConnectedtestResponseCheck {
   id: string;
   step: string;
   outcome: string;
+}
+
+/** internal/connectedtest.TargetRevision */
+export interface ConnectedtestTargetRevision {
+  value?: string;
+  provenance: string;
+  evidence?: ConnectedtestReference;
 }
 
 /** internal/desktop.ConnectionAction */
@@ -2199,6 +2457,26 @@ export type Consent =
   | "delete"
   | "copy"
   | "prepare";
+
+/** internal/desktop.ContextEditorDraftRequest */
+export interface ContextEditorDraftRequest {
+  context: RequestContext;
+  schema: string;
+  source: ItemRef;
+  identity: string;
+  occurrence: string;
+  selector: string;
+}
+
+/** internal/desktop.ContextEditorDraftResult */
+export interface ContextEditorDraftResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  retained?: EditorDraft;
+  association?: InterfaceAssociationEditorDraft;
+  correction?: CaptureSourceEditorDraft;
+}
 
 /** internal/corpus.Bounds */
 export interface CorpusBounds {
@@ -3329,6 +3607,130 @@ export interface ExamplePlaceholder {
   kind: PlaceholderKind;
 }
 
+/** internal/desktop.ExchangeCaptureRequest */
+export interface ExchangeCaptureRequest {
+  context: RequestContext;
+  exchange: string;
+  identity: string;
+}
+
+/** internal/desktop.ExchangeExclusion */
+export interface ExchangeExclusion {
+  occurrence: string;
+  reason: string;
+}
+
+/** internal/desktop.ExchangeHistoryResult */
+export interface ExchangeHistoryResult {
+  context: RequestContext;
+  state: State;
+  reason?: string;
+  exchanges: ExchangeView[];
+}
+
+/** internal/desktop.ExchangeInputOrigin */
+export interface ExchangeInputOrigin {
+  case: ItemRef;
+  identity: string;
+  messages: string[];
+}
+
+/** internal/desktop.ExchangeMatch */
+export interface ExchangeMatch {
+  input: string;
+  output: string;
+}
+
+/** internal/desktop.ExchangeMatching */
+export interface ExchangeMatching {
+  schema: string;
+  mode: ExchangeMatchingMode;
+  run_selector: string;
+  run_id: string;
+  input_key_selector: string;
+  output_key_selector: string;
+}
+
+/** internal/desktop.ExchangeMatchingMode */
+export type ExchangeMatchingMode = "unscoped" | "runtime-marker";
+
+/** internal/desktop.ExchangeOptions */
+export interface ExchangeOptions {
+  source: ItemRef;
+  matching: ExchangeMatching;
+  horizon_ms: number;
+  max_messages: number;
+  max_bytes: number;
+}
+
+/** internal/desktop.ExchangeOrigin */
+export interface ExchangeOrigin {
+  id: string;
+  identity: string;
+}
+
+/** internal/desktop.ExchangeReview */
+export interface ExchangeReview {
+  max_frame_bytes: number;
+  max_connections: number;
+  max_sessions: number;
+  configuration: CaptureSourceDraft | null;
+  source_identity: string;
+  source: ItemRef;
+  name: string;
+  address: string;
+  ack_code: string;
+  options: ExchangeOptions;
+}
+
+/** internal/desktop.ExchangeRuntimeMarkerResult */
+export interface ExchangeRuntimeMarkerResult {
+  context: RequestContext;
+  state: State;
+  reason?: string;
+  marker?: string;
+}
+
+/** internal/desktop.ExchangeTestProvenance */
+export interface ExchangeTestProvenance {
+  origin: ExchangeOrigin;
+  inputs: ExchangeInputOrigin;
+  receiver: ItemRef;
+  receiver_identity: string;
+  target: ItemRef;
+  coverage: string;
+  received: number;
+  horizon_ms: number;
+  configuration_state: string;
+}
+
+/** internal/desktop.ExchangeView */
+export interface ExchangeView {
+  identity?: string;
+  inputs?: ExchangeInputOrigin;
+  target_ref?: ItemRef;
+  schema: string;
+  id: string;
+  review: ExchangeReview;
+  input_identity: string;
+  send_identity: string;
+  target: RunTargetView;
+  output: string;
+  armed_at: string;
+  stimulus_at: string;
+  window_ended_at: string;
+  completed_at: string;
+  bound_address: string;
+  coverage: string;
+  delivery_uncertain: boolean;
+  capture_identity: string;
+  capture_entry: string;
+  received: number;
+  matches: ExchangeMatch[];
+  excluded: ExchangeExclusion[];
+  replay?: ReplayRun;
+}
+
 /** internal/desktop.ExecuteActionRequest */
 export interface ExecuteActionRequest {
   context: RequestContext;
@@ -3892,6 +4294,92 @@ export interface FieldProblem {
 /** internal/hl7.State */
 export type FieldState = "present" | "empty" | "null" | "omitted" | "";
 
+/** internal/desktop.FieldValueBucket */
+export interface FieldValueBucket {
+  id: string;
+  state: string;
+  value?: string;
+  hidden: boolean;
+  messages: number;
+}
+
+/** internal/desktop.FieldValueOccurrencesRequest */
+export interface FieldValueOccurrencesRequest {
+  scope: FieldValueScope;
+  selector: string;
+  reveal: boolean;
+  snapshot: string;
+  bucket: string;
+  offset: number;
+  limit: number;
+}
+
+/** internal/desktop.FieldValueOccurrencesResult */
+export interface FieldValueOccurrencesResult {
+  state: State;
+  reason?: string;
+  identity: string;
+  scope_identity: string;
+  snapshot: string;
+  bucket: string;
+  rows: MessageRow[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
+/** internal/desktop.FieldValueScope */
+export interface FieldValueScope {
+  workspace: string;
+  case: string;
+  identity: string;
+  query: GridQuery;
+}
+
+/** internal/desktop.FieldValuesRequest */
+export interface FieldValuesRequest {
+  scope: FieldValueScope;
+  selector: string;
+  reveal: boolean;
+  snapshot?: string;
+  offset: number;
+  limit: number;
+}
+
+/** internal/desktop.FieldValuesResult */
+export interface FieldValuesResult {
+  state: State;
+  reason?: string;
+  identity: string;
+  scope_identity: string;
+  snapshot: string;
+  selector: string;
+  unit: string;
+  total: number;
+  matched: number;
+  scope_undecided: number;
+  scope_undecodable: number;
+  scanned: number;
+  complete: boolean;
+  scan_complete: boolean;
+  revealed: boolean;
+  counts: FieldvaluesCounts;
+  rows: FieldValueBucket[];
+  group_count: number;
+  offset: number;
+  limit: number;
+}
+
+/** internal/fieldvalues.Counts */
+export interface FieldvaluesCounts {
+  present: number;
+  empty: number;
+  null: number;
+  omitted: number;
+  undecodable: number;
+  undecided: number;
+}
+
 /** internal/desktop.FileBytesRequest */
 export interface FileBytesRequest {
   file: string;
@@ -3911,6 +4399,9 @@ export interface FileBytesResult {
 
 /** internal/desktop.FileInspectRequest */
 export interface FileInspectRequest {
+  reference_selection?: HL7ReferenceSelection;
+  reference_identity?: string;
+  reference_catalog?: string;
   file: string;
   format: string;
   terminator: string;
@@ -4335,6 +4826,21 @@ export type GuideStepId = "sample" | "test" | "baseline" | "post-fix";
 /** internal/guide.StepBaseline, internal/guide.StepPostFix */
 export type GuideTrialId = "baseline" | "post-fix";
 
+/** internal/desktop.HL7InspectorGrid */
+export interface HL7InspectorGrid {
+  segment: string;
+  rows: InspectorNode[];
+  offset: number;
+  field_count: number;
+}
+
+/** internal/desktop.HL7LocalDocumentation */
+export interface HL7LocalDocumentation {
+  identity: string;
+  title: string;
+  text: string;
+}
+
 /** internal/hl7.Node */
 export interface HL7Node {
   path: string;
@@ -4345,6 +4851,70 @@ export interface HL7Node {
   state: FieldState;
   start: number;
   end: number;
+}
+
+/** internal/desktop.HL7ReferenceOverlay */
+export interface HL7ReferenceOverlay {
+  applicability?: string;
+  status: string;
+  reason: string;
+  selection: HL7ReferenceSelection;
+  profile?: ProfileevalPin;
+  pack?: ProfileevalPin;
+  base?: LocalProfileBase;
+  field?: Field;
+  segment_cardinality?: LocalProfileCardinality;
+  segment_description?: string;
+  documentation?: HL7LocalDocumentation;
+}
+
+/** internal/desktop.HL7ReferenceRequest */
+export interface HL7ReferenceRequest {
+  catalog: string;
+  identity: string;
+  edition: string;
+  key: string;
+  offset: number;
+  limit: number;
+  query?: string;
+}
+
+/** internal/desktop.HL7ReferenceResult */
+export interface HL7ReferenceResult {
+  state: State;
+  reason?: string;
+  reference?: Hl7referenceAnswer;
+  children: Hl7referenceRecord[];
+  offset: number;
+  child_count: number;
+  total_count: number;
+}
+
+/** internal/desktop.HL7ReferenceSelection */
+export interface HL7ReferenceSelection {
+  profile?: string;
+  pack?: string;
+  documentation?: string;
+  profile_identity?: string;
+  pack_identity?: string;
+  documentation_identity?: string;
+}
+
+/** internal/desktop.HL7ReferenceSelectionResult */
+export interface HL7ReferenceSelectionResult {
+  state: State;
+  reason?: string;
+  overlay?: HL7ReferenceOverlay;
+}
+
+/** internal/desktop.HL7ReferenceValue */
+export interface HL7ReferenceValue {
+  key: string;
+  node: HL7Node;
+  encoded: string;
+  decoded: string;
+  decode_state: string;
+  truncated: boolean;
 }
 
 /** internal/hl7.Terminator */
@@ -4417,6 +4987,113 @@ export interface HexRow {
   offset: number;
   hex: string;
   text: string;
+}
+
+/** internal/hl7reference.Answer */
+export interface Hl7referenceAnswer {
+  table_keys?: string[];
+  element_key?: string;
+  section_key?: string;
+  datatype_key?: string;
+  parent_datatype_key?: string;
+  parent_field?: Hl7referenceRecord;
+  declared_datatype?: string;
+  resolved_datatype?: string;
+  type_resolution?: string;
+  sources?: Hl7referenceSource[];
+  status: string;
+  reason: string;
+  identity: string;
+  edition: string;
+  coverage: Hl7referenceCoverage;
+  missing_count: number;
+  record?: Hl7referenceRecord;
+}
+
+/** internal/hl7reference.Attribute */
+export interface Hl7referenceAttribute {
+  origin?: Hl7referenceOrigin;
+  state: string;
+  value: string;
+}
+
+/** internal/hl7reference.Coverage */
+export interface Hl7referenceCoverage {
+  messages?: number;
+  structures?: number;
+  tables?: number;
+  elements?: number;
+  codes?: number;
+  datatypes?: number;
+  components?: number;
+  segments: number;
+  fields: number;
+  definitions: number;
+  missing: string[];
+}
+
+/** internal/hl7reference.MessageContext */
+export interface Hl7referenceMessageContext {
+  status: string;
+  reason: string;
+  message_code: string;
+  event: string;
+  declared_structure: string;
+  declared_structure_state: FieldState;
+  resolved_structure: string;
+  message_key: string;
+  structure_key: string;
+  placement: ProfileevalPlacement;
+}
+
+/** internal/hl7reference.Origin */
+export interface Hl7referenceOrigin {
+  kind: string;
+  source?: string;
+  locator?: string;
+}
+
+/** internal/hl7reference.Record */
+export interface Hl7referenceRecord {
+  message_code?: string;
+  event?: string;
+  structures?: string[];
+  structure_id?: string;
+  sequence?: ProfileevalNode[];
+  unparsed_rows?: number;
+  table_id?: string;
+  table_kind?: string;
+  item_id?: string;
+  code?: string;
+  content_state?: string;
+  uses?: string[];
+  container?: string;
+  position?: number;
+  key: string;
+  kind: string;
+  segment: string;
+  field: number;
+  name: string;
+  name_origin?: Hl7referenceOrigin;
+  definition_origin?: Hl7referenceOrigin;
+  datatype: Hl7referenceAttribute;
+  optionality: Hl7referenceAttribute;
+  length: Hl7referenceAttribute;
+  conformance_length: Hl7referenceAttribute;
+  repetition: Hl7referenceAttribute;
+  item: Hl7referenceAttribute;
+  table: Hl7referenceAttribute;
+  section: Hl7referenceAttribute;
+  definition: string;
+  source: string;
+}
+
+/** internal/hl7reference.Source */
+export interface Hl7referenceSource {
+  role: string;
+  file: string;
+  sha256: string;
+  publisher: string;
 }
 
 /** internal/desktop.HubActivity */
@@ -4947,6 +5624,7 @@ export interface ImportCSVDialect {
 
 /** internal/desktop.ImportCaseRequest */
 export interface ImportCaseRequest {
+  investigation?: ImportInvestigation;
   context: RequestContext;
   name: string;
   source: ImportRequest;
@@ -4956,6 +5634,7 @@ export interface ImportCaseRequest {
 
 /** internal/desktop.ImportCaseResult */
 export interface ImportCaseResult {
+  selection?: RetainedImportSelection;
   state: State;
   reason?: string;
   context: RequestContext;
@@ -5018,6 +5697,18 @@ export interface ImportInspectRequest {
   node_offset: number;
   byte_offset: number;
   reveal: boolean;
+}
+
+/** internal/desktop.ImportInvestigation */
+export interface ImportInvestigation {
+  file: string;
+  identity: string;
+  format: string;
+  terminator: string;
+  messages: number[];
+  selected?: number;
+  path?: string;
+  node_offset: number;
 }
 
 /** internal/importer.Kind */
@@ -5332,6 +6023,9 @@ export type InspectFormat = "auto" | "raw" | "mllp";
 
 /** internal/desktop.InspectRequest */
 export interface InspectRequest {
+  reference_selection?: HL7ReferenceSelection;
+  reference_identity?: string;
+  reference_catalog?: string;
   workspace: string;
   case: string;
   identity: string;
@@ -5348,6 +6042,13 @@ export type InspectTerminator = "auto" | "cr" | "lf" | "crlf";
 
 /** internal/desktop.Inspection */
 export interface Inspection {
+  grid?: HL7InspectorGrid;
+  message_context?: Hl7referenceMessageContext;
+  reference_overlay?: HL7ReferenceOverlay;
+  readable_window?: RawWindow;
+  reference_values?: HL7ReferenceValue[];
+  reference_values_notice?: string;
+  reference?: Hl7referenceAnswer;
   fhir?: FHIRInspection;
   metadata: FieldMetadata;
   identity: string;
@@ -5379,7 +6080,13 @@ export interface Inspection {
 }
 
 /** internal/desktop.inspectionFile and the constants declared with it */
-export type InspectionPathKind = "file" | "copy-destination";
+export type InspectionPathKind =
+  | "file"
+  | "reference-catalog"
+  | "reference-profile"
+  | "reference-pack"
+  | "reference-documentation"
+  | "copy-destination";
 
 /** internal/desktop.InspectionPathResult */
 export interface InspectionPathResult {
@@ -5398,6 +6105,11 @@ export interface InspectionResult {
 
 /** internal/desktop.InspectorNode */
 export interface InspectorNode {
+  depth?: number;
+  reference?: Hl7referenceRecord;
+  reference_status?: string;
+  raw?: string;
+  decode_state?: string;
   node: HL7Node;
   label: string;
   selector: string;
@@ -5439,6 +6151,45 @@ export interface InstalledLicenseView {
   clock_rollback: boolean;
 }
 
+/** internal/desktop.InterfaceAssociationEditorDraft */
+export interface InterfaceAssociationEditorDraft {
+  schema: string;
+  project_id: string;
+  source: ItemRef;
+  identity: string;
+  occurrence: string;
+  selector: string;
+  base?: ItemRef;
+  name: string;
+  profile?: ItemRef;
+  documents: InterfacespecDocumentation[];
+}
+
+/** internal/desktop.InterfaceRequirementsRequest */
+export interface InterfaceRequirementsRequest {
+  context: RequestContext;
+  source: ItemRef;
+  identity: string;
+  occurrence: string;
+  selector: string;
+  spec: ItemRef;
+}
+
+/** internal/desktop.InterfaceRequirementsResult */
+export interface InterfaceRequirementsResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  spec_ref?: ItemRef;
+  spec?: InterfacespecDocument;
+  profile?: ItemRef;
+  selector: string;
+  segment: string;
+  position: number;
+  applicability: string;
+  resolution?: LocalProfileResolution;
+}
+
 /** internal/desktop.InterfaceRevision */
 export interface InterfaceRevision {
   id: string;
@@ -5446,8 +6197,70 @@ export interface InterfaceRevision {
   default: boolean;
 }
 
-/** internal/desktop.analysisOperation, internal/desktop.captureOperation, internal/desktop.ciGateVerifyOperation, internal/desktop.corpusOperation, internal/desktop.explanationOperation, internal/desktop.hubSignInOperation, internal/desktop.importOperation, internal/desktop.practiceOperation, internal/desktop.privacyOperation, internal/desktop.protectOperation, internal/desktop.reductionOperation, internal/desktop.reexecutionOperation, internal/desktop.replayOperation, internal/desktop.replayPreviewOperation, internal/desktop.runComparisonOperation, internal/desktop.runOperation, internal/desktop.runnerOperation, internal/desktop.scenarioCheckOperation, internal/desktop.scenarioCasesOperation, internal/desktop.suiteCoverageOperation, internal/desktop.syntheticPacketOperation */
+/** internal/desktop.InterfaceSpecDocumentResult */
+export interface InterfaceSpecDocumentResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  document?: InterfacespecDocumentation;
+}
+
+/** internal/desktop.InterfaceSpecResult */
+export interface InterfaceSpecResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  ref?: ItemRef;
+  spec?: InterfacespecDocument;
+}
+
+/** internal/desktop.InterfaceSpecSaveRequest */
+export interface InterfaceSpecSaveRequest {
+  context: RequestContext;
+  base?: ItemRef;
+  intent_id: string;
+  name: string;
+  profile: ItemRef;
+  documents: InterfacespecDocumentation[];
+}
+
+/** internal/desktop.InterfaceSpecsResult */
+export interface InterfaceSpecsResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  items: CatalogItem[];
+}
+
+/** internal/interfacespec.Document */
+export interface InterfacespecDocument {
+  schema: string;
+  project: string;
+  name: string;
+  profile: InterfacespecProfilePin;
+  documents: InterfacespecDocumentation[];
+}
+
+/** internal/interfacespec.Documentation */
+export interface InterfacespecDocumentation {
+  name: string;
+  sha256: string;
+  text: string;
+}
+
+/** internal/interfacespec.ProfilePin */
+export interface InterfacespecProfilePin {
+  item: string;
+  revision: string;
+  schema: string;
+  id: string;
+  version: string;
+  sha256: string;
+}
+
+/** internal/desktop.FieldValuesOperation, internal/desktop.analysisOperation, internal/desktop.captureOperation, internal/desktop.ciGateVerifyOperation, internal/desktop.corpusOperation, internal/desktop.explanationOperation, internal/desktop.hubSignInOperation, internal/desktop.importOperation, internal/desktop.practiceOperation, internal/desktop.privacyOperation, internal/desktop.protectOperation, internal/desktop.reductionOperation, internal/desktop.reexecutionOperation, internal/desktop.replayOperation, internal/desktop.replayPreviewOperation, internal/desktop.runComparisonOperation, internal/desktop.runOperation, internal/desktop.runnerOperation, internal/desktop.scenarioCheckOperation, internal/desktop.scenarioCasesOperation, internal/desktop.suiteCoverageOperation, internal/desktop.syntheticPacketOperation */
 export type InterruptibleOperation =
+  | "field-values-read"
   | "analysis"
   | "capture"
   | "ci-gate-verify"
@@ -5617,6 +6430,7 @@ export interface ItemHistoryResult {
 
 /** internal/desktop.ItemKind */
 export type ItemKind =
+  | "capture-context"
   | "project"
   | "case"
   | "test"
@@ -5642,9 +6456,11 @@ export type ItemKind =
   | "mapping"
   | "source"
   | "normalization-policy"
+  | "interface-spec"
   | "report-share"
   | "report-review"
-  | "suite-approval";
+  | "suite-approval"
+  | "field-value-map";
 
 /** internal/desktop.ItemRef */
 export interface ItemRef {
@@ -7040,6 +7856,12 @@ export interface ObserveintervalDefinition {
   barrier?: ObserveintervalBarrier;
 }
 
+/** internal/observeinterval.ScopeFilter */
+export interface ObserveintervalScopeFilter {
+  selector: string;
+  equals: string;
+}
+
 /** internal/bundle.EventKind */
 export type OccurrenceKind = "message" | "ack" | "unparsed";
 
@@ -7199,6 +8021,7 @@ export interface PreferencesResult {
 
 /** internal/desktop.PrepareActionRequest */
 export interface PrepareActionRequest {
+  selected_export?: SelectedExportOptions;
   context: RequestContext;
   action: ActionID;
   items: ItemRef[];
@@ -7554,12 +8377,41 @@ export interface ProfileevalFinding {
   end: number;
 }
 
+/** internal/profileeval.Node */
+export interface ProfileevalNode {
+  name: string;
+  segment?: string;
+  min: number;
+  max: string;
+  children?: ProfileevalNode[];
+  choice?: boolean;
+}
+
 /** internal/profileeval.Pin */
 export interface ProfileevalPin {
   schema: string;
   id: string;
   version: string;
   sha256: string;
+}
+
+/** internal/profileeval.Placement */
+export interface ProfileevalPlacement {
+  state: string;
+  reason: string;
+  path: string;
+  groups: ProfileevalPlacementGroup[];
+  segment_min: number;
+  segment_max: string;
+  segment_repetition: number;
+}
+
+/** internal/profileeval.PlacementGroup */
+export interface ProfileevalPlacementGroup {
+  name: string;
+  occurrence: number;
+  min: number;
+  max: string;
 }
 
 /** internal/profileeval.Report */
@@ -8348,6 +9200,13 @@ export interface ReexecutionSendRequest {
   authorize: boolean;
 }
 
+/** internal/desktop.ReferenceCatalogResult */
+export interface ReferenceCatalogResult {
+  state: State;
+  reason?: string;
+  reference?: Hl7referenceAnswer;
+}
+
 /** internal/desktop.ReferenceKind */
 export type ReferenceKind = "acknowledgement" | "link" | "collision" | "unsupported";
 
@@ -8452,6 +9311,7 @@ export interface RepairSearchRequest {
 
 /** internal/desktop.ReplayActionOptions */
 export interface ReplayActionOptions {
+  exchange?: ExchangeOptions;
   connected?: ConnectedActionOptions;
   messages: string[];
   transformations: ReplayTransformation[];
@@ -8588,6 +9448,71 @@ export interface ReportComparison {
   checks: ReportChange[];
 }
 
+/** internal/report.ConnectedEnvironment */
+export interface ReportConnectedEnvironment {
+  project: string;
+  id: string;
+  revision: string;
+  classification: string;
+  target_identity: string;
+  address_policy_identity: string;
+  target_revision: ConnectedtestTargetRevision;
+  fhir_servers: ReportConnectedServer[];
+}
+
+/** internal/report.ConnectedEquivalence */
+export interface ReportConnectedEquivalence {
+  state: string;
+  reason: string;
+}
+
+/** internal/report.ConnectedPhase */
+export interface ReportConnectedPhase {
+  id: string;
+  state: string;
+  verdict: string;
+  checks: ConnectedrunFlowCheck[];
+}
+
+/** internal/report.ConnectedReport */
+export interface ReportConnectedReport {
+  schema: string;
+  packet_identity: string;
+  export_policy: string;
+  contains_source_values: boolean;
+  evidence_class: string;
+  equivalence: ReportConnectedEquivalence;
+  runs: ReportReportRun[];
+  comparison: RunCompareFlowComparison | null;
+  limitations: string[];
+}
+
+/** internal/report.ConnectedRun */
+export interface ReportConnectedRun {
+  identity: string;
+  schema: string;
+  plan: string;
+  test: string;
+  instance: string;
+  engine: string;
+  boundary: string;
+  state: string;
+  verdict: string;
+  setup: string;
+  cleanup: string;
+  environment: ReportConnectedEnvironment;
+  qualification: ConnectedrunFlowClaim[];
+  phases: ReportConnectedPhase[];
+  failures: string[];
+}
+
+/** internal/report.ConnectedServer */
+export interface ReportConnectedServer {
+  id: string;
+  base: string;
+  capability: string;
+}
+
 /** internal/report.DocumentEvidence */
 export interface ReportDocumentEvidence {
   kind: string;
@@ -8619,6 +9544,76 @@ export interface ReportDraft {
 
 /** internal/report.Outcome */
 export type ReportOutcome = "passed" | "failed" | "error" | "incomplete";
+
+/** internal/report.ReportBinding */
+export interface ReportReportBinding {
+  variable: string;
+  value: string;
+  evidence: string;
+}
+
+/** internal/report.ReportCheck */
+export interface ReportReportCheck {
+  id: string;
+  claim: string;
+  outcome: string;
+  evidence: string;
+}
+
+/** internal/report.ReportField */
+export interface ReportReportField {
+  column: string;
+  state: string;
+  text: string;
+}
+
+/** internal/report.ReportObservation */
+export interface ReportReportObservation {
+  dataset: string;
+  boundary: string;
+  meaning: string;
+  usable: boolean;
+  columns: string[];
+  records: ReportReportRecord[];
+  evidence: string;
+}
+
+/** internal/report.ReportPhase */
+export interface ReportReportPhase {
+  id: string;
+  state: string;
+  verdict: string;
+  checks: ReportReportCheck[];
+  steps: ReportReportStep[];
+  observations: ReportReportObservation[];
+  bindings: ReportReportBinding[];
+}
+
+/** internal/report.ReportRecord */
+export interface ReportReportRecord {
+  row: string;
+  fields: ReportReportField[];
+  link: string;
+}
+
+/** internal/report.ReportRun */
+export interface ReportReportRun {
+  section: string;
+  run: ReportConnectedRun;
+  phases: ReportReportPhase[];
+}
+
+/** internal/report.ReportStep */
+export interface ReportReportStep {
+  step: string;
+  protocol: string;
+  method: string;
+  request: string;
+  outcome: string;
+  response: string;
+  uncertain: boolean;
+  evidence: string;
+}
 
 /** internal/desktop.ReportRequest */
 export interface ReportRequest {
@@ -8674,6 +9669,7 @@ export interface ReportShareEntry {
 
 /** internal/desktop.ReportShareOptions */
 export interface ReportShareOptions {
+  connected_mode?: string;
   contents: ShareContents;
   template?: string;
   overrides: ShareOverrides;
@@ -8696,6 +9692,7 @@ export interface ReportShareOutcome {
 
 /** internal/desktop.ReportShareReview */
 export interface ReportShareReview {
+  connected_mode?: string;
   report: string;
   version?: string;
   patient?: string;
@@ -8720,6 +9717,8 @@ export interface ReportShareReview {
 
 /** internal/desktop.ReportSummary */
 export interface ReportSummary {
+  source_runs?: ItemRef[];
+  tests?: ItemRef[];
   form: string;
   related_case: ItemRef | null;
   status?: string;
@@ -8761,6 +9760,7 @@ export interface ReportVersion {
 
 /** internal/desktop.ReportView */
 export interface ReportView {
+  connected?: ReportConnectedReport;
   item: CatalogItem;
   form: string;
   revision?: string;
@@ -9136,6 +10136,18 @@ export interface RetainedCaptureResult {
   case?: CaseEvidence;
 }
 
+/** internal/desktop.RetainedImportSelection */
+export interface RetainedImportSelection {
+  identity: string;
+  messages: string[];
+  selected?: string;
+  path?: string;
+  node_offset: number;
+}
+
+/** internal/desktop.RetainedObservationFamily */
+export type RetainedObservationFamily = "legacy-ledger" | "connected-lifecycle";
+
 /** internal/desktop.RetentionChange */
 export type RetentionChange = "extends" | "unchanged" | "retired" | "applied" | "failed";
 
@@ -9269,6 +10281,9 @@ export interface ReviewSurface {
 
 /** internal/desktop.ReviewedActionResult */
 export interface ReviewedActionResult {
+  selected_export?: SelectedExportOutcome;
+  lifecycle?: ConnectedLifecycleView;
+  exchange?: ExchangeView;
   connected_report?: RunQueueConnectedReport;
   isolation?: IsolationOutcome;
   typed_collection?: TypedCollectionView;
@@ -9343,6 +10358,7 @@ export interface RuleDocumentSaveRequest {
 
 /** internal/desktop.RunActionOptions */
 export interface RunActionOptions {
+  runtime_marker?: string;
   connected?: ConnectedSuiteRunOptions;
   environment?: string;
   phase?: string;
@@ -9445,6 +10461,71 @@ export interface RunCompareComparison {
   scope: string;
 }
 
+/** internal/runcompare.FlowAttribution */
+export interface RunCompareFlowAttribution {
+  outcome: string;
+  changed: string[];
+  reason: string;
+}
+
+/** internal/runcompare.FlowCheckComparison */
+export interface RunCompareFlowCheckComparison {
+  phase: string;
+  check: string;
+  baseline: string;
+  current: string;
+  definition: string;
+  behavior: string;
+}
+
+/** internal/runcompare.FlowComparison */
+export interface RunCompareFlowComparison {
+  baseline: RunCompareFlowExecution;
+  current: RunCompareFlowExecution;
+  dimensions: RunCompareFlowDimension[];
+  attribution: RunCompareFlowAttribution;
+  checks: RunCompareFlowCheckComparison[];
+  records: RunCompareFlowRecordComparison[];
+  scope: string;
+}
+
+/** internal/runcompare.FlowDimension */
+export interface RunCompareFlowDimension {
+  dimension: string;
+  state: string;
+  changed: string[];
+}
+
+/** internal/runcompare.FlowExecution */
+export interface RunCompareFlowExecution {
+  identity: string;
+  schema: string;
+  plan: string;
+  instance: string;
+  engine: string;
+  state: string;
+  verdict: string;
+}
+
+/** internal/runcompare.FlowKeyComparison */
+export interface RunCompareFlowKeyComparison {
+  key: string;
+  baseline: number;
+  current: number;
+  state: string;
+  values: string[];
+  identities: string[];
+}
+
+/** internal/runcompare.FlowRecordComparison */
+export interface RunCompareFlowRecordComparison {
+  phase: string;
+  dataset: string;
+  state: string;
+  reason?: string;
+  keys: RunCompareFlowKeyComparison[];
+}
+
 /** internal/runcompare.Stability */
 export interface RunCompareStability {
   flaky_assertions: string[];
@@ -9459,6 +10540,8 @@ export interface RunCompareStability {
 
 /** internal/desktop.RunComparisonItemsRequest */
 export interface RunComparisonItemsRequest {
+  before?: ItemRef;
+  after?: ItemRef;
   context: RequestContext;
   runs: ItemRef[];
 }
@@ -9499,6 +10582,7 @@ export interface RunComparisonSide {
 
 /** internal/desktop.RunComparisonView */
 export interface RunComparisonView {
+  connected?: RunCompareFlowComparison;
   earlier: RunComparisonSide;
   later: RunComparisonSide;
   repeats: RunComparisonSide[];
@@ -9529,6 +10613,8 @@ export interface RunDestination {
 
 /** internal/desktop.RunDetail */
 export interface RunDetail {
+  retained_observation?: RunRetainedObservation;
+  lifecycle?: ConnectedIndividualEvidence;
   connected_report?: RunQueueConnectedReport;
   item: CatalogItem;
   job?: string;
@@ -9852,8 +10938,22 @@ export interface RunResumeReview {
   repeated: number;
 }
 
+/** internal/desktop.RunRetainedObservation */
+export interface RunRetainedObservation {
+  receiver_mode?: string;
+  family: RetainedObservationFamily;
+  phase: string;
+  dataset: string;
+  identity?: string;
+  source_identity?: string;
+  available: boolean;
+  reason?: string;
+  total: number;
+}
+
 /** internal/desktop.RunReview */
 export interface RunReview {
+  lifecycle?: ConnectedRunReview;
   connected?: ConnectedSuitePreflight;
   kind: RunKind;
   name: string;
@@ -9948,6 +11048,11 @@ export type RunState =
 
 /** internal/desktop.RunSummary */
 export interface RunSummary {
+  can_compare?: boolean;
+  test_association?: string;
+  source_association?: string;
+  source_cases?: ItemRef[];
+  source_name?: string;
   target?: string;
   started_at: string | null;
   completed_at: string | null;
@@ -10982,6 +12087,46 @@ export interface Segment {
   fields: Field[];
 }
 
+/** internal/desktop.SelectedExportOptions */
+export interface SelectedExportOptions {
+  messages: string[];
+  identity: string;
+  transformation: string;
+  destination?: string;
+  reveal?: boolean;
+}
+
+/** internal/desktop.SelectedExportOutcome */
+export interface SelectedExportOutcome {
+  name: string;
+  output?: string;
+  sha256: string;
+  source: ItemRef;
+  source_identity: string;
+  history?: ItemRef;
+  incomplete?: boolean;
+}
+
+/** internal/desktop.SelectedExportReview */
+export interface SelectedExportReview {
+  source: ItemRef;
+  source_name: string;
+  source_identity: string;
+  occurrences: ShareSelectedOccurrence[];
+  source_values: boolean;
+  redacted: boolean;
+  class: string;
+  output: ShareOutput;
+  destination: ShareDestinationView;
+  consequence: string;
+}
+
+/** internal/desktop.SelectedMessagePair */
+export interface SelectedMessagePair {
+  left: string;
+  right: string;
+}
+
 /** internal/sendpolicy.Policy */
 export interface SendPolicy {
   schema: string;
@@ -11360,6 +12505,15 @@ export interface ShareRunCheck {
   reason?: string;
 }
 
+/** internal/reportshare.SelectedOccurrence */
+export interface ShareSelectedOccurrence {
+  occurrence: string;
+  offset: number;
+  bytes: number;
+  sha256: string;
+  kind: string;
+}
+
 /** internal/desktop.ShareTemplate */
 export interface ShareTemplate {
   entry: string;
@@ -11485,6 +12639,44 @@ export interface SimilarResult {
   groups: SimilarGroup[];
   saved?: ItemRef;
   name?: string;
+}
+
+/** internal/desktop.SourceExportAssociation */
+export interface SourceExportAssociation {
+  case: ItemRef;
+  identity: string;
+  occurrences: ShareSelectedOccurrence[];
+  name: string;
+  bytes: number;
+  sha256: string;
+  class: string;
+}
+
+/** internal/desktop.SourceExportEntry */
+export interface SourceExportEntry {
+  ref: ItemRef;
+  source: SourceExportAssociation;
+  at: string;
+  actor: string;
+  source_values: boolean;
+  redacted: boolean;
+}
+
+/** internal/desktop.SourceExportPreviewResult */
+export interface SourceExportPreviewResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  source?: SourceExportAssociation;
+  output?: ShareOutput;
+}
+
+/** internal/desktop.SourceExportsResult */
+export interface SourceExportsResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  entries: SourceExportEntry[];
 }
 
 /** internal/desktop.SourceFacet */
@@ -12566,6 +13758,7 @@ export interface TestObservation {
 
 /** internal/desktop.TestOrigin */
 export interface TestOrigin {
+  exchange?: ExchangeOrigin;
   case: ItemRef;
   messages: string[];
   title?: string;
@@ -12682,6 +13875,7 @@ export interface TestRunnerValue {
 
 /** internal/desktop.TestSource */
 export interface TestSource {
+  exchange?: ExchangeTestProvenance;
   kind: TestSourceKind;
   finding?: string;
   review?: string;
@@ -12690,7 +13884,7 @@ export interface TestSource {
 }
 
 /** internal/desktop.TestSourceKind */
-export type TestSourceKind = "case" | "finding" | "variant";
+export type TestSourceKind = "exchange" | "case" | "finding" | "variant";
 
 /** internal/testauthor.StageName and the constants declared with it */
 export type TestStage =
@@ -13111,6 +14305,152 @@ export type ValidatorState =
   | "worker-missing"
   | "worker-unavailable";
 
+/** internal/desktop.ValueMapDraftRequest */
+export interface ValueMapDraftRequest {
+  context: RequestContext;
+  source: ItemRef;
+  identity: string;
+  occurrence: string;
+  selector: string;
+  edition: string;
+}
+
+/** internal/desktop.ValueMapDraftResult */
+export interface ValueMapDraftResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  retained?: EditorDraft;
+  draft?: ValueMapEditorDraft;
+}
+
+/** internal/desktop.ValueMapEditorDraft */
+export interface ValueMapEditorDraft {
+  schema: string;
+  source: ItemRef;
+  identity: string;
+  occurrence: string;
+  selector: string;
+  edition: string;
+  base?: ItemRef;
+  draft: ValuemapDocument;
+  working_entry?: ValuemapEntry;
+  working_index?: number;
+}
+
+/** internal/desktop.ValueMapExportRequest */
+export interface ValueMapExportRequest {
+  context: RequestContext;
+  ref: ItemRef;
+  destination?: string;
+}
+
+/** internal/desktop.ValueMapExportResult */
+export interface ValueMapExportResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  path?: string;
+  sha256?: string;
+  bytes: number;
+}
+
+/** internal/desktop.ValueMapImportRequest */
+export interface ValueMapImportRequest {
+  context: RequestContext;
+  path?: string;
+}
+
+/** internal/desktop.ValueMapInspectionRequest */
+export interface ValueMapInspectionRequest {
+  context: RequestContext;
+  ref: ItemRef;
+  source: ItemRef;
+  identity: string;
+  occurrence: string;
+  selector: string;
+  reveal: boolean;
+}
+
+/** internal/desktop.ValueMapInspectionResult */
+export interface ValueMapInspectionResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  ref: ItemRef;
+  identity: string;
+  occurrence: string;
+  selector: string;
+  revealed: boolean;
+  mapping: string;
+  field_state: string;
+  entry?: ValuemapEntry;
+}
+
+/** internal/desktop.ValueMapResult */
+export interface ValueMapResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  ref?: ItemRef;
+  map?: ValuemapDocument;
+}
+
+/** internal/desktop.ValueMapSaveRequest */
+export interface ValueMapSaveRequest {
+  context: RequestContext;
+  base?: ItemRef;
+  intent_id: string;
+  draft: ValuemapDocument;
+}
+
+/** internal/desktop.ValueMapsResult */
+export interface ValueMapsResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  items: CatalogItem[];
+}
+
+/** internal/valuemap.Association */
+export interface ValuemapAssociation {
+  kind: string;
+  item: string;
+  revision: string;
+}
+
+/** internal/valuemap.Document */
+export interface ValuemapDocument {
+  schema: string;
+  project: string;
+  name: string;
+  edition: string;
+  source_selector: string;
+  destination_selector: string;
+  source_meaning: string;
+  destination_meaning: string;
+  provenance: string;
+  table?: ValuemapTable;
+  entries: ValuemapEntry[];
+  associations: ValuemapAssociation[];
+}
+
+/** internal/valuemap.Entry */
+export interface ValuemapEntry {
+  source: string;
+  destination: string;
+  source_meaning: string;
+  destination_meaning: string;
+  provenance: string;
+}
+
+/** internal/valuemap.Table */
+export interface ValuemapTable {
+  id: string;
+  edition: string;
+  provenance: string;
+}
+
 /** internal/desktop.VariantChange */
 export interface VariantChange {
   operator: string;
@@ -13247,6 +14587,34 @@ export interface View {
   region: string;
   case: string;
   run: string;
+  navigation?: ViewNavigation;
+}
+
+/** internal/desktop.ViewNavigation */
+export interface ViewNavigation {
+  checked_occurrences?: string[];
+  file_messages?: number[];
+  reference_selection?: HL7ReferenceSelection;
+  project_identity?: string;
+  source_kind?: string;
+  file_format?: string;
+  file_terminator?: string;
+  destination: string;
+  object?: string;
+  local_view?: string;
+  source_identity?: string;
+  occurrence?: string;
+  field_path?: string;
+  node_offset?: number;
+  filter?: string;
+  sort?: string;
+  scroll_top?: number;
+  reference_path?: string;
+  reference_identity?: string;
+  reference_edition?: string;
+  file?: string;
+  file_identity?: string;
+  file_message?: number;
 }
 
 /** internal/desktop.ViewsResult */
@@ -13347,6 +14715,7 @@ export interface Facade {
   ChooseHubTeamConfig(): Promise<HubConfigChoice>;
   ChooseImportSources(kind: string): Promise<ImportSourcesResult>;
   ChooseInspectionPath(kind: string, source: string): Promise<InspectionPathResult>;
+  ChooseInterfaceSpecDocument(contextRequest: RequestContext): Promise<InterfaceSpecDocumentResult>;
   ChooseLibraryFile(kind: string): Promise<PathChoiceResult>;
   ChooseLicenseFile(): Promise<LicenseFileResult>;
   ChooseLicenseFolder(): Promise<LicenseFolderResult>;
@@ -13424,6 +14793,7 @@ export interface Facade {
   ExportSuiteRunConfiguration(request: SuiteExportRequest): Promise<SuiteExportResult>;
   ExportTest(request: CanonicalTestRequest): Promise<CanonicalTestResult>;
   ExportTestItem(request: ItemRequest): Promise<ExportTestResult>;
+  ExportValueMapCSV(request: ValueMapExportRequest): Promise<ValueMapExportResult>;
   Filters(): Promise<FiltersResult>;
   FindSimilarFindings(request: SimilarRequest): Promise<SimilarResult>;
   FindingReviewHistory(request: ItemRequest): Promise<FindingReviewHistoryResult>;
@@ -13447,6 +14817,7 @@ export interface Facade {
   ImportSuiteItem(request: RequestContext): Promise<ItemDraftResult>;
   ImportTest(workspace: string, entry: string): Promise<CanonicalTestResult>;
   ImportTestDraft(request: RequestContext): Promise<ItemDraftResult>;
+  ImportValueMapCSV(request: ValueMapImportRequest): Promise<ValueMapResult>;
   InspectBackup(id: string): Promise<BackupResult>;
   InspectCIResults(directory: string): Promise<CIInspectResult>;
   InspectCompletion(request: CompletionRequest): Promise<CompletionInspectionResult>;
@@ -13459,7 +14830,9 @@ export interface Facade {
   InspectRecoveryCopy(request: RecoveryCopyRequest): Promise<RecoveryCopyResult>;
   InspectRunnerJob(configPath: string, jobPath: string): Promise<RunnerJobPreviewResult>;
   InspectScenarioPreview(request: ScenarioPreviewInspectRequest): Promise<InspectionResult>;
+  InspectValueMap(request: ValueMapInspectionRequest): Promise<ValueMapInspectionResult>;
   InstallValidator(request: ValidatorInstallRequest): Promise<ValidatorCheckResult>;
+  IssueExchangeRuntimeMarker(request: RequestContext): Promise<ExchangeRuntimeMarkerResult>;
   ItemHistory(request: ItemRequest): Promise<ItemHistoryResult>;
   LibraryDocument(request: DraftRequest): Promise<LibraryDocumentResult>;
   LicenseStatus(): Promise<InstalledLicenseResult>;
@@ -13473,6 +14846,7 @@ export interface Facade {
   ListConnections(request: RequestContext): Promise<ConnectionsResult>;
   ListCredentials(request: ItemRequest): Promise<CredentialsResult>;
   ListEncryptedPackages(request: RequestContext): Promise<EncryptedPackagesResult>;
+  ListExchanges(request: RequestContext): Promise<ExchangeHistoryResult>;
   ListFileMessages(request: FileMessagesRequest): Promise<FileMessagesResult>;
   ListHubLifecycle(project: string): Promise<HubLifecycleResult>;
   ListHubMembers(project: string): Promise<HubMembersResult>;
@@ -13480,6 +14854,7 @@ export interface Facade {
   ListHubProjectArtifacts(project: string): Promise<HubArtifactsResult>;
   ListHubReviewers(project: string): Promise<HubMembersResult>;
   ListHubReviews(project: string): Promise<HubReviewsResult>;
+  ListInterfaceSpecs(contextRequest: RequestContext): Promise<InterfaceSpecsResult>;
   ListNotes(request: NotesRequest): Promise<NotesResult>;
   ListProjectRecoveryCopies(path: string): Promise<ProjectRecoveryCopiesResult>;
   ListProtectionControls(workspace: string): Promise<ProtectionListResult>;
@@ -13488,8 +14863,11 @@ export interface Facade {
   ListSchedules(request: ScheduleListRequest): Promise<ScheduleListResult>;
   ListSearchSettings(workspace: string): Promise<SearchSettingsListResult>;
   ListShareTemplates(request: RequestContext): Promise<ShareTemplatesResult>;
+  ListSourceExports(request: ItemRequest): Promise<SourceExportsResult>;
+  ListValueMaps(request: RequestContext): Promise<ValueMapsResult>;
   ListViews(workspace: string): Promise<ViewsResult>;
   LocateItem(request: LocateRequest): Promise<ItemResult>;
+  LookupHL7Reference(request: HL7ReferenceRequest): Promise<HL7ReferenceResult>;
   MessageFields(request: MessageFieldsRequest): Promise<MessageFieldsResult>;
   MetadataPacks(request: RequestContext): Promise<MetadataPacksResult>;
   MigrateProjectDocument(path: string): Promise<ProjectOverviewResult>;
@@ -13502,12 +14880,14 @@ export interface Facade {
   OpenBenchmark(request: BenchmarkRequest): Promise<BenchmarkResult>;
   OpenCase(workspace: string, name: string): Promise<CaseResult>;
   OpenCaseFindings(request: FindingsRequest): Promise<FindingsResult>;
+  OpenConnectedCapture(request: ConnectedCaptureRequest): Promise<RetainedCaptureResult>;
   OpenCorrelationReview(request: CorrelationReviewRequest): Promise<CorrelationReviewResult>;
   OpenDemoProject(): Promise<ProjectOpenResult>;
   OpenDiagnoseConfig(workspace: string, entry: string): Promise<DiagnoseConfigResult>;
   OpenDiagnosisGroupsReport(workspace: string, entry: string, offset: number): Promise<DiagnosisGroupsResult>;
   OpenDiagnosisReport(workspace: string, entry: string, offset: number): Promise<DiagnosisResult>;
   OpenDurableRun(path: string): Promise<DurableRunResult>;
+  OpenExchangeCapture(request: ExchangeCaptureRequest): Promise<RetainedCaptureResult>;
   OpenFindingDecisions(workspace: string, entry: string): Promise<FindingDecisionsResult>;
   OpenGrid(workspace: string, name: string, indexName: string, offset: number, limit: number): Promise<GridResult>;
   OpenHubConflict(request: HubConflictRequest): Promise<HubConflictResult>;
@@ -13529,6 +14909,7 @@ export interface Facade {
   OpenSequence(request: SequenceRequest): Promise<SequenceResult>;
   OpenSharedOutput(request: SharedOutputRequest): Promise<RevealResult>;
   OpenSimilarFindings(request: ItemRequest): Promise<SimilarResult>;
+  OpenSourceExport(request: ItemRequest): Promise<SourceExportPreviewResult>;
   OpenSyntheticPacket(path: string): Promise<SyntheticPacketResult>;
   OpenTransformPlan(workspace: string, entry: string): Promise<TransformPlanResult>;
   OpenWorkspace(path: string): Promise<WorkspaceResult>;
@@ -13560,15 +14941,24 @@ export interface Facade {
   ProjectFiles(request: ItemRequest): Promise<ProjectFilesResult>;
   ProjectLocation(): Promise<ProjectLocationResult>;
   PublishSupportSummary(request: SupportPublishRequest): Promise<SupportPublishResult>;
+  ReadCaptureContext(request: ItemRequest): Promise<CaptureContextResult>;
+  ReadConnectedObservation(request: ConnectedObservationRequest): Promise<ConnectedObservationResult>;
+  ReadContextEditorDraft(request: ContextEditorDraftRequest): Promise<ContextEditorDraftResult>;
+  ReadFieldValueOccurrences(request: FieldValueOccurrencesRequest): Promise<FieldValueOccurrencesResult>;
+  ReadFieldValues(request: FieldValuesRequest): Promise<FieldValuesResult>;
   ReadFileBytes(request: FileBytesRequest): Promise<FileBytesResult>;
+  ReadHL7ReferenceSelection(selection: HL7ReferenceSelection): Promise<HL7ReferenceSelectionResult>;
   ReadHubSupportSummary(request: HubFileRequest): Promise<HubSupportSummaryResult>;
   ReadHubTeam(request: HubTeamReadRequest): Promise<HubTeamResult>;
+  ReadInterfaceRequirements(request: InterfaceRequirementsRequest): Promise<InterfaceRequirementsResult>;
+  ReadInterfaceSpec(request: ItemRequest): Promise<InterfaceSpecResult>;
   ReadMessages(request: MessagesRequest): Promise<MessagesResult>;
   ReadOperatorHubArtifact(digest: string): Promise<HubTransferResult>;
   ReadPreferences(): Promise<PreferencesResult>;
   ReadProtection(workspace: string, entry: string): Promise<ProtectionResult>;
   ReadRedactInventory(workspace: string, entry: string): Promise<RedactInventoryResult>;
   ReadRedactPolicy(workspace: string, entry: string): Promise<RedactPolicyResult>;
+  ReadReferenceCatalog(path: string): Promise<ReferenceCatalogResult>;
   ReadResetPlan(workspace: string, planFile: string): Promise<ResetPlanResult>;
   ReadRunnerConfig(configPath: string): Promise<RunnerInspectResult>;
   ReadRunnerGrants(path: string, project: string): Promise<RunnerGrantsResult>;
@@ -13578,6 +14968,8 @@ export interface Facade {
   ReadShareTemplate(request: ItemRequest): Promise<ShareTemplateResult>;
   ReadSharingPolicy(workspace: string, entry: string): Promise<SupportPolicyResult>;
   ReadTarget(workspace: string, targetFile: string): Promise<TargetResult>;
+  ReadValueMap(request: ItemRequest): Promise<ValueMapResult>;
+  ReadValueMapDraft(request: ValueMapDraftRequest): Promise<ValueMapDraftResult>;
   ReconcileHubOfflineDraft(request: HubLifecycleCommandRequest): Promise<HubLifecycleResult>;
   ReconcileTeamTransfer(operation: string): Promise<ReviewedActionResult>;
   RecordCredentialRotation(request: CredentialRequest): Promise<CredentialsResult>;
@@ -13619,6 +15011,7 @@ export interface Facade {
   RunDiagnosis(request: DiagnosisRequest): Promise<DiagnosisResult>;
   RunPractice(request: PracticeRequest): Promise<PracticeResult>;
   SaveCIHandoff(request: CIHandoffRequest): Promise<CIHandoffResult>;
+  SaveCaptureContext(request: CaptureContextSaveRequest): Promise<CaptureContextResult>;
   SaveCommercialDestinations(request: CommercialSaveRequest): Promise<CommercialStatusResult>;
   SaveCredential(request: CredentialSaveRequest): Promise<CredentialsResult>;
   SaveDiagnoseConfig(request: RuleDocumentSaveRequest): Promise<DiagnoseConfigResult>;
@@ -13629,6 +15022,7 @@ export interface Facade {
   SaveHubAudit(project: string): Promise<HubTransferResult>;
   SaveHubOfflineDraft(request: HubOfflineDraftRequest): Promise<EditorDraftsResult>;
   SaveHubTeam(request: HubTeamRequest): Promise<HubResult>;
+  SaveInterfaceSpec(request: InterfaceSpecSaveRequest): Promise<InterfaceSpecResult>;
   SaveItem(request: SaveItemRequest): Promise<SaveItemResult>;
   SaveNormalizationPolicy(request: RuleDocumentSaveRequest): Promise<NormalizationPolicyResult>;
   SaveNoteItem(request: NoteSaveRequest): Promise<NotesResult>;
@@ -13652,6 +15046,7 @@ export interface Facade {
   SaveTarget(request: TargetSaveRequest): Promise<TargetResult>;
   SaveTest(request: TestRequest): Promise<TestResult>;
   SaveTransformPlan(request: TransformPlanRequest): Promise<TransformPlanResult>;
+  SaveValueMap(request: ValueMapSaveRequest): Promise<ValueMapResult>;
   SaveView(workspace: string, name: string, query: GridQuery): Promise<ViewsResult>;
   ScanCorpus(request: CorpusScanRequest): Promise<CorpusScanResult>;
   ScanSecrets(request: SecretScanRequest): Promise<SecretScanResult>;
@@ -13702,6 +15097,7 @@ export interface Facade {
   VerifyRunnerUpdate(configPath: string, manifest: string, binary: string): Promise<RunnerUpdateResult>;
   VerifySupportBundle(workspace: string, entry: string): Promise<SupportPreviewResult>;
   WithdrawReview(token: string): Promise<ActionReviewResult>;
+  WorkingSession(): Promise<SessionResult>;
 }
 
 /** The methods Wails binds for desktop/hubadmin.Admin. */

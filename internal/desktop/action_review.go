@@ -77,6 +77,7 @@ const (
 // every message, in source order), the named transformations, and the send
 // policy the destination is decided under, if the project uses one.
 type ReplayActionOptions struct {
+	Exchange        *ExchangeOptions        `json:"exchange,omitzero"`
 	Connected       *ConnectedActionOptions `json:"connected,omitzero"`
 	Messages        []string                `json:"messages"`
 	Transformations []replay.Transformation `json:"transformations"`
@@ -101,6 +102,7 @@ type ScanActionOptions struct {
 // under an environment's send policy, goes to that environment; a reset is
 // scoped to one environment; a credential scan to the project.
 type PrepareActionRequest struct {
+	SelectedExport    *SelectedExportOptions `json:"selected_export,omitzero"`
 	isolationInstance string
 	Context           RequestContext       `json:"context"`
 	Action            ActionID             `json:"action"`
@@ -146,34 +148,36 @@ type ReviewDestination struct {
 // internal: a window passes it back unchanged and never shows it. A review
 // that cannot proceed carries no token and says why.
 type ActionReview struct {
-	Isolation     *IsolationActionReview  `json:"isolation,omitzero"`
-	FHIRCheck     *FHIRConnectionReview   `json:"fhir_check,omitzero"`
-	Token         string                  `json:"token,omitzero"`
-	Action        ActionID                `json:"action"`
-	Consent       Consent                 `json:"consent"`
-	Items         []CatalogItem           `json:"items"`
-	Destination   ReviewDestination       `json:"destination"`
-	ExpiresAt     string                  `json:"expires_at,omitzero"`
-	Requirements  []ReviewRequirement     `json:"requirements"`
-	Ready         bool                    `json:"ready"`
-	Refusal       string                  `json:"refusal,omitzero"`
-	Replay        *ReplayPreview          `json:"replay,omitzero"`
-	Export        *ExportReviewView       `json:"export,omitzero"`
-	SuiteApproval *SuiteApprovalReview    `json:"suite_approval,omitzero"`
-	Collect       *CollectReview          `json:"collect,omitzero"`
-	Reset         *EnvironmentResetReview `json:"reset,omitzero"`
-	Scan          *ScanReview             `json:"scan,omitzero"`
-	Storage       *StorageReview          `json:"storage,omitzero"`
-	Derive        *DeriveReviewView       `json:"derive,omitzero"`
-	Transport     *TransportReview        `json:"transport,omitzero"`
-	Run           *RunReview              `json:"run,omitzero"`
-	Team          *TeamActionReview       `json:"team,omitzero"`
-	ReportReview  *ReportReviewView       `json:"report_review,omitzero"`
-	Minimize      *MinimizeReview         `json:"minimize,omitzero"`
-	ReportShare   *ReportShareReview      `json:"report_share,omitzero"`
-	ShareCheck    *ShareCheckView         `json:"share_check,omitzero"`
-	PackageAction *PackageActionReview    `json:"package_action,omitzero"`
-	ReportSupport *ReportSupportReview    `json:"report_support,omitzero"`
+	SelectedExport *SelectedExportReview   `json:"selected_export,omitzero"`
+	Exchange       *ExchangeReview         `json:"exchange,omitzero"`
+	Isolation      *IsolationActionReview  `json:"isolation,omitzero"`
+	FHIRCheck      *FHIRConnectionReview   `json:"fhir_check,omitzero"`
+	Token          string                  `json:"token,omitzero"`
+	Action         ActionID                `json:"action"`
+	Consent        Consent                 `json:"consent"`
+	Items          []CatalogItem           `json:"items"`
+	Destination    ReviewDestination       `json:"destination"`
+	ExpiresAt      string                  `json:"expires_at,omitzero"`
+	Requirements   []ReviewRequirement     `json:"requirements"`
+	Ready          bool                    `json:"ready"`
+	Refusal        string                  `json:"refusal,omitzero"`
+	Replay         *ReplayPreview          `json:"replay,omitzero"`
+	Export         *ExportReviewView       `json:"export,omitzero"`
+	SuiteApproval  *SuiteApprovalReview    `json:"suite_approval,omitzero"`
+	Collect        *CollectReview          `json:"collect,omitzero"`
+	Reset          *EnvironmentResetReview `json:"reset,omitzero"`
+	Scan           *ScanReview             `json:"scan,omitzero"`
+	Storage        *StorageReview          `json:"storage,omitzero"`
+	Derive         *DeriveReviewView       `json:"derive,omitzero"`
+	Transport      *TransportReview        `json:"transport,omitzero"`
+	Run            *RunReview              `json:"run,omitzero"`
+	Team           *TeamActionReview       `json:"team,omitzero"`
+	ReportReview   *ReportReviewView       `json:"report_review,omitzero"`
+	Minimize       *MinimizeReview         `json:"minimize,omitzero"`
+	ReportShare    *ReportShareReview      `json:"report_share,omitzero"`
+	ShareCheck     *ShareCheckView         `json:"share_check,omitzero"`
+	PackageAction  *PackageActionReview    `json:"package_action,omitzero"`
+	ReportSupport  *ReportSupportReview    `json:"report_support,omitzero"`
 }
 
 // ExportReviewView is the export review a derived packet is exported from:
@@ -243,6 +247,9 @@ const (
 // it runs. Replayed is true when the
 // same click arrived again and was answered with the original result.
 type ReviewedActionResult struct {
+	SelectedExport  *SelectedExportOutcome    `json:"selected_export,omitzero"`
+	Lifecycle       *ConnectedLifecycleView   `json:"lifecycle,omitzero"`
+	Exchange        *ExchangeView             `json:"exchange,omitzero"`
 	ConnectedReport *runqueue.ConnectedReport `json:"connected_report,omitzero"`
 	Isolation       *IsolationOutcome         `json:"isolation,omitzero"`
 	TypedCollection *TypedCollectionView      `json:"typed_collection,omitzero"`
@@ -293,6 +300,8 @@ func (r *ReviewedActionResult) refuse(state State, reason string) {
 // request each action executes, the binding over all of it, the display, and
 // the preparation it was made from, so executing it binds exactly that again.
 type boundAction struct {
+	selectedExport  *selectedExportBinding
+	exchange        *boundExchange
 	isolation       *isolationBinding
 	typedCollect    *typedCollectBinding
 	fhirCheck       *fhirCheckBinding
@@ -838,10 +847,13 @@ func backingEntry(item catalog.Item) string {
 }
 
 func bindReplaySend(a *App, ctx context.Context, request PrepareActionRequest, held bool) (*boundAction, refusal) {
+	if request.Replay != nil && request.Replay.Exchange != nil {
+		return bindExchangeSend(a, ctx, request, held)
+	}
 	if request.Replay != nil && request.Replay.Connected != nil {
 		return bindConnectedSend(a, ctx, request, held)
 	}
-	if len(request.Items) != 1 || request.Items[0].Kind != CaseItem || request.Destination == nil || request.Destination.Kind != EnvironmentItem {
+	if len(request.Items) != 1 || request.Items[0].Kind != CaseItem && request.Items[0].Kind != VariantItem || request.Destination == nil || request.Destination.Kind != EnvironmentItem {
 		return nil, refusal{Failed, "a send is reviewed for one case and one environment"}
 	}
 	options := ReplayActionOptions{}
@@ -893,6 +905,9 @@ func bindReplaySend(a *App, ctx context.Context, request PrepareActionRequest, h
 // settled makes the outcome uncertain, whether or not the send was stopped:
 // uncertainty is never read as completion or as a clean stop.
 func executeReplaySend(a *App, ctx context.Context, bound *boundAction, _ ReviewDecisions) ReviewedActionResult {
+	if bound.exchange != nil {
+		return executeExchangeSend(a, ctx, bound)
+	}
 	if bound.connected != nil {
 		a.reach(reachingTarget{ref: "environment:" + bound.origin.Destination.ID, name: bound.review.Destination.Name,
 			kind: ConnectionRun, destination: bound.review.Destination.Address})

@@ -1,3 +1,4 @@
+import "./workflow.css";
 // Share report (#560, views 27 and 46): one started flow over one report
 // version, Contents → Redaction → Preview, with one shared footer. Every
 // choice prepares the share again: the backend enumerates what it holds,
@@ -11,6 +12,8 @@ import {
   executeReviewedAction,
   newIntentId,
   openSharedOutput,
+  openReport,
+  type ReportView,
   prepareAction,
   RequestScope,
   saveShareTemplate,
@@ -31,7 +34,7 @@ import {
 import { DataTable } from "./DataTable";
 import { SHARE_CATEGORIES, SHARE_FORMATS, SHARE_ITEM_TYPES, SHARE_RESULTS, SHARE_TREATMENTS, term } from "./display";
 import { useRetainer } from "./drafting";
-import { FormDialog, Reveal, ValueRows } from "./layout";
+import { FormDialog, Modal, Reveal, ValueRows } from "./layout";
 import type { SendRequest } from "./RunPanel";
 import { TaskTabs } from "./TaskTabs";
 import "./share.css";
@@ -41,6 +44,7 @@ type Format = keyof typeof SHARE_FORMATS;
 
 /** What a share draft holds: every choice, never a preview or a place. */
 export type ShareDraft = {
+ connectedMode?: "original-report"|"value-free-extract";
   contents: ShareContents;
   template: string;
   overrides: ShareOverrides;
@@ -52,6 +56,7 @@ export type ShareDraft = {
 
 export const SHARE_DRAFT_KIND = "report-share";
 export const SHARE_DRAFT_SCHEMA = "readmit-report-share-draft/v1";
+export const CONNECTED_SHARE_DRAFT_SCHEMA = "readmit-report-share-draft/v2";
 
 const STEPS: { key: ShareStep; label: string }[] = [
   { key: "contents", label: "Contents" },
@@ -71,7 +76,7 @@ function isDraft(value: unknown): value is ShareDraft & { report: string } {
 
 /** A retained share draft of one report, when this viewer holds one. */
 export function shareDraftOf(drafts: EditorDraft[] | null | undefined, workspace: string, report: string): EditorDraft | null {
-  return drafts?.find((draft) => draft.kind === SHARE_DRAFT_KIND && draft.workspace === workspace && isDraft(draft.content) && draft.content.report === report) ?? null;
+  return drafts?.find((draft) => draft.kind === SHARE_DRAFT_KIND && draft.workspace === workspace && isDraft(draft.content) && (draft.content_schema===CONNECTED_SHARE_DRAFT_SCHEMA || draft.content_schema===SHARE_DRAFT_SCHEMA && !("connectedMode" in draft.content)) && draft.content.report === report) ?? null;
 }
 
 /** A place chosen for one output: its handle, what the window shows of it,
@@ -96,6 +101,8 @@ export function useShareReport({ root, projectId, report, start, drafts, busy, o
   const scope = useRef(new RequestScope());
   const context = useCallback(() => scope.current.enter(root ?? "", projectId), [root, projectId]);
   const [step, setStep] = useState<ShareStep>(start);
+const [sourceReport,setSourceReport]=useState<ReportView|null>(null);
+const [sourceReadFailure,setSourceReadFailure]=useState<string|null>(null);
   const [draft, setDraft] = useState<ShareDraft>(freshDraft);
   const [chosen, setChosen] = useState<Chosen>(null);
   const [reveal, setReveal] = useState(false);
@@ -140,11 +147,17 @@ export function useShareReport({ root, projectId, report, start, drafts, busy, o
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [root, reportId, start]);
 
+  useEffect(()=>{
+   let current=true;setSourceReport(null);setSourceReadFailure(null);
+   if(report)void openReport({context:context(),ref:report,reveal:false}).then(answer=>{if(!current)return;if(answer.state==="completed" && answer.report)setSourceReport(answer.report);else setSourceReadFailure(answer.reason||"The retained report details are unavailable.");});
+   return()=>{current=false;};
+  },[root,report?.id,report?.revision,context]);
   // Every change of the choices is retained as the draft.
   const dirty = useRef(false);
   const change = (next: ShareDraft) => {
     dirty.current = true;
     setDraft(next);
+    setReview(held=>held ? {...held,token:"",ready:false,...(held.report_share ? {report_share:{...held.report_share,output:{...held.report_share.output,files:[]}}}: {})}:null);
     setResult(null);
     setNotice(null);
   };
@@ -156,7 +169,7 @@ export function useShareReport({ root, projectId, report, start, drafts, busy, o
       workspace: root,
       case: "",
       identity: "",
-      content_schema: SHARE_DRAFT_SCHEMA,
+      content_schema: draft.connectedMode ? CONNECTED_SHARE_DRAFT_SCHEMA:SHARE_DRAFT_SCHEMA,
       content: { report: report.id, ...draft },
       ...(projectId ? { item: { project_id: projectId, ref: report } } : {}),
     });
@@ -167,6 +180,7 @@ export function useShareReport({ root, projectId, report, start, drafts, busy, o
   const options = useMemo<ReportShareOptions>(
     () => ({
       contents: draft.contents,
+      ...(draft.connectedMode ? {connected_mode:draft.connectedMode}:{}),
       ...(draft.template ? { template: draft.template } : {}),
       overrides: draft.overrides,
       format: draft.format,
@@ -273,7 +287,7 @@ export function useShareReport({ root, projectId, report, start, drafts, busy, o
         <span className="value-with-action">
           {destinationValue}
           {changeable && (shown?.projects.length ?? 0) > 0 ? (
-            <button type="button" className="quiet" onClick={() => setSheet("destination")}>
+            <button type="button" className="quiet" disabled={!!shown?.connected_mode} onClick={() => setSheet("destination")}>
               Change
             </button>
           ) : null}
@@ -301,7 +315,7 @@ export function useShareReport({ root, projectId, report, start, drafts, busy, o
             value: (
               <span className="value-with-action">
                 {locationValue ?? "Not chosen"}
-                <button type="button" className="quiet" onClick={() => void choose()}>
+                <button type="button" className="quiet" disabled={preparing || !shown} onClick={() => void choose()}>
                   {place ? "Change" : "Choose"}
                 </button>
               </span>
@@ -311,8 +325,8 @@ export function useShareReport({ root, projectId, report, start, drafts, busy, o
             label: "Encryption",
             value: (
               <span className="value-with-action">
-                {shown?.encryption ? `${shown.encryption.control} · ${shown.encryption.reference} · Generation ${shown.encryption.generation}` : "Off"}
-                {changeable ? (
+                {shown?.connected_mode ? "Not supported by this connected output mode" : shown?.encryption ? `${shown.encryption.control} · ${shown.encryption.reference} · Generation ${shown.encryption.generation}` : "Off"}
+                {changeable && !shown?.connected_mode ? (
                   <button type="button" className="quiet" onClick={() => setSheet("encryption")}>
                     Change
                   </button>
@@ -354,23 +368,24 @@ export function useShareReport({ root, projectId, report, start, drafts, busy, o
           onOpen={() => undefined}
         />
       ) : null}
+      {shown?.connected_mode ? <fieldset><legend>Connected evidence output</legend><label className="check"><input type="radio" name="connected-output-mode" checked={(draft.connectedMode??"original-report")==="original-report"} onChange={()=>change({...draft,connectedMode:"original-report",contents:{},template:"",overrides:{}})}/>Original report with retained values</label><label className="check"><input type="radio" name="connected-output-mode" checked={draft.connectedMode==="value-free-extract"} onChange={()=>change({...draft,connectedMode:"value-free-extract",format:"json",contents:{},template:"",overrides:{}})}/>Value-free extract</label><p className="muted">The extract reports outcomes, counts and commitments. It includes no original-value attachments and is not executable proof. Authored titles and notes remain in the saved report and are excluded from connected exports.</p></fieldset>:null}
       <fieldset className="checks">
         <legend>Include</legend>
         <label className="check">
-          <input type="checkbox" checked={draft.contents.messages ?? false} onChange={(event) => setContents({ ...draft.contents, messages: event.target.checked })} />
+          <input type="checkbox" checked={draft.contents.messages ?? false} disabled={!!shown?.connected_mode} onChange={(event) => setContents({ ...draft.contents, messages: event.target.checked })} />
           Selected messages
         </label>
         <label className="check">
           <input
             type="checkbox"
             checked={draft.contents.attachments ?? false}
-            disabled={(shown?.attachments ?? 0) === 0 && !draft.contents.attachments}
+            disabled={!!shown?.connected_mode || (shown?.attachments ?? 0) === 0 && !draft.contents.attachments}
             onChange={(event) => setContents({ ...draft.contents, attachments: event.target.checked })}
           />
           Attachments
         </label>
         <label className="check">
-          <input type="checkbox" checked={draft.contents.original ?? false} onChange={(event) => setContents({ ...draft.contents, original: event.target.checked })} />
+          <input type="checkbox" checked={draft.contents.original ?? false} disabled={!!shown?.connected_mode} onChange={(event) => setContents({ ...draft.contents, original: event.target.checked })} />
           Original evidence
         </label>
       </fieldset>
@@ -390,7 +405,7 @@ export function useShareReport({ root, projectId, report, start, drafts, busy, o
             value: (
               <span className="value-with-action">
                 {shown?.template ?? (draft.template ? templateLabel(draft.template) : "No template")}
-                <button type="button" className="quiet" onClick={() => setSheet("template")}>
+                <button type="button" className="quiet" disabled={!!shown?.connected_mode} onClick={() => setSheet("template")}>
                   Change
                 </button>
               </span>
@@ -399,7 +414,7 @@ export function useShareReport({ root, projectId, report, start, drafts, busy, o
         ]}
       />
       <div className="toolbar-group">
-        <button type="button" disabled={busy} onClick={() => setSheet("save-template")}>
+        <button type="button" disabled={busy || !!shown?.connected_mode} onClick={() => setSheet("save-template")}>
           Save template
         </button>
         <button type="button" onClick={onManageTemplates}>
@@ -417,10 +432,10 @@ export function useShareReport({ root, projectId, report, start, drafts, busy, o
           rowId={(row) => row.key}
           rowLabel={(row) => row.field}
           columns={[
-            { key: "field", header: "Category / Field", priority: 1, minWidth: 14, flex: true, render: (row) => `${term(SHARE_CATEGORIES, row.category).text} · ${row.field}` },
+            { key: "field", header: "Category / Field", priority: 1, minWidth: 14, flex: true, render: (row) => `${shown?.connected_mode ? row.category:term(SHARE_CATEGORIES, row.category).text} · ${row.field}` },
             { key: "occurrences", header: "Occurrences", priority: 2, minWidth: 6, render: (row) => String(row.occurrences) },
-            { key: "treatment", header: "Treatment", priority: 1, minWidth: 8, render: (row) => term(SHARE_TREATMENTS, row.treatment).text },
-            { key: "result", header: "Result", priority: 1, minWidth: 8, render: (row) => term(SHARE_RESULTS, row.result).text },
+            { key: "treatment", header: "Treatment", priority: 1, minWidth: 8, render: (row) => shown?.connected_mode ? row.treatment:term(SHARE_TREATMENTS, row.treatment).text },
+            { key: "result", header: "Result", priority: 1, minWidth: 8, render: (row) => shown?.connected_mode ? row.result:term(SHARE_RESULTS, row.result).text },
             ...(reveal
               ? [{ key: "values", header: "Values", priority: 2, minWidth: 12, render: (row: ShareRow) => (row.examples ?? []).map(exampleText).join("; ") }]
               : []),
@@ -446,21 +461,16 @@ export function useShareReport({ root, projectId, report, start, drafts, busy, o
     </>
   );
 
+  const includedSource=sourceReport&&shown&&sourceReport.item.ref.id===reportId&&(sourceReport.revision??"")===(shown.version??"")?sourceReport:null;
+  const firstCount=includedSource?.checks.find(row=>row.check.operator==="ledger_count");
+  const comparedCount=includedSource?.comparison?.checks.find(row=>row.check.operator==="ledger_count");
+  const included=[{included:"Results",content:comparedCount?`Expected ${comparedCount.check.count??"Not recorded"} · Before ${comparedCount.before_available?(comparedCount.before_observed?.count??comparedCount.before_records??comparedCount.before):"Unavailable"} · After ${comparedCount.after_available?(comparedCount.after_observed?.count??comparedCount.after_records??comparedCount.after):"Unavailable"}`:firstCount?`Expected ${firstCount.check.count??"Not recorded"} · Observed ${firstCount.observed?.count??firstCount.observed_records??"Unavailable"}`:includedSource?.connected?`${includedSource.connected.runs.length} retained connected execution sections`:sourceReadFailure?"Retained report details unavailable":"Reading retained report outcomes…"},{included:"Inputs",content:includedSource?.connected?"Original input identities retained in the connected evidence":includedSource?`${includedSource.messages.length} retained input occurrences`:sourceReadFailure?"Retained report details unavailable":"Reading retained input evidence…"},{included:"Configuration",content:includedSource?"Recorded execution conditions and target identities":sourceReadFailure?"Retained report details unavailable":"Reading retained execution configuration…"}];
   const previewBody = (
-    <>
-      <ValueRows label="Output" rows={outputRows(false)} />
-      {shown && shown.issues.length > 0 ? (
-        <section aria-label="Unresolved" className="share-issues">
-          <h2 className="section-heading">Unresolved</h2>
-          <ul>
-            {shown.issues.map((issue) => (
-              <li key={issue.key}>{issue.text}</li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-      {shown ? <OutputViewer files={shown.output.files} tab={fileTab} /> : null}
-    </>
+    <section className="workflow-report-preview"><ValueRows label="Export source" rows={[{label:"Source",value:shown?.report??"Preparing retained report"}]}/><table className="plain-table" aria-label="Included report evidence"><thead><tr><th>Included</th><th>Content</th></tr></thead><tbody>{included.map(row=><tr key={row.included}><td>{row.included}</td><td>{row.content}</td></tr>)}</tbody></table><ValueRows label="Export choices" rows={outputRows(true).filter(row=>row.label==="Format"||row.label==="File"||row.label==="Folder").map(row=>({...row,label:row.label==="File"||row.label==="Folder"?"Save to":row.label}))}/>
+      {shown && shown.issues.length>0?<section aria-label="Unresolved" className="share-issues"><h2 className="section-heading">Unresolved</h2><ul>{shown.issues.map(issue=><li key={issue.key}>{issue.text}</li>)}</ul></section>:null}
+      <p className="workflow-caption">{shown?.source_values?"Contains original retained values. Review the exact output before sharing.":"Review the exact output and disclosure scope before sharing."}</p>
+      <details className="workflow-exact-output"><summary>Exact output preview</summary>{shown?<OutputViewer files={shown.output.files} tab={fileTab}/>:null}</details>
+    </section>
   );
 
   const final = send ? "Send" : "Export";
@@ -503,7 +513,7 @@ export function useShareReport({ root, projectId, report, start, drafts, busy, o
   const body = (
     <div className={step === "preview" ? "flow share-flow share-preview" : "flow share-flow"}>
       <p className="object-subtitle">{[shown?.report, shown?.version ? `Version ${shown.version}` : null].filter(Boolean).join(" · ")}</p>
-      <ol className="flow-steps" aria-label="Steps">
+      <ol className="flow-steps" aria-label="Steps" hidden={step==="preview"}>
         {STEPS.map((entry) => (
           <li key={entry.key} aria-current={entry.key === step ? "step" : undefined}>
             {entry.label}
@@ -516,7 +526,6 @@ export function useShareReport({ root, projectId, report, start, drafts, busy, o
       {step === "contents" ? contentsBody : step === "redaction" ? redactionBody : previewBody}
       {outcome}
       {!shown && !refusal ? <p aria-live="polite">Preparing…</p> : null}
-      {footer}
 
       <DestinationSheet
         open={sheet === "destination"}
@@ -532,6 +541,7 @@ export function useShareReport({ root, projectId, report, start, drafts, busy, o
         open={sheet === "format"}
         format={draft.format}
         paper={draft.paper}
+        connectedMode={draft.connectedMode ?? shown?.connected_mode}
         onClose={() => setSheet(null)}
         onApply={(format, paper) => {
           change({ ...draft, format, paper });
@@ -584,7 +594,7 @@ export function useShareReport({ root, projectId, report, start, drafts, busy, o
         <input id="share-template-name" value={templateName} maxLength={80} onChange={(event) => setTemplateName(event.target.value)} />
       </FormDialog>
       {typeof sheet === "object" && sheet !== null ? (
-        <RowSheet
+        sheet.row.kind==="connected-surface" ? <Modal open title="Connected evidence surface" onClose={()=>setSheet(null)}><ValueRows rows={[{label:"Surface",value:sheet.row.field},{label:"Retained files",value:String(sheet.row.occurrences)},{label:"Disposition",value:sheet.row.treatment}]} /><p>Original bytes remain in the retained packet. This mode applies the supported whole-surface disclosure policy.</p></Modal>:<RowSheet
           row={sheet.row}
           review={shown}
           draft={draft}
@@ -609,7 +619,7 @@ export function useShareReport({ root, projectId, report, start, drafts, busy, o
       />
     </div>
   );
-  return { title: "Share report", body };
+  return { title: "Share report", body: <div className="workflow-page workflow-export-flow"><section className="workflow-dialog-context"><h2>{shown?.report??"Retained report"}</h2><p className="workflow-caption">{shown?.version?`Version ${shown.version}`:""}</p></section><Modal open title="Export report" className="workflow-sheet workflow-export-sheet" onClose={leave} footer={footer}>{body}</Modal></div> };
 }
 
 function templateLabel(entry: string): string {
@@ -632,6 +642,12 @@ function useFileTab(files: ShareFile[]): { selected: string; select: (name: stri
   const [selected, select] = useState("");
   const names = files.map((file) => file.name);
   return { selected: names.includes(selected) ? selected : (names[0] ?? ""), select };
+}
+
+/** The shared exact-output viewer used by report and source-message exports. */
+export function ShareOutputPreview({ files }: { files: ShareFile[] }) {
+  const tab = useFileTab(files);
+  return <OutputViewer files={files} tab={tab} />;
 }
 
 /** The exact generated output: a PDF's rendered pages, an HTML document in
@@ -662,7 +678,7 @@ function FileView({ file }: { file: ShareFile }) {
   }, [pdf, file.data]);
   if (file.kind === "derived-test") return <p>Generated at export</p>;
   if (pdf) return url ? <iframe className="share-document" title={file.name} src={url} /> : null;
-  if (file.name.endsWith(".html") && file.text !== undefined) {
+  if (file.kind !== "message" && file.name.endsWith(".html") && file.text !== undefined) {
     return <iframe className="share-document" title={file.name} sandbox="" srcDoc={file.text} />;
   }
   if (file.text !== undefined) {
@@ -672,6 +688,7 @@ function FileView({ file }: { file: ShareFile }) {
       </pre>
     );
   }
+  if (file.data && file.kind === "message") return <pre className="share-text" aria-label={file.name}>{Array.from(atob(file.data), (byte) => byte.charCodeAt(0).toString(16).padStart(2, "0")).join(" ")}</pre>;
   return <ValueRows rows={[{ label: file.name, value: `${file.size} bytes` }]} />;
 }
 
@@ -738,12 +755,14 @@ function FormatSheet({
   open,
   format,
   paper,
+  connectedMode,
   onClose,
   onApply,
 }: {
   open: boolean;
   format: Format;
   paper: "letter" | "a4";
+  connectedMode: string | undefined;
   onClose: () => void;
   onApply: (format: Format, paper: "letter" | "a4") => void;
 }) {
@@ -752,20 +771,21 @@ function FormatSheet({
   useEffect(() => {
     if (open) {
       setChosen(format);
-      setPaper(paper);
+      setPaper(connectedMode ? "letter" : paper);
     }
-  }, [open, format, paper]);
+  }, [open, format, paper, connectedMode]);
   return (
     <FormDialog open={open} title="Format" size="small" submitLabel="Apply" onClose={onClose} onSubmit={() => onApply(chosen, sheetPaper)}>
       <fieldset className="checks">
         <legend>Format</legend>
         {(Object.keys(SHARE_FORMATS) as Format[]).map((key) => (
           <label key={key} className="check">
-            <input type="radio" name="share-format" checked={chosen === key} onChange={() => setChosen(key)} />
+            <input type="radio" name="share-format" checked={chosen === key} disabled={connectedMode === "value-free-extract" && key !== "json"} onChange={() => setChosen(key)} />
             {SHARE_FORMATS[key]}
           </label>
         ))}
       </fieldset>
+      {connectedMode === "value-free-extract" ? <p className="muted">This extract uses the sealed JSON folder.</p> : connectedMode ? <p className="muted">Connected PDF output supports Letter paper.</p> : null}
       {chosen === "pdf" ? (
         <fieldset className="checks">
           <legend>Paper</legend>
@@ -774,7 +794,7 @@ function FormatSheet({
             Letter
           </label>
           <label className="check">
-            <input type="radio" name="share-paper" checked={sheetPaper === "a4"} onChange={() => setPaper("a4")} />
+            <input type="radio" name="share-paper" checked={sheetPaper === "a4"} disabled={!!connectedMode} onChange={() => setPaper("a4")} />
             A4
           </label>
         </fieldset>

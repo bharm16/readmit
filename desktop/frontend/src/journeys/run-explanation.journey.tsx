@@ -109,8 +109,7 @@ async function saveCheckGroup(user: UserEvent, name: string, checks: Check[]): P
   if (!(await page().findAllByRole("button", { name: "New check group" }, { timeout: 3_000 }).catch(() => [])).length) {
     // Tests opens where it was left; pressed again, it lists the tests.
     await goTo(user, "Tests");
-    if (!(await page().findByRole("button", { name: "Library" }, { timeout: 3_000 }).catch(() => null))) await goTo(user, "Tests");
-    await press(user, await page().findByRole("button", { name: "Library" }));
+    await goTo(user,"Library");
     await press(user, await page().findByRole("tab", { name: "Checks" }));
   }
   await press(user, (await page().findAllByRole("button", { name: "New check group" }))[0]!);
