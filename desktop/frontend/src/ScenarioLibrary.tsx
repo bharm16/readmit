@@ -957,13 +957,13 @@ function SettingsSheet({ draft, generator, maxSeed, profiles, family, onClose, o
 function PreviewBody({ preview, busy, onClose }: { preview: ScenarioPlanPreviewResult; busy: boolean; onClose: () => void }) {
   const [selected, setSelected] = useState<number | null>(null);
   const [inspection, setInspection] = useState<InspectionResult | null>(null);
-  const [revealed, setRevealed] = useState(false);
+  const [revealed, setRevealed] = useState(true);
   // Only the answer to the newest request is shown.
   const asked = useRef(0);
   const inspect = async (message: number, path: string, nodeOffset: number, byteOffset: number, reveal: boolean) => {
     if (!preview.preview_id) return null;
     const request = ++asked.current;
-    const answer = await inspectScenarioPreview({ preview_id: preview.preview_id, message, path, node_offset: nodeOffset, byte_offset: byteOffset, reveal });
+    const answer = await inspectScenarioPreview({ preview_id: preview.preview_id, message, path, node_offset: nodeOffset, byte_offset: byteOffset, reveal:true,...(!reveal ? {mask_phi:true} : {}) });
     if (request === asked.current) setInspection(answer);
     return answer;
   };

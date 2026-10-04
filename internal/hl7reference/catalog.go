@@ -24,6 +24,7 @@ const SchemaV2 = "readmit-hl7-reference/v2"
 const SchemaV3 = "readmit-hl7-reference/v3"
 const SchemaV4 = "readmit-hl7-reference/v4"
 const SchemaV5 = "readmit-hl7-reference/v5"
+const SchemaV6 = "readmit-hl7-reference/v6"
 const LegacyMaxBytes = 16 << 20
 const MaxBytes = 32 << 20
 const MaxRecords = 20000
@@ -56,7 +57,17 @@ type Coverage struct {
 }
 
 // Record is an entity-specific answer, not a label borrowed from its parent.
+type TableMetadata struct {
+	TableOID          string `json:"table_oid,omitzero"`
+	CodeSystemOID     string `json:"code_system_oid,omitzero"`
+	ValueSetOID       string `json:"value_set_oid,omitzero"`
+	CodeSystemURL     string `json:"code_system_url,omitzero"`
+	CodeSystemVersion string `json:"code_system_version,omitzero"`
+	Origin            Origin `json:"origin"`
+}
+
 type Record struct {
+	TableMetadata     TableMetadata      `json:"table_metadata,omitzero"`
 	MessageCode       string             `json:"message_code,omitzero"`
 	Event             string             `json:"event,omitzero"`
 	Structures        []string           `json:"structures,omitzero"`
@@ -127,6 +138,7 @@ type Answer struct {
 }
 
 var contract = strictdoc.Document{MaxBytes: LegacyMaxBytes, Schema: Schema, Required: []string{"edition", "sources", "coverage", "records"}, Invalid: "invalid reference catalog JSON", TooLarge: "reference catalog exceeds 16 MiB", MustDeclare: "unsupported reference catalog contract", Requires: "reference catalog requires edition, sources, coverage and records"}
+var oidNotation = regexp.MustCompile(`^[0-2](?:\.[0-9]+)+$`)
 var code = regexp.MustCompile(`^[A-Z][A-Z0-9]{2}$`)
 var structureCode = regexp.MustCompile(`^[A-Z][A-Z0-9]{2}(?:_[A-Z0-9]{3})?$`)
 var datatypeCode = regexp.MustCompile(`^[A-Z][A-Z0-9]{1,7}(?:_[A-Z0-9]{1,16}){0,4}$`)
@@ -139,9 +151,9 @@ func Decode(raw []byte) (*Catalog, error) {
 	var header struct {
 		Schema string `json:"schema"`
 	}
-	if len(raw) <= MaxBytes && json.Unmarshal(raw, &header) == nil && (header.Schema == SchemaV2 || header.Schema == SchemaV3 || header.Schema == SchemaV4 || header.Schema == SchemaV5) {
+	if len(raw) <= MaxBytes && json.Unmarshal(raw, &header) == nil && (header.Schema == SchemaV2 || header.Schema == SchemaV3 || header.Schema == SchemaV4 || header.Schema == SchemaV5 || header.Schema == SchemaV6) {
 		reader.Schema = header.Schema
-		if header.Schema == SchemaV5 {
+		if schemaRank(header.Schema) >= 5 {
 			reader.MaxBytes = MaxBytes
 			reader.TooLarge = "reference catalog v5 exceeds 32 MiB"
 		}
@@ -165,7 +177,7 @@ func Decode(raw []byte) (*Catalog, error) {
 		if s.Role == "" || s.File == "" || len(s.File) > 256 || !digest.MatchString(s.SHA256) || s.Publisher == "" || len(s.Publisher) > 256 {
 			return nil, errors.New("invalid reference source provenance")
 		}
-		if d.Schema == SchemaV5 && (len(s.Role) > 64 || sourceRoles[s.Role]) {
+		if schemaRank(d.Schema) >= 5 && (len(s.Role) > 64 || sourceRoles[s.Role]) {
 			return nil, errors.New("v5 source roles must be bounded and distinct")
 		}
 		sourceRoles[s.Role] = true
@@ -264,7 +276,23 @@ func Decode(raw []byte) (*Catalog, error) {
 		if _, exists := records[key]; exists {
 			return nil, errors.New("duplicate reference entity")
 		}
-		if d.Schema == SchemaV5 {
+		if r.TableMetadata != (TableMetadata{}) {
+			if schemaRank(d.Schema) < 6 || r.Kind != "table" {
+				return nil, errors.New("table metadata requires a v6 table entity")
+			}
+			for _, oid := range []string{r.TableMetadata.TableOID, r.TableMetadata.CodeSystemOID, r.TableMetadata.ValueSetOID} {
+				if oid != "" && (len(oid) > 128 || !oidNotation.MatchString(oid)) {
+					return nil, errors.New("invalid table OID")
+				}
+			}
+			if len(r.TableMetadata.CodeSystemURL) > 512 || len(r.TableMetadata.CodeSystemVersion) > 128 {
+				return nil, errors.New("unbounded terminology metadata")
+			}
+			if !validOrigin(r.TableMetadata.Origin, sourceRoles) || r.TableMetadata.Origin.Source == "" {
+				return nil, errors.New("invalid terminology metadata source")
+			}
+		}
+		if schemaRank(d.Schema) >= 5 {
 			if err := validateRecordOrigins(r, sourceRoles); err != nil {
 				return nil, err
 			}

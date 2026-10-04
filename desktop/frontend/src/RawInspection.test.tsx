@@ -40,6 +40,23 @@ function handlers(extra: FacadeHandlers = {}): FacadeHandlers {
   };
 }
 
+test("reader navigation expands and collapses without rereading or duplicating the message heading", async () => {
+  const user=userEvent.setup();
+  const {facade}=await renderApp(handlers({ListFileMessages:request=>listing(1,request)}));
+  await openTool(user);
+  await screen.findByRole("region",{name:"Message details"});
+  const count=facade.callsTo("InspectFileMessage").length;
+  const expand=screen.getByRole("button",{name:"Expand navigation"});
+  expect(expand.getAttribute("aria-expanded")).toBe("false");
+  await user.click(expand);
+  expect(screen.getByRole("button",{name:"Collapse navigation"}).getAttribute("aria-expanded")).toBe("true");
+  expect(screen.getAllByRole("heading",{name:"Messages"})).toHaveLength(1);
+  expect(screen.getByRole("textbox",{name:"Search messages"})).toBeTruthy();
+  await user.click(screen.getByRole("button",{name:"Collapse navigation"}));
+  expect(screen.getByRole("button",{name:"Expand navigation"})).toBeTruthy();
+  expect(facade.callsTo("InspectFileMessage")).toHaveLength(count);
+});
+
 async function openTool(user: ReturnType<typeof userEvent.setup>) {
   await goTo(user, "Tools");
   await user.click(screen.getByRole("button", { name: "Inspect file" }));
@@ -66,7 +83,7 @@ test("the standalone file opens natively into the shared reader and a refused pa
     node_offset: 0,
     byte_offset: -1,
     raw_offset: -1,
-    reveal: false,
+    reveal: true,
   });
   const details = await screen.findByRole("region", { name: "Message details" });
   expect(within(details).queryByRole("tab", { name: "Fields" })).toBeNull();

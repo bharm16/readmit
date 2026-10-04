@@ -3,6 +3,154 @@
   "program": "bharm16/readmit#244",
   "rows": [
     {
+      "id": "tooling.tools.reference-terminology",
+      "source": "tools/reference_terminology.py",
+      "kind": "tooling",
+      "capability": "Acquire and normalize retained public HL7 reference sources for local development",
+      "owner": "bharm16/readmit#690",
+      "inputs": [],
+      "outputs": [],
+      "prerequisites": [],
+      "implemented": false,
+      "disposition": {
+        "kind": "developer-tooling",
+        "reason": "development-time reference acquisition and extraction only; does not authorize redistribution"
+      }
+    },
+    {
+      "id": "tooling.tools.reference-html",
+      "source": "tools/reference_html.py",
+      "kind": "tooling",
+      "capability": "Acquire and normalize retained public HL7 reference sources for local development",
+      "owner": "bharm16/readmit#690",
+      "inputs": [],
+      "outputs": [],
+      "prerequisites": [],
+      "implemented": false,
+      "disposition": {
+        "kind": "developer-tooling",
+        "reason": "development-time reference acquisition and extraction only; does not authorize redistribution"
+      }
+    },
+    {
+      "id": "tooling.tools.reference-fetch",
+      "source": "tools/reference_fetch.py",
+      "kind": "tooling",
+      "capability": "Acquire and normalize retained public HL7 reference sources for local development",
+      "owner": "bharm16/readmit#690",
+      "inputs": [],
+      "outputs": [],
+      "prerequisites": [],
+      "implemented": false,
+      "disposition": {
+        "kind": "developer-tooling",
+        "reason": "development-time reference acquisition and extraction only; does not authorize redistribution"
+      }
+    },
+    {
+      "id": "desktop.InstallReferenceCatalog",
+      "source": "desktop.App.InstallReferenceCatalog",
+      "kind": "desktop",
+      "capability": "Install and read the private exact-edition HL7 reference library",
+      "owner": "bharm16/readmit#690",
+      "screen": "HL7 reference library",
+      "action": "install one selected edition",
+      "backend": {
+        "package": "internal/desktop",
+        "name": "App.InstallReferenceCatalog"
+      },
+      "inputs": [
+        "readmit-hl7-reference/v1",
+        "readmit-hl7-reference/v2",
+        "readmit-hl7-reference/v3",
+        "readmit-hl7-reference/v4",
+        "readmit-hl7-reference/v5",
+        "readmit-hl7-reference/v6",
+        "readmit-hl7-reference-library/v1"
+      ],
+      "outputs": [
+        "readmit-hl7-reference-library/v1"
+      ],
+      "prerequisites": [],
+      "implemented": true,
+      "gui_test": {
+        "file": "desktop/frontend/src/ReferenceLibrary.test.tsx",
+        "name": "a selected catalog is installed through its native picker before exact-edition selection"
+      },
+      "parity_test": {
+        "package": "internal/desktop",
+        "name": "TestReferenceLibraryRefusesChangedCatalogAndFailedImportKeepsPreviousSelection"
+      }
+    },
+    {
+      "id": "desktop.InstallReferenceLibrary",
+      "source": "desktop.App.InstallReferenceLibrary",
+      "kind": "desktop",
+      "capability": "Install and read the private exact-edition HL7 reference library",
+      "owner": "bharm16/readmit#690",
+      "screen": "HL7 reference library",
+      "action": "install all selected catalog editions",
+      "backend": {
+        "package": "internal/desktop",
+        "name": "App.InstallReferenceLibrary"
+      },
+      "inputs": [
+        "readmit-hl7-reference/v1",
+        "readmit-hl7-reference/v2",
+        "readmit-hl7-reference/v3",
+        "readmit-hl7-reference/v4",
+        "readmit-hl7-reference/v5",
+        "readmit-hl7-reference/v6",
+        "readmit-hl7-reference-library/v1"
+      ],
+      "outputs": [
+        "readmit-hl7-reference-library/v1"
+      ],
+      "prerequisites": [],
+      "implemented": true,
+      "gui_test": {
+        "file": "desktop/frontend/src/journeys/reference-library.journey.tsx",
+        "name": "installing every reference edition makes exact message selection automatic and persists across restart"
+      },
+      "parity_test": {
+        "package": "internal/desktop",
+        "name": "TestInstalledReferenceLibrarySelectsEveryExactMessageEditionAfterReopen"
+      }
+    },
+    {
+      "id": "desktop.ReadReferenceLibrary",
+      "source": "desktop.App.ReadReferenceLibrary",
+      "kind": "desktop",
+      "capability": "Install and read the private exact-edition HL7 reference library",
+      "owner": "bharm16/readmit#690",
+      "screen": "HL7 reference library",
+      "action": "read installed editions",
+      "backend": {
+        "package": "internal/desktop",
+        "name": "App.ReadReferenceLibrary"
+      },
+      "inputs": [
+        "readmit-hl7-reference/v1",
+        "readmit-hl7-reference/v2",
+        "readmit-hl7-reference/v3",
+        "readmit-hl7-reference/v4",
+        "readmit-hl7-reference/v5",
+        "readmit-hl7-reference/v6",
+        "readmit-hl7-reference-library/v1"
+      ],
+      "outputs": [],
+      "prerequisites": [],
+      "implemented": true,
+      "gui_test": {
+        "file": "desktop/frontend/src/journeys/reference-library.journey.tsx",
+        "name": "installing every reference edition makes exact message selection automatic and persists across restart"
+      },
+      "parity_test": {
+        "package": "internal/desktop",
+        "name": "TestReferenceLibraryRefusesChangedCatalogAndFailedImportKeepsPreviousSelection"
+      }
+    },
+    {
       "id": "desktop.ReadContextEditorDraft",
       "source": "desktop.App.ReadContextEditorDraft",
       "kind": "desktop",
@@ -805,7 +953,7 @@
       "implemented": true,
       "gui_test": {
         "file": "desktop/frontend/src/journeys/workspace-resume.journey.tsx",
-        "name": "reopening restores the retained source, saved view and field selection without reveal, consent or external effects"
+        "name": "reopening restores the retained source, saved view and field selection with default-visible parser values but no consent or external effects"
       },
       "parity_test": {
         "package": "internal/desktop",
@@ -860,7 +1008,8 @@
         "readmit-hl7-reference/v2",
         "readmit-hl7-reference/v3",
         "readmit-hl7-reference/v4",
-        "readmit-hl7-reference/v5"
+        "readmit-hl7-reference/v5",
+        "readmit-hl7-reference/v6"
       ],
       "outputs": [],
       "prerequisites": [],

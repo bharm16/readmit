@@ -350,6 +350,36 @@ test("Open retained data reads a cancelled capture's messages without publishing
   }
 });
 
+test("a retained FHIR capture keeps its first inspection hidden until explicit reveal", async () => {
+  const user = userEvent.setup();
+  const kept = "/workspace-under-test/.readmit/captures/0123456789abcdef01234567";
+  const { facade, onOpenCase } = renderCapture({
+    ListCaptureSessions: (context) => ({ state: "completed", context, sessions: [session({ state: "cancelled", retained: true })] }),
+    OpenRetainedCapture: (request) => ({
+      state: "completed",
+      context: request.context,
+      session: request.session,
+      workspace: kept,
+      case: { ...caseResult("case").case!, identity: "kept-identity",protocol:"fhir-r4" },
+    }),
+    InspectOccurrence:()=>({state:"failed",reason:"Owned preview refusal"}),
+    ReadMessages: () => messagesResult([messageRow("s0001-e000001")]),
+  });
+  const history = await capturePage().findByRole("table", { name: "Capture history" });
+  await user.click(await within(history).findByRole("button", { name: "More actions for Morning capture" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Open retained data" }));
+  const table = await capturePage().findByRole("table", { name: "Kept messages" });
+  expect(within(table).getAllByRole("row")).toHaveLength(2);
+  expect(facade.callsTo("OpenRetainedCapture")[0]!.args[0]).toEqual({ context: CONTEXT, session: "0123456789abcdef01234567" });
+  expect(facade.callsTo("ReadMessages")[0]!.args[0]).toMatchObject({ workspace: kept, case: "case", identity: "kept-identity" });
+  await user.click(table.querySelector<HTMLElement>('tbody tr[data-row-id]')!);
+  await waitFor(()=>expect(facade.callsTo("InspectOccurrence")[0]?.args[0]).toMatchObject({reveal:false}));
+  expect(onOpenCase).not.toHaveBeenCalled();
+  for (const publishing of ["RetryCaptureFinalization", "ImportCase", "StartCapture", "SaveItem"] as const) {
+    expect(facade.callsTo(publishing)).toHaveLength(0);
+  }
+});
+
 test("a responder fault is saved as choices for this listener only", async () => {
   const user = userEvent.setup();
   const { facade } = renderCapture({

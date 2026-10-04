@@ -464,6 +464,7 @@ type ImportInspectRequest struct {
 	NodeOffset   int            `json:"node_offset"`
 	ByteOffset   int            `json:"byte_offset"`
 	Reveal       bool           `json:"reveal"`
+	MaskPHI      bool           `json:"mask_phi,omitzero"`
 }
 
 // InspectImportPreview reads one preview row through the same inspector a
@@ -498,7 +499,7 @@ func (a *App) InspectImportPreview(request ImportInspectRequest) InspectionResul
 			} else if request.Row != 0 {
 				return InspectionResult{State: Failed, Reason: "the preview holds no such request"}
 			}
-			return inspectFHIR(ctx, read.token, occurrence, *source.FHIR, read.fhirRaw, read.fhir, inspectorWindow{Path: request.Path, NodeOffset: request.NodeOffset, ByteOffset: request.ByteOffset, RawOffset: -1, Reveal: request.Reveal})
+			return inspectFHIR(ctx, read.token, occurrence, *source.FHIR, read.fhirRaw, read.fhir, inspectorWindow{Path: request.Path, NodeOffset: request.NodeOffset, ByteOffset: request.ByteOffset, RawOffset: -1, Reveal: request.Reveal, MaskPHI: request.MaskPHI})
 		}
 		index := 0
 		for _, unit := range read.units() {
@@ -514,8 +515,8 @@ func (a *App) InspectImportPreview(request ImportInspectRequest) InspectionResul
 			if unit.doc != nil {
 				message = request.Row - index
 			}
-			view, reason := inspectDocument(unit.data, unit.doc, message, inspectorWindow{
-				Path: request.Path, NodeOffset: request.NodeOffset, ByteOffset: request.ByteOffset, Reveal: request.Reveal,
+			view, reason := a.inspectDocument(unit.data, unit.doc, message, inspectorWindow{
+				Path: request.Path, NodeOffset: request.NodeOffset, ByteOffset: request.ByteOffset, Reveal: request.Reveal, MaskPHI: request.MaskPHI,
 			})
 			if view == nil {
 				return InspectionResult{State: Failed, Reason: reason}

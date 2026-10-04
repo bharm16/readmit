@@ -109,6 +109,9 @@ test("R4 Bundle import retains bytes, typed multiplicity and passive reader cont
   expect(journey.digest("exports/synthetic-r4.json")).toBe(before);
   await journey.close();
   await journey.launch();
+  await journey.settled();
+  const restoredFHIR=journey.callsTo("InspectOccurrence").at(-1);
+  if(restoredFHIR) expect(restoredFHIR.args[0]).toMatchObject({reveal:false});
   const projects = await screen.findByRole("table", { name: "Projects" });
   const project = await within(projects).findByRole("row", { name: "Scheduling interface" });
   await journey.settled();

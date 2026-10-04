@@ -417,11 +417,11 @@ export function RetainedEvidence({ name, resultLabel, reason, load, onClose }: {
     };
   }, [load]);
   const reads = useRef(0);
-  const inspect = async (occurrence: string, path = "", nodeOffset = 0, byteOffset = -1, reveal = reading?.inspection?.revealed ?? false) => {
+  const inspect = async (occurrence: string, path = "", nodeOffset = 0, byteOffset = -1, reveal = opened?.case?.protocol === "fhir-r4" ? reading?.inspection?.revealed ?? false : !(reading?.inspection?.phi_masked ?? false)) => {
     if (!opened?.case || !opened.workspace) return null;
     const asked = ++reads.current;
     setLoading(true);
-    const answer = await inspectOccurrence({ workspace: opened.workspace, case: opened.case.name, identity: opened.case.identity, occurrence, path, node_offset: nodeOffset, byte_offset: byteOffset, raw_offset: 0, reveal });
+    const answer = await inspectOccurrence({ workspace: opened.workspace, case: opened.case.name, identity: opened.case.identity, occurrence, path, node_offset: nodeOffset, byte_offset: byteOffset, raw_offset: 0, reveal:opened.case.protocol === "fhir-r4" ? reveal : true,...(!reveal && opened.case.protocol !== "fhir-r4" ? {mask_phi:true} : {}) });
     if (asked !== reads.current) return null;
     setLoading(false);
     setReading(answer);

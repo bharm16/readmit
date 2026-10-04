@@ -189,6 +189,7 @@ type ScenarioPreviewInspectRequest struct {
 	NodeOffset int    `json:"node_offset"`
 	ByteOffset int    `json:"byte_offset"`
 	Reveal     bool   `json:"reveal"`
+	MaskPHI    bool   `json:"mask_phi,omitzero"`
 }
 
 // InspectScenarioPreview reads one message of a preview this process holds.
@@ -207,8 +208,8 @@ func (a *App) InspectScenarioPreview(request ScenarioPreviewInspectRequest) Insp
 			return InspectionResult{State: Failed, Reason: "the selected message is not one this preview holds"}
 		}
 		place := held.at[request.Message]
-		view, reason := inspectDocument(held.streams[place[0]], held.parsed[place[0]], place[1], inspectorWindow{
-			Path: request.Path, NodeOffset: request.NodeOffset, ByteOffset: request.ByteOffset, Reveal: request.Reveal})
+		view, reason := a.inspectDocument(held.streams[place[0]], held.parsed[place[0]], place[1], inspectorWindow{
+			Path: request.Path, NodeOffset: request.NodeOffset, ByteOffset: request.ByteOffset, Reveal: request.Reveal, MaskPHI: request.MaskPHI})
 		if view == nil {
 			return InspectionResult{State: Failed, Reason: reason}
 		}

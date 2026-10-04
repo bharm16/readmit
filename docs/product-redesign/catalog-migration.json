@@ -8918,12 +8918,12 @@
       "covered_state": "ready",
       "test": {
         "file": "desktop/frontend/src/inspector-grid.test.tsx",
-        "test": "values stay hidden until Show values, and Empty, Null and Not present stay distinct"
+        "test": "PHI masking retains Empty, Null and Not present while hiding present field content"
       },
       "tests": [
         {
           "file": "desktop/frontend/src/inspector-grid.test.tsx",
-          "test": "values stay hidden until Show values, and Empty, Null and Not present stay distinct"
+          "test": "PHI masking retains Empty, Null and Not present while hiding present field content"
         },
         {
           "file": "desktop/frontend/src/inspector-grid.test.tsx",
@@ -9033,12 +9033,12 @@
       "covered_state": "ready",
       "test": {
         "file": "desktop/frontend/src/inspector-grid.test.tsx",
-        "test": "values stay hidden until Show values, and Empty, Null and Not present stay distinct"
+        "test": "PHI masking retains Empty, Null and Not present while hiding present field content"
       },
       "tests": [
         {
           "file": "desktop/frontend/src/inspector-grid.test.tsx",
-          "test": "values stay hidden until Show values, and Empty, Null and Not present stay distinct"
+          "test": "PHI masking retains Empty, Null and Not present while hiding present field content"
         },
         {
           "file": "desktop/frontend/src/inspector-grid.test.tsx",
@@ -9090,12 +9090,12 @@
       "covered_state": "ready",
       "test": {
         "file": "desktop/frontend/src/inspector-grid.test.tsx",
-        "test": "values stay hidden until Show values, and Empty, Null and Not present stay distinct"
+        "test": "PHI masking retains Empty, Null and Not present while hiding present field content"
       },
       "tests": [
         {
           "file": "desktop/frontend/src/inspector-grid.test.tsx",
-          "test": "values stay hidden until Show values, and Empty, Null and Not present stay distinct"
+          "test": "PHI masking retains Empty, Null and Not present while hiding present field content"
         },
         {
           "file": "desktop/frontend/src/inspector-grid.test.tsx",
@@ -12531,12 +12531,12 @@
       "covered_state": "ready",
       "test": {
         "file": "desktop/frontend/src/inspector-grid.test.tsx",
-        "test": "values stay hidden until Show values, and Empty, Null and Not present stay distinct"
+        "test": "PHI masking retains Empty, Null and Not present while hiding present field content"
       },
       "tests": [
         {
           "file": "desktop/frontend/src/inspector-grid.test.tsx",
-          "test": "values stay hidden until Show values, and Empty, Null and Not present stay distinct"
+          "test": "PHI masking retains Empty, Null and Not present while hiding present field content"
         },
         {
           "file": "desktop/frontend/src/inspector-grid.test.tsx",
@@ -12591,12 +12591,12 @@
       "covered_state": "ready",
       "test": {
         "file": "desktop/frontend/src/inspector-grid.test.tsx",
-        "test": "values stay hidden until Show values, and Empty, Null and Not present stay distinct"
+        "test": "PHI masking retains Empty, Null and Not present while hiding present field content"
       },
       "tests": [
         {
           "file": "desktop/frontend/src/inspector-grid.test.tsx",
-          "test": "values stay hidden until Show values, and Empty, Null and Not present stay distinct"
+          "test": "PHI masking retains Empty, Null and Not present while hiding present field content"
         },
         {
           "file": "desktop/frontend/src/inspector-grid.test.tsx",
@@ -12796,12 +12796,12 @@
       "covered_state": "ready",
       "test": {
         "file": "desktop/frontend/src/inspector-grid.test.tsx",
-        "test": "values stay hidden until Show values, and Empty, Null and Not present stay distinct"
+        "test": "PHI masking retains Empty, Null and Not present while hiding present field content"
       },
       "tests": [
         {
           "file": "desktop/frontend/src/inspector-grid.test.tsx",
-          "test": "values stay hidden until Show values, and Empty, Null and Not present stay distinct"
+          "test": "PHI masking retains Empty, Null and Not present while hiding present field content"
         },
         {
           "file": "desktop/frontend/src/inspector-grid.test.tsx",
@@ -28201,12 +28201,12 @@
       "covered_state": "ready",
       "test": {
         "file": "desktop/frontend/src/inspector-grid.test.tsx",
-        "test": "values stay hidden until Show values, and Empty, Null and Not present stay distinct"
+        "test": "PHI masking retains Empty, Null and Not present while hiding present field content"
       },
       "tests": [
         {
           "file": "desktop/frontend/src/inspector-grid.test.tsx",
-          "test": "values stay hidden until Show values, and Empty, Null and Not present stay distinct"
+          "test": "PHI masking retains Empty, Null and Not present while hiding present field content"
         },
         {
           "file": "desktop/frontend/src/inspector-grid.test.tsx",

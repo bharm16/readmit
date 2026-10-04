@@ -309,7 +309,7 @@ test("Filter by this field opens Filter with the selected field's rule, and appl
 
 /** A reader over one inspection, answering Show values with the revealed read. */
 function Reader({ hidden, shown, onFilter }: { hidden: InspectionResult; shown: InspectionResult; onFilter?: (seed: FilterSeed) => void }) {
-  const [result, setResult] = useState(hidden);
+  const [result, setResult] = useState(shown);
   return (
     <MessageReader
       result={result}
@@ -331,11 +331,11 @@ const fieldNode = (path: string, state: "present" | "empty" | "null" | "omitted"
   truncated: false,
 });
 
-test("values stay hidden until Show values, and Empty, Null and Not present stay distinct", async () => {
+test("PHI masking retains Empty, Null and Not present while hiding present field content", async () => {
   const user = userEvent.setup();
   const selected = { path: "SCH[1]", kind: "segment", parent: "", segment: "SCH", field: 0, state: "present" as const, start: 0, end: 60 };
   const children = [fieldNode("SCH[1]-11", "present"), fieldNode("SCH[1]-12", "empty"), fieldNode("SCH[1]-13", "null"), fieldNode("SCH[1]-14", "omitted")];
-  const hidden = inspectionResult(GRID_OCCURRENCE, { selected, children, child_count: 4 });
+  const hidden = inspectionResult(GRID_OCCURRENCE, { selected, revealed:true,phi_masked:true, children:children.map((child,index)=>index===0?{...child,value:"**************"}:child), child_count: 4 });
   const shown = inspectionResult(GRID_OCCURRENCE, {
     selected,
     revealed: true,
@@ -345,29 +345,28 @@ test("values stay hidden until Show values, and Empty, Null and Not present stay
   render(<Reader hidden={hidden} shown={shown} />);
   expect(screen.getByRole("heading", { name: "SIU · S12" })).toBeTruthy();
   const outline = () => within(screen.getByRole("list", { name: "Parts of SCH[1]" })).getAllByRole("button").map((row) => row.querySelector(".outline-value")?.textContent);
-  expect(outline()).toEqual(["Hidden", "Empty", "Null", "Not present"]);
-  expect(screen.getByText("May contain patient data.")).toBeTruthy();
-  await user.click(screen.getByRole("button", { name: "Show values" }));
   expect(outline()).toEqual(["20260101120000", "Empty", "Null", "Not present"]);
-  expect(screen.getByRole("button", { name: "Hide values" })).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Enable PHI masking" }));
+  expect(outline()).toEqual(["**************", "Empty", "Null", "Not present"]);
+  expect(screen.getByRole("button", { name: "Disable PHI masking" })).toBeTruthy();
 });
 
 test("Copy value exists only for a revealed selected field, and Filter by this field sends its selector", async () => {
   const user = userEvent.setup();
   const selected = { path: "SCH[1]-11", kind: "field", parent: "SCH[1]", segment: "SCH", field: 11, state: "present" as const, start: 10, end: 24 };
   const base = { selected, selector: "SCH[1]-11[1]", metadata: { label: "Appointment timing", status: "", hl7_version: "2.5.1", contract: "", provenance: "" } };
-  const hidden = inspectionResult(GRID_OCCURRENCE, base);
+  const hidden = inspectionResult(GRID_OCCURRENCE, {...base,revealed:true,phi_masked:true,raw:"***",decoded:"***"});
   const shown = inspectionResult(GRID_OCCURRENCE, { ...base, revealed: true, decoded: "20260101120000", raw: "20260101120000" });
   const seeds: FilterSeed[] = [];
   render(<Reader hidden={hidden} shown={shown} onFilter={(seed) => seeds.push(seed)} />);
-  expect(screen.queryByRole("button", { name: "Copy value" })).toBeNull();
+  expect(screen.getByRole("button", { name: "Copy value" })).toBeTruthy();
   await user.click(screen.getByRole("button", { name: "Filter by this field" }));
-  await user.click(screen.getByRole("button", { name: "Show values" }));
+  await user.click(screen.getByRole("button", { name: "Enable PHI masking" }));
   expect(screen.getByRole("button", { name: "Copy value" })).toBeTruthy();
   await user.click(screen.getByRole("button", { name: "Filter by this field" }));
   expect(seeds).toEqual([
-    { selector: "SCH[1]-11[1]", value: null, state: "present" },
     { selector: "SCH[1]-11[1]", value: "20260101120000", state: "present" },
+    { selector: "SCH[1]-11[1]", value: "***", state: "present" },
   ]);
 });
 
@@ -385,7 +384,7 @@ test("selecting a message reads it through the shared reader bound to the displa
     node_offset: 0,
     byte_offset: -1,
     raw_offset: -1,
-    reveal: false,
+    reveal: true,
   });
   const details = await screen.findByRole("region", { name: "Message details" });
   expect(within(details).getByRole("heading", { name: "SIU · S12" })).toBeTruthy();
@@ -549,7 +548,7 @@ test("Raw shows the whole message with the selected field marked, a window at a 
   const hidden = inspectionResult(GRID_OCCURRENCE, { selected, direction: "outbound" });
   const pages: number[] = [];
   function Paged() {
-    const [result, setResult] = useState(hidden);
+    const [result, setResult] = useState(inspectionResult(GRID_OCCURRENCE,{selected,direction:"outbound",revealed:true,raw_window:window(0)}));
     return (
       <MessageReader
         result={result}
@@ -569,8 +568,6 @@ test("Raw shows the whole message with the selected field marked, a window at a 
   expect(screen.getByText(/Outbound/)).toBeTruthy();
   await user.click(screen.getByRole("button", { name: "More message actions" }));
   await user.click(screen.getByRole("menuitem", { name: "Raw" }));
-  expect(within(screen.getByRole("tabpanel",{name:"Raw"})).getByText("Hidden")).toBeTruthy();
-  await user.click(screen.getByRole("button", { name: "Show values" }));
   expect(screen.getByText("FIELD").tagName).toBe("MARK");
   expect(screen.getByText("1–4096 of 9000 bytes")).toBeTruthy();
   await user.click(screen.getByRole("button", { name: "Next raw text" }));

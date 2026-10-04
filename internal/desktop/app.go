@@ -274,15 +274,16 @@ type NamedDestinationChooser interface {
 // one arriving during another action reports Busy. A finished operation always
 // releases the slot, including after failure or cancellation.
 type App struct {
-	fieldValues     fieldValueSnapshots
-	operationMu     sync.Mutex
-	operationGuard  *operationguard.Guard
-	operationPolicy string
+	referenceLibraryMu sync.Mutex
+	fieldValues        fieldValueSnapshots
+	operationMu        sync.Mutex
+	operationGuard     *operationguard.Guard
+	operationPolicy    string
 	// operationRestoreRefusal remains visible until a policy is chosen again.
 	operationRestoreRefusal string
 	chooser                 FolderChooser
 
-	// documents is the shell document store: the folder the shell's eleven
+	// documents is the shell document store: the folder the shell's thirteen
 	// local documents live in, the names they are kept under, and the one
 	// rule they are read and replaced by.
 	documents ShellDocuments
@@ -463,7 +464,7 @@ type App struct {
 }
 
 // New binds the facade to a host folder dialog and the shell document store
-// over the folder given, where the shell keeps its eleven local documents.
+// over the folder given, where the shell keeps its thirteen local documents.
 // NewWithOperationSelection restores the three remembered selections from the
 // same store. None holds evidence.
 func New(chooser FolderChooser, documents ShellDocuments) *App {

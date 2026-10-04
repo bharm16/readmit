@@ -173,6 +173,7 @@ test("Choose files, folder and ZIP name each input, and a cancelled picker keeps
 test("FHIR import declares R4 source semantics before preview and passes the same declaration to Import", async () => {
   const user = userEvent.setup();
   const { facade } = renderFlow({ ProbeImport: probing([CSV, TEXT]), PreviewImport: () => ({ state: "completed", mode: "fhir-r4", preview_token: "r4-preview", row_total: 2, rows: [{ index: 0, time: null, type: "Bundle", source: "synthetic-r4", direction: "unknown", kind: "resource", member: "synthetic-r4" }, { index: 1, time: null, type: "Patient", source: "synthetic-r4", direction: "unknown", kind: "resource", member: "synthetic-r4" }] }),
+    InspectImportPreview:()=>({state:"failed",reason:"Owned preview refusal"}),
     ImportCase: (request) => ({ state: "completed", context: request.context, case: CASE_REF, entry: "managed-r4", replayed: false }),
   });
   await chooseFiles(user, facade, ["/exports/synthetic-r4.json"]);
@@ -185,6 +186,8 @@ test("FHIR import declares R4 source semantics before preview and passes the sam
   await user.click(flow().getByRole("button", { name: "Next" }));
   await flow().findByRole("table", { name: "Preview" });
   expect(facade.oneCall("PreviewImport")[0]).toMatchObject({ mode: "fhir-r4", fhir: { source_kind: "bundle", context: { version: "4.0.1", media_type: "application/fhir+json", base: "" } } });
+  await user.click(flow().getByRole("table",{name:"Preview"}).querySelector<HTMLElement>('[data-row-id="0"]')!);
+  await waitFor(()=>expect(facade.callsTo("InspectImportPreview")[0]?.args[0]).toMatchObject({reveal:false}));
   await user.click(flow().getByRole("button", { name: "Import" }));
   await waitFor(() => expect(facade.callsTo("ImportCase")).toHaveLength(1));
   const previewed = facade.oneCall("PreviewImport")[0];

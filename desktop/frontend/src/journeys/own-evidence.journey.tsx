@@ -70,7 +70,6 @@ test("a person's own export becomes a registered, searchable case in a new proje
   const [booked, moved] = Array.from(table.querySelectorAll("tr[data-row-id]"), (row) => row.getAttribute("data-row-id") ?? "");
   const occurrence = await selectMessage(user, moved!);
   await press(user, await occurrence.findByRole("tab", { name: "Raw" }));
-  await press(user, occurrence.getByRole("button", { name: "Show values" }));
   await waitFor(() => expect(occurrence.getByRole("tabpanel").textContent).toContain(escaped(EXPORTED_RESCHEDULE)));
   const window = (journey.callsTo("InspectOccurrence").at(-1)?.result as { inspection?: { raw_window?: { message_start: number; message_end: number } } }).inspection?.raw_window;
   expect(window && window.message_end - window.message_start).toBe(EXPORTED_RESCHEDULE.length);

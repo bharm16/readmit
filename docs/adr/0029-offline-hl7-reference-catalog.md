@@ -211,3 +211,36 @@ incompatible even when MSH-12 is omitted. Unknown source edition/family does not
 expose applicable field constraints or fill a declaration from the profile.
 Profile/pack byte-identity verification remains separate from applicability and
 from any evaluator result.
+
+
+## Installed reference library (amended 2026-10-04)
+
+A person may install one catalog or a `readmit-hl7-reference-library/v1` folder
+manifest. The shell validates every regular catalog, retains its exact bytes
+under its content hash, and atomically records edition/path/hash selections in
+`reference-library.json`. A failed batch never replaces the active selection.
+Unreferenced staged catalog files carry no authority.
+
+After this explicit installation, inspection automatically selects the catalog
+for the exact received MSH-12 edition. No catalog for a nearby edition is used.
+An explicit reference override remains separate from the message declaration;
+returning to message version clears that override. Every lookup still verifies
+the retained catalog hash. Library selections survive restart and reveal consent
+does not. This supports reference browsing for 2.1, 2.2, 2.3, 2.3.1, 2.4, 2.5,
+2.5.1, 2.6, 2.7, 2.7.1, 2.8, 2.8.1, 2.8.2 and 2.9, independently of evaluator
+qualification.
+
+The local setup tools may read retained HL7 Europe chapter/database renderings
+for reference editions outside ADR-0026's supplied-archive cohort. Actual HTML
+cells and source headings decide fields, components and lexical code values;
+missing columns, chapters, structures and definitions remain unavailable.
+Acquisition follows published links, records exact content hashes, and never
+runs in the desktop. Source receipts name legacy filename repairs and unavailable
+chapters. This does not change the sources or support claims of validation packs.
+Exact chapter text and resulting libraries remain local while #627 is open.
+
+Catalog v6 adds optional table OIDs, code-system/value-set identifiers, canonical
+URL and code-system version with a separate declared source origin. The pinned
+HL7 Terminology publication enriches identifiers only. Its current concepts never
+replace the selected edition's codes or field definitions. V1–v5 reject these
+new members by presence; v6 retains v5's 32 MiB bound and attribute origins.

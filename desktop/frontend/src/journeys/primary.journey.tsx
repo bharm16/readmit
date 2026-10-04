@@ -60,7 +60,6 @@ test.each([false, true])("a new project completes import, duplicate regression, 
   // 3. A field of the reschedule, filtered by: the filter is transient.
   const reschedule = table.querySelectorAll("tr[data-row-id]")[1]!.getAttribute("data-row-id")!;
   const reader = await selectMessage(user, reschedule);
-  await press(user, reader.getByRole("button", { name: "Show values" }));
   await press(user, await reader.findByRole("button", { name: /^MSH/ }));
   await press(user, await reader.findByRole("button", { name: /MSH\[1\]-9/ }));
   await press(user, await reader.findByRole("button", { name: "Filter by this field" }));

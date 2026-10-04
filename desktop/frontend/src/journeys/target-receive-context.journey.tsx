@@ -16,11 +16,11 @@ test("target and receive setup return to the same reader, connection checks send
  await press(user,table.querySelector<HTMLElement>('tbody tr[data-row-id]:nth-child(2)')!);
  await press(user,details().getByRole("button",{name:"More message actions"}));await press(user,screen.getByRole("menuitem",{name:"Go to field…"}));
  const field=within(await screen.findByRole("dialog",{name:"Go to field"}));await enter(user,field.getByLabelText("Field path"),"MSH-9.2");await press(user,field.getByRole("button",{name:"Go"}));await details().findAllByText("MSH[1]-9[1].2");
- await press(user,page().getByRole("button",{name:"Configure target"}));
+ await press(user,page().getByRole("button",{name:"More case actions"}));await press(user,screen.getByRole("menuitem",{name:"Configure target"}));
  const target=within(await screen.findByRole("dialog",{name:"Add environment"}));
  await enter(user,await target.findByLabelText("Name"),"Connection-only target");const [host,port]=downstream.address.split(":");await enter(user,target.getByLabelText("Host"),host!);await enter(user,target.getByLabelText("Port"),port!);await user.selectOptions(target.getByLabelText("Classification"),"nonproduction");await press(user,target.getByRole("radio",{name:"TCP/MLLP"}));await press(user,target.getByRole("button",{name:"Save"}));
- await page().findByRole("heading",{name:"Configuration evidence"});await details().findAllByText("MSH[1]-9[1].2");
- await press(user,page().getByRole("button",{name:"Receive setup"}));
+ await page().findByRole("button",{name:"Details for Configuration evidence"});await details().findAllByText("MSH[1]-9[1].2");
+ await press(user,page().getByRole("button",{name:"More case actions"}));await press(user,screen.getByRole("menuitem",{name:"Receive setup"}));
  const configurations=within(await screen.findByRole("dialog",{name:"Receive configurations"}));await press(user,configurations.getByRole("button",{name:"New receive configuration"}));
  const receive=within(await screen.findByRole("dialog",{name:"Receive setup"}));await enter(user,receive.getByLabelText("Name"),"Bounded receiving source");await enter(user,receive.getByLabelText("Message limit"),"100");await enter(user,receive.getByLabelText("Idle timeout"),"5m");await press(user,receive.getByRole("button",{name:"Save"}));
  await waitFor(()=>expect(screen.queryByRole("dialog",{name:"Receive setup"})).toBeNull());await details().findAllByText("MSH[1]-9[1].2");expect(journey.callsTo("StartCapture")).toHaveLength(0);
@@ -31,7 +31,7 @@ test("target and receive setup return to the same reader, connection checks send
  await press(user,await page().findByRole("button",{name:"Test connection"}));const check=within(await screen.findByRole("dialog",{name:"Test connection"}));await press(user,check.getByRole("button",{name:"Test connection"}));
  await waitFor(()=>expect(journey.callsTo("CheckEnvironment").at(-1)?.settled).toBe(true));expect(downstream.received()).toHaveLength(0);
  await page().findAllByText(/Reachable/);
- await press(user,within(page().getByRole("region",{name:"Connection"})).getByRole("button",{name:"Edit"}));
+ await press(user,within(page().getByRole("region",{name:"Connection"}).querySelector("header")!).getByRole("button",{name:"Edit"}));
  const edited=within(await screen.findByRole("dialog",{name:/^Edit connection/}));await enter(user,await edited.findByLabelText("Port"),"65531");await press(user,edited.getByRole("button",{name:"Save"}));
  await page().findAllByText(/before the last edit/);expect(downstream.received()).toHaveLength(0);
  expect(journey.callsTo("ExecuteReviewedAction")).toHaveLength(0);

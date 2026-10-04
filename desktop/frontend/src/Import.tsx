@@ -405,12 +405,12 @@ export function ImportFlow({ open, root, context, drafts, busy: windowBusy, onCl
     if (open && step === "preview") void runPreview();
   }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const readRow = async (row: number, path = "", nodeOffset = 0, byteOffset = -1, reveal = reading?.inspection?.revealed ?? false) => {
+  const readRow = async (row: number, path = "", nodeOffset = 0, byteOffset = -1, reveal = format?.kind === "fhir" ? reading?.inspection?.revealed ?? false : !(reading?.inspection?.phi_masked ?? false)) => {
     const req = request();
     if (!req || !preview?.preview_token) return null;
     const asked = ++reads.current;
     setReadingBusy(true);
-    const answer = await inspectImportPreview({ context: context(), source: req, preview_token: preview.preview_token, row, path, node_offset: nodeOffset, byte_offset: byteOffset, reveal });
+    const answer = await inspectImportPreview({ context: context(), source: req, preview_token: preview.preview_token, row, path, node_offset: nodeOffset, byte_offset: byteOffset, reveal: format?.kind === "fhir" ? reveal : true, ...(!reveal && format?.kind !== "fhir" ? {mask_phi:true} : {}) });
     // Only the latest read describes the row on screen.
     if (asked !== reads.current) return null;
     setReadingBusy(false);

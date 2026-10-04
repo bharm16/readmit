@@ -1,7 +1,7 @@
 # Offline HL7 reference catalogs
 
 Open a message or retained capture in Messages. In its reader, choose
-**Reference** and select a local `readmit-hl7-reference/v1`, v2, v3, v4 or v5 catalog. Selection
+**Reference** and select a local `readmit-hl7-reference/v1` through v6 catalog. Selection
 reads local files only. It does not start a listener, send messages or download
 reference material. Choose a segment or field to synchronize its original byte
 span, grid row and available definition.
@@ -130,3 +130,39 @@ when the message edition is omitted. Unknown source edition/family is shown as
 unknown applicability, without borrowing the profile's edition or exposing
 applicable field constraints. Verified profile/pack identities do not themselves
 prove applicability or validation.
+
+
+## Install the full reference library
+
+Choose the **HL7 version** button in the Messages toolbar, then **Install
+library…**, and select a folder containing `library.json` and its catalogs.
+Installation validates the complete manifest and copies exact catalog bytes to
+the shell's local reference store. The next inspection automatically uses the
+received message's exact edition. Choose another installed version to browse it
+explicitly; **Use message version** returns to automatic selection. This never
+rewrites MSH-12, reveals values, or establishes validation support.
+
+The version list covers 2.1 through 2.9, including 2.3.1, 2.5.1, 2.7.1, 2.8.1
+and 2.8.2. A version without an installed catalog is shown as not installed.
+Changed retained bytes are refused until the source is explicitly installed again.
+Catalog setup survives restart and is independent of projects and source files.
+
+Local setup from the owner's supplied archives and published reference pages:
+
+```sh
+python3 tools/reference_fetch.py --output /absolute/path/to/private/sources \
+  --official-sources /absolute/path/to/supplied-archives
+python3 tools/reference_html.py --sources /absolute/path/to/private/sources \
+  --official-sources /absolute/path/to/supplied-archives \
+  --terminology /absolute/path/to/pinned/hl7-terminology-package.tgz \
+  --output /absolute/path/to/private/library
+```
+
+The tools are development/setup commands; the installed application performs no
+network acquisition. The optional terminology input is the pinned official HL7
+Terminology package. Its source digest and resource locator accompany OIDs and
+code-system metadata under catalog v6; source-edition code values are retained.
+Keep source archives, generated catalogs and receipts out of Git and release
+packages while distribution decision #627 remains open. Inspect each receipt's
+coverage and unavailable chapters; the version list is not a claim that every
+source entity has a complete definition.

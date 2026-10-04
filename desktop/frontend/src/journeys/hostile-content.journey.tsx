@@ -60,7 +60,6 @@ test("markup in evidence, file names and searches is shown as inert text and nev
   // bracket the content carried is spelled as its byte value.
   const occurrence = await selectMessage(user, "s0001-e000001");
   await press(user, await occurrence.findByRole("tab", { name: "Raw" }));
-  await press(user, occurrence.getByRole("button", { name: "Show values" }));
   await waitFor(() => expect(occurrence.getByRole("tabpanel").textContent).toContain("MSH|"));
   const raw = occurrence.getByRole("tabpanel").textContent ?? "";
   for (const shown of [

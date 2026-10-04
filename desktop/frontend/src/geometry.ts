@@ -24,7 +24,7 @@ export const NARROW_WINDOW_REM = 40;
 /** R01 and R08 reader geometry, scaled with the viewer's root text size. */
 export const READER_COMPACT_WINDOW_REM = 105;
 export const READER_COMPACT_SIDEBAR_REM = 11.5;
-export const MESSAGE_BROWSER_REM = 13;
-export const MESSAGE_BROWSER_COMPACT_REM = 11;
+export const MESSAGE_BROWSER_REM = 20;
+export const MESSAGE_BROWSER_COMPACT_REM = 17.5;
 export const READER_REFERENCE_REM = 24;
 export const READER_REFERENCE_COMPACT_REM = 22;
