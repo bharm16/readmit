@@ -243,6 +243,7 @@ test("a test of an independent downstream system fails on its defect, passes onc
 /** Adds a named observation of the downstream's file export to the open
  * environment, reading the file chosen in the host's dialog. */
 async function addObservation(user: UserEvent, file: string): Promise<void> {
+  await press(user, page().getByRole("tab", { name: "Observations" }));
   await press(user, within(page().getByRole("region", { name: "Observation" })).getByRole("button", { name: "Add observation" }));
   const sheet = within(await screen.findByRole("dialog", { name: "Add observation" }));
   await enter(user, await sheet.findByRole("textbox", { name: "Name" }), OBSERVATION);

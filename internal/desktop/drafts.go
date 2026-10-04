@@ -436,13 +436,25 @@ func validateEditorDraft(draft EditorDraft) error {
 		item.Ref.Kind == ProjectItem && item.Ref.ID != item.ProjectID || !catalog.ValidID(item.Ref.ID) || len(item.Ref.Revision) > 16) {
 		return errors.New("a draft names the object it edits by its project, kind, identity and revision")
 	}
+	if draft.ContentSchema == "readmit-report-share-draft/v1" || draft.ContentSchema == "readmit-report-share-draft/v2" {
+		return validateReportShareDraft(draft)
+	}
+	if draft.ContentSchema == InterfaceAssociationEditorSchema || draft.ContentSchema == CaptureSourceEditorSchema {
+		return validateContextEditorDraft(draft)
+	}
+	if draft.ContentSchema == ValueMapEditorDraftSchema {
+		if !validValueMapEditorDraft(draft) {
+			return errors.New("invalid retained value map editor draft")
+		}
+		return nil
+	}
 	if draft.ContentSchema == NoteDraftSchema {
 		return validateNoteDraft(draft.Content)
 	}
 	if draft.ContentSchema == SuiteEditorDraftSchema || draft.ContentSchema == SuiteEditorDraftSchemaV2 {
 		return validateSuiteEditorDraft(draft.ContentSchema, draft.Content)
 	}
-	if draft.ContentSchema == TestEditorDraftSchema || draft.ContentSchema == TestEditorDraftSchemaV2 {
+	if draft.ContentSchema == TestEditorDraftSchema || draft.ContentSchema == TestEditorDraftSchemaV2 || draft.ContentSchema == TestEditorDraftSchemaV3 {
 		return validateTestEditorDraft(draft)
 	}
 	return nil
@@ -456,6 +468,7 @@ const (
 	// TestEditorDraftSchemaV2 is the same retained work holding a connected
 	// test's authoring draft in place of a test draft.
 	TestEditorDraftSchemaV2 = "readmit-desktop-test-editor/v2"
+	TestEditorDraftSchemaV3 = "readmit-desktop-test-editor/v3"
 )
 
 // TestEditorDraft is the test editor's retained work: whether it creates a
@@ -498,7 +511,24 @@ func validateTestEditorDraft(retained EditorDraft) error {
 		return errors.New("a test editor draft names the case it was opened over by its identity")
 	}
 	held := draft.Draft
-	if draft.Schema == TestEditorDraftSchemaV2 {
+	if draft.Schema == TestEditorDraftSchemaV3 && (held.ConnectedTest == nil || held.TestLinks == nil || held.TestLinks.Source == nil || held.TestLinks.Source.Kind != SourceExchange || held.TestLinks.Source.Exchange == nil) {
+		return errors.New("an exchange editor draft holds its exact connected origin")
+	}
+	if draft.Schema != TestEditorDraftSchemaV3 {
+		var envelope map[string]any
+		if json.Unmarshal(retained.Content, &envelope) != nil {
+			return errors.New("invalid editor membership")
+		}
+		if object, ok := envelope["draft"].(map[string]any); ok {
+			if links, ok := object["test_links"]; ok {
+				raw, _ := json.Marshal(links)
+				if hasExchangeSourceMember(raw) {
+					return errors.New("legacy editor content cannot carry exchange promotion")
+				}
+			}
+		}
+	}
+	if draft.Schema == TestEditorDraftSchemaV2 || draft.Schema == TestEditorDraftSchemaV3 {
 		held.ConnectedTest = nil
 	}
 	held.Name, held.Test, held.TestLinks, held.TestDocument = "", nil, nil, ""

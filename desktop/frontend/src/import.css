@@ -11,3 +11,10 @@
   align-items: center;
   display: inline-flex;
 }
+
+.modal:has(.import-drop),.modal:has(.import-preview) { width:min(53.75rem,calc(100vw - 2 * var(--sheet-clearance))); }
+.import-preview { display:flex; flex-direction:column; gap:var(--s3); min-width:0; }
+.import-preview > .value-rows .value-row { display:flex; flex-direction:column; gap:var(--s2); margin-bottom:var(--s3); }
+.import-preview > .value-rows dt { color:var(--muted); font-size:var(--text-support); }
+.import-preview > .value-rows dd { min-height:var(--input); padding:var(--s2); border:1px solid var(--border-strong); border-radius:var(--radius-control); margin:0; }
+.import-summary-table thead { background:var(--rail); }

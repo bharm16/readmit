@@ -257,9 +257,27 @@ func TestConnectedTestsAuthoredFromV2AndFHIREvidenceSaveOnceAndReopenWhole(t *te
 			t.Fatalf("connected context: %+v", opened.Test)
 		}
 	}
-	row := listed(t, f.app, f.root, desktop.TestItem)["Reschedule keeps one appointment"]
-	if row.Summary.Test == nil || row.Summary.Test.Boundary != desktop.ApplicationBoundary || row.Summary.Test.Assertions != 4 || row.Summary.Test.Entry != "" {
-		t.Fatalf("listed connected test: %+v", row.Summary.Test)
+	listing := listed(t, f.app, f.root, desktop.TestItem)
+	for _, expected := range []struct {
+		name       string
+		ref        desktop.ItemRef
+		source     desktop.ItemRef
+		draft      desktop.ConnectedTestDraft
+		assertions int
+	}{
+		{"Reschedule keeps one appointment", ref, f.messages.Ref, reschedule, 4},
+		{"Booking keeps its encounter", bookingRef, f.request.Ref, booking, 10},
+	} {
+		row := listing[expected.name]
+		summary := row.Summary.Test
+		if row.Ref != expected.ref || summary == nil || summary.Boundary != desktop.ApplicationBoundary || summary.Assertions != expected.assertions || summary.Entry == "" || summary.SourceCase == nil || summary.SourceCase.Kind != expected.source.Kind || summary.SourceCase.ID != expected.source.ID {
+			t.Fatalf("listed connected test %s: ref=%+v summary=%+v expected_source=%+v assertions=%d", expected.name, row.Ref, summary, expected.source, expected.assertions)
+		}
+		data, err := os.ReadFile(filepath.Join(f.root, summary.Entry))
+		var retained desktop.ConnectedTestDraft
+		if err != nil || json.Unmarshal(data, &retained, json.RejectUnknownMembers(true)) != nil || !reflect.DeepEqual(retained, expected.draft) {
+			t.Fatalf("listed connected entry does not identify its exact saved draft: %s (%v)", summary.Entry, err)
+		}
 	}
 	if f.lab.Creates.Load() != creates || f.lab.Tokens.Load() != 0 {
 		t.Fatal("authoring, saving or reopening a connected test reached the application")

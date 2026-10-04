@@ -20,6 +20,15 @@ and React DOM (MIT), recorded with their exact versions in
 `licenses/`. Vite, TypeScript and the Vite React plugin build the interface and
 are not shipped inside it.
 
+The desktop interface bundles IBM Plex Sans (Regular, Medium and SemiBold)
+from IBM/plex revision `763c36ef9117782905ae010056dfbe8fd2653a25`, and JetBrains
+Mono Regular from JetBrains/JetBrainsMono revision
+`19371302b95d218af43299bce79ddbddd0bc364d`. Both are unmodified WOFF2 font
+files under the SIL Open Font License 1.1. Their license texts are retained
+in `licenses/IBM-Plex-OFL.txt` and `licenses/JetBrains-Mono-OFL.txt`. Fonts
+are served from the bundled application assets; the running app fetches no
+font service.
+
 GoReleaser, WiX and govulncheck are build/development tools, not application
 runtime dependencies. WiX writes the Windows installer database and
 contributes no code to the application that database installs. GitHub Actions

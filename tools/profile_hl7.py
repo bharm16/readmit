@@ -260,7 +260,7 @@ def lines_of(pages, chapter=None):
     return out
 
 
-def attribute_tables(lines):
+def attribute_tables(lines, reference=False):
     """Yields (kind, name, rows, chapter, start, end) for each segment and
     component table; lines[start:end] is its title through its last row.
 
@@ -268,6 +268,7 @@ def attribute_tables(lines):
     a row that holds no sequence number continues that row: a wrapped name,
     length or table list ("6553" "6", "0327/" "0328")."""
     title, rows, last, conformance, repeats = None, None, False, None, True
+    source_columns = {}
     for index, (line, chapter) in enumerate(lines):
         for pattern in TITLE:
             m = pattern.search(line)
@@ -283,6 +284,7 @@ def attribute_tables(lines):
             if HEADER.match(line):
                 found = CLEN.search(line)
                 conformance, last, repeats = (found.start() if found else None), False, bool(re.search(r"\bR\s?P\b", line))
+                source_columns = {m.group():m.start() for m in re.finditer(r"LEN|TBL#",line)}
                 continue
             if not line.strip():
                 last = False
@@ -295,7 +297,10 @@ def attribute_tables(lines):
             if last and rows and not SECTION_HEADING.match(line.strip()):
                 text = line.strip()
                 previous = rows[-1]
-                if re.fullmatch(r"Y(?:/\d+)?", text) and repeats:
+                if reference and text.isdigit() and "TBL#" in source_columns and abs(len(line)-len(line.lstrip())-source_columns["TBL#"]) <= 3:
+                    previous["table"] = padded(previous.get("table", "").rstrip("/")+"/"+text).strip("/")
+                    previous["wrapped"] = True
+                elif re.fullmatch(r"Y(?:/\d+)?", text) and repeats:
                     # The RP/# cell dropped below its row; a digit printed in
                     # its place was a footnote mark (2.6's OBX-5 "2" over "Y").
                     previous["rp"], previous["wrapped"] = text, True
@@ -474,7 +479,7 @@ READER = "readmit-hl7-reader/v1"
 MESSAGE_FILE = re.compile(r"^([A-Z][A-Z0-9]{2}(?:_[A-Z0-9]{3})?)\.xsd$")
 
 
-def extract(edition, schemas_raw, standard_raw, pdftotext="pdftotext"):
+def extract(edition, schemas_raw, standard_raw, pdftotext="pdftotext", reference=False):
     """Reads one edition's two HL7 files once into a dataset: every message
     structure, segment, field, composite and printed attribute table with its
     definition text, the table kinds and Table 0354. Everything after this
@@ -494,28 +499,50 @@ def extract(edition, schemas_raw, standard_raw, pdftotext="pdftotext"):
     if SOURCES[edition].get("inner"):
         archive = zipfile.ZipFile(io.BytesIO(member(archive, SOURCES[edition]["inner"])))
     tables, every = [], []
+    reference_types = {}
+    reference_tables = []
+    reference_messages = {}
     for name in sorted(archive.namelist()):
         if not name.lower().endswith(".pdf"):
             continue
         base = name.rsplit("/", 1)[-1]
         lines = lines_of(pdf_text(archive.read(name), pdftotext), chapter_of(base))
         every.extend(lines)
-        found = list(attribute_tables(lines))
+        if reference:
+            from reference_catalog import datatype_sections
+            reference_types.update(datatype_sections(lines,base))
+            from reference_catalog import code_tables
+            reference_tables.extend(code_tables(lines,base))
+            from reference_catalog import message_sections
+            reference_messages.update(message_sections(lines,base))
+        found = list(attribute_tables(lines, reference=reference))
         for number, (kind, table, rows, chapter, start, end) in enumerate(found):
             stop = found[number + 1][4] if number + 1 < len(found) else len(lines)
             # A single volume (2.3.1) names the chapter a table is printed in.
             entry = {"kind": kind, "name": table, "member": base, "source": base if chapter_of(base) else "%s#ch%s" % (base, chapter),
                      "chapter": chapter, "rows": rows, "definitions": narratives(lines[end:stop], rows, kind)}
+            if reference and kind == "segment":
+                from reference_catalog import reference_context
+                entry["reference"] = reference_context(lines, start, end, stop, rows)
+            if reference and kind == "datatype":
+                from reference_catalog import component_context
+                entry["reference"] = component_context(lines,start,end,stop,rows,table)
             if kind == "datatype":
                 first = next((i for i in range(start, max(0, start - 80), -1) if re.match(r"^2\.A\.[\d.]+\s+" + re.escape(table) + r"\b", clean(lines[i][0]))), start)
                 entry["section"] = "\n".join(t for t in (clean(line) for line, _ in lines[first:stop]) if t)
             tables.append(entry)
     kinds, conflicts = table_kinds(every)
     events, differing, repairs = structure_events(edition, every)
-    return {"schema": DATASET_SCHEMA, "reader": READER, "edition": edition, "pdftotext": pdftotext_version(pdftotext),
+    dataset = {"schema": DATASET_SCHEMA, "reader": READER, "edition": edition, "pdftotext": pdftotext_version(pdftotext),
             "structures": structures, "unreadable_structures": unreadable, "segments": {k: [list(x) for x in v] for k, v in s.segments.items()}, "fields": s.fields,
             "composites": s.composite, "tables": tables, "table_kinds": kinds, "table_kind_conflicts": conflicts,
             "events": events, "events_listed_differently": differing, "event_repairs": repairs}
+    if reference:
+        dataset["reference_datatypes"] = reference_types
+        dataset["reference_primitives"] = sorted(s.primitive)
+        dataset["reference_tables"] = reference_tables
+        dataset["reference_messages"] = reference_messages
+    return dataset
 
 
 class Edition:

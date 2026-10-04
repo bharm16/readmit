@@ -125,7 +125,11 @@ func (p *PreparedFlow) Capabilities() (runnerprotocol.Capabilities, error) {
 	contract(config.Schema)
 	source := func(source sourcePlan) error {
 		if source.capture != nil {
-			contract(observeinterval.CaptureSourceSchema)
+			capture, err := observeinterval.DecodeCapture(source.captureRaw)
+			if err != nil {
+				return invalid
+			}
+			contract(capture.Schema)
 			add(runnerprotocol.CapabilityPin{Kind: "collector", ID: "live-mllp-capture", Version: engine.Version()})
 			return nil
 		}

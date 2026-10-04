@@ -75,7 +75,7 @@ test("Help lists the five tasks and an article launches its task in the current 
   expect([...page().getByRole("article").querySelectorAll("ol > li")].map((step) => step.textContent)).toEqual(INVESTIGATE.steps);
   expect(page().getByRole("button", { name: "Message timestamps" })).toBeTruthy();
   await user.click(page().getByRole("button", { name: "Open cases" }));
-  expect(sidebar().getByRole("button", { name: "Cases" }).getAttribute("aria-current")).toBe("page");
+  expect(sidebar().getByRole("button", { name: "Captures" }).getAttribute("aria-current")).toBe("page");
   expect(facade.oneCall("HelpArticle")).toEqual(["investigate-a-case"]);
 });
 

@@ -192,7 +192,7 @@ test("Restore creates a separate project from a backup and opens its cases", asy
   expect(facade.oneCall("ExecuteReviewedAction")[0]).toMatchObject({ token: "storage.restore-backup-token" });
   // The restored project opens at its Cases.
   await waitFor(() => expect(facade.callsTo("OpenWorkspace").some((call) => call.args[0] === opened.folder)).toBe(true));
-  await screen.findByRole("heading", { name: "Cases" });
+  await screen.findByRole("heading", { name: "Captures" });
 });
 
 test("Archive copy keeps the source and records the archive", async () => {
@@ -605,7 +605,7 @@ test("Restore copy creates a separate project from a recovery copy and opens it"
   expect(facade.oneCall("ExecuteReviewedAction")[0]).toMatchObject({ token: "storage.restore-copy-token" });
   // The new project opens at its Cases; the current one was never written.
   await waitFor(() => expect(facade.callsTo("OpenWorkspace").some((call) => call.args[0] === restored)).toBe(true));
-  await screen.findByRole("heading", { name: "Cases" });
+  await screen.findByRole("heading", { name: "Captures" });
 });
 
 test("a failed Restore copy opens nothing and offers Show folder for what it left", async () => {

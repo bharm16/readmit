@@ -274,6 +274,7 @@ type NamedDestinationChooser interface {
 // one arriving during another action reports Busy. A finished operation always
 // releases the slot, including after failure or cancellation.
 type App struct {
+	fieldValues     fieldValueSnapshots
 	operationMu     sync.Mutex
 	operationGuard  *operationguard.Guard
 	operationPolicy string

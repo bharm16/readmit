@@ -1,3 +1,5 @@
+import "./workflow.css";
+import { ConnectedRunEvidence,RetainedObservation } from "./ConnectedRunEvidence";
 // A run's own page (view 23): while it runs, the target and what its journal
 // shows so far, with Stop; once it has ended, its one result, its checks
 // failed and undecided first, the messages it sent and what came back, and
@@ -26,7 +28,7 @@ import { DataTable } from "./DataTable";
 import { CHECK_RESULTS, FIELD_STATES, HIDDEN_VALUE, RUN_DELIVERIES, RUN_RESULTS, STATE_SHARING, TEST_BOUNDARIES, term } from "./display";
 import { EmptyState, FormDialog, Menu, Reveal, ValueRows, type MenuItem } from "./layout";
 import { TaskTabs } from "./TaskTabs";
-import { checkTitle, messageLabel } from "./TestEditor";
+import {checkTitle, messageLabel } from "./TestEditor";
 import { messages as messageCount, type SendRequest } from "./RunPanel";
 import { activeLine, duration, ResultCell, resultText, startedText, type RunActivity, type RunsPlace } from "./Runs";
 import "./runs.css";
@@ -86,6 +88,7 @@ export function useRunPage({ root, place, activity, busy, go, onStop, onRun, onC
   const [detail, setDetail] = useState<RunDetailResult | null>(null);
   const [reveal, setReveal] = useState(false);
   const [selectedCheck, setSelectedCheck] = useState<string | null>(null);
+const [observationShown,setObservationShown]=useState(false);
   const [analysis, setAnalysis] = useState<RunAnalysisResult | null>(null);
   const [sheet, setSheet] = useState<null | "analyze" | "clear">(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -105,6 +108,7 @@ export function useRunPage({ root, place, activity, busy, go, onStop, onRun, onC
   useEffect(() => {
     setDetail(null);
     setSelectedCheck(null);
+    setObservationShown(false);
     setAnalysis(null);
     setNotice(null);
     setReveal(false);
@@ -145,7 +149,8 @@ export function useRunPage({ root, place, activity, busy, go, onStop, onRun, onC
   if (onMinimize && !run.job && summary?.kind === "test" && summary.result === "failed") menu.push({ label: "Minimize failure", onSelect: () => onMinimize(run.item.ref), disabled: busy });
   const hidden = run.checks.some((check) => check.hidden);
 
-  const checksBody = (
+  const evidenceWorkspace=(content:ReactNode)=><div className="workflow-workspace"><aside className="workflow-rail" aria-label="Execution"><h2>Execution</h2><button className="workflow-step" type="button" onClick={()=>go({...place,view:"details"})}><strong>Preparation</strong><span>{run.details.initial_records!==undefined?`${run.details.initial_records} initial records`:"Starting state not recorded"}</span></button>{run.messages.map((row,index)=><button key={`${row.source}:${index}`} className="workflow-step" type="button" onClick={()=>go({...place,view:"messages"})}><strong>{index+1} · Send {messageLabel(row.message,row.source).replace(" · ","^")}</strong><span>{row.ack_code?`ACK ${row.ack_code} recorded`:row.delivery}</span></button>)}<button className="workflow-step" type="button" aria-current={view==="checks"?"step":undefined} onClick={()=>go({...place,view:"checks"})}><strong>{run.messages.length+1} · {run.retained_observation?"Appointment records":"Expected behavior"}</strong><span>{run.details.final_records!==undefined?`${run.details.final_records} observed`:"Not recorded"}</span></button></aside><div className="workflow-content"><div className="workflow-evidence-heading"><h2>{run.name}</h2><ResultCell summary={shownResult}/></div>{content}</div></div>;
+  const checksBody = run.lifecycle ? <ConnectedRunEvidence evidence={run.lifecycle} run={run.item.ref} context={context} reveal={reveal} onReveal={setReveal}/> : (
     <>
       {run.checks.length === 0 ? (
         <EmptyState title="No checks" />
@@ -172,21 +177,14 @@ export function useRunPage({ root, place, activity, busy, go, onStop, onRun, onC
             onSelect={setSelectedCheck}
             onOpen={setSelectedCheck}
           />
-          {selectedCheck ? (
-            <CheckDetail
-              check={run.checks.find((check) => check.check.id === selectedCheck)!}
-              types={types}
-              sourceCase={run.details.source_case}
-              onViewMessages={onViewMessages}
-            />
-          ) : null}
+          <div className="workflow-result-context"><section className="workflow-surface"><CheckDetail check={run.checks.find(check=>check.check.id===selectedCheck)??run.checks[0]!} types={types} sourceCase={run.details.source_case} onViewMessages={onViewMessages}/>{run.retained_observation ? <><button type="button" disabled={!run.retained_observation.available} onClick={()=>setObservationShown(true)}>View retained observation</button>{!run.retained_observation.available?<p className="workflow-caption">{run.retained_observation.reason}</p>:null}</>:null}</section><section className="workflow-content"><ValueRows rows={[{label:"Input messages",value:String(run.messages.length)},{label:"Target",value:summary?.environment_name??run.details.address??"Not recorded"},{label:"Acknowledgments",value:`${run.messages.filter(row=>!!row.ack_code).length} recorded`},{label:"Receiver mode",value:run.retained_observation?.receiver_mode??"Not recorded"}]}/>{run.details.source_case?<button type="button" className="quiet" onClick={()=>onViewMessages(run.details.source_case!,run.messages.map(row=>row.source))}>View exchanged messages</button>:null}</section></div>
         </>
       )}
       {analysis ? <AnalysisView analysis={analysis} onOpenObservation={onOpenObservation} /> : null}
     </>
   );
 
-  const messagesBody =
+  const messagesBody = run.lifecycle ? <ConnectedRunEvidence evidence={run.lifecycle} run={run.item.ref} context={context} reveal={reveal} onReveal={setReveal} stepsOnly/> :
     run.messages.length === 0 ? (
       <EmptyState title="No messages" />
     ) : (
@@ -257,13 +255,14 @@ export function useRunPage({ root, place, activity, busy, go, onStop, onRun, onC
       </>
     ),
     body: (
-      <div className="object-page run-page">
+      <div className="object-page run-page workflow-page workflow-retained-run">
         <p className="run-line">{line}</p>
         {run.details.reason ? <p role="alert">{run.details.reason}</p> : null}
         {notice ? <p role="status">{notice}</p> : null}
         <TaskTabs label="Run views" id="run-views" tabs={tabs} selected={view} onSelect={(key) => go({ ...place, view: key })}>
-          {view === "checks" ? checksBody : view === "messages" ? messagesBody : view === "tests" ? testsBody : detailsBody}
+          {view === "checks" ? run.lifecycle ? checksBody:evidenceWorkspace(checksBody) : view === "messages" ? run.lifecycle ? messagesBody:evidenceWorkspace(messagesBody) : view === "tests" ? testsBody : evidenceWorkspace(detailsBody)}
         </TaskTabs>
+        {observationShown && run.retained_observation ? <RetainedObservation key={`${run.item.ref.id}:${run.job??""}:${run.retained_observation.identity??""}`} context={context} run={run.item.ref} phase={run.retained_observation.phase} dataset={run.retained_observation.dataset} family={run.retained_observation.family} identity={run.retained_observation.identity??""} sourceIdentity={run.retained_observation.source_identity??""} {...(run.job ? {job:run.job}: {})} reveal={false} onClose={()=>setObservationShown(false)}/>:null}
         <AnalyzeSheet
           open={sheet === "analyze"}
           root={root}
@@ -319,7 +318,7 @@ function activePage(activity: RunActivity | null, onStop: () => void, onRun: (re
         </button>
       ),
       body: (
-        <div className="object-page run-page">
+        <div className="object-page run-page workflow-page workflow-retained-run">
           <p className="run-line">Nothing was sent</p>
           <p role="alert">{activity.result.reason ?? "The send did not start."}</p>
         </div>
@@ -494,9 +493,7 @@ function Details({ run, busy, onResume, onClear }: { run: RunDetail; busy: boole
           <ValueRows
             rows={[
               { label: "Ended", value: recovery.stop_reason ? term(STOP_REASONS, recovery.stop_reason).text : "Not recorded" },
-              { label: "Acknowledged", value: String(delivered("acknowledged")) },
-              { label: "Uncertain", value: String(delivered("uncertain")) },
-              { label: "Not attempted", value: String(delivered("not_attempted")) },
+              ...(run.lifecycle ? [{label:"Preparation",value:run.lifecycle.lifecycle.setup},{label:"Delivery",value:run.delivery_uncertain?"Uncertain — inspect retained attempts":"See retained transport attempts"},{label:"Application observation",value:run.lifecycle.lifecycle.state},{label:"Cleanup",value:run.lifecycle.lifecycle.cleanup}]:[{ label: "Acknowledged", value: String(delivered("acknowledged")) },{ label: "Uncertain", value: String(delivered("uncertain")) },{ label: "Not attempted", value: String(delivered("not_attempted")) }]),
             ]}
           />
           {recovery.can_resume ? (

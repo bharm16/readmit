@@ -69,8 +69,11 @@ test("the standalone file opens natively into the shared reader and a refused pa
     reveal: false,
   });
   const details = await screen.findByRole("region", { name: "Message details" });
-  expect(within(details).getByRole("tab", { name: "Fields" })).toBeTruthy();
-  expect(within(details).getByRole("tab", { name: "Hex" })).toBeTruthy();
+  expect(within(details).queryByRole("tab", { name: "Fields" })).toBeNull();
+  expect(within(details).getByRole("tabpanel", { name: "Fields" })).toBeTruthy();
+  await user.click(within(details).getByRole("button", { name: "More message actions" }));
+  await user.click(screen.getByRole("menuitem", { name: "Hex" }));
+  expect(within(details).getByRole("tab", { name: "Hex", selected: true })).toBeTruthy();
 
   // A file the chosen format cannot parse keeps its original bytes and offers
   // Change format; nothing is repaired.
@@ -102,7 +105,7 @@ test("save copy writes a byte-identical new file through the native save dialog 
   );
   await openTool(user);
   // A file with one message opens straight into the reader.
-  expect(await page().findByRole("region", { name: "Message details" })).toBeTruthy();
+  expect(await screen.findByRole("region", { name: "Message details" })).toBeTruthy();
   await user.click(page().getByRole("button", { name: "More file actions" }));
   await user.click(screen.getByRole("menuitem", { name: "Save copy…" }));
   await waitFor(() => expect(facade.callsTo("ChooseInspectionPath").map((call) => call.args)).toEqual([["file", ""], ["copy-destination", FILE]]));
@@ -114,4 +117,52 @@ test("save copy writes a byte-identical new file through the native save dialog 
   await user.click(page().getByRole("button", { name: "More file actions" }));
   await user.click(screen.getByRole("menuitem", { name: "Save copy…" }));
   expect((await page().findByRole("alert")).textContent).toBe("the destination already exists");
+});
+
+test("a single-message source keeps its browser and closing details does not immediately reopen it", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp(handlers({ ListFileMessages: (request) => listing(1, request) }));
+  await openTool(user);
+  const reader = within(await screen.findByRole("region", { name: "Message details" }));
+  expect(screen.getByRole("table", { name: "Messages in this file" }).querySelector('[data-row-id="0"]')).toBeTruthy();
+  await user.click(reader.getByRole("button", { name: "Close message details" }));
+  await waitFor(() => expect(screen.queryByRole("region", { name: "Message details" })).toBeNull());
+  expect(facade.callsTo("InspectFileMessage")).toHaveLength(1);
+  await user.click(screen.getByRole("table", { name: "Messages in this file" }).querySelector<HTMLElement>('[data-row-id="0"]')!);
+  expect(await screen.findByRole("region", { name: "Message details" })).toBeTruthy();
+  expect(facade.callsTo("InspectFileMessage")).toHaveLength(2);
+});
+
+test("large loose-file paging keeps checked positions and refuses a changed source before appending",async()=>{
+ const user=userEvent.setup();
+ const {facade}=await renderApp(handlers({ListFileMessages:request=>({...listing(401,request),offset:request.offset,rows:listing(401,request).rows.slice(request.offset,request.offset+200)})}));
+ await openTool(user);
+ const table=await screen.findByRole("table",{name:"Messages in this file"});
+ await user.click(table.querySelector<HTMLInputElement>('[data-row-id="1"] input[type="checkbox"]')!);
+ await user.click(page().getByRole("button",{name:"Load more messages"}));
+ await waitFor(()=>expect(facade.callsTo("ListFileMessages")[1]?.args[0]).toMatchObject({offset:200}));
+ expect(table.querySelector<HTMLInputElement>('[data-row-id="1"] input[type="checkbox"]')?.checked).toBe(true);
+ facade.reply({ListFileMessages:request=>({...listing(401,request),sha256:"b".repeat(64),offset:request.offset,rows:[{index:400,message_code:"ADT",trigger_event:"A01",start:40000,end:40090}]})});
+ await user.click(page().getByRole("button",{name:"Load more messages"}));
+ expect(await page().findByText("The source changed while paging. The previous selection is kept; reopen the file explicitly.")).toBeTruthy();
+ expect(table.querySelector<HTMLInputElement>('[data-row-id="1"] input[type="checkbox"]')?.checked).toBe(true);
+});
+
+test("browser metadata search and grouping keep the original checked occurrence",async()=>{
+  const user=userEvent.setup();
+  const {facade}=await renderApp(handlers({ListFileMessages:request=>{const result=listing(2,request);result.rows[1]={...result.rows[1]!,message_code:"ADT",trigger_event:"A08"};return result;}}));
+  await openTool(user);
+  const table=await screen.findByRole("table",{name:"Messages in this file"});
+  await user.click(table.querySelector<HTMLInputElement>('[data-row-id="1"] input[type="checkbox"]')!);
+  await user.click(table.querySelector<HTMLElement>('[data-row-id="0"]')!);
+  await screen.findByRole("region",{name:"Message details"});
+  await user.click(screen.getByRole("button",{name:"Compact view"}));
+  expect(screen.getByRole("button",{name:"Wide view"})).toBeTruthy();
+  expect(facade.callsTo("InspectFileMessage")).toHaveLength(1);
+  await user.click(screen.getByRole("tab",{name:"By type"}));
+  expect([...table.querySelectorAll<HTMLElement>('tbody tr[data-row-id]')].map(row=>row.dataset.rowId)).toEqual(["1","0"]);
+  await user.type(screen.getByRole("textbox",{name:"Search messages"}),"SIU");
+  expect([...table.querySelectorAll<HTMLElement>('tbody tr[data-row-id]')].map(row=>row.dataset.rowId)).toEqual(["0"]);
+  await user.clear(screen.getByRole("textbox",{name:"Search messages"}));
+  expect(table.querySelector<HTMLInputElement>('[data-row-id="1"] input[type="checkbox"]')?.checked).toBe(true);
 });

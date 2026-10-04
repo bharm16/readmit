@@ -15,6 +15,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/catalog"
+	"github.com/bharm16/readmit/internal/connectedrun"
 	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/report"
@@ -48,10 +49,12 @@ type ReportDraft struct {
 
 // ReportSourcesSchema is the contract of the runs a saved report names.
 const ReportSourcesSchema = "readmit-report-sources/v1"
+const ReportConnectedSourcesSchema = "readmit-report-sources/v2"
 
 // reportSources are the runs a saved report was made from, by the catalog
 // identity the project gives them.
 type reportSources struct {
+	Family string         `json:"family,omitzero"`
 	Schema string         `json:"schema"`
 	Runs   []reportSource `json:"runs"`
 }
@@ -74,7 +77,18 @@ const (
 func decodeReportSources(data []byte) (reportSources, error) {
 	var sources reportSources
 	invalid := errors.New("the runs of this report cannot be read")
-	if len(data) > catalog.MaxMemberBytes || json.Unmarshal(data, &sources, json.RejectUnknownMembers(true)) != nil || sources.Schema != ReportSourcesSchema || len(sources.Runs) == 0 || len(sources.Runs) > 2 {
+	if len(data) > catalog.MaxMemberBytes || json.Unmarshal(data, &sources, json.RejectUnknownMembers(true)) != nil || (sources.Schema != ReportSourcesSchema && sources.Schema != ReportConnectedSourcesSchema) || len(sources.Runs) == 0 || len(sources.Runs) > 2 {
+		return reportSources{}, invalid
+	}
+	if sources.Schema == ReportSourcesSchema {
+		var members map[string]any
+		if json.Unmarshal(data, &members) != nil {
+			return reportSources{}, invalid
+		}
+		if _, held := members["family"]; held {
+			return reportSources{}, invalid
+		}
+	} else if sources.Family != "connected-lifecycle" {
 		return reportSources{}, invalid
 	}
 	for i, source := range sources.Runs {
@@ -91,11 +105,12 @@ func decodeReportSources(data []byte) (reportSources, error) {
 
 // reportRun is a run a report draft names, verified now.
 type reportRun struct {
-	item     catalog.Item
-	path     string
-	casePath string
-	identity string
-	test     string
+	connected bool
+	item      catalog.Item
+	path      string
+	casePath  string
+	identity  string
+	test      string
 }
 
 // resolveReportRun reads the run a draft names: a finished test run of the
@@ -126,6 +141,16 @@ func resolveReportRun(scope draftScope, ref ItemRef, job, field string) (reportR
 	// Practice runs retain the result under their owned session, exactly as
 	// the ordinary run-detail reader resolves them.
 	path = runFolder(path)
+	if connectedIndividualArtifact(path) {
+		if job != "" {
+			return reportRun{}, problem("a connected individual report does not select a suite job")
+		}
+		proof, err := connectedrun.OpenFlowEvidence(context.Background(), path)
+		if err != nil {
+			return reportRun{}, problem("the connected lifecycle cannot be verified; missing evidence cannot be replaced")
+		}
+		return reportRun{connected: true, item: item, path: path, identity: proof.Identity, test: proof.Plan.Document().Test.ID}, nil
+	}
 	opened, err := runresult.Open(path)
 	switch {
 	case err != nil:
@@ -184,12 +209,17 @@ func validateReportDraft(scope draftScope, draft ItemDraft) ([]catalog.Staged, I
 		if problem != nil {
 			problems = append(problems, *problem)
 		}
+		if current.connected {
+			sources.Schema, sources.Family = ReportConnectedSourcesSchema, "connected-lifecycle"
+		}
 		sources.Runs = append(sources.Runs, reportSource{Role: report.CurrentRole, Run: given.Run.ID, Job: given.Job})
 		if given.Comparison != nil {
 			comparison, problem := resolveReportRun(scope, *given.Comparison, given.ComparisonJob, "report.comparison")
 			switch {
 			case problem != nil:
 				problems = append(problems, *problem)
+			case current.connected != comparison.connected:
+				problems = append(problems, FieldProblem{Field: "report.comparison", Problem: "the supplied runs use different report evidence contracts"})
 			case given.Comparison.ID == given.Run.ID && given.ComparisonJob == given.Job || current.identity != "" && comparison.identity == current.identity:
 				problems = append(problems, FieldProblem{Field: "report.comparison", Problem: "Choose a different run to compare with"})
 			}
@@ -280,6 +310,20 @@ func reportEntry(ctx context.Context, scope draftScope, draft *ReportDraft) (*ca
 	if problem != nil {
 		return nil, problem
 	}
+	if current.connected {
+		input := report.ConnectedInput{Current: current.path}
+		if draft.Comparison != nil {
+			baseline, problem := resolveReportRun(scope, *draft.Comparison, draft.ComparisonJob, "report.comparison")
+			if problem != nil {
+				return nil, problem
+			}
+			if !baseline.connected {
+				return nil, &FieldProblem{Field: "report.comparison", Problem: "select another connected lifecycle"}
+			}
+			input.Baseline = baseline.path
+		}
+		return &catalog.Entry{Prefix: reportPrefix, Owes: current.item.Entry, Build: func(path string) error { _, err := report.AssembleConnected(ctx, input, path); return err }}, nil
+	}
 	input := report.RunsInput{Case: current.casePath, Current: current.path}
 	if draft.Comparison != nil {
 		comparison, problem := resolveReportRun(scope, *draft.Comparison, draft.ComparisonJob, "report.comparison")
@@ -315,6 +359,10 @@ func verifyReport(files map[string]string) error {
 		return err
 	}
 	if packet, held := files[catalog.EntryRole]; held {
+		if declares(filepath.Join(packet, "manifest.json"), report.ConnectedSchema) {
+			_, err := report.OpenConnected(context.Background(), packet)
+			return err
+		}
 		if _, err := report.OpenRetained(context.Background(), packet); err != nil {
 			return err
 		}
@@ -325,6 +373,7 @@ func verifyReport(files map[string]string) error {
 // reportBacking is what one report is read from: its retained packet, what
 // was written for it, the runs it names and the revision read.
 type reportBacking struct {
+	connected *report.ConnectedPacket
 	packetDir string
 	packet    *report.RetainedPacket
 	authored  report.Authored
@@ -381,7 +430,7 @@ func (c *loadedCatalog) reportBacking(item catalog.Item, revision string) (repor
 	} else {
 		manifest := filepath.Join(path, "manifest.json")
 		switch {
-		case declares(manifest, report.RetainedSchema):
+		case declares(manifest, report.RetainedSchema), declares(manifest, report.ConnectedSchema):
 			backing = reportBacking{packetDir: path, form: "packet"}
 		case declares(manifest, report.ReviewSchema), declares(manifest, report.ReviewSchemaV3):
 			review, err := report.OpenReview(c.ctx, path)
@@ -395,6 +444,17 @@ func (c *loadedCatalog) reportBacking(item catalog.Item, revision string) (repor
 		default:
 			return backing, errors.New("this report is not read as a document here")
 		}
+	}
+	if declares(filepath.Join(backing.packetDir, "manifest.json"), report.ConnectedSchema) {
+		packet, err := report.OpenConnected(c.ctx, backing.packetDir)
+		if err != nil {
+			return backing, err
+		}
+		backing.connected = packet
+		if backing.authored.Title == "" {
+			backing.authored = report.Authored{Schema: report.AuthoredSchema, Title: "Connected lifecycle report"}
+		}
+		return backing, nil
 	}
 	packet, err := report.OpenRetained(c.ctx, backing.packetDir)
 	if err != nil {
@@ -415,12 +475,15 @@ func readSavedReport(c *loadedCatalog, item catalog.Item) (view, error) {
 	if err != nil {
 		return view{}, err
 	}
-	status := "draft"
+	summary := &ReportSummary{Form: "report", Status: "draft"}
 	if c.reportReviewed(item.ID, backing.revision) {
-		status = "reviewed"
+		summary.Status = "reviewed"
 	}
-	return view{name: backing.authored.Title, summary: ItemSummary{Report: &ReportSummary{Form: "report",
-		RelatedCase: c.caseByIdentity(backing.packet.Manifest.Current.CaseIdentity), Status: status}}}, nil
+	if backing.packet != nil {
+		summary.RelatedCase = c.caseByIdentity(backing.packet.Manifest.Current.CaseIdentity)
+	}
+	c.reportAssociations(backing, summary)
+	return view{name: backing.authored.Title, summary: ItemSummary{Report: summary}}, nil
 }
 
 // ReportRequest opens one report, at one revision when Ref names one, and
@@ -499,6 +562,7 @@ type ReportVersion struct {
 // its checks and comparison with text withheld until revealed, and its
 // versions.
 type ReportView struct {
+	Connected   *report.ConnectedReport   `json:"connected,omitzero"`
 	Item        CatalogItem               `json:"item"`
 	Form        string                    `json:"form"`
 	Revision    string                    `json:"revision,omitzero"`
@@ -555,6 +619,9 @@ func (c *loadedCatalog) reportView(item CatalogItem, revision string, reveal boo
 	backing, err := c.reportBacking(record, revision)
 	if err != nil {
 		return nil, err
+	}
+	if backing.connected != nil {
+		return c.connectedReportView(item, record, backing, reveal)
 	}
 	doc, err := report.BuildDocument(c.ctx, backing.packetDir, backing.packet, backing.authored)
 	if err != nil {
@@ -797,7 +864,7 @@ func bindReportReview(a *App, ctx context.Context, request PrepareActionRequest,
 		refused = "this version is already reviewed"
 	}
 	return &boundAction{action: ReviewReportAction, origin: request, reportReview: &reportApproval{Schema: ReportApprovalSchema, Report: records[0].ID, Revision: backing.revision},
-		binding: binding(string(ReviewReportAction), loaded.root, loaded.document.Project.ID, a.reviewer(), records[0].ID, backing.revision, backing.packet.Identity),
+		binding: binding(string(ReviewReportAction), loaded.root, loaded.document.Project.ID, a.reviewer(), records[0].ID, backing.revision, backing.identity()),
 		review:  ActionReview{Items: items, Ready: ready, Refusal: refused, ReportReview: &ReportReviewView{Report: backing.authored.Title, Version: backing.revision}}}, noRefusal
 }
 
@@ -834,4 +901,14 @@ func executeReportReview(a *App, ctx context.Context, bound *boundAction, _ Revi
 	result.State, result.Outcome = Completed, ActionCompleted
 	result.Approved = &ItemRef{Kind: ReportItem, ID: approval.Report, Revision: approval.Revision}
 	return result
+}
+
+func (b reportBacking) identity() string {
+	if b.connected != nil {
+		return b.connected.Identity
+	}
+	if b.packet != nil {
+		return b.packet.Identity
+	}
+	return ""
 }

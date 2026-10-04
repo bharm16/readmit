@@ -73,15 +73,16 @@ type ShareEncryption struct {
 // reaches. Reveal shows, in the review, examples of the original values the
 // redaction rows changed; it changes nothing the output holds.
 type ReportShareOptions struct {
-	Contents    ShareContents         `json:"contents"`
-	Template    string                `json:"template,omitzero"`
-	Overrides   reportshare.Overrides `json:"overrides"`
-	Format      string                `json:"format"`
-	Paper       string                `json:"paper,omitzero"`
-	Destination string                `json:"destination,omitzero"`
-	Project     string                `json:"project,omitzero"`
-	Encrypt     *ShareEncryption      `json:"encrypt,omitzero"`
-	Reveal      bool                  `json:"reveal,omitzero"`
+	ConnectedMode string                `json:"connected_mode,omitzero"`
+	Contents      ShareContents         `json:"contents"`
+	Template      string                `json:"template,omitzero"`
+	Overrides     reportshare.Overrides `json:"overrides"`
+	Format        string                `json:"format"`
+	Paper         string                `json:"paper,omitzero"`
+	Destination   string                `json:"destination,omitzero"`
+	Project       string                `json:"project,omitzero"`
+	Encrypt       *ShareEncryption      `json:"encrypt,omitzero"`
+	Reveal        bool                  `json:"reveal,omitzero"`
 }
 
 // ShareFile is one generated file of the output, with its exact content for
@@ -143,8 +144,9 @@ type ShareRunCheck struct {
 
 // ReportShareReview is one prepared share as the flow shows it.
 type ReportShareReview struct {
-	Report  string `json:"report"`
-	Version string `json:"version,omitzero"`
+	ConnectedMode string `json:"connected_mode,omitzero"`
+	Report        string `json:"report"`
+	Version       string `json:"version,omitzero"`
 	// Patient is the field the template identifies a patient by, which a
 	// date shift is scoped to.
 	Patient      string               `json:"patient,omitzero"`
@@ -197,21 +199,22 @@ type ReportShareOutcome struct {
 
 // reportShareBinding is what a share writes or sends.
 type reportShareBinding struct {
-	item      string
-	revision  string
-	title     string
-	options   ReportShareOptions
-	share     *reportshare.Share
-	packetDir string
-	packet    *report.RetainedPacket
-	authored  report.Authored
-	path      string
-	encrypt   *protect.File
-	control   string
-	gen       int
-	team      *teamBinding
-	resource  string
-	derived   *derivedTest
+	connectedExtract *report.ExtractCandidate
+	item             string
+	revision         string
+	title            string
+	options          ReportShareOptions
+	share            *reportshare.Share
+	packetDir        string
+	packet           *report.RetainedPacket
+	authored         report.Authored
+	path             string
+	encrypt          *protect.File
+	control          string
+	gen              int
+	team             *teamBinding
+	resource         string
+	derived          *derivedTest
 }
 
 // reportShareFormats are the formats a report is shared as.
@@ -239,6 +242,9 @@ func bindReportShare(a *App, ctx context.Context, request PrepareActionRequest, 
 	backing, err := loaded.reportBacking(records[0], "")
 	if err != nil {
 		return nil, refusal{Failed, err.Error()}
+	}
+	if backing.connected != nil {
+		return a.bindConnectedReportShare(ctx, request, loaded, items, records[0], backing)
 	}
 	display := &ReportShareReview{Report: backing.authored.Title, Version: backing.revision, Templates: shareTemplates(loaded.root),
 		Controls: shareControls(loaded.root), Projects: a.shareProjects()}
@@ -685,6 +691,11 @@ func executeReportShare(a *App, ctx context.Context, bound *boundAction, decisio
 			}
 			return result
 		}
+	case share.connectedExtract != nil:
+		if err := share.connectedExtract.Publish(ctx, share.connectedExtract.Identity(), destination); err != nil {
+			result.refuse(Failed, err.Error())
+			return result
+		}
 	case share.share.Folder() || share.derived != nil:
 		if written, err := share.writeFolder(ctx, destination); err != nil {
 			result.refuse(Failed, err.Error())
@@ -956,27 +967,28 @@ const ReportShareItem ItemKind = "report-share"
 const ReportShareSchema = "readmit-report-share/v1"
 
 type reportShareRecord struct {
-	Schema       string `json:"schema"`
-	Report       string `json:"report"`
-	Revision     string `json:"revision"`
-	Actor        string `json:"actor"`
-	At           string `json:"at"`
-	Destination  string `json:"destination"`
-	Output       string `json:"output"`
-	Format       string `json:"format"`
-	Redacted     bool   `json:"redacted"`
-	SourceValues bool   `json:"source_values"`
-	Encrypted    bool   `json:"encrypted"`
-	Original     bool   `json:"original"`
+	Source       *SourceExportAssociation `json:"source,omitzero"`
+	Schema       string                   `json:"schema"`
+	Report       string                   `json:"report"`
+	Revision     string                   `json:"revision"`
+	Actor        string                   `json:"actor"`
+	At           string                   `json:"at"`
+	Destination  string                   `json:"destination"`
+	Output       string                   `json:"output"`
+	Format       string                   `json:"format"`
+	Redacted     bool                     `json:"redacted"`
+	SourceValues bool                     `json:"source_values"`
+	Encrypted    bool                     `json:"encrypted"`
+	Original     bool                     `json:"original"`
 }
 
 func decodeReportShare(data []byte) (reportShareRecord, error) {
 	var record reportShareRecord
 	invalid := errors.New("the report share record cannot be read")
-	if len(data) > catalog.MaxMemberBytes || json.Unmarshal(data, &record, json.RejectUnknownMembers(true)) != nil || record.Schema != ReportShareSchema ||
-		!catalog.ValidID(record.Report) || record.Revision == "" || strings.TrimSpace(record.Actor) == "" ||
+	if len(data) > catalog.MaxMemberBytes || json.Unmarshal(data, &record, json.RejectUnknownMembers(true)) != nil || !slices.Contains([]string{ReportShareSchema, SourceShareSchema}, record.Schema) ||
+		record.Schema == ReportShareSchema && (!catalog.ValidID(record.Report) || record.Source != nil || sourceMemberPresent(data)) || record.Schema == SourceShareSchema && (record.Report != "" || record.Source == nil || validateSourceExport(*record.Source) != nil || record.Redacted || !record.SourceValues || record.Original || record.Encrypted || record.Destination != "local-file" || record.Output != ShareOutputFile) || record.Revision == "" || strings.TrimSpace(record.Actor) == "" ||
 		!slices.Contains([]string{"local-file", "customer-hub"}, record.Destination) ||
-		!slices.Contains([]string{ShareOutputFile, ShareOutputFolder, ShareOutputPackage}, record.Output) || !slices.Contains(reportShareFormats, record.Format) {
+		!slices.Contains([]string{ShareOutputFile, ShareOutputFolder, ShareOutputPackage}, record.Output) || !(record.Schema == SourceShareSchema && record.Format == "original-message-bytes" || record.Schema == ReportShareSchema && slices.Contains(reportShareFormats, record.Format)) {
 		return reportShareRecord{}, invalid
 	}
 	if _, err := time.Parse(time.RFC3339, record.At); err != nil {
@@ -1044,7 +1056,7 @@ func (a *App) recordShare(ctx context.Context, bound *boundAction, share *report
 	switch {
 	case share.encrypt != nil:
 		output = ShareOutputPackage
-	case share.share.Folder() || share.derived != nil:
+	case share.connectedExtract != nil || share.share.Folder() || share.derived != nil:
 		output = ShareOutputFolder
 	}
 	record := reportShareRecord{Schema: ReportShareSchema, Report: share.item, Revision: share.revision, Actor: a.reviewerName(), At: catalog.Stamp(a.now()),

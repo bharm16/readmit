@@ -172,6 +172,7 @@ test("Reset saves registered isolation prerequisites and manual claims without c
     SaveItem: (request) => ({ state: "failed", context: request.context, outcome: "invalid", replayed: false, problems: [{ field: "isolation.adapter", problem: "Classify this environment as Nonproduction before using isolation" }] }),
   });
   render(<EnvironmentsWindow initial={{ kind: "environment", id: "fhir-env" }} />, { wrapper: vocabularyWrapper() });
+  await user.click(await screen.findByRole("tab", {name:"Reset"}));
   await user.click(await screen.findByRole("button", { name: "Add reset" }));
   const sheet = await screen.findByRole("dialog", { name: "Edit reset" });
   await user.click(within(sheet).getByRole("checkbox", { name: "External isolation" }));
@@ -208,6 +209,7 @@ test("Set up isolation reviews its actual effects and requires each current manu
     ExecuteReviewedAction: (request) => ({ state: "completed", context: request.context, outcome: "completed", replayed: false, isolation: { action: "environment.isolation.setup", checked_at: "2026-09-29T13:00:00Z", setup: "ready", cleanup: "not-started", complete: true, resources: 1, manual: [{ id: "confirm-fixture", provenance: "operator-declared-current-execution" }] } }),
   });
   render(<EnvironmentsWindow initial={{ kind: "environment", id: "fhir-env" }} />, { wrapper: vocabularyWrapper() });
+  await user.click(await screen.findByRole("tab", {name:"Reset"}));
   await user.click(await screen.findByRole("button", { name: "Set up isolation" }));
   const review = await screen.findByRole("dialog", { name: "Set up isolation" });
   const reset = within(review).getByRole("button", { name: "Reset" });

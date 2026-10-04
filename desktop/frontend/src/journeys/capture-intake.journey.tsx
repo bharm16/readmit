@@ -1,0 +1,71 @@
+import { afterEach, beforeEach, expect, test } from "vitest";
+import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { enter, Journey, press } from "../testkit/journey";
+import { details, page, sidebar } from "../testkit/navigation";
+import { EXPORTED_BOOKING, EXPORTED_RESCHEDULE, framed, licensedProject } from "./steps";
+let journey: Journey;
+beforeEach(()=>{journey=Journey.create();});
+afterEach(async()=>{await journey.dispose();});
+
+async function openSourceContext(user: ReturnType<typeof userEvent.setup>) {
+ const direct=page().queryByRole("button",{name:"Source context"});
+ if(direct){await waitFor(()=>expect(direct.hasAttribute("disabled")).toBe(false));await press(user,direct);return;}
+ await press(user,page().getByRole("button",{name:"More case actions"}));
+ const action=await waitFor(()=>{const offered=screen.getByRole("menuitem",{name:"Source context"});expect(offered.hasAttribute("disabled")).toBe(false);return offered;});await press(user,action);
+}
+test("retaining a loose investigation preserves ordered multi-selection and field location through actual import and restart",async()=>{
+ const user=userEvent.setup();
+ journey.writeFile("exports/loose.mllp",framed(EXPORTED_BOOKING)+framed(EXPORTED_RESCHEDULE));
+ await licensedProject(journey,user);
+ await press(user,sidebar().getByRole("button",{name:"Messages"}));
+ await journey.chooseFiles([journey.path("exports/loose.mllp")],"Open HL7 file");
+ await press(user,page().getByRole("button",{name:"Open file"}));
+ const table=await screen.findByRole("table",{name:"Messages in this file"});
+ await press(user,table.querySelector<HTMLElement>('[data-row-id="1"]')!);
+ await press(user,details().getByRole("button",{name:"More message actions"}));
+ await press(user,screen.getByRole("menuitem",{name:"Go to field…"}));
+ const field=within(await screen.findByRole("dialog",{name:"Go to field"}));
+ await enter(user,field.getByLabelText("Field path"),"MSH-9.2");await press(user,field.getByRole("button",{name:"Go"}));
+ await details().findAllByText("MSH[1]-9[1].2");
+ await user.click(table.querySelector<HTMLInputElement>('[data-row-id="1"] input[type="checkbox"]')!);
+ await user.click(table.querySelector<HTMLInputElement>('[data-row-id="0"] input[type="checkbox"]')!);
+ await press(user,page().getByRole("button",{name:"Retain capture"}));
+ const flow=within(await screen.findByRole("dialog",{name:"Import"}));
+ await enter(user,flow.getByLabelText("Case"),"Retained loose investigation");
+ await waitFor(()=>expect(journey.callsTo("ProbeImport").at(-1)?.settled).toBe(true));
+ await press(user,flow.getByRole("button",{name:"Next"}));
+ await flow.findByRole("table",{name:"Preview"});
+ await press(user,flow.getByRole("button",{name:/^Import$/}));
+ await waitFor(()=>expect(screen.queryByRole("dialog",{name:"Import"})).toBeNull());
+ await page().findByRole("heading",{name:"Retained loose investigation"});
+ await screen.findByRole("region",{name:"Details"});
+ await details().findAllByText("MSH[1]-9[1].2");
+ const retained=screen.getByRole("table",{name:"Messages"});
+ expect([...retained.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')].every(input=>input.checked)).toBe(true);
+ const imported=journey.callsTo("ImportCase").at(-1)?.result as {selection?:{messages:string[];selected:string}};
+ expect(imported.selection?.messages).toHaveLength(2);expect(imported.selection?.selected).toBe(imported.selection?.messages[0]);
+ const listed=journey.callsTo("ListFileMessages")[0]?.result as {sha256:string};
+ expect(journey.digest("exports/loose.mllp")).toBe(listed.sha256);
+
+ await openSourceContext(user);
+ const context=within(await screen.findByRole("dialog",{name:"Capture source context"}));
+ await context.findByText("unknown");
+ await press(user,context.getByRole("button",{name:"Correct source context"}));
+ const correction=within(await screen.findByRole("dialog",{name:"Correct source context"}));
+ await enter(user,correction.getByLabelText("Source",{exact:true}),"Manually declared scheduling feed");
+ await enter(user,correction.getByLabelText("Channel",{exact:true}),"Manually declared channel");
+ await press(user,correction.getByRole("button",{name:"Save"}));
+ const corrected=within(await screen.findByRole("dialog",{name:"Capture source context"}));
+ await corrected.findByText("manual");
+ await press(user,corrected.getByRole("button",{name:"Close capture source context"}));
+ await journey.settled();await journey.close();await journey.launch();
+ await screen.findByRole("region",{name:"Details"});
+ await details().findAllByText("MSH[1]-9[1].2");
+ expect([...screen.getByRole("table",{name:"Messages"}).querySelectorAll<HTMLInputElement>('input[type="checkbox"]')].every(input=>input.checked)).toBe(true);
+ await openSourceContext(user);
+ const reopened=within(await screen.findByRole("dialog",{name:"Capture source context"}));
+ await reopened.findByText("Manually declared scheduling feed");await reopened.findByText("manual");
+ await press(user,reopened.getByRole("button",{name:"Close capture source context"}));await press(user,sidebar().getByRole("button",{name:"Captures"}));const captures=within(await page().findByRole("table",{name:"Cases"}));const captureRow=await captures.findByRole("row",{name:"Retained loose investigation"});const opens=journey.callsTo("OpenCase").length;await press(user,captureRow);const card=within(await page().findByRole("region",{name:"Selected capture"}));await card.findByText("Manually declared scheduling feed");expect(card.getByText("2")).toBeTruthy();expect(journey.callsTo("OpenCase")).toHaveLength(opens);await press(user,within(captureRow).getByRole("button",{name:"Retained loose investigation"}));await page().findByRole("table",{name:"Messages"});expect(journey.callsTo("OpenCase").length).toBe(opens+1);expect(journey.digest("exports/loose.mllp")).toBe(listed.sha256);
+ expect(journey.callsTo("ExecuteReviewedAction")).toHaveLength(0);
+});

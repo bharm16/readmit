@@ -1,4 +1,9 @@
 import { useId, type ReactElement } from "react";
+import closeIcon from "./assets/workbench/close.svg";
+import searchIcon from "./assets/workbench/search.svg";
+import moreIcon from "./assets/workbench/more.svg";
+import downIcon from "./assets/workbench/down.svg";
+import rightIcon from "./assets/workbench/right.svg";
 
 // The icon-only utility button the label review specified for a small set of
 // conventional controls: a close, an undo, pagination chevrons, a help entry
@@ -29,11 +34,7 @@ const glyphs: Record<IconGlyph, ReactElement> = {
     </svg>
   ),
   // X (close).
-  close: (
-    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
-      <path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-    </svg>
-  ),
+  close: <img className="workbench-icon" src={closeIcon} width="12" height="12" alt="" />,
   // Curved arrow pointing left (undo).
   undo: (
     <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
@@ -48,11 +49,7 @@ const glyphs: Record<IconGlyph, ReactElement> = {
     </svg>
   ),
   // Chevron right.
-  next: (
-    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
-      <path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  ),
+  next: <img className="workbench-icon" src={rightIcon} width="12" height="12" alt="" />,
   // Chevron up.
   up: (
     <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
@@ -60,26 +57,11 @@ const glyphs: Record<IconGlyph, ReactElement> = {
     </svg>
   ),
   // Chevron down.
-  down: (
-    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
-      <path d="M3 6l5 5 5-5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  ),
+  down: <img className="workbench-icon" src={downIcon} width="16" height="16" alt="" />,
   // Three dots (more actions).
-  more: (
-    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
-      <circle cx="3.5" cy="8" r="1.3" fill="currentColor" />
-      <circle cx="8" cy="8" r="1.3" fill="currentColor" />
-      <circle cx="12.5" cy="8" r="1.3" fill="currentColor" />
-    </svg>
-  ),
+  more: <img className="workbench-icon" src={moreIcon} width="16" height="16" alt="" />,
   // Magnifying glass.
-  search: (
-    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
-      <circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M10.5 10.5 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  ),
+  search: <img className="workbench-icon" src={searchIcon} width="12.8107" height="12.8107" alt="" />,
   // Funnel.
   filter: (
     <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">

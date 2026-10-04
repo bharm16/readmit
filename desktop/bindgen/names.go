@@ -143,6 +143,7 @@ var facadeNames = names{
 		// panel's cancel control stops, so a cancel can name only an
 		// operation the facade runs under that name.
 		"InterruptibleOperation": {
+			"internal/desktop.FieldValuesOperation",
 			"internal/desktop.analysisOperation",
 			"internal/desktop.captureOperation",
 			"internal/desktop.ciGateVerifyOperation",

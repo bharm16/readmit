@@ -21,3 +21,22 @@
 .raw-window th, .raw-window td { text-align: right; border-bottom: 1px solid currentColor; }
 .raw-part { margin-block: 1rem; }
 .raw-running { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin-block: .6rem; }
+.file-reader-browser { height:100%; display:flex; flex-direction:column; min-height:0; font-size:.8125rem; }
+.file-browser-heading { margin:0; padding:.5rem; min-height:2.25rem; font-size:.8125rem; font-weight:600; background:var(--rail); }
+.file-browser-search { margin:.5rem; display:flex; align-items:center; gap:.5rem; border:1px solid var(--line); border-radius:var(--radius-control); padding:0 .5rem; height:2rem; min-height:2rem; }
+.file-browser-search img { flex:none; }
+.file-browser-tabs { padding:.5rem; display:flex; gap:.25rem; border-bottom:1px solid var(--line); }
+.file-browser-tabs button[aria-selected="true"] { background:var(--accent); color:var(--accent-text); }
+.file-browser-source { min-height:4rem; border-bottom:1px solid var(--line); padding:.75rem; display:flex; flex-direction:column; gap:.25rem; }
+.file-browser-source strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.file-browser-source span { color:var(--muted); font-size:.75rem; }
+.file-browser-scroll { flex:1; min-height:0; overflow:auto; }
+.file-reader-browser table { width:100%; min-width:0; }
+.file-reader-browser .message-browser-entry { display:flex; flex-direction:column; align-items:flex-start; gap:.25rem; }
+.file-reader-browser .message-browser-entry > span { color:var(--muted); font-size:.75rem; white-space:normal; }
+.file-browser-footer { display:flex; flex-direction:column; gap:.375rem; padding:.75rem; font-size:.75rem; line-height:1.125rem; }
+.file-browser-footer span { color:var(--muted); }
+.file-browser-footer strong { font-weight:400; overflow-wrap:anywhere; }
+.file-reader-browser .page-table { margin:0; }
+.file-reader-body { height:100%; min-height:0; display:flex; flex-direction:column; overflow:hidden; }
+.file-reader-body .file-reader-browser { height:auto; flex:1; }

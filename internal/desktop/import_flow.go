@@ -535,11 +535,12 @@ const staleRefusal = "the sources or their format changed since this preview; pr
 // that holds its evidence is generated. PreviewToken is the preview this
 // import was reviewed from, and IntentID the click that submitted it.
 type ImportCaseRequest struct {
-	Context      RequestContext `json:"context"`
-	Name         string         `json:"name"`
-	Source       ImportRequest  `json:"source"`
-	PreviewToken string         `json:"preview_token"`
-	IntentID     string         `json:"intent_id"`
+	Investigation *ImportInvestigation `json:"investigation,omitzero"`
+	Context       RequestContext       `json:"context"`
+	Name          string               `json:"name"`
+	Source        ImportRequest        `json:"source"`
+	PreviewToken  string               `json:"preview_token"`
+	IntentID      string               `json:"intent_id"`
 }
 
 // ImportCaseResult answers one import. Case is the registered case. Stale
@@ -547,13 +548,14 @@ type ImportCaseRequest struct {
 // was already answered with that case; Operation names import work kept for
 // a retry under the same click.
 type ImportCaseResult struct {
-	State     State          `json:"state"`
-	Reason    string         `json:"reason,omitzero"`
-	Context   RequestContext `json:"context"`
-	Case      *ItemRef       `json:"case,omitzero"`
-	Replayed  bool           `json:"replayed"`
-	Stale     bool           `json:"stale,omitzero"`
-	Operation string         `json:"operation,omitzero"`
+	Selection *RetainedImportSelection `json:"selection,omitzero"`
+	State     State                    `json:"state"`
+	Reason    string                   `json:"reason,omitzero"`
+	Context   RequestContext           `json:"context"`
+	Case      *ItemRef                 `json:"case,omitzero"`
+	Replayed  bool                     `json:"replayed"`
+	Stale     bool                     `json:"stale,omitzero"`
+	Operation string                   `json:"operation,omitzero"`
 }
 
 func (r *ImportCaseResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
@@ -595,20 +597,25 @@ func (a *App) ImportCase(request ImportCaseRequest) ImportCaseResult {
 		}
 		source := withSchemas(request.Source)
 		source.Context, source.Workspace, source.Project = request.Context, "", ""
-		digest := submissionOf(name, source, request.PreviewToken)
+		digest := submissionOf(name, source, request.PreviewToken, request.Investigation)
 		incoming := filepath.Join(root, catalog.Folder, incomingFolder, intentFolder(request.IntentID))
 		if held, present := readIntent(incoming); present {
 			if held.Digest != digest || held.Intent != request.IntentID {
 				result.refuse(Failed, "this submission was already used for different content; nothing was imported")
 				return result
 			}
-			return a.completeImport(ctx, result, root, incoming, held, name, source)
+			return a.completeImport(ctx, result, root, incoming, held, name, source, request.Investigation)
 		}
 		// The inputs are read and matched to the preview before anything is
 		// written, so a refused import leaves the project as it was.
 		read, declined := a.extractImport(ctx, source)
 		if read == nil {
 			result.refuse(declined.state, declined.reason)
+			return result
+		}
+		if declined := validateImportInvestigation(source, read, request.Investigation); declined.state != "" {
+			result.refuse(declined.state, declined.reason)
+			result.Stale = true
 			return result
 		}
 		if read.token != request.PreviewToken {
@@ -657,7 +664,7 @@ func (a *App) ImportCase(request ImportCaseRequest) ImportCaseResult {
 			result.refuse(Failed, "the import could not be recorded in the project's import area")
 			return result
 		}
-		return a.completeImport(ctx, result, root, incoming, held, name, source)
+		return a.completeImport(ctx, result, root, incoming, held, name, source, request.Investigation)
 	})
 }
 
@@ -670,7 +677,7 @@ var caseEntryRule = outputRule{prefix: "case", beside: "-receipt.json",
 
 // completeImport publishes the case one click wrote, or answers the case it
 // already published, and then removes the pasted sources it read.
-func (a *App) completeImport(ctx context.Context, result ImportCaseResult, root, incoming string, held importIntent, name string, source ImportRequest) ImportCaseResult {
+func (a *App) completeImport(ctx context.Context, result ImportCaseResult, root, incoming string, held importIntent, name string, source ImportRequest, investigation *ImportInvestigation) ImportCaseResult {
 	replayed, err := publishCase(root, incoming, held.Entry, name)
 	if err != nil {
 		result.refuse(Failed, "the case was written but not registered, and it stays out of the project: "+err.Error())
@@ -682,6 +689,13 @@ func (a *App) completeImport(ctx context.Context, result ImportCaseResult, root,
 		result.refuse(declined.state, "the case was imported and registered, and "+declined.reason)
 		return result
 	}
+	selection, err := retainedImportSelection(root, held.Entry, investigation)
+	if err != nil {
+		result.refuse(Failed, "the capture was retained, but its selection cannot be restored: "+err.Error())
+		result.Case = ref
+		return result
+	}
+	result.Selection = selection
 	a.removeStaged(root, source.Staged)
 	keepOnlyIntent(incoming)
 	result.State, result.Case, result.Replayed = Completed, ref, replayed

@@ -36,13 +36,34 @@ test("the stylesheets are found", () => {
   expect(sheets.every((sheet) => sheet.css.length > 0)).toBe(true);
 });
 
-test("no colour literal, gradient or fixed shadow colour in any first-party stylesheet", () => {
+// The owner explicitly requires the Figma control palette. Its exact roles
+// are centralized; arbitrary literals remain forbidden in every other rule.
+const FIGMA_CONTROL_PALETTE: Record<string, string> = {
+  "--interface-color-action": "#005ad9",
+  "--interface-color-action-hover": "#0046ad",
+  "--interface-color-border": "#b6becb",
+  "--interface-color-hover": "#edf2f9",
+  "--interface-color-disabled": "#d5dbe4",
+  "--interface-color-disabled-text": "#667181",
+  "--interface-color-on-action": "#ffffff",
+};
+function canonicalControlRole(rule: Rule): boolean {
+  return rule.sheet === "styles.css" && rule.selector === ":root" &&
+    FIGMA_CONTROL_PALETTE[rule.property] === rule.value;
+}
+
+test("Figma control colours are declared once with their exact source values", () => {
+  const declared = rules().filter(canonicalControlRole);
+  expect(declared.map(rule => rule.property).sort()).toEqual(Object.keys(FIGMA_CONTROL_PALETTE).sort());
+});
+
+test("no colour literal outside the canonical Figma control roles, gradient or fixed shadow colour", () => {
   const offending = rules().filter(
-    (rule) =>
+    (rule) => !canonicalControlRole(rule) && (
       /#[0-9a-f]{3,8}\b/i.test(rule.value) ||
       /\b(rgb|rgba|hsl|hsla|hwb|lab|lch|oklab|oklch)\(/i.test(rule.value) ||
       /gradient\(/i.test(rule.value) ||
-      (COLOURED.test(rule.property) && NAMED.test(rule.value)),
+      (COLOURED.test(rule.property) && NAMED.test(rule.value))),
   );
   expect(offending).toEqual([]);
 });
@@ -72,6 +93,12 @@ test("the layout lengths the code decides with are the stylesheet's own tokens",
   const root = sheets.find((sheet) => sheet.name === "styles.css")!.css;
   const rem = (name: string) => Number.parseFloat(root.match(new RegExp(`${name}\\s*:\\s*([0-9.]+)rem;`))?.[1] ?? "NaN");
   expect(rem("--sidebar")).toBe(geometry.SIDEBAR_REM);
+  expect(rem("--reader-compact-window")).toBe(geometry.READER_COMPACT_WINDOW_REM);
+  expect(rem("--reader-compact-sidebar")).toBe(geometry.READER_COMPACT_SIDEBAR_REM);
+  expect(rem("--message-browser")).toBe(geometry.MESSAGE_BROWSER_REM);
+  expect(rem("--message-browser-compact")).toBe(geometry.MESSAGE_BROWSER_COMPACT_REM);
+  expect(rem("--reader-reference")).toBe(geometry.READER_REFERENCE_REM);
+  expect(rem("--reader-reference-compact")).toBe(geometry.READER_REFERENCE_COMPACT_REM);
   expect(rem("--icon-rail")).toBe(geometry.ICON_RAIL_REM);
   expect(rem("--row")).toBe(geometry.ROW_REM);
   expect(rem("--inspector")).toBe(geometry.INSPECTOR_REM);
@@ -93,7 +120,7 @@ test("a selected or current item keeps a marker when the platform forces its col
 test("the shared tokens hold the specified geometry", () => {
   const root = sheets.find((sheet) => sheet.name === "styles.css")!.css;
   const token = (name: string) => root.match(new RegExp(`${name}\\s*:\\s*([^;]+);`))?.[1]?.trim();
-  expect(token("--sidebar")).toBe("13rem");
+  expect(token("--sidebar")).toBe("14rem");
   expect(token("--icon-rail")).toBe("3.25rem");
   expect(token("--header")).toBe("3.5rem");
   expect(token("--tabs")).toBe("2.25rem");

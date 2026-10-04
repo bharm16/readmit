@@ -83,8 +83,8 @@ export async function createProject(user: UserEvent, journey: Journey, parent: s
   const answer = await submitProject(user, journey, parent, _name, title, true);
   const folder = (answer as { project?: { summary: { project?: { folder: string } } } }).project?.summary.project?.folder;
   expect(folder).toBeTruthy();
-  // The new project opens on its empty Cases.
-  expect(await screen.findByText("No cases yet")).toBeTruthy();
+  // The new project opens on its empty retained captures collection.
+  expect(await screen.findByText(/^(No captures yet|No cases yet)$/)).toBeTruthy();
   return folder!;
 }
 
@@ -259,6 +259,7 @@ export async function configureEnvironment(user: UserEvent, journey: Journey, ad
   expect(journey.callsTo("CheckEnvironment")[received]?.result).toMatchObject({ state: "completed", report: { outcome: "reachable" } });
 
   // The receiver's ledger export, observed as records keyed by appointment.
+  await press(user, page().getByRole("tab", { name: "Observations" }));
   const group = within(page().getByRole("region", { name: "Observation" }));
   await press(user, group.getByRole("button", { name: "Add observation" }));
   const naming = within(await screen.findByRole("dialog", { name: "Add observation" }));
@@ -286,7 +287,8 @@ export async function configureEnvironment(user: UserEvent, journey: Journey, ad
  * Messages list: sent to the environment, decided by the appointment count its
  * observation reads after the run, expected to be one. One Create test. */
 export async function createRecordTest(user: UserEvent, journey: Journey, environment: string, name: string): Promise<void> {
-  const table = await screen.findByRole("table", { name: "Messages" });
+  await waitFor(() => expect(screen.getByRole("table", { name: "Messages" }).querySelector('tr[data-row-id] input[type="checkbox"]')).toBeTruthy(), { timeout: 10_000 });
+  const table = screen.getByRole("table", { name: "Messages" });
   for (const box of within(table).getAllByRole("checkbox").filter((box) => !(box as HTMLInputElement).checked && box.closest("tr[data-row-id]"))) {
     await press(user, box);
   }

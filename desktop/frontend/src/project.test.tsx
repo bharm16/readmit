@@ -19,7 +19,7 @@ import {
   projectOverviewResult,
 } from "./testkit/fixtures";
 import { renderApp } from "./testkit/app";
-import { findCaseRow, page, readCaseIdentity, sidebar } from "./testkit/navigation";
+import { findCaseRow, goTo, page, readCaseIdentity, sidebar } from "./testkit/navigation";
 import type { CatalogItem, CatalogQuery, CatalogResult, RequestContext, SaveItemRequest, SaveItemResult } from "./bindings";
 import type { FacadeHandlers } from "./testkit/wails";
 
@@ -217,7 +217,7 @@ test("a case's notes are listed, and a new note is one sheet with one Save about
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "New note" })).toBeNull());
   // Back returns to the case list.
   await user.click(page().getByRole("button", { name: "Back to Duplicate appointment after reschedule" }));
-  expect(await page().findByRole("heading", { level: 1, name: "Cases" })).toBeTruthy();
+  expect(await page().findByRole("heading", { level: 1, name: "Captures" })).toBeTruthy();
 });
 
 test("attachments are added through the host's file dialog, and removing one only unlinks it from the case", async () => {
@@ -251,7 +251,8 @@ test("search and filters narrow the list without saving anything, and chips take
   expect(page().getByRole("row", { name: "Cancellation rejected" })).toBeTruthy();
   await user.click(within(page().getByRole("group", { name: "Applied filters" })).getByRole("button", { name: "Remove Open" }));
   expect(await findCaseRow("Duplicate appointment after reschedule")).toBeTruthy();
-  await user.click(page().getByRole("button", { name: "Search cases" }));
+  await user.click(page().getByRole("button",{name:"Capture list actions"}));
+  await user.click(screen.getByRole("menuitem",{name:"Search cases"}));
   await user.type(within(await screen.findByRole("dialog", { name: "Search cases" })).getByLabelText("Search"), "nothing like this{Enter}");
   expect(await page().findByText("No matching cases")).toBeTruthy();
   await user.click(page().getAllByRole("button", { name: "Clear filters" })[0]!);
@@ -264,16 +265,16 @@ test("a row opens its case on Messages, and Back returns to the list with that c
   const user = userEvent.setup();
   const { facade } = await openProject(user, { OpenCase: () => caseResult() });
   await findCaseRow("Duplicate appointment after reschedule");
-  await user.click(page().getByRole("button", { name: "Case" }));
-  await user.click(page().getByRole("button", { name: /Case/ }));
+  await user.click(within(page().getByRole("table",{name:"Cases"})).getByRole("button",{name:"Capture"}));
+  await user.click(within(page().getByRole("table",{name:"Cases"})).getByRole("button",{name:/Capture/}));
   await user.click(await findCaseRow("Duplicate appointment after reschedule"));
   expect(facade.oneCall("OpenCase")).toEqual([WORKSPACE_ROOT, CASE_ENTRY]);
   expect(await readCaseIdentity(user, CASE_IDENTITY)).toBeTruthy();
   expect(screen.getByRole("tab", { name: "Messages", selected: true })).toBeTruthy();
-  await user.click(page().getByRole("button", { name: "Back to cases" }));
+  await user.click(page().getByRole("button", { name: "Back to captures" }));
   expect((await findCaseRow("Duplicate appointment after reschedule")).getAttribute("aria-selected")).toBe("true");
   // The column the list was sorted by comes back with it.
-  expect(page().getByRole("columnheader", { name: /Case/ }).getAttribute("aria-sort")).toBe("descending");
+  expect(page().getByRole("columnheader", { name: /Capture/ }).getAttribute("aria-sort")).toBe("descending");
 });
 
 test("search results open the artifact they matched, not only its name", async () => {
@@ -367,7 +368,7 @@ test("Back from a case keeps the list's applied filter", async () => {
   await user.click(sheet.getByRole("button", { name: "Apply" }));
   await user.click(await findCaseRow("Duplicate appointment after reschedule"));
   expect(await readCaseIdentity(user, CASE_IDENTITY)).toBeTruthy();
-  await user.click(page().getByRole("button", { name: "Back to cases" }));
+  await user.click(page().getByRole("button", { name: "Back to captures" }));
   expect(within(page().getByRole("group", { name: "Applied filters" })).getByRole("button", { name: "Remove Investigating" })).toBeTruthy();
   expect(page().getByRole("row", { name: "Duplicate appointment after reschedule" })).toBeTruthy();
 });
@@ -552,18 +553,18 @@ test("Back from Messages restores the filter, sort, selection and scroll of the 
     const sheet = within(await screen.findByRole("dialog", { name: "Filter cases" }));
     await user.click(sheet.getByRole("checkbox", { name: "Open" }));
     await user.click(sheet.getByRole("button", { name: "Apply" }));
-    await user.click(page().getByRole("button", { name: "Case" }));
+    await user.click(within(page().getByRole("table",{name:"Cases"})).getByRole("button",{name:"Capture"}));
     const view = page().getByRole("table", { name: "Cases" }).closest<HTMLElement>(".table-view")!;
     view.scrollTop = 880;
     fireEvent.scroll(view);
     await user.click(await findCaseRow("Case 0025"));
     expect(await readCaseIdentity(user, CASE_IDENTITY)).toBeTruthy();
-    await user.click(page().getByRole("button", { name: "Back to cases" }));
+    await user.click(page().getByRole("button", { name: "Back to captures" }));
     const returned = await findCaseRow("Case 0025");
     expect(returned.getAttribute("aria-selected")).toBe("true");
     expect(within(page().getByRole("group", { name: "Applied filters" })).getByRole("button", { name: "Remove Open" })).toBeTruthy();
     expect(page().queryByRole("row", { name: "Already investigated" })).toBeNull();
-    expect(page().getByRole("columnheader", { name: /Case/ }).getAttribute("aria-sort")).toBe("ascending");
+    expect(page().getByRole("columnheader", { name: /Capture/ }).getAttribute("aria-sort")).toBe("ascending");
     const back = page().getByRole("table", { name: "Cases" }).closest<HTMLElement>(".table-view")!;
     expect(back).not.toBe(view);
     expect(back.scrollTop).toBe(880);
@@ -588,9 +589,9 @@ test("switching project never shows the previous project's cases", async () => {
     OpenWorkspace: (folder) => folderChosen(folder, [{ name: "project.json", kind: "project", schema: "readmit-project/v2" }]),
   });
   await findCaseRow("Duplicate appointment after reschedule");
-  await user.click(sidebar().getByRole("button", { name: "Projects" }));
+  await goTo(user,"Projects");
   await user.click(within(await page().findByRole("table", { name: "Projects" })).getByRole("row", { name: "Registration upgrade" }));
-  expect(await page().findByRole("heading", { level: 1, name: "Cases" })).toBeTruthy();
+  expect(await page().findByRole("heading", { level: 1, name: "Captures" })).toBeTruthy();
   await waitFor(() => expect(waiting.length).toBeGreaterThan(0));
   expect(facade.callsTo("OpenWorkspace").at(-1)?.args).toEqual([OTHER_ROOT]);
   // While the other project's cases are read, none of the first one's show.

@@ -45,7 +45,7 @@ test("a refused case verification offers the way back to the folder listing", as
   // The refusal is shown on the case list itself, which stays usable: the way
   // back is already on screen.
   expect(await findCaseRow(CASE_ENTRY)).toBeTruthy();
-  expect(sidebar().getByRole("button", { name: "Cases" }).getAttribute("aria-current")).toBe("page");
+  expect(sidebar().getByRole("button", { name: "Captures" }).getAttribute("aria-current")).toBe("page");
   expect(facade.callsTo("OpenCase").length).toBe(1);
 });
 
@@ -92,7 +92,7 @@ test("a run review refusal opens the configuration the refusal is about", async 
   expect((await review()).textContent).toBe("the send policy refuses this destination");
   // Each refusal's next action is the real configuration screen.
   await user.click(screen.getByRole("button", { name: "Edit environment" }));
-  expect(sidebar().getByRole("button", { name: "Environments" }).getAttribute("aria-current")).toBe("page");
+  expect(sidebar().getByRole("button", { name: "Targets" }).getAttribute("aria-current")).toBe("page");
   expect(document.activeElement?.classList.contains("region-evidence")).toBe(true);
   refusal = "license";
   expect((await review()).textContent).toBe("the operation term has expired");

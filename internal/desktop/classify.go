@@ -135,6 +135,9 @@ var declaredSchemas = func() map[string]Kind {
 func classify(root, name string, isDir bool) (Kind, bool) {
 	path := filepath.Join(root, name)
 	if isDir {
+		if connectedIndividualArtifact(path) {
+			return JobArtifact, true
+		}
 		// A durable run carries its engine pin beside the journal and the
 		// result directory it retains; a plain result holds only its result
 		// record. Neither is read here.

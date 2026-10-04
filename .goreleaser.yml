@@ -35,6 +35,10 @@ archives:
       - docs/profile-source-map.json
       - docs/profile-coverage-gaps.json
       - docs/profile-library.md
+      - docs/hl7-reference.md
+      - docs/field-values.md
+      - docs/interface-specifications.md
+      - docs/interface-value-maps.md
       - docs/local-profiles.md
       - docs/profile-versions.md
       - docs/profile-packages.md
@@ -58,6 +62,7 @@ archives:
       - docs/protect.md
       - docs/target.md
       - docs/listen.md
+      - docs/exchanges.md
       - docs/collect.md
       - docs/replay.md
       - docs/run-bundle.md

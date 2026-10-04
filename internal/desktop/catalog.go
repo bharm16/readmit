@@ -230,20 +230,22 @@ type InterfaceRevision struct {
 // as InterfaceVersion. Provenance is a marker, present only for a case whose
 // evidence is not a person's own: synthetic (generated) or variant (derived).
 type CaseSummary struct {
-	Protocol          string         `json:"protocol,omitzero"`
-	ProtocolVersion   string         `json:"protocol_version,omitzero"`
-	SourceKind        string         `json:"source_kind,omitzero"`
-	Resources         int            `json:"resources,omitzero"`
-	Registered        bool           `json:"registered"`
-	Entry             string         `json:"entry"`
-	Status            project.Status `json:"status,omitzero"`
-	Owner             string         `json:"owner,omitzero"`
-	Tags              []string       `json:"tags"`
-	Incidents         []string       `json:"incidents"`
-	InterfaceVersion  string         `json:"interface_version,omitzero"`
-	InterfaceRevision string         `json:"interface_revision,omitzero"`
-	Evidence          string         `json:"evidence"`
-	Provenance        string         `json:"provenance,omitzero"`
+	Occurrences       *int            `json:"occurrences,omitzero"`
+	CaptureContext    *CaptureContext `json:"capture_context,omitzero"`
+	Protocol          string          `json:"protocol,omitzero"`
+	ProtocolVersion   string          `json:"protocol_version,omitzero"`
+	SourceKind        string          `json:"source_kind,omitzero"`
+	Resources         int             `json:"resources,omitzero"`
+	Registered        bool            `json:"registered"`
+	Entry             string          `json:"entry"`
+	Status            project.Status  `json:"status,omitzero"`
+	Owner             string          `json:"owner,omitzero"`
+	Tags              []string        `json:"tags"`
+	Incidents         []string        `json:"incidents"`
+	InterfaceVersion  string          `json:"interface_version,omitzero"`
+	InterfaceRevision string          `json:"interface_revision,omitzero"`
+	Evidence          string          `json:"evidence"`
+	Provenance        string          `json:"provenance,omitzero"`
 	// Sources are a registered case's sources in the order its manifest
 	// declares them, each with the name the project records for it, empty
 	// when it has none: what Edit details opens with.
@@ -332,16 +334,21 @@ type SuiteSummary struct {
 // execution retained no queue report: it was interrupted). Its start and
 // completion are the earliest and latest its jobs' runs record.
 type RunSummary struct {
-	Target            string   `json:"target,omitzero"`
-	StartedAt         *string  `json:"started_at"`
-	CompletedAt       *string  `json:"completed_at"`
-	Outcome           string   `json:"outcome,omitzero"`
-	Uncertain         int      `json:"uncertain"`
-	DeliveryUncertain bool     `json:"delivery_uncertain"`
-	Boundary          string   `json:"boundary,omitzero"`
-	SourceCase        *ItemRef `json:"source_case,omitzero"`
-	Suite             *ItemRef `json:"suite,omitzero"`
-	Jobs              int      `json:"jobs,omitzero"`
+	CanCompare        *bool     `json:"can_compare,omitzero"`
+	TestAssociation   string    `json:"test_association,omitzero"`
+	SourceAssociation string    `json:"source_association,omitzero"`
+	SourceCases       []ItemRef `json:"source_cases,omitzero"`
+	SourceName        string    `json:"source_name,omitzero"`
+	Target            string    `json:"target,omitzero"`
+	StartedAt         *string   `json:"started_at"`
+	CompletedAt       *string   `json:"completed_at"`
+	Outcome           string    `json:"outcome,omitzero"`
+	Uncertain         int       `json:"uncertain"`
+	DeliveryUncertain bool      `json:"delivery_uncertain"`
+	Boundary          string    `json:"boundary,omitzero"`
+	SourceCase        *ItemRef  `json:"source_case,omitzero"`
+	Suite             *ItemRef  `json:"suite,omitzero"`
+	Jobs              int       `json:"jobs,omitzero"`
 	// Kind is what the run executed. Test is the saved test and the
 	// version of it a test run executed, when the project holds that
 	// version, and Version the version of the test or suite that ran; the
@@ -410,9 +417,11 @@ type ObservationSummary struct {
 // ReportSummary is the case a report is about, when the project holds it,
 // and the form and state of the report.
 type ReportSummary struct {
-	Form        string   `json:"form"`
-	RelatedCase *ItemRef `json:"related_case"`
-	Status      string   `json:"status,omitzero"`
+	SourceRuns  []ItemRef `json:"source_runs,omitzero"`
+	Tests       []ItemRef `json:"tests,omitzero"`
+	Form        string    `json:"form"`
+	RelatedCase *ItemRef  `json:"related_case"`
+	Status      string    `json:"status,omitzero"`
 }
 
 // CheckGroupSummary is how many checks a check group holds, the revision it
@@ -1062,6 +1071,12 @@ func relatedTo(item CatalogItem, id string) bool {
 	}
 	if report := item.Summary.Report; report != nil && report.RelatedCase != nil {
 		related = append(related, *report.RelatedCase)
+	}
+	if run := item.Summary.Run; run != nil {
+		related = append(related, run.SourceCases...)
+		if run.SourceCase != nil {
+			related = append(related, *run.SourceCase)
+		}
 	}
 	return slices.ContainsFunc(related, func(ref ItemRef) bool { return ref.ID == id })
 }

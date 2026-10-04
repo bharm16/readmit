@@ -151,6 +151,12 @@ test("Runs lists what executed, the running run first, each with its own result,
   expect(rows[1]!.some((cell) => /^Today \d/.test(cell))).toBe(true);
   expect(rows[1]).toContain("2.0 s");
   expect(page().queryByRole("textbox")).toBeNull();
+  await user.selectOptions(page().getByRole("combobox",{name:"Execution kind"}),"suite");
+  await waitFor(()=>expect(rowsOf(page().getByRole("table",{name:"Runs"}))).toHaveLength(1));
+  expect(rowsOf(page().getByRole("table",{name:"Runs"}))[0]).toContain("Scheduling smoke · v2");
+  await user.selectOptions(page().getByRole("combobox",{name:"Execution kind"}),"");
+  await waitFor(()=>expect(rowsOf(page().getByRole("table",{name:"Runs"}))).toHaveLength(5));
+
 
   await user.click(page().getByRole("button", { name: "Filter runs" }));
   const sheet = await screen.findByRole("dialog", { name: "Filter runs" });
@@ -232,6 +238,20 @@ test("closing Run review while its environment list is pending prevents a late p
   expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
 });
 
+test("a refused recovery-location recording keeps the review and starts no send", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openRuns(user, [FAILED], {
+    PrepareAction: (request) => ({ state: "completed", context: request.context, review: review() }),
+  });
+  const sheet = await reviewTest(user);
+  await user.click(within(sheet).getByRole("checkbox", { name: "Mark complete" }));
+  facade.reply({ RecordView: () => ({ state: "failed", reason: "The private session could not be retained." }) });
+  await user.click(within(sheet).getByRole("button", { name: "Send" }));
+  expect(await within(sheet).findByText("The private session could not be retained.")).toBeTruthy();
+  expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
+  expect(screen.getByRole("dialog", { name: "Run test" })).toBeTruthy();
+});
+
 test("Run test reviews the exact version, environment, messages and setup, sends once on Send and opens the running run, which Stop stops", async () => {
   const user = userEvent.setup();
   const { facade } = await openRuns(user, [FAILED], {
@@ -263,9 +283,11 @@ test("Run test reviews the exact version, environment, messages and setup, sends
   const execute = facade.oneCall("ExecuteReviewedAction")[0];
   expect(execute).toMatchObject({ token: "run-token", decisions: { confirmed: ["reset"] } });
   // The run's folder is named in the session before the Send reaches the facade.
-  const order = facade.calls.map((call) => call.method);
-  expect(order.lastIndexOf("RecordView")).toBeLessThan(order.indexOf("ExecuteReviewedAction"));
-  expect(facade.callsTo("RecordView").some((call) => (call.args[0] as { run: string }).run === `${WORKSPACE_ROOT}/job-003`)).toBe(true);
+  const executeIndex = facade.calls.findIndex((call) => call.method === "ExecuteReviewedAction");
+  const beforeExecute = facade.calls.slice(0, executeIndex).filter((call) => call.method === "RecordView");
+  expect(beforeExecute.at(-1)?.args[0]).toMatchObject({ run: `${WORKSPACE_ROOT}/job-003` });
+  // Recording the active view after execution begins is readback navigation;
+  // it does not replace the acknowledged recovery location before Send.
 
   expect(await page().findByRole("heading", { level: 1, name: "Reschedule keeps one appointment" })).toBeTruthy();
   expect(page().getByText("Running · Scheduling QA · peer-under-test:2575")).toBeTruthy();
@@ -613,6 +635,8 @@ test("two finished runs of a test are compared earlier to later, a changed check
   await user.click(compare);
   expect(await page().findByRole("heading", { level: 1, name: "Compare runs" })).toBeTruthy();
   expect(facade.oneCall("CompareRunItems")[0]).toMatchObject({ runs: [{ kind: "run", id: FAILED.ref.id }, { kind: "run", id: PASSED.ref.id }] });
+  expect(facade.oneCall("CompareRunItems")[0]).not.toHaveProperty("before");
+  expect(facade.oneCall("CompareRunItems")[0]).not.toHaveProperty("after");
   expect(await page().findByRole("button", { name: /^Reschedule keeps one appointment · v3 · Today/ })).toBeTruthy();
   expect(rowsOf(page().getByRole("table", { name: "Checks" }))).toEqual([
     ["Record count", "1 / Passed", "2 / Failed", "Changed check"],

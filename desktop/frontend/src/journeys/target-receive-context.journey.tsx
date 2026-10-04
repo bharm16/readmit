@@ -1,0 +1,63 @@
+import type {RequestContext} from "../bindings";
+import {afterEach,beforeEach,expect,test} from "vitest";
+import {screen,waitFor,within} from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import {enter,Journey,press} from "../testkit/journey";
+import {details,goTo,page} from "../testkit/navigation";
+import {EXPORTED_BOOKING,EXPORTED_RESCHEDULE,importExport,licensedProject} from "./steps";
+let journey:Journey;
+beforeEach(()=>{journey=Journey.create();});afterEach(async()=>{await journey.dispose();});
+
+test("target and receive setup return to the same reader, connection checks send no HL7 and editing makes retained readiness stale",async()=>{
+ const user=userEvent.setup();journey.writeFile("exports/feed.hl7",EXPORTED_BOOKING+EXPORTED_RESCHEDULE);
+ await licensedProject(journey,user);await importExport(user,journey,"exports/feed.hl7","Configuration evidence");
+ const downstream=await journey.startDownstream("peer/check.csv","fixed");
+ const table=await screen.findByRole("table",{name:"Messages"});await waitFor(()=>expect(table.querySelectorAll('tbody tr[data-row-id]')).toHaveLength(2));
+ await press(user,table.querySelector<HTMLElement>('tbody tr[data-row-id]:nth-child(2)')!);
+ await press(user,details().getByRole("button",{name:"More message actions"}));await press(user,screen.getByRole("menuitem",{name:"Go to field…"}));
+ const field=within(await screen.findByRole("dialog",{name:"Go to field"}));await enter(user,field.getByLabelText("Field path"),"MSH-9.2");await press(user,field.getByRole("button",{name:"Go"}));await details().findAllByText("MSH[1]-9[1].2");
+ await press(user,page().getByRole("button",{name:"Configure target"}));
+ const target=within(await screen.findByRole("dialog",{name:"Add environment"}));
+ await enter(user,await target.findByLabelText("Name"),"Connection-only target");const [host,port]=downstream.address.split(":");await enter(user,target.getByLabelText("Host"),host!);await enter(user,target.getByLabelText("Port"),port!);await user.selectOptions(target.getByLabelText("Classification"),"nonproduction");await press(user,target.getByRole("radio",{name:"TCP/MLLP"}));await press(user,target.getByRole("button",{name:"Save"}));
+ await page().findByRole("heading",{name:"Configuration evidence"});await details().findAllByText("MSH[1]-9[1].2");
+ await press(user,page().getByRole("button",{name:"Receive setup"}));
+ const configurations=within(await screen.findByRole("dialog",{name:"Receive configurations"}));await press(user,configurations.getByRole("button",{name:"New receive configuration"}));
+ const receive=within(await screen.findByRole("dialog",{name:"Receive setup"}));await enter(user,receive.getByLabelText("Name"),"Bounded receiving source");await enter(user,receive.getByLabelText("Message limit"),"100");await enter(user,receive.getByLabelText("Idle timeout"),"5m");await press(user,receive.getByRole("button",{name:"Save"}));
+ await waitFor(()=>expect(screen.queryByRole("dialog",{name:"Receive setup"})).toBeNull());await details().findAllByText("MSH[1]-9[1].2");expect(journey.callsTo("StartCapture")).toHaveLength(0);
+ await goTo(user,"Targets");await press(user,await page().findByText("Connection-only target"));
+ // Open the actual named target rather than a row selection.
+ const targetTable=page().queryByRole("table",{name:"Environments"});if(targetTable)await user.dblClick(within(targetTable).getByText("Connection-only target"));
+ await page().findByRole("heading",{name:"Connection-only target"});
+ await press(user,await page().findByRole("button",{name:"Test connection"}));const check=within(await screen.findByRole("dialog",{name:"Test connection"}));await press(user,check.getByRole("button",{name:"Test connection"}));
+ await waitFor(()=>expect(journey.callsTo("CheckEnvironment").at(-1)?.settled).toBe(true));expect(downstream.received()).toHaveLength(0);
+ await page().findAllByText(/Reachable/);
+ await press(user,within(page().getByRole("region",{name:"Connection"})).getByRole("button",{name:"Edit"}));
+ const edited=within(await screen.findByRole("dialog",{name:/^Edit connection/}));await enter(user,await edited.findByLabelText("Port"),"65531");await press(user,edited.getByRole("button",{name:"Save"}));
+ await page().findAllByText(/before the last edit/);expect(downstream.received()).toHaveLength(0);
+ expect(journey.callsTo("ExecuteReviewedAction")).toHaveLength(0);
+});
+
+test("production target opens a genuine capture and returns to its exact reference without network effects",async()=>{
+ const user=userEvent.setup();journey.writeFile("exports/production-feed.hl7",EXPORTED_BOOKING+EXPORTED_RESCHEDULE);
+ await licensedProject(journey,user);await importExport(user,journey,"exports/production-feed.hl7","Production reference input");
+ const project=(journey.callsTo("CreateNamedProject").at(-1)?.result as {context?:RequestContext}).context!;
+ const author=journey.colleague("production-reference-author");
+ const license=journey.provisionLicense("colleagues/production-reference-author-license");
+ await author.call("SelectOperationPolicy",`${license}/operation-policy.json`);
+ const saved=await author.call("SaveItem",{context:project,kind:"environment",intent_id:"production-reference",draft:{name:"Production reference",environment:{schema:"readmit-target/v3",address:"127.0.0.1:2575",transport:"plain",classification:"production",connect_timeout:"5s",message_timeout:"5s",max_ack_bytes:4096,test_endpoint:false,approved_transport:false}}});
+ if(!saved.saved)throw new Error(`production reference refused: ${JSON.stringify(saved)}`);
+ await goTo(user,"Environments");
+ await user.dblClick(await page().findByRole("row",{name:"Production reference"}));
+ await page().findByText("Test sends are unavailable for a production target.");
+ const effects=journey.callsTo("ExecuteReviewedAction").length;
+ await press(user,page().getByRole("button",{name:"Choose a capture"}));
+ const chooser=within(await screen.findByRole("dialog",{name:"Choose a capture"}));
+ await chooser.findByRole("table",{name:"Production reference captures"});
+ await press(user,chooser.getByRole("button",{name:"Open capture"}));
+ await page().findByRole("table",{name:"Messages"});
+ await press(user,page().getByRole("button",{name:"Return to target"}));
+ await page().findByRole("heading",{level:1,name:"Production reference"});
+ await page().findByText("Test sends are unavailable for a production target.");
+ expect(journey.callsTo("ExecuteReviewedAction")).toHaveLength(effects);
+ expect(journey.callsTo("StartCapture")).toHaveLength(0);
+});

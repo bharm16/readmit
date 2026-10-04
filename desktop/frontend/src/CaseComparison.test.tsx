@@ -150,7 +150,7 @@ test("two cases compare by the keys a person chooses, keep unmatched and ambiguo
   expect(within(table).getAllByText("Hidden")).toHaveLength(2);
   expect(within(table).getByText("Only in earlier")).toBeTruthy();
   expect(within(table).getByText("Ambiguous match · Group 1")).toBeTruthy();
-  expect(screen.getByText("Rescheduling incident · v2 · 4 messages")).toBeTruthy();
+  expect(screen.getByDisplayValue("Rescheduling incident · v2 · 4 messages")).toBeTruthy();
 
   // A new named policy is saved once and the differences are read under it;
   // what it ignores stays one choice away.

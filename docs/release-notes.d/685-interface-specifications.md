@@ -1,0 +1,1 @@
+- Open interface specifications from a retained message or finding. Specifications retain exact local profile revisions and bounded descriptive documents; profile editing and evaluation remain explicit, and returning preserves the original evidence context.

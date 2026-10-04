@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import searchAsset from "./assets/workbench/search.svg";
+import moreAsset from "./assets/workbench/more.svg";
 import "./raw.css";
 import {
   chooseInspectionPath,
@@ -6,10 +8,13 @@ import {
   listFileMessages,
   readFileBytes,
   saveFileCopy,
+  readReferenceCatalog,
+  readHL7ReferenceSelection,
   type FileBytesResult,
   type FileMessage,
   type FileMessagesResult,
   type InspectionResult,
+  type HL7ReferenceSelection,
   type RoundTripResult,
 } from "./bindings";
 import { DataTable, type Column } from "./DataTable";
@@ -21,6 +26,7 @@ import { useViewState } from "./viewstate";
 
 type Framing = "auto" | "raw" | "mllp";
 type Terminator = "auto" | "cr" | "lf" | "crlf";
+type FileNavigation = Pick<import("./bindings.gen").ViewNavigation, "file" | "file_identity" | "file_message" | "file_messages" | "file_format" | "file_terminator" | "field_path" | "node_offset" | "reference_path" | "reference_identity" | "reference_edition" | "reference_selection">;
 
 const FRAMINGS: { value: Framing; label: string }[] = [
   { value: "auto", label: "Auto" },
@@ -53,7 +59,7 @@ const messageType = (row: FileMessage) => typeLabel({ kind: "message", code: row
  * reader as a case's messages, with no project. The file is read, never
  * imported or changed. The page's header, body and details pane are owned by
  * the window; this hook supplies each. */
-export function useFileReader({ busy, request, onCancelled }: { busy: boolean; request: number; onCancelled?: () => void }) {
+export function useFileReader({ busy, request, onCancelled, onNavigation }: { busy: boolean; request: number; onCancelled?: () => void; onNavigation?: (navigation: FileNavigation | null) => void }) {
   // A chooser cancelled before any file was open leaves the person where they
   // chose Inspect file.
   const cancelled = useRef(onCancelled);
@@ -64,7 +70,12 @@ export function useFileReader({ busy, request, onCancelled }: { busy: boolean; r
   const [listing, setListing] = useState<FileMessagesResult | null>(null);
   const [bytes, setBytes] = useState<FileBytesResult | null>(null);
   const [bytesShown, setBytesShown] = useState(false);
+  const [messageSearch,setMessageSearch]=useState("");
+  const [messageGrouping,setMessageGrouping]=useState<"all"|"type">("all");
+  const [referenceRequest,setReferenceRequest]=useState(0);
   const [selected, setSelected] = useState<number | null>(null);
+ const [checked,setChecked]=useState<Set<string>>(new Set());
+ const checkedOwner=useRef("");
   const [inspection, setInspection] = useState<InspectionResult | null>(null);
   const [revealed, setRevealed] = useState(false);
   const [formatting, setFormatting] = useState(false);
@@ -74,19 +85,75 @@ export function useFileReader({ busy, request, onCancelled }: { busy: boolean; r
   const { running, run } = useLifecycle<"choosing" | "reading" | "inspecting" | "copying">({ window: true });
   const disabled = busy || running !== null;
   const where = useRef({ path: "", nodeOffset: 0, byteOffset: -1 });
+  const referenceCatalog = useRef("");
+  const referenceIdentity = useRef("");
+  const referenceSelection = useRef<HL7ReferenceSelection | undefined>(undefined);
+  const restoredFile = useRef("");
+  const automaticSingleSelection = useRef("");
+
+  const navigation: FileNavigation | null = file && listing?.sha256 ? {
+    file, file_identity: listing.sha256, file_message: selected ?? 0, file_messages: [...checked].map(Number), file_format: framing, file_terminator: terminator,
+    ...(inspection?.inspection ? { field_path: where.current.path, node_offset: where.current.nodeOffset } : {}),
+    ...(referenceSelection.current ? { reference_selection: referenceSelection.current } : {}),
+    ...(referenceCatalog.current && referenceIdentity.current ? { reference_path: referenceCatalog.current, reference_identity: referenceIdentity.current, ...(inspection?.inspection?.reference?.edition ? { reference_edition: inspection.inspection.reference.edition } : {}) } : {}),
+  } : null;
+  const navigationText = JSON.stringify(navigation);
+  useEffect(() => { onNavigation?.(navigation); }, [navigationText, onNavigation]); // identities only; no value or reveal state
+
+  const restore = useCallback(async (saved: import("./bindings.gen").ViewNavigation): Promise<boolean> => {
+    if (!saved.file || !saved.file_identity) return false;
+    const format = FRAMINGS.find((choice) => choice.value === saved.file_format)?.value ?? "auto";
+    const ending = TERMINATORS.find((choice) => choice.value === saved.file_terminator)?.value ?? "auto";
+    let accepted = false;
+    await run("reading", async (current) => {
+      const answer = await listFileMessages({ file: saved.file!, format, terminator: ending, offset: 0, limit: 0 });
+      if (!current()) return;
+      if (answer.state !== "completed" || answer.sha256 !== saved.file_identity) {
+        setChosen("The previous message file changed or is unavailable. Open the source again to inspect it.");
+        return;
+      }
+      const catalog = saved.reference_path ?? "";
+      if (saved.reference_path) {
+        const reference = await readReferenceCatalog(saved.reference_path);
+        if (!current()) return;
+        if (reference.reference?.identity !== saved.reference_identity) setChosen("The previous reference catalog changed or is unavailable. Select it again explicitly.");
+      }
+      const selection = saved.reference_selection;
+      if (selection) {
+        const checked = await readHL7ReferenceSelection(selection);
+        if (!current()) return;
+        if (checked.state !== "completed" || checked.overlay?.status === "not_available") setChosen("A previous profile or documentation file changed or is unavailable. Select it again explicitly; the source stays inspectable.");
+      }
+      const result = await inspectFileMessage({ file: saved.file!, format, terminator: ending, expect: answer.sha256, message: saved.file_message ?? 0, path: saved.field_path ?? "", node_offset: saved.node_offset ?? 0, byte_offset: -1, raw_offset: -1, reveal: false, ...(catalog ? { reference_catalog: catalog, reference_identity: saved.reference_identity ?? "" } : {}), ...(selection ? { reference_selection: selection } : {}) });
+      if (!current()) return;
+      restoredFile.current = saved.file!;
+      referenceCatalog.current = catalog;
+      referenceIdentity.current = catalog ? saved.reference_identity ?? "" : "";
+      referenceSelection.current = selection;
+      where.current = { path: saved.field_path ?? "", nodeOffset: saved.node_offset ?? 0, byteOffset: -1 };
+      setFile(saved.file!); setFraming(format); setTerminator(ending); setListing(answer);
+      setChecked(new Set((saved.file_messages??[]).map(String)));checkedOwner.current=answer.sha256;
+      setSelected(saved.file_message ?? 0); setInspection(result); setRevealed(false); setBytesShown(false);
+      accepted = true;
+    });
+    return accepted;
+  }, [run]);
 
   const list = useCallback(
     async (path: string, format: Framing, ending: Terminator) => {
-      await run("reading", async () => {
+      await run("reading", async (current) => {
         setSelected(null);
         setInspection(null);
         setBytes(null);
         setCopied(null);
         const answer = await listFileMessages({ file: path, format, terminator: ending, offset: 0, limit: 0 });
+        if(!current())return;
         setListing(answer);
+ if(answer.state==="completed" && checkedOwner.current!==answer.sha256) {checkedOwner.current=answer.sha256;setChecked(new Set());}
         setBytesShown(false);
         if (answer.state !== "completed" && answer.sha256) {
-          setBytes(await readFileBytes({ file: path, expect: answer.sha256, offset: 0, reveal: false }));
+          const bytes=await readFileBytes({ file: path, expect: answer.sha256, offset: 0, reveal: false });
+          if(current())setBytes(bytes);
         }
       });
     },
@@ -94,8 +161,14 @@ export function useFileReader({ busy, request, onCancelled }: { busy: boolean; r
   );
 
   const inspect = useCallback(
-    async (message: number, path: string, nodeOffset: number, byteOffset: number, reveal: boolean, rawOffset = -1): Promise<InspectionResult | null> => {
+    async (message: number, path: string, nodeOffset: number, byteOffset: number, reveal: boolean, rawOffset = -1, catalogPath?: string, selection?: HL7ReferenceSelection, catalogIdentity?: string): Promise<InspectionResult | null> => {
       if (!listing?.sha256) return null;
+      if (catalogPath !== undefined) {
+        if (catalogPath !== referenceCatalog.current) referenceIdentity.current = catalogIdentity ?? "";
+        referenceCatalog.current = catalogPath;
+      }
+      if (catalogIdentity !== undefined) referenceIdentity.current = catalogIdentity;
+      if (selection !== undefined) referenceSelection.current = selection;
       let answer: InspectionResult | null = null;
       await run("inspecting", async (current) => {
         const result = await inspectFileMessage({
@@ -109,11 +182,15 @@ export function useFileReader({ busy, request, onCancelled }: { busy: boolean; r
           byte_offset: byteOffset,
           raw_offset: rawOffset,
           reveal,
+          ...(referenceCatalog.current ? { reference_catalog: referenceCatalog.current } : {}),
+          ...(referenceIdentity.current ? { reference_identity: referenceIdentity.current } : {}),
+          ...(referenceSelection.current ? { reference_selection: referenceSelection.current } : {}),
         });
         answer = result;
         if (!current()) return;
         // A field that is not there leaves the message as it was.
         if (result.state === "completed" || path === "") {
+          if (!referenceIdentity.current && result.inspection?.reference?.identity) referenceIdentity.current = result.inspection.reference.identity;
           setInspection(result);
           where.current = { path, nodeOffset, byteOffset };
         }
@@ -128,6 +205,9 @@ export function useFileReader({ busy, request, onCancelled }: { busy: boolean; r
       setChosen(null);
       const answer = await chooseInspectionPath("file");
       if (answer.state === "completed" && answer.path) {
+        referenceCatalog.current = "";
+        referenceIdentity.current = "";
+        referenceSelection.current = undefined;
         setFile(answer.path);
         setFraming("auto");
         setTerminator("auto");
@@ -152,13 +232,19 @@ export function useFileReader({ busy, request, onCancelled }: { busy: boolean; r
       setTerminator("auto");
       setRevealed(false);
       if (path === file) void list(path, "auto", "auto");
-      else setFile(path);
+      else {
+        referenceCatalog.current = "";
+        referenceIdentity.current = "";
+        referenceSelection.current = undefined;
+        setFile(path);
+      }
     },
     [file, list],
   );
 
   // A new file is read as soon as it is chosen.
   useEffect(() => {
+    if (restoredFile.current === file) { restoredFile.current = ""; return; }
     if (file) void list(file, framing, terminator);
     // Only a new file starts a read; a format change applies from its sheet.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -176,11 +262,15 @@ export function useFileReader({ busy, request, onCancelled }: { busy: boolean; r
   // A single message opens straight into the reader.
   const single = listing?.state === "completed" && listing.total === 1;
   useEffect(() => {
-    if (single && selected === null) {
+    if (!single) return;
+    const owner = `${file}|${listing?.sha256 ?? ""}|${framing}|${terminator}`;
+    if (selected !== null) automaticSingleSelection.current = owner;
+    else if (automaticSingleSelection.current !== owner) {
+      automaticSingleSelection.current = owner;
       setSelected(0);
       void inspect(0, "", 0, -1, revealed);
     }
-  }, [inspect, revealed, selected, single]);
+  }, [file, framing, inspect, listing?.sha256, revealed, selected, single, terminator]);
 
   const copy = async () => {
     if (!listing?.sha256) return;
@@ -200,18 +290,37 @@ export function useFileReader({ busy, request, onCancelled }: { busy: boolean; r
     if (selected !== null) void inspect(selected, where.current.path, where.current.nodeOffset, where.current.byteOffset, next);
   };
 
+  const loadMore=async()=>{
+ if(!listing || listing.state!=="completed" || listing.rows.length>=listing.total)return;
+ const held=listing;
+ await run("reading",async(current)=>{
+ const answer=await listFileMessages({file,format:framing,terminator,offset:held.rows.length,limit:0});
+ if(!current())return;
+ if(answer.sha256!==held.sha256) {setChosen("The source changed while paging. The previous selection is kept; reopen the file explicitly.");return;}
+ if(answer.state!=="completed") {setChosen(answer.reason??"Later messages could not be read. The previous selection is kept.");return;}
+ setListing({...held,rows:[...held.rows,...answer.rows]});
+ });
+ };
+
   const reader = (
     <MessageReader
+      referenceCatalog={referenceCatalog.current}
+      referenceIdentity={referenceIdentity.current}
+      {...(referenceSelection.current ? { referenceSelection: referenceSelection.current } : {})}
+      toolbarReference
+      referenceRequest={referenceRequest}
       result={inspection}
       loading={running === "inspecting"}
       busy={disabled}
-      onInspect={(path, nodeOffset, byteOffset, rawOffset) => (selected === null ? Promise.resolve(null) : inspect(selected, path, nodeOffset, byteOffset, revealed, rawOffset))}
+      onInspect={(path, nodeOffset, byteOffset, rawOffset, catalogPath?: string, selection?: HL7ReferenceSelection, catalogIdentity?: string) => (selected === null ? Promise.resolve(null) : inspect(selected, path, nodeOffset, byteOffset, revealed, rawOffset, catalogPath, selection, catalogIdentity))}
       onReveal={reveal}
-      {...(single ? {} : { onClose: () => { setSelected(null); setInspection(null); } })}
+      onClose={() => { setSelected(null); setInspection(null); }}
     />
   );
 
-  const columns: Column<FileMessage>[] = [
+  const columns: Column<FileMessage>[] = selected !== null ? [
+    { key: "message", header: "Messages", priority: 1, minWidth: 6, flex: true, render: (row) => <span className="message-browser-entry"><strong>{messageType(row)}</strong><span>Message {row.index + 1} · {row.end - row.start} bytes</span></span> },
+  ] : [
     { key: "message", header: "Message", priority: 1, minWidth: 6, render: (row) => String(row.index + 1) },
     { key: "type", header: "Type", priority: 1, minWidth: 8, render: messageType },
     { key: "bytes", header: "Bytes", priority: 2, minWidth: 6, render: (row) => String(row.end - row.start) },
@@ -262,17 +371,20 @@ export function useFileReader({ busy, request, onCancelled }: { busy: boolean; r
         ) : null}
       </div>
     );
-  } else if (single) {
-    body = reader;
   } else {
     body = (
-      <DataTable
+      <div className={selected !== null ? "file-reader-browser" : "file-reader-list"}>
+      {selected !== null ? <><h2 className="file-browser-heading">Messages</h2><label className="file-browser-search"><img className="workbench-icon" src={searchAsset} alt="" /><input aria-label="Search messages" placeholder="Search…" value={messageSearch} onChange={event=>setMessageSearch(event.target.value)} /></label><div className="file-browser-tabs" role="tablist" aria-label="Message grouping"><button type="button" role="tab" aria-selected={messageGrouping==="all"} onClick={()=>setMessageGrouping("all")}>All</button><button type="button" role="tab" aria-selected={messageGrouping==="type"} onClick={()=>setMessageGrouping("type")}>By type</button></div><div className="file-browser-source"><strong>{listing.name || fileName(file)}</strong><span>{listing.total} {listing.total===1 ? "message" : "messages"}</span></div></> : null}
+      <div className="file-browser-scroll"><DataTable
         label="Messages in this file"
-        className="page-table"
-        rows={listing.rows}
+        className={selected !== null ? `page-table messages-table${checked.size ? " has-checked" : ""}` : "page-table"}
+        {...(selected !== null ? {rowHeightRem:4,hideHeader:true} : {})}
+        rows={[...listing.rows].filter(row=>!messageSearch || `${messageType(row)} ${row.index+1}`.toLowerCase().includes(messageSearch.toLowerCase())).sort((a,b)=>messageGrouping==="type" ? messageType(a).localeCompare(messageType(b)) || a.index-b.index : a.index-b.index)}
         rowId={(row) => String(row.index)}
         rowLabel={(row) => `Message ${row.index + 1} · ${messageType(row)}`}
         columns={columns}
+        checked={checked}
+        onCheck={setChecked}
         selected={selected === null ? null : String(selected)}
         onSelect={(id) => {
           const index = Number(id);
@@ -282,6 +394,10 @@ export function useFileReader({ busy, request, onCancelled }: { busy: boolean; r
         }}
         onOpen={() => undefined}
       />
+      </div>
+      {selected !== null ? <footer className="file-browser-footer"><span>Source</span><strong>{listing.name || fileName(file)}</strong><span>Original bytes retained</span></footer> : null}
+      {listing.rows.length<listing.total ? <button type="button" disabled={disabled} onClick={()=>void loadMore()}>Load more messages</button> : null}
+      </div>
     );
   }
 
@@ -289,15 +405,21 @@ export function useFileReader({ busy, request, onCancelled }: { busy: boolean; r
   const status = chosen ?? (copied && copied.state !== "completed" ? copied.reason ?? "The copy was not saved." : null);
 
   return {
+    navigation,
+    retention: listing?.state==="completed" && listing.sha256 ? {file, identity:listing.sha256, format:framing, terminator, messages:[...checked].map(Number), ...(selected!==null ? {selected} : {}),path:where.current.path,node_offset:where.current.nodeOffset} satisfies import("./bindings").ImportInvestigation : null,
+    restore,
     openPath,
+    edition: inspection?.inspection?.metadata.hl7_version || "",
+    chooseReference:()=>setReferenceRequest(count=>count+1),
     title: file ? (listing?.name || fileName(file)) : "Inspect file",
     actions: (
       <>
-        <button type="button" disabled={disabled} onClick={() => void open()}>
-          Open file
+        <button type="button" aria-label="Open file" disabled={disabled} onClick={() => void open()}>
+          Open
         </button>
         {file && listing ? (
           <Menu
+            className="reader-menu" trigger={<img className="workbench-icon" src={moreAsset} alt="" />}
             label="More file actions"
             items={[
               { label: "Format…", onSelect: () => setFormatting(true), disabled },
@@ -309,7 +431,7 @@ export function useFileReader({ busy, request, onCancelled }: { busy: boolean; r
       </>
     ),
     body: (
-      <>
+      <div className={selected !== null ? "file-reader-body" : ""}>
         {status ? (
           <p className="file-status" role="alert">
             {status}
@@ -342,10 +464,10 @@ export function useFileReader({ busy, request, onCancelled }: { busy: boolean; r
             />
           ) : null}
         </Modal>
-      </>
+      </div>
     ),
-    /** The reader beside a list of several messages. */
-    details: !single && selected !== null ? reader : null,
+    /** The same browser and reader layout applies to one or many messages. */
+    details: selected !== null ? reader : null,
     closeDetails: () => {
       setSelected(null);
       setInspection(null);
@@ -395,4 +517,3 @@ function FormatSheet({
     </FormDialog>
   );
 }
-

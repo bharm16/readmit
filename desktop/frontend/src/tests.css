@@ -65,3 +65,12 @@
 .check-rows > li {
   border-bottom: 1px solid var(--line);
 }
+
+.test-editor-layout { display: flex; flex-wrap: wrap; gap: var(--s5); align-items: flex-start; }
+.test-input-steps { flex: 0 1 16.5rem; min-width: 0; background: var(--rail); padding: var(--s3); }
+.test-editor-main { flex: 1 1 28rem; min-width: 0; }
+.test-input-steps h2 { margin: 0 0 var(--s3); font-size: var(--body); }
+.test-input-steps ol { list-style: none; margin: var(--s3) 0; padding: 0; }
+.test-input-steps li { border-bottom: 1px solid var(--line); padding-block: var(--s3); }
+.test-input-steps li > button { width: 100%; text-align: start; white-space: normal; }
+.test-input-steps button[aria-current="step"] { background: var(--selection); border-color: var(--action); }

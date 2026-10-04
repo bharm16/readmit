@@ -784,6 +784,7 @@ export function RunnerPanel({
   ];
   const addFlow = adding ? (
     <AddRunnerFlow
+      key="runner-add-flow"
       context={context}
       environments={environments}
       environmentFailure={environmentFailure}

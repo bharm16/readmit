@@ -3,6 +3,8 @@
 // result. It sits in the sidebar while the demo project is open; closing it
 // starts nothing and leaves the demo an ordinary project, with its origin
 // still named.
+import { useContext, useState } from "react";
+import { FrameContext, Modal } from "./layout";
 import type { DemoProgress, DemoStepID } from "./bindings";
 import { IconButton } from "./IconButton";
 import "./help.css";
@@ -40,20 +42,17 @@ export function DemoTask({
   onClose: () => void;
   onShow: () => void;
 }) {
-  if (!shown) {
+  const { compact } = useContext(FrameContext);
+  const [compactOpen, setCompactOpen] = useState(false);
+  if (!shown && !compact) {
     return (
-      <button type="button" className="demo-origin quiet" onClick={onShow}>
-        Demo · Synthetic
+      <button type="button" className="demo-origin quiet" aria-label="Demo · Synthetic" onClick={onShow}>
+        {compact ? "Demo" : "Demo · Synthetic"}
       </button>
     );
   }
   const next = nextStep(progress, seen);
-  return (
-    <section className="demo-task" aria-label="Demo">
-      <header className="demo-task-header">
-        <h2>Demo · Synthetic</h2>
-        <IconButton icon="close" label="Close demo steps" onClick={onClose} />
-      </header>
+  const steps = <>
       <ol className="demo-steps">
         {progress.steps.map((step) => {
           const done = stepDone(progress, seen, step.id);
@@ -75,6 +74,15 @@ export function DemoTask({
           {notice}
         </p>
       ) : null}
+  </>;
+  if (compact) return <><button type="button" className="demo-origin quiet" aria-label="Demo · Synthetic" onClick={() => { setCompactOpen(true); onShow(); }}>Demo</button><Modal open={compactOpen} title="Demo · Synthetic" onClose={() => { setCompactOpen(false); onClose(); }}>{steps}</Modal></>;
+  return (
+    <section className="demo-task" aria-label="Demo">
+      <header className="demo-task-header">
+        <h2>Demo · Synthetic</h2>
+        <IconButton icon="close" label="Close demo steps" onClick={onClose} />
+      </header>
+      {steps}
     </section>
   );
 }

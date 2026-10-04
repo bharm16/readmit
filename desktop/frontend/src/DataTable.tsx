@@ -53,12 +53,12 @@ export const OVERSCAN = 8;
  * scrollTop is the viewport's own position; the header row sits above the
  * first row inside it and stays stuck to the top, so it covers one row's
  * height of the viewport. */
-export function virtualWindow(total: number, scrollTop: number, viewport: number, rowHeight: number, overscan = OVERSCAN) {
+export function virtualWindow(total: number, scrollTop: number, viewport: number, rowHeight: number, overscan = OVERSCAN, headerHeight = rowHeight) {
   if (total === 0) return { first: 0, last: 0 };
   if (rowHeight <= 0 || viewport <= 0) return { first: 0, last: Math.min(total, 2 * overscan) };
   // Row i sits at (i + 1) row heights, below the header.
   const firstVisible = Math.min(total - 1, Math.max(0, Math.floor(scrollTop / rowHeight)));
-  const shown = Math.ceil(Math.max(0, viewport - rowHeight) / rowHeight) + 1;
+  const shown = Math.ceil(Math.max(0, viewport - headerHeight) / rowHeight) + 1;
   return {
     first: Math.max(0, firstVisible - overscan),
     last: Math.min(total, firstVisible + shown + overscan),
@@ -87,6 +87,7 @@ export function DataTable<T>({
   selected,
   onSelect,
   onOpen,
+  openOnClick=true,
   sort,
   onSort,
   checked,
@@ -94,6 +95,8 @@ export function DataTable<T>({
   loading = false,
   onNearEnd,
   className,
+  rowHeightRem = ROW_REM,
+  hideHeader = false,
 }: {
   /** The table's accessible name. */
   label: string;
@@ -105,6 +108,8 @@ export function DataTable<T>({
   selected: string | null;
   onSelect: (id: string) => void;
   onOpen: (id: string) => void;
+  /** Some collections select a detail card on click; Enter and double click still open. */
+  openOnClick?: boolean | ((row:T)=>boolean);
   sort?: SortState | null;
   onSort?: (sort: SortState) => void;
   /** The rows chosen for an action; present only when the owner offers one. */
@@ -117,14 +122,19 @@ export function DataTable<T>({
    * a paged read fetches the next page as the person scrolls. */
   onNearEnd?: () => void;
   className?: string;
+  /** The rendered row height, in the same root text scale as the table. */
+  rowHeightRem?: number;
+  /** Keep column headers available to assistive technology without a visible row. */
+  hideHeader?: boolean;
 }) {
   const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const { height, width, rem } = useMeasured(viewport);
-  const rowHeight = ROW_REM * rem;
+  const rowHeight = rowHeightRem * rem;
+  const headerHeight=hideHeader ? 0 : rowHeight;
   const checkable = checked !== undefined && onCheck !== undefined;
   const shown = fittingColumns(columns, width > 0 ? width / rem : Number.POSITIVE_INFINITY, checkable ? ROW_REM : 0);
-  const { first, last } = virtualWindow(rows.length, scrollTop, height, rowHeight);
+  const { first, last } = virtualWindow(rows.length, scrollTop, height, rowHeight,OVERSCAN,headerHeight);
   const index = selected === null ? -1 : rows.findIndex((row) => rowId(row) === selected);
   const focusWanted = useRef(false);
   const slow = useSlowRead(loading);
@@ -138,10 +148,10 @@ export function DataTable<T>({
   // Brings a row inside the viewport, below the stuck header.
   const reveal = (at: number) => {
     if (!viewport || at < 0) return;
-    const top = (at + 1) * rowHeight;
+    const top = at * rowHeight + headerHeight;
     const bottom = top + rowHeight;
     let next = viewport.scrollTop;
-    if (top - rowHeight < next) next = top - rowHeight;
+    if (top - headerHeight < next) next = top - headerHeight;
     else if (bottom > next + viewport.clientHeight) next = bottom - viewport.clientHeight;
     if (next !== viewport.scrollTop) {
       viewport.scrollTop = next;
@@ -226,7 +236,7 @@ export function DataTable<T>({
             <col key={column.key} style={(anyFlex ? column.flex : position === 0) ? { minWidth: `${column.minWidth}rem` } : { width: `${column.minWidth}rem` }} />
           ))}
         </colgroup>
-        <thead>
+        <thead className={hideHeader ? "visually-hidden" : undefined}>
           <tr aria-rowindex={1}>
             {checkable ? (
               <th scope="col" className="check-column">
@@ -270,6 +280,7 @@ export function DataTable<T>({
             const id = rowId(row);
             const at = first + offset;
             const current = id === selected;
+            const clickOpens=typeof openOnClick==="function" ? openOnClick(row):openOnClick;
             return (
               <tr
                 key={id}
@@ -280,8 +291,9 @@ export function DataTable<T>({
                 tabIndex={current || (index < 0 && at === 0) ? 0 : -1}
                 onClick={() => {
                   onSelect(id);
-                  onOpen(id);
+                  if(clickOpens)onOpen(id);
                 }}
+                onDoubleClick={!clickOpens ? ()=>onOpen(id):undefined}
                 onKeyDown={(event) => {
                   if (event.target !== event.currentTarget) return;
                   switch (event.key) {

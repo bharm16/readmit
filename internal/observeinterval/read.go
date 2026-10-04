@@ -80,7 +80,7 @@ func verifyFiles(ctx context.Context, files map[string][]byte, sealed bool, open
 		return Result{}, invalid
 	}
 	r := Result{Schema: schema, Definition: d, Binding: binding, Records: []Record{}}
-	var lastAcquisition, lastBarrierAcquisition time.Time
+	var lastAcquisition, lastBarrierAcquisition, stimulusAt time.Time
 	lastBarrierIdentity := ""
 	torn, err := durablelog.Scan(files["journal.jsonl"], durablelog.Digest(append(bytes.Clone(files["definition.json"]), files["binding.json"]...)), invalid, func(raw []byte) durablelog.Record {
 		var e entry
@@ -90,6 +90,9 @@ func verifyFiles(ctx context.Context, files map[string][]byte, sealed bool, open
 		return &e
 	}, func(_ int, raw durablelog.Record) error {
 		record := raw.(*entry).Record
+		if record.Kind == "stimulus-started" {
+			stimulusAt = record.RecordedAt
+		}
 		if record.RecordedAt.IsZero() {
 			return invalid
 		}
@@ -141,7 +144,10 @@ func verifyFiles(ctx context.Context, files map[string][]byte, sealed bool, open
 				if err != nil {
 					return err
 				}
-				material, excluded, status, err := captureMaterial(capture, source, binding)
+				if source.Schema == CaptureSourceSchemaV2 && (stimulusAt.IsZero() || doc.Acquisition.Facts == nil || !doc.Acquisition.Facts.ObservedFrom.Equal(stimulusAt)) {
+					return invalid
+				}
+				material, excluded, status, err := captureMaterialAfter(capture, source, binding, stimulusAt)
 				if err != nil || dataset.Digest(material) != doc.Material.SHA256 {
 					return invalid
 				}

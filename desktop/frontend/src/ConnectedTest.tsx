@@ -881,6 +881,11 @@ function InputsSheet({
                       {index + 1}. {label(id)}
                       {step && step.after.length > 0 ? <span className="row-reason">After {step.after.map(label).join(", ")}</span> : null}
                     </span>
+                    {step?.v2 ? <div className="field">
+                     <label htmlFor={`runtime-marker-${id}`}>Derived runtime marker HL7 selector</label>
+                     <input id={`runtime-marker-${id}`} value={step.v2.runtime_marker_selector??""} placeholder="Choose explicitly for live capture" onChange={event=>setHeld({...held,steps:held.steps.map(input=>input.id===id?{...input,v2:{...input.v2,runtime_marker_selector:event.target.value}}:input)})}/>
+                     <p className="muted">Each run derives this existing field with a fresh local marker and retains the original bytes. The receiver must preserve that marker unchanged.</p>
+                    </div>:null}
                     <span className="row-actions">
                       <Menu
                         label={`More actions for ${label(id)}`}

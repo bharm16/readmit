@@ -63,3 +63,30 @@ The approval binds exact artifact identities and commitments. It is a byte-level
 review gate, not an authenticity signature or a legal determination. Coverage
 uses all 18 identifier categories as a checklist and retains explicit unknowns.
 See [the operator contract](../redact.md) for limits and source references.
+
+## Selected original-source exports (amended 2026-10-03)
+
+An ordinary source-message export is distinct from a derived or proven
+reproducer. The selected-message exporter copies explicitly selected retained
+v2 occurrence bytes in the operator's checked order, including their stored
+framing, without added separators, normalization, redaction or execution. It
+contains original values, excludes unselected records and attachments, and
+makes no minimization, de-identification or replay-equivalence claim. Unsupported
+transformations and R4 input are refused explicitly rather than silently
+narrowed to a v2 send scope. Existing protocol-specific readers remain intact.
+
+The source selection is bounded to 1024 occurrences and 8 MiB. The existing
+review owner binds the source/project/revision identities, ordered occurrence
+scope, exact output digest and selected local destination; the existing
+single-use token, expiry, stale-review and idempotency rules govern the final
+write. The shared exclusive document writer creates the new local output,
+whose bytes are read back before completion is reported. Nothing uploads or
+starts a receiver or a test.
+
+Source-associated receipts use `readmit-report-share/v2` in the existing
+catalog share-history owner. They name the actual capture, immutable source
+identity, ordered byte ranges and digests, output name/digest and truthful
+original-value labels, without a fabricated report or run association. The
+strict `/v1` report-share reader remains supported. Reopening after restart
+asks for the actual exported file and verifies its recorded identity; it does
+not regenerate content from the currently available capture.

@@ -10,6 +10,7 @@ import { useCallback, useMemo, useState } from "react";
 /** The sidebar's destinations. */
 export type Destination =
   | "home"
+  | "messages"
   | "cases"
   | "tests"
   | "runs"
@@ -73,9 +74,21 @@ export const CHILD_OF: Record<ChildDestination, Destination> = {
 
 export type Place = Destination | ChildDestination;
 
+export function isPlace(value: string): value is Place {
+  return value in CHILD_OF || ["home", "messages", "cases", "tests", "runs", "environments", "reports", "tools", "settings", "help"].includes(value);
+}
+
 /** The sidebar destination a place sits under. */
 export function sidebarOf(place: Place): Destination {
   return place in CHILD_OF ? CHILD_OF[place as ChildDestination] : (place as Destination);
+}
+
+/** The four workspace destinations adapt existing route owners. A case
+ * collection is Captures; opening one of its objects is Messages. */
+export function workspaceDestination(route: Route): Destination {
+  if (route.destination === "cases" && route.objectId !== undefined || route.destination === "inspect-file") return "messages";
+  const destination = sidebarOf(route.destination);
+  return destination === "runs" || destination === "reports" ? "tests" : destination;
 }
 
 /** What a list had when it was left: restored by Back. */
@@ -89,12 +102,27 @@ export type ReturnContext = {
   anchor?: string;
 };
 
+/** A retained source's identity, never any message values. */
+export type NavigationEvidence = { entry: string; identity: string };
+
+/** An explicit way back from a contextual action in another destination.
+ * Kept only in the window; it carries neither consent nor evidence values. */
+export type RouteOrigin = {
+  projectId: string;
+  destination: Place;
+  objectId?: string;
+  view?: string;
+  returnContext?: ReturnContext;
+  evidence?: NavigationEvidence;
+};
+
 export type Route = {
   destination: Place;
   projectId?: string;
   objectId?: string;
   view?: string;
   returnContext?: ReturnContext;
+  origin?: RouteOrigin;
 };
 
 /** The current route, and per sidebar destination the places to go back to
@@ -119,6 +147,9 @@ export type RouteAction =
   | { type: "replace"; to: Route }
   /** Returns to the place last left in this destination, or its landing. */
   | { type: "back" }
+  /** Returns only after the caller has re-read the originating source. A
+   * refusal keeps the current route and its unfinished work. */
+  | { type: "return"; evidence?: NavigationEvidence }
   /** Opens a project, or none: a new history. */
   | { type: "project"; projectId: string | undefined; to: Route };
 
@@ -134,6 +165,7 @@ export function routeReducer(state: RouteState, action: RouteAction): RouteState
     to.projectId === undefined && state.current.projectId !== undefined ? { ...to, projectId: state.current.projectId } : to;
   switch (action.type) {
     case "go": {
+      if (action.to.origin && (action.to.origin.projectId !== state.current.projectId || (action.to.projectId !== undefined && action.to.projectId !== state.current.projectId))) return state;
       const there = sidebarOf(action.to.destination);
       if (there === here) {
         const stack = [...(state.history[here] ?? []), leftWith(action.leaving)];
@@ -160,6 +192,13 @@ export function routeReducer(state: RouteState, action: RouteAction): RouteState
     }
     case "replace":
       return { ...state, current: inProject(action.to) };
+    case "return": {
+      const origin = state.current.origin;
+      if (!origin || origin.projectId !== state.current.projectId) return state;
+      if (origin.evidence && (origin.evidence.entry !== action.evidence?.entry || origin.evidence.identity !== action.evidence?.identity)) return state;
+      const { evidence: _evidence, ...to } = origin;
+      return { ...state, current: to };
+    }
     case "back": {
       const stack = state.history[here] ?? [];
       const previous = stack[stack.length - 1];

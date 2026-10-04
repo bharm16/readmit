@@ -84,11 +84,12 @@ export type FindingsProps = {
   onOpenComparison: (ref: ItemRef) => void;
   /** Opens the test editor from a confirmed finding: its messages, its
    * provenance, and its expectations as undecided proposals. */
+  onRequirements?: (finding: FindingRow) => void;
   onCreateTest?: (status: FindingStatus, review: string, reportSHA256: string, title: string) => void;
 };
 
 /** The Findings view's toolbar, body and selected-finding details. */
-export function useFindings({ root, caseRef, caseName, caseEntry, identity, shown, busy, onViewMessages, onSimilar, onOpenComparison, onCreateTest }: FindingsProps) {
+export function useFindings({ root, caseRef, caseName, caseEntry, identity, shown, busy, onViewMessages, onSimilar, onOpenComparison, onCreateTest, onRequirements }: FindingsProps) {
   const scope = useRef(new RequestScope());
   const context = useCallback(() => scope.current.enter(root ?? ""), [root]);
   const [result, setResult] = useState<FindingsResult | null>(null);
@@ -437,6 +438,7 @@ export function useFindings({ root, caseRef, caseName, caseEntry, identity, show
         </>
       ) : null}
       <div className="row-actions">
+        {onRequirements ? <button type="button" disabled={busy} onClick={()=>onRequirements(finding)}>Interface requirements</button> : null}
         <button
           type="button"
           disabled={finding.evidence.length === 0}

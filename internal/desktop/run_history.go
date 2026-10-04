@@ -68,6 +68,9 @@ func init() { readers[RunItem] = readRunItem }
 // read whole yet.
 func readRunItem(c *loadedCatalog, item catalog.Item, paths map[string]string) (view, error) {
 	path := paths[primaryRole(RunItem)]
+	if connectedIndividualArtifact(path) {
+		return readConnectedIndividualRun(c, item, path)
+	}
 	if declares(filepath.Join(path, "manifest.json"), suite.ConnectedExecutionSchema) {
 		return readConnectedSuiteRun(c, item, path)
 	}
@@ -92,6 +95,7 @@ func readRunItem(c *loadedCatalog, item catalog.Item, paths map[string]string) (
 		summary.Kind = TestRunKind
 		read.name = c.describeTestRun(path, summary)
 	}
+	c.runAssociations(summary)
 	if active {
 		summary.Result = RunRunning
 	}
@@ -128,8 +132,16 @@ func (c *loadedCatalog) describeTestRun(path string, summary *RunSummary) string
 	}
 	origin := c.originOfRun(path, *spec)
 	summary.Test, summary.Environment, summary.EnvironmentName = origin.test, origin.environment, origin.environmentName
-	if origin.test != nil {
-		summary.Version = origin.test.Revision
+	// Similar imported content does not establish an original publication.
+	if record, held, err := c.recordedRunOrigin(path, specDigest(*spec)); err != nil || !held || record.Source.Kind != TestItem {
+		summary.Test = nil
+		summary.Version = ""
+	} else {
+		summary.Test = &record.Source
+	}
+
+	if summary.Test != nil {
+		summary.Version = summary.Test.Revision
 	}
 	return spec.Name
 }

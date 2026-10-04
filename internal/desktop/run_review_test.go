@@ -272,6 +272,16 @@ func TestAnInterruptedRunIsRecoveredReadOnlyAndResumedOnlyByItsReview(t *testing
 	if sent.Run == nil || peer.deliveries() != 1 {
 		t.Fatalf("the first run: %+v", sent)
 	}
+	original := app.OpenRun(desktop.RunRequest{Context: context, Run: *sent.Run})
+	if original.State != desktop.Completed || original.Run == nil || original.Run.Item.Summary.Run == nil {
+		t.Fatalf("open the genuinely reviewed run: %+v", original)
+	}
+	originalSummary := original.Run.Item.Summary.Run
+	if originalSummary.Test == nil || *originalSummary.Test != test || originalSummary.TestAssociation != "linked" || originalSummary.Version != test.Revision || originalSummary.SourceAssociation != "linked" || len(originalSummary.SourceCases) != 1 {
+		t.Fatalf("the reviewed writer lost its exact original test/source pin: %+v", originalSummary)
+	}
+	// This second run is created directly by the engine below, without a
+	// desktop reviewed-action origin. Equal inputs do not copy that origin.
 	inputs, _, err := durablerun.RetainedInputs(entryOfRun(t, app, context, *sent.Run))
 	if err != nil {
 		t.Fatal(err)
@@ -296,7 +306,7 @@ func TestAnInterruptedRunIsRecoveredReadOnlyAndResumedOnlyByItsReview(t *testing
 	}
 
 	interrupted := listed(t, app, context.Project, desktop.RunItem)["@job-900"]
-	if summary := interrupted.Summary.Run; summary.Result != desktop.RunIncomplete || summary.Test == nil || summary.Test.ID != test.ID {
+	if summary := interrupted.Summary.Run; summary.Result != desktop.RunIncomplete || summary.Test != nil || summary.TestAssociation != "unlinked" || summary.Version != "" || summary.SourceAssociation != "linked" || !slices.Equal(summary.SourceCases, originalSummary.SourceCases) {
 		t.Fatalf("the stopped run in history: %+v", summary)
 	}
 	opened := app.OpenRun(desktop.RunRequest{Context: context, Run: interrupted.Ref})
@@ -313,6 +323,23 @@ func TestAnInterruptedRunIsRecoveredReadOnlyAndResumedOnlyByItsReview(t *testing
 	resumed := app.ExecuteReviewedAction(desktop.ExecuteActionRequest{Context: context, Token: resume.Token, IntentID: "resume", Decisions: confirmed})
 	if resumed.State != desktop.Completed || resumed.Run == nil || resumed.Run.ID == interrupted.Ref.ID || peer.deliveries() != 2 {
 		t.Fatalf("the resumed run: %+v (%d deliveries)", resumed, peer.deliveries())
+	}
+	// Fresh final consent selected the exact compatible saved test for the
+	// new execution. That is new reviewed provenance; it never upgrades the
+	// interrupted engine-created run's original association.
+	if resume.Run == nil || resume.Run.Test == nil || *resume.Run.Test != test {
+		t.Fatalf("the fresh resume review did not name its selected publication: %+v", resume.Run)
+	}
+	resumedDetail := app.OpenRun(desktop.RunRequest{Context: context, Run: *resumed.Run})
+	if resumedDetail.Run == nil || resumedDetail.Run.Item.Summary.Run == nil {
+		t.Fatalf("the fresh reviewed resume cannot be opened: %+v", resumedDetail)
+	}
+	resumedSummary := resumedDetail.Run.Item.Summary.Run
+	if resumedSummary.Test == nil || *resumedSummary.Test != *resume.Run.Test || resumedSummary.TestAssociation != "linked" || resumedSummary.SourceAssociation != "linked" || !slices.Equal(resumedSummary.SourceCases, originalSummary.SourceCases) {
+		t.Fatalf("the fresh reviewed resume lost its selected test/source origin: %+v", resumedSummary)
+	}
+	if old := listed(t, app, context.Project, desktop.RunItem)["@job-900"].Summary.Run; old.Test != nil || old.TestAssociation != "unlinked" || !slices.Equal(old.SourceCases, originalSummary.SourceCases) {
+		t.Fatalf("a fresh resume invented an origin for the interrupted evidence: %+v", old)
 	}
 	if after, err := os.ReadFile(filepath.Join(context.Project, "job-900", "journal.jsonl")); err != nil || string(after) != string(journal) {
 		t.Fatalf("resuming changed the stopped run's journal: %v", err)

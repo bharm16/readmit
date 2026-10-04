@@ -435,6 +435,8 @@ func compareFlowRecords(left, right connectedrun.FlowEvidence, phase string) []F
 		switch {
 		case !lok || !rok:
 			row.Reason = "the observation was not retained complete in both lifecycles; a missing observation is not an empty one"
+		case (left.Phases[phase].Intervals[id].Schema != "" && !left.Phases[phase].Intervals[id].Sufficient()) || (right.Phases[phase].Intervals[id].Schema != "" && !right.Phases[phase].Intervals[id].Sufficient()):
+			row.Reason = "the declared observation interval did not complete in both lifecycles; insufficient coverage is not compared as zero"
 		case !l.Usable || !r.Usable:
 			row.Reason = "an observation is unusable; it is not compared as an empty or partial set"
 		case canonical(l.Columns) != canonical(r.Columns):

@@ -1,0 +1,1 @@
+- Record field-scoped value maps as immutable interface revisions with meanings, provenance, optional table identity, validated CSV import/export and explicit configuration declarations. Contextual inspection keeps unmapped values distinct, preserves source bytes and restores incomplete authored drafts without restoring reveal consent.

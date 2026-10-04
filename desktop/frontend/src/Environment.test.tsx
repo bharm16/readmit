@@ -161,6 +161,16 @@ async function openQA(user: User, facade: FacadeStub, observations: CatalogItem[
   await page().findByText("peer-under-test:2575");
 }
 
+/** Target detail sections are reached through their actual tabs. */
+async function targetSection(user:User,tab:"Reset"|"Observations") {
+  await user.click(page().getByRole("tab",{name:tab}));
+  return page().getByRole("region",{name:tab==="Observations"?"Observation":tab});
+}
+function connectionEdit() {
+  const section=page().getByRole("region",{name:"Connection"});
+  return within(section.querySelector<HTMLElement>("header")!).getByRole("button",{name:"Edit"});
+}
+
 /** The value a value row shows beside its label. */
 function valueOf(container: HTMLElement, label: string): string | null {
   const term = Array.from(container.querySelectorAll("dt")).find((entry) => entry.textContent === label);
@@ -174,8 +184,8 @@ test("the environments list shows saved values sorted by name, and an unknown cl
   const table = await page().findByRole("table", { name: "Environments" });
   const rows = Array.from(table.querySelectorAll("tbody tr[data-row-id]")).map((row) => Array.from(row.querySelectorAll("td,th")).map((cell) => cell.textContent));
   expect(rows).toEqual([
-    ["Local fixture", "second-peer:2576", "Not classified", "—"],
-    ["Scheduling QA", "peer-under-test:2575", "Nonproduction", "—"],
+    ["Local fixture", "Not classified", "MLLP", "second-peer:2576", "—"],
+    ["Scheduling QA", "Nonproduction", "TLS", "peer-under-test:2575", "—"],
   ]);
   // Opening the page connects to nothing and has no inputs.
   expect(facade.callsTo("CheckEnvironment")).toHaveLength(0);
@@ -227,7 +237,7 @@ test("Add environment opens with Not classified and no transport chosen, and Edi
   const table = await page().findByRole("table", { name: "Environments" });
   await user.click(table.querySelector<HTMLElement>('[data-row-id="env-qa"]')!);
   await page().findByText("peer-under-test:2575");
-  await user.click(within(page().getByRole("region", { name: "Connection" })).getByRole("button", { name: "Edit" }));
+  await user.click(connectionEdit());
   const edit = await screen.findByRole("dialog", { name: "Edit connection" });
   expect((within(edit).getByRole("textbox", { name: "Host" }) as HTMLInputElement).value).toBe("peer-under-test");
   expect((within(edit).getByRole("radio", { name: "TLS" }) as HTMLInputElement).checked).toBe(true);
@@ -270,7 +280,7 @@ test("Test connection checks the saved version and shows a dated result, not a l
   const table = await page().findByRole("table", { name: "Environments" });
   await user.click(table.querySelector<HTMLElement>('[data-row-id="env-qa"]')!);
   await page().findByText("peer-under-test:2575");
-  await waitFor(() => expect(valueOf(page().getByRole("region", { name: "Connection" }), "Last checked")).toMatch(/^Reachable · .+ \d{1,2}:\d{2}/));
+  await waitFor(() => expect(page().getByRole("region",{name:"Last connection check"}).querySelector("p")?.textContent).toMatch(/^Reachable · .+ \d{1,2}:\d{2}/));
   expect(page().queryByRole("status")).toBeNull();
   expect(page().queryByText(/Connected/)).toBeNull();
 });
@@ -415,7 +425,7 @@ test("Edit reset adds each action in its own sheet, a check names one of the pro
   const user = userEvent.setup();
   const { facade } = await renderApp(handlers({ SaveItem: (request) => ({ state: "completed", context: request.context, outcome: "saved", saved: QA.ref, replayed: false, problems: [] }) }));
   await openQA(user, facade, [APPOINTMENTS]);
-  await user.click(within(page().getByRole("region", { name: "Reset" })).getByRole("button", { name: "Edit" }));
+  await user.click(within(await targetSection(user,"Reset")).getByRole("button", { name: "Edit" }));
   const sheet = await screen.findByRole("dialog", { name: "Edit reset" });
   expect((within(sheet).getByRole("textbox", { name: "Name" }) as HTMLInputElement).value).toBe("Empty appointments");
 
@@ -505,7 +515,7 @@ test("Reset reviews the exact saved actions, needs each manual step confirmed an
     }),
   );
   await openQA(user, facade);
-  await user.click(within(page().getByRole("region", { name: "Reset" })).getByRole("button", { name: "Reset" }));
+  await user.click(within(await targetSection(user,"Reset")).getByRole("button", { name: "Reset" }));
   const sheet = await screen.findByRole("dialog", { name: "Reset" });
   expect(facade.oneCall("PrepareAction")[0]).toMatchObject({ action: "environment.reset", items: [QA.ref] });
   const final = await within(sheet).findByRole("button", { name: "Reset" });
@@ -558,7 +568,7 @@ test("Edit connection chooses its CA certificate with the native file picker", a
     }),
   );
   await openQA(user, facade);
-  await user.click(within(page().getByRole("region", { name: "Connection" })).getByRole("button", { name: "Edit" }));
+  await user.click(connectionEdit());
   const sheet = await screen.findByRole("dialog", { name: "Edit connection" });
   await user.click(within(sheet).getByRole("button", { name: "Choose ca certificate" }));
   expect(facade.oneCall("ChooseEnvironmentFile")).toEqual(["ca-certificate"]);
@@ -614,7 +624,7 @@ test("an unreadable environment stays a row with its reason, and Locate finds it
   expect(facade.oneCall("LocateItem")[0]).toMatchObject({ ref: MOVED.ref });
   await waitFor(() => expect(listed()).toBeGreaterThan(before));
   // Locating opened nothing.
-  expect(page().getByRole("heading", { name: "Environments" })).toBeTruthy();
+  expect(page().getByRole("heading", { name: "Targets" })).toBeTruthy();
 });
 
 test("Duplicate saves a copy under a new identity and opens it, and Details shows when it was created and updated", async () => {
@@ -667,7 +677,8 @@ test("an environment whose transport is not approved offers Approve transport, r
   await openQA(user, facade, [], [PENDING, UNCLASSIFIED]);
   expect(page().queryByRole("button", { name: "Test connection" })).toBeNull();
   await waitFor(() => expect(valueOf(page().getByRole("region", { name: "Connection" }), "Transport")).toBe("TLS · Not approved"));
-  await user.click(page().getByRole("button", { name: "Approve transport" }));
+  await user.click(page().getByRole("button", { name: "More environment actions" }));
+  await user.click(screen.getByRole("menuitem", { name: "Approve transport…" }));
   const sheet = await screen.findByRole("dialog", { name: "Approve transport" });
   expect(facade.oneCall("PrepareAction")[0]).toMatchObject({ action: "environment.approve-transport", items: [QA.ref] });
   await within(sheet).findByText("peer-under-test:2575");
@@ -687,7 +698,7 @@ test("a Maximum ACK size that is not a whole number stays in its field with the 
   const user = userEvent.setup();
   const { facade } = await renderApp(handlers());
   await openQA(user, facade);
-  await user.click(within(page().getByRole("region", { name: "Connection" })).getByRole("button", { name: "Edit" }));
+  await user.click(connectionEdit());
   const sheet = await screen.findByRole("dialog", { name: "Edit connection" });
   await user.click(within(sheet).getByRole("button", { name: "More connection settings" }));
   const field = within(sheet).getByRole("textbox", { name: "Maximum ACK size (bytes)" });
@@ -710,7 +721,7 @@ test("the Observation group's Edit links another named observation or none in on
     }),
   );
   await openQA(user, facade, [APPOINTMENTS, VISITS], [LINKED, UNCLASSIFIED]);
-  const group = page().getByRole("region", { name: "Observation" });
+  const group = await targetSection(user,"Observations");
   expect(within(group).getByRole("button", { name: "Appointments" })).toBeTruthy();
   await user.click(within(group).getByRole("button", { name: "Edit" }));
   let sheet = await screen.findByRole("dialog", { name: "Observation" });
@@ -727,7 +738,7 @@ test("the Observation group's Edit links another named observation or none in on
   expect(linked.draft.links?.action_names).toEqual(["Clear ledger"]);
 
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "Observation" })).toBeNull());
-  await user.click(within(page().getByRole("region", { name: "Observation" })).getByRole("button", { name: "Edit" }));
+  await user.click(within(await targetSection(user,"Observations")).getByRole("button", { name: "Edit" }));
   sheet = await screen.findByRole("dialog", { name: "Observation" });
   await user.selectOptions(within(sheet).getByRole("combobox", { name: "Observation" }), "None");
   await user.click(within(sheet).getByRole("button", { name: "Save" }));
@@ -745,7 +756,7 @@ test("Add observation saves the new observation, then links it in one environmen
     }),
   );
   await openQA(user, facade);
-  const group = page().getByRole("region", { name: "Observation" });
+  const group = await targetSection(user,"Observations");
   expect(within(group).getByText("No observation")).toBeTruthy();
   // The new observation is listed once it is saved.
   listing(facade, [QA, UNCLASSIFIED], [VISITS]);
@@ -813,7 +824,7 @@ test("Reset review of a plan that only checks uses the ordinary final button and
     }),
   );
   await openQA(user, facade);
-  await user.click(within(page().getByRole("region", { name: "Reset" })).getByRole("button", { name: "Reset" }));
+  await user.click(within(await targetSection(user,"Reset")).getByRole("button", { name: "Reset" }));
   const sheet = await screen.findByRole("dialog", { name: "Reset" });
   const final = (await within(sheet).findByRole("button", { name: "Reset" })) as HTMLButtonElement;
   await within(sheet).findByText("Appointments has no records");
@@ -886,7 +897,7 @@ test("an environment that changed since it was opened keeps what was typed and s
 
   await user.click(table.querySelector<HTMLElement>('[data-row-id="env-qa"]')!);
   await page().findByText("peer-under-test:2575");
-  await user.click(within(page().getByRole("region", { name: "Connection" })).getByRole("button", { name: "Edit" }));
+  await user.click(connectionEdit());
   const sheet = await screen.findByRole("dialog", { name: "Edit connection" });
   const host = within(sheet).getByRole("textbox", { name: "Host" });
   await user.clear(host);

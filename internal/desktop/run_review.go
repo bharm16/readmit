@@ -52,9 +52,10 @@ const SetupRequirement ReviewRequirement = "setup"
 // is scoped to: the suite environment a suite version runs at, and the
 // original phase a reviewed test reproduces (failure or pass).
 type RunActionOptions struct {
-	Connected   *ConnectedSuiteRunOptions `json:"connected,omitzero"`
-	Environment string                    `json:"environment,omitzero"`
-	Phase       string                    `json:"phase,omitzero"`
+	RuntimeMarker string                    `json:"runtime_marker,omitzero"`
+	Connected     *ConnectedSuiteRunOptions `json:"connected,omitzero"`
+	Environment   string                    `json:"environment,omitzero"`
+	Phase         string                    `json:"phase,omitzero"`
 }
 
 // RunRefusal says what a person changes to make a run review ready: the
@@ -74,6 +75,7 @@ const (
 // MessageCount is the number of messages sent when it is known, and absent
 // when it is not.
 type RunReview struct {
+	Lifecycle       *ConnectedRunReview      `json:"lifecycle,omitzero"`
 	Connected       *ConnectedSuitePreflight `json:"connected,omitzero"`
 	Kind            RunKind                  `json:"kind"`
 	Name            string                   `json:"name"`
@@ -149,6 +151,7 @@ type RunReviewedTest struct {
 
 // runBinding is what a run's final click executes.
 type runBinding struct {
+	lifecycle *connectedIndividualBinding
 	connected *ConnectedSuiteRunOptions
 	kind      RunKind
 	root      string
@@ -315,6 +318,9 @@ func bindRunTest(a *App, ctx context.Context, request PrepareActionRequest, held
 		return nil, declined
 	}
 	record := records[0]
+	if path, _, err := loaded.testVersionPath(record, request.Items[0].Revision); err == nil && declares(path, ConnectedTestSchema) {
+		return bindConnectedTestRun(a, ctx, request, held, loaded, items, record)
+	}
 	saved, err := loaded.testOf(record, request.Items[0].Revision)
 	if err != nil {
 		return nil, refusal{Failed, "this test cannot be read: " + err.Error()}
@@ -781,6 +787,12 @@ func executeRun(a *App, ctx context.Context, bound *boundAction, decisions Revie
 	var err error
 	uncertain := false
 	switch {
+	case bound.action == RunTestAction && run.lifecycle != nil:
+		result = executeConnectedIndividual(a, ctx, bound, decisions, output)
+		if result.State != Completed {
+			return result
+		}
+		uncertain = result.Outcome == ActionUncertain
 	case bound.action == RunSuiteAction && run.connected != nil:
 		result = executeConnectedRunSuite(a, ctx, bound, output)
 		if result.State != Completed {

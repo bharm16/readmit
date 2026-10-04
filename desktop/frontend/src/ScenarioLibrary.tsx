@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   generateScenarioCases,
+  createScenarioCase,
   cancel,
   scenarioCasesProgress,
   inspectScenarioPreview,
@@ -191,6 +192,7 @@ export function useScenario({
     work.withdraw();
     submission.withdraw();
     owner.current = { key, root, object, imported };
+    setFinishing(false);
     setFlow(key);
     setOpened(null);
     setEditing(null);
@@ -432,11 +434,23 @@ export function useScenario({
     void finishPublished(owner.current, snapshot.current.content, attempt, whole, retainer);
   }, [shown, flow, submitted, serialized]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const savedReady=!!ref && opened?.state==="completed" && opened.ref?.id===ref.id && !finishing && reads.running===null;
   const createCase = async () => {
-    if (!ref) return;
+    if (!ref || !savedReady) return;
     setGenerationProgress(null);
     setGenerated(null);
     await work.run("create", async (current) => {
+      const scenario={...ref,...(opened?.ref?.revision ? {revision:opened.ref.revision}:{})};
+      // A plain retained generator plan keeps its existing deterministic writer.
+      // Authored profile/FHIR generation uses its own encoder and never falls
+      // back to another language after a refusal.
+      if(!draft?.fhir && !draft?.profile && !draft?.generation) {
+        const answer=await createScenarioCase({context:context(),scenario,intent_id:newIntentId()});
+        if(!current())return;
+        if(answer.state==="completed" && answer.case)onOpenCase(answer.case,answer.entry??"");
+        else setNotice(answer.reason??"No synthetic case was created.");
+        return;
+      }
       const answer = await generateScenarioCases({ context: context(), scenario: { ...ref, ...(opened?.ref?.revision ? { revision: opened.ref.revision } : {}) }, profile: { kind: "profile", id: "" }, settings: SAVED_GENERATION, intent_id: newIntentId() });
       if (!current()) return;
       if (answer.state === "completed" && answer.cases.length > 0) setGenerated(answer);
@@ -474,7 +488,7 @@ export function useScenario({
       <SaveButtons dirty={dirty} disabled={busy || work.running !== null || !editing.name.trim() || template.steps.length === 0} onSave={save} onCancel={() => void discard()} />
     </> : <>
       <button type="button" disabled={busy || !saved} onClick={() => saved && setEditing({ name, draft: saved })}>Edit</button>
-      <button type="button" className="primary" disabled={busy || work.running !== null || !ref} onClick={() => void createCase()}>Create case</button>
+      <button type="button" className="primary" disabled={busy || work.running !== null || !savedReady} onClick={() => void createCase()}>Create case</button>
       <Menu label="More scenario actions" items={[{ label: "History", onSelect: () => setSheet("history") }, { label: "Export scenario…", onSelect: () => { if (ref) void exportItem(context(), ref).then(setNotice); } }]} />
     </>, body: <>
       {guard}{retention}
@@ -694,7 +708,7 @@ export function useScenario({
       <button type="button" disabled={busy || running || !saved} onClick={() => saved && setEditing({ name, draft: saved })}>
         Edit
       </button>
-      <button type="button" className="primary" disabled={busy || running || !ref} onClick={() => void createCase()}>
+      <button type="button" className="primary" disabled={busy || running || !savedReady} onClick={() => void createCase()}>
         Create case
       </button>
       <Menu

@@ -2,6 +2,7 @@ package observeinterval
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/capturejournal"
@@ -18,6 +19,7 @@ import (
 )
 
 const CaptureSourceSchema = "readmit-live-capture-source/v1"
+const CaptureSourceSchemaV2 = "readmit-live-capture-source/v2"
 
 type ScopeFilter struct {
 	Selector string `json:"selector"`
@@ -28,29 +30,56 @@ type ScopeFilter struct {
 // RunSelector proves which runtime owns an incoming message; Include filters
 // are declared before arming, and all excluded occurrences remain in the case.
 type CaptureSource struct {
-	Schema         string                    `json:"schema"`
-	Address        string                    `json:"address"`
-	ReceiverPolicy collection.Policy         `json:"receiver_policy"`
-	Certificate    []byte                    `json:"certificate"`
-	Authorities    []byte                    `json:"client_authorities"`
-	PrivateKey     *networkaction.Credential `json:"private_key,omitzero"`
-	TimeoutMS      int64                     `json:"timeout_ms"`
-	MaxFrameBytes  int                       `json:"max_frame_bytes"`
-	MaxBytes       int                       `json:"max_bytes"`
-	MaxMessages    int                       `json:"max_messages"`
-	MaxConnections int                       `json:"max_connections"`
-	MaxSessions    int                       `json:"max_sessions"`
-	RunSelector    string                    `json:"run_selector"`
-	Include        []ScopeFilter             `json:"include"`
+	PhaseKeys         []string                  `json:"phase_keys,omitzero"`
+	OutputKeySelector string                    `json:"output_key_selector,omitzero"`
+	Schema            string                    `json:"schema"`
+	Address           string                    `json:"address"`
+	ReceiverPolicy    collection.Policy         `json:"receiver_policy"`
+	Certificate       []byte                    `json:"certificate"`
+	Authorities       []byte                    `json:"client_authorities"`
+	PrivateKey        *networkaction.Credential `json:"private_key,omitzero"`
+	TimeoutMS         int64                     `json:"timeout_ms"`
+	MaxFrameBytes     int                       `json:"max_frame_bytes"`
+	MaxBytes          int                       `json:"max_bytes"`
+	MaxMessages       int                       `json:"max_messages"`
+	MaxConnections    int                       `json:"max_connections"`
+	MaxSessions       int                       `json:"max_sessions"`
+	RunSelector       string                    `json:"run_selector"`
+	Include           []ScopeFilter             `json:"include"`
 }
 
 func DecodeCapture(raw []byte) (CaptureSource, error) {
 	var s CaptureSource
-	if len(raw) > 3<<20 || json.Unmarshal(raw, &s, json.RejectUnknownMembers(true)) != nil || s.Schema != CaptureSourceSchema || len(s.Include) > 16 {
+	if len(raw) > 3<<20 || json.Unmarshal(raw, &s, json.RejectUnknownMembers(true)) != nil || (s.Schema != CaptureSourceSchema && s.Schema != CaptureSourceSchemaV2) || len(s.Include) > 16 {
 		return s, invalid
 	}
 	if _, err := hl7.ParseSelector(s.RunSelector); err != nil {
 		return s, invalid
+	}
+	if s.Schema == CaptureSourceSchemaV2 {
+		if _, err := hl7.ParseSelector(s.OutputKeySelector); err != nil {
+			return s, invalid
+		}
+		if len(s.PhaseKeys) > 256 {
+			return s, invalid
+		}
+		seen := map[string]bool{}
+		for _, key := range s.PhaseKeys {
+			if key == "" || len(key) > 1024 || seen[key] {
+				return s, invalid
+			}
+			seen[key] = true
+		}
+	} else {
+		var members map[string]jsontext.Value
+		if json.Unmarshal(raw, &members) != nil {
+			return s, invalid
+		}
+		for _, member := range []string{"output_key_selector", "phase_keys"} {
+			if _, extended := members[member]; extended {
+				return s, invalid
+			}
+		}
 	}
 	for _, f := range s.Include {
 		if _, err := hl7.ParseSelector(f.Selector); err != nil || len(f.Equals) > 1024 {
@@ -64,6 +93,9 @@ func PrepareCapture(raw, policy []byte, scope networkaction.Binding) (*networkac
 	if err != nil {
 		return nil, err
 	}
+	if s.Schema == CaptureSourceSchemaV2 && len(s.PhaseKeys) == 0 {
+		return nil, invalid
+	}
 	v := networkaction.CaptureSpecV2{Schema: networkaction.CaptureActionSchemaV2, MaxConnections: s.MaxConnections, MaxSessions: s.MaxSessions, Definition: networkaction.CaptureSpec{Schema: networkaction.CaptureActionSchema, Plan: scope.Plan, Source: dataset.Digest(raw), Project: scope.Project, Environment: scope.Environment, Revision: scope.Revision, Endpoint: scope.Endpoint, Classification: "nonproduction", Address: s.Address, Policy: s.ReceiverPolicy, Certificate: s.Certificate, Authorities: s.Authorities, PrivateKey: s.PrivateKey, TimeoutMS: s.TimeoutMS, MaxFrameBytes: s.MaxFrameBytes, MaxBytes: s.MaxBytes, MaxMessages: s.MaxMessages}}
 	encoded, _ := json.Marshal(v, json.Deterministic(true))
 	return networkaction.PrepareCapture(encoded, policy)
@@ -76,6 +108,7 @@ type Capture struct {
 	binding    dataset.Binding
 	projection dataset.Projection
 	output     string
+	scopeFrom  time.Time
 	started    time.Time
 	excluded   map[string]string
 }
@@ -91,7 +124,8 @@ func ArmCapture(ctx context.Context, raw []byte, p *networkaction.CapturePlan, a
 	}
 	return &Capture{session: session, source: s, raw: slices.Clone(raw), binding: binding, projection: projection, output: output, started: time.Now().UTC(), excluded: map[string]string{}}, nil
 }
-func (c *Capture) Address() string { return c.session.Address() }
+func (c *Capture) ScopeAfter(at time.Time) { c.scopeFrom = at }
+func (c *Capture) Address() string         { return c.session.Address() }
 func (c *Capture) Poll(context.Context) (Observation, error) {
 	progress := c.session.Progress()
 	o := Observation{Binding: c.binding, Status: "healthy", Records: progress.Received, Bytes: progress.Bytes, Watermark: strconv.Itoa(progress.Received)}
@@ -123,7 +157,7 @@ func (c *Capture) Finalize(ctx context.Context) (Observation, error) {
 	if err != nil || verified.Identity != captured.Identity {
 		return o, invalid
 	}
-	material, excluded, status, err := captureMaterial(captured, c.source, c.binding)
+	material, excluded, status, err := captureMaterialAfter(captured, c.source, c.binding, c.scopeFrom)
 	if err != nil {
 		return o, err
 	}
@@ -144,7 +178,12 @@ func (c *Capture) Finalize(ctx context.Context) (Observation, error) {
 	if stoppedBefore || progress.Received >= c.source.MaxMessages || progress.Bytes >= c.source.MaxBytes || len(captured.Manifest.Sources) >= c.source.MaxSessions {
 		o.Status = "safety-limit"
 	}
-	snapshot, err := dataset.Build(ctx, c.binding, c.projection, dataset.Acquisition{Kind: "capture", Status: "complete", StartedAt: finalizing, Facts: &dataset.AcquisitionFacts{ObservedFrom: c.started, Status: "observed"}, CompletedAt: time.Now().UTC(), SourceConfiguration: c.raw, Completion: "snapshot"}, material)
+	snapshot, err := dataset.Build(ctx, c.binding, c.projection, dataset.Acquisition{Kind: "capture", Status: "complete", StartedAt: finalizing, Facts: &dataset.AcquisitionFacts{ObservedFrom: func() time.Time {
+		if c.source.Schema == CaptureSourceSchemaV2 {
+			return c.scopeFrom
+		}
+		return c.started
+	}(), Status: "observed"}, CompletedAt: time.Now().UTC(), SourceConfiguration: c.raw, Completion: "snapshot"}, material)
 	if err != nil {
 		return o, err
 	}
@@ -160,9 +199,13 @@ func (c *Capture) Finalize(ctx context.Context) (Observation, error) {
 func (c *Capture) EvidencePath() string { return filepath.Join(c.output, "case") }
 
 func captureMaterial(captured *bundle.Bundle, source CaptureSource, binding dataset.Binding) ([]byte, map[string]string, string, error) {
+	return captureMaterialAfter(captured, source, binding, time.Time{})
+}
+func captureMaterialAfter(captured *bundle.Bundle, source CaptureSource, binding dataset.Binding, after time.Time) ([]byte, map[string]string, string, error) {
 	excluded := map[string]string{}
 	status := "healthy"
 	bytes := 0
+	keys := map[string]string{}
 	for _, s := range captured.Manifest.Sources {
 		bytes += s.Size
 	}
@@ -179,6 +222,10 @@ func captureMaterial(captured *bundle.Bundle, source CaptureSource, binding data
 		}
 		if event.Kind == bundle.Unparsed {
 			status = "lost-coverage"
+			continue
+		}
+		if source.Schema == CaptureSourceSchemaV2 && (after.IsZero() || event.ObservedAt == nil || !event.ObservedAt.After(after)) {
+			excluded[event.ID] = "pre-stimulus-or-unavailable-time"
 			continue
 		}
 		raw, err := captured.Raw(event.ID)
@@ -215,6 +262,25 @@ func captureMaterial(captured *bundle.Bundle, source CaptureSource, binding data
 		if !included {
 			excluded[event.ID] = exclusion
 			continue
+		}
+		if source.Schema == CaptureSourceSchemaV2 {
+			selector, _ := hl7.ParseSelector(source.OutputKeySelector)
+			key, err := doc.Read(0, selector, hl7.EnforceMSH18)
+			if err != nil || key.State != hl7.Present || key.Reason != "" || len(key.Decoded) == 0 {
+				excluded[event.ID] = "unreadable-output-key"
+				status = "unknown-scope"
+				continue
+			}
+			value := string(key.Decoded)
+			if !slices.Contains(source.PhaseKeys, value) {
+				excluded[event.ID] = "outside-phase-input-keys"
+				continue
+			}
+			if earlier := keys[value]; earlier != "" {
+				excluded[earlier], excluded[event.ID] = "ambiguous-output-key", "ambiguous-output-key"
+				status = "ambiguous-scope"
+			}
+			keys[value] = event.ID
 		}
 		record.Rows = append(record.Rows, dataset.CaptureRow{Occurrence: event.ID, Raw: raw})
 	}

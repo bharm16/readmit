@@ -285,6 +285,7 @@ const extractScope = "Value-free extract of customer-local evidence: outcomes, c
 type ExtractCandidate struct {
 	packet, policy string
 	raw            []byte
+	policyRaw      []byte
 	Extract        Extract
 	Blocked        []string
 }
@@ -300,6 +301,17 @@ func PrepareExtract(ctx context.Context, packetPath, policyPath string) (*Extrac
 	if err != nil {
 		return nil, err
 	}
+	candidate, err := PrepareExtractPolicy(ctx, packetPath, raw)
+	if candidate != nil {
+		candidate.policy = policyPath
+		candidate.policyRaw = nil
+	}
+	return candidate, err
+}
+
+// PrepareExtractPolicy is the same disclosure owner over an exact in-memory
+// policy snapshot. No projection or consent is restored from the window.
+func PrepareExtractPolicy(ctx context.Context, packetPath string, raw []byte) (*ExtractCandidate, error) {
 	policy, err := DecodeDisclosurePolicy(raw)
 	if err != nil {
 		return nil, err
@@ -308,7 +320,7 @@ func PrepareExtract(ctx context.Context, packetPath, policyPath string) (*Extrac
 	if err != nil {
 		return nil, err
 	}
-	c := &ExtractCandidate{packet: packetPath, policy: policyPath, Blocked: applyDisclosurePolicy(opened.inventory, policy.Surfaces)}
+	c := &ExtractCandidate{packet: packetPath, policyRaw: bytes.Clone(raw), Blocked: applyDisclosurePolicy(opened.inventory, policy.Surfaces)}
 	x := Extract{Schema: ExtractSchema, PacketIdentity: opened.packet.Identity, PolicyIdentity: digest(raw), EvidenceClass: EvidenceExtract, Equivalence: ConnectedEquivalence{State: EquivalenceUnverified, Reason: "No external replay of this extract is retained, so it is not described as an equivalent reproducer. Its disclosure review is unaffected."}, Runs: []ExtractRun{}, Inventory: opened.inventory, Scope: extractScope}
 	x.Runs = valueFreeRuns(opened.packet)
 	x.Comparison = valueFreeComparison(opened.packet)
@@ -351,7 +363,13 @@ func (c *ExtractCandidate) Publish(ctx context.Context, approval, output string)
 		packet: c.packet, policy: c.policy, blocked: c.Blocked, identity: c.Identity(),
 		changed: "evidence or policy", family: extractFamily, approval: approval, output: output,
 		repare: func(ctx context.Context) ([]disclosedFile, []string, string, error) {
-			fresh, err := PrepareExtract(ctx, c.packet, c.policy)
+			var fresh *ExtractCandidate
+			var err error
+			if c.policyRaw != nil {
+				fresh, err = PrepareExtractPolicy(ctx, c.packet, c.policyRaw)
+			} else {
+				fresh, err = PrepareExtract(ctx, c.packet, c.policy)
+			}
 			if err != nil {
 				return nil, nil, "", err
 			}
@@ -382,3 +400,6 @@ func OpenExtract(dir string) (Extract, error) {
 	}
 	return x, nil
 }
+
+// Bytes returns the exact detached value-free document reviewed for publication.
+func (c *ExtractCandidate) Bytes() []byte { return bytes.Clone(c.raw) }

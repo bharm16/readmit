@@ -259,6 +259,8 @@ export function ProjectSettingsSheet({
     <FormDialog
       open={open}
       title="Project settings"
+      size="wide"
+      className="context-authoring-sheet project-settings-sheet"
       submitLabel="Save"
       submitDisabled={draft.name.trim() === "" || draft.revisions.some((revision) => revision.name.trim() === "")}
       dirty={dirty}

@@ -90,3 +90,32 @@ test("a send held before dispatch cannot spend a review after its visible choice
   expect(facade.oneCall("ExecuteReviewedAction")[0].token).toBe("token-B");
   expect(started).toHaveBeenCalledOnce();
 });
+
+test("editing target setup carries only window-owned choices and reopens a fresh unconfirmed review",async()=>{
+ let returned:import("./RunPanel").SendRequest|undefined;
+ const facade=installFacade({
+ ListCatalog:request=>({state:"completed",context:request.context,page:{items:[],total:0,snapshot:"s",recorded:true,incomplete:[]}}),
+ PrepareAction:request=>({state:"completed",context:request.context,review:{action:"run.test",token:`fresh-${request.context.generation}`,ready:false,refusal:"Target setup is incomplete",consent:"send",items:[],requirements:[],destination:{name:"Owned target"},run:{kind:"test",name:"Owned test",message_count:1,environments:[],refusal:"environment",environment:{kind:"environment",id:"owned-env",revision:"1"},targets:[],jobs:[],resets:[],setup:[],messages:[]}}}),
+ WithdrawReview:()=>({state:"completed",context:{project:"",generation:0}}),
+ });
+ const request:import("./RunPanel").SendRequest={kind:"test",test:{kind:"test",id:"owned-test"}};
+ const props={context:()=>({project:"/owned/project",generation:1}),onClose:()=>undefined,onStarted:()=>undefined,onEditEnvironment:(_environment:import("./bindings").ItemRef,next:import("./RunPanel").SendRequest)=>{returned=next;},onActivate:()=>undefined};
+ const rendered=render(<SendReview {...props} request={request}/>);const user=userEvent.setup();
+ await user.click(await screen.findByRole("button",{name:"Edit environment"}));
+ expect(returned).toMatchObject({kind:"test",environment:{id:"owned-env"},resumeChoices:{transformations:[]}});
+ expect(JSON.stringify(returned)).not.toContain('"token"');expect(JSON.stringify(returned)).not.toContain('"confirmed"');
+ rendered.rerender(<SendReview {...props} request={null}/>);rendered.rerender(<SendReview {...props} request={returned!}/>);
+ await waitFor(()=>expect(facade.callsTo("PrepareAction").length).toBeGreaterThan(1));
+ expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
+});
+
+test("connected suite dispatch shows every job and editing installed authority withdraws the ready review",async()=>{
+ const facade=installFacade({PrepareAction:request=>({state:"completed",context:request.context,review:{action:"run.suite",ready:!!request.run?.connected,token:request.run?.connected?"installed-review":"",refusal:request.run?.connected?"":"Select installed authority",requirements:[],consent:"send",items:[],destination:{name:"Owned runner"},run:{kind:"suite",name:"Connected suite",message_count:null,messages:[],setup:[],resets:[],jobs:[],targets:[],environments:[],connected:{input:"prepared",project:"project",environment:"qa",capabilities:{schema:"capabilities",engine:"engine",pins:[]},jobs:[{id:"ready-job",state:"enabled",plan_identity:"p",input:"i",after:[]},{id:"refused-job",state:"refused",plan_identity:"p2",input:"i2",after:[]},{id:"skipped-job",state:"skipped",plan_identity:"p3",input:"i3",after:[]}]}}}}),WithdrawReview:()=>({state:"completed",context:{project:"",generation:0}})});
+ render(<SendReview request={{kind:"suite",suite:{kind:"suite",id:"owned"},environment:"qa",connectedRequired:true}} context={()=>({project:"/owned",generation:1})} onClose={()=>{}} onStarted={()=>{}} onEditEnvironment={()=>{}} onActivate={()=>{}}/>);
+ const user=userEvent.setup();for(const [label,value] of [["Runner configuration","runner.json"],["Installed authority","authority.json"],["Approved promotion","promotion.json"],["Promotion SHA-256","a".repeat(64)],["Target revision","r1"],["Dispatch identity","dispatch-one"]])await user.type(screen.getByLabelText(label!),value!);
+ await user.click(screen.getByRole("button",{name:"Review runner dispatch"}));await waitFor(()=>expect((screen.getByRole("button",{name:"Send"}) as HTMLButtonElement).disabled).toBe(false));
+ expect(screen.getByRole("region",{name:"Connected suite jobs"}).querySelectorAll("tbody tr")).toHaveLength(3);expect(screen.getByText("refused-job")).toBeTruthy();expect(screen.getByText("skipped-job")).toBeTruthy();
+ await user.type(screen.getByLabelText("Installed authority"),"-changed");await waitFor(()=>expect((screen.getByRole("button",{name:"Send"}) as HTMLButtonElement).disabled).toBe(true));
+ await waitFor(()=>expect(facade.callsTo("WithdrawReview").some(call=>call.args[0]==="installed-review")).toBe(true));
+ expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
+});

@@ -126,7 +126,7 @@ func readConnectedTest(c *loadedCatalog, item catalog.Item, paths map[string]str
 	if err != nil {
 		return view{}, err
 	}
-	summary := &TestSummary{CurrentVersion: item.RevisionLabel(), Boundary: d.Boundary}
+	summary := &TestSummary{CurrentVersion: item.RevisionLabel(), Boundary: d.Boundary, Entry: c.entryOf(paths[primaryRole(TestItem)])}
 	for _, phase := range d.Phases {
 		summary.Assertions += len(phase.Checks) + len(phase.Responses) + len(phase.Validations) + len(phase.Acks)
 	}
@@ -262,6 +262,9 @@ func (c *loadedCatalog) connectedProblems(d ConnectedTestDraft, environment stri
 			}
 		}
 		for _, offer := range pinned {
+			if offer.Protocol != "fhir" {
+				continue
+			}
 			if read, err := c.connectedEnvironment(offer.Environment); err == nil {
 				reach.offers[offer.Environment] = ConnectedEnvironmentOffer{Ref: read.ref, Name: read.name, Protocol: "fhir"}
 			}
@@ -312,7 +315,7 @@ func validateConnectedTestDraft(scope draftScope, draft ItemDraft) ([]catalog.St
 		links = *draft.TestLinks
 		links.Tags = slices.Sorted(slices.Values(links.Tags))
 	}
-	links.Schema = TestLinksSchema
+	links.Schema = schemaForTestLinks(links)
 	problems = append(problems, checkTestLinks(links)...)
 	if links.Environment == "" {
 		problems = append(problems, FieldProblem{Field: "test.environment", Problem: "choose the environment this test runs against"})
@@ -628,7 +631,30 @@ func (c *loadedCatalog) newConnectedFromEvidence(result ItemDraftResult, ref Ite
 		selected[id] = true
 	}
 	if opened.Document != nil {
-		for i, resource := range opened.Document.Resources() {
+		resources := opened.Document.Resources()
+		indexes := []int{}
+		if len(origin.Messages) == 0 {
+			for i := range resources {
+				indexes = append(indexes, i)
+			}
+		} else {
+			seen := map[string]bool{}
+			for _, id := range origin.Messages {
+				if seen[id] {
+					continue
+				}
+				seen[id] = true
+				for i, resource := range resources {
+					if resource.Occurrence == id {
+						indexes = append(indexes, i)
+						break
+					}
+				}
+			}
+		}
+		for _, i := range indexes {
+			resource := resources[i]
+
 			if resource.State != "parsed" || resource.Type == "Bundle" || len(selected) > 0 && !selected[resource.Occurrence] {
 				continue
 			}

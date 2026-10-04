@@ -25,18 +25,19 @@ const ConnectedObservationSchema = "readmit-connected-observation-setup/v1"
 // Source identities are computed here, never entered in the window. FHIR
 // searches use selected finite parameters and positions, not query text.
 type ConnectedObservation struct {
-	Schema             string                     `json:"schema"`
-	Environment        string                     `json:"environment,omitzero"`
-	Namespace          string                     `json:"namespace"`
-	Phase              string                     `json:"phase"`
-	BusinessKeys       []BusinessKeyMapping       `json:"business_keys"`
-	Baseline           string                     `json:"baseline"`
-	BarrierObservation string                     `json:"barrier_observation,omitzero"`
-	BarrierDestination string                     `json:"barrier_destination,omitzero"`
-	BarrierWork        string                     `json:"barrier_work,omitzero"`
-	Completion         observeinterval.Definition `json:"completion"`
-	Projection         *dataset.Projection        `json:"projection,omitzero"`
-	FHIR               *FHIRSearchDraft           `json:"fhir,omitzero"`
+	Capture            *ConnectedCaptureObservation `json:"capture,omitzero"`
+	Schema             string                       `json:"schema"`
+	Environment        string                       `json:"environment,omitzero"`
+	Namespace          string                       `json:"namespace"`
+	Phase              string                       `json:"phase"`
+	BusinessKeys       []BusinessKeyMapping         `json:"business_keys"`
+	Baseline           string                       `json:"baseline"`
+	BarrierObservation string                       `json:"barrier_observation,omitzero"`
+	BarrierDestination string                       `json:"barrier_destination,omitzero"`
+	BarrierWork        string                       `json:"barrier_work,omitzero"`
+	Completion         observeinterval.Definition   `json:"completion"`
+	Projection         *dataset.Projection          `json:"projection,omitzero"`
+	FHIR               *FHIRSearchDraft             `json:"fhir,omitzero"`
 }
 type BusinessKeyMapping struct {
 	Field    string `json:"field"`
@@ -143,7 +144,15 @@ func validateConnectedObservationDraft(scope draftScope, draft ItemDraft) ([]cat
 	staged := []catalog.Staged{}
 	var columns []dataset.Column
 	sourceIdentity := ""
-	if setup.FHIR != nil {
+	if setup.Capture != nil {
+		members, identity, found := validateConnectedCapture(scope, &setup)
+		staged = append(staged, members...)
+		sourceIdentity = identity
+		problems = append(problems, found...)
+		if setup.Projection != nil {
+			columns = setup.Projection.Columns
+		}
+	} else if setup.FHIR != nil {
 		if setup.Projection != nil {
 			add("projection", "Choose one source projection")
 		}
@@ -298,7 +307,7 @@ func openConnectedObservation(paths map[string]string) (*ObservationDraft, error
 		return nil, errors.New("The observation setup cannot be read")
 	}
 	held := &ObservationDraft{Connected: &setup, Source: operation.DefaultObservationSource(), Window: operation.DefaultObservationWindow()}
-	if setup.FHIR == nil {
+	if setup.FHIR == nil && setup.Capture == nil {
 		raw, err := savedFile.Read(paths["source"])
 		if err != nil {
 			return nil, err
@@ -352,7 +361,20 @@ func verifyConnectedObservation(paths map[string]string) error {
 	if err != nil {
 		return err
 	}
-	if setup.FHIR != nil {
+	if setup.Capture != nil {
+		capture, err := observeinterval.DecodeCapture(sourceRaw)
+		if err != nil || dataset.Digest(sourceRaw) != interval.Source || capture.RunSelector != setup.Capture.RunSelector || setup.Phase != "after" || interval.Mode != "stream" || setup.Projection == nil {
+			return invalid
+		}
+		projectionRaw, err := savedFile.Read(paths["projection"])
+		if err != nil {
+			return err
+		}
+		projection, err := dataset.DecodeProjection(projectionRaw)
+		if err != nil || projection.Identity() != setup.Projection.Identity() {
+			return invalid
+		}
+	} else if setup.FHIR != nil {
 		o, err := fhirobserve.Decode(sourceRaw)
 		if err != nil || o.Identity() != interval.Source {
 			return invalid
@@ -391,6 +413,9 @@ func readConnectedObservation(c *loadedCatalog, item catalog.Item, paths map[str
 	}
 	setup := held.Connected
 	kind := held.Source.Observes.Kind
+	if setup.Capture != nil {
+		kind = "live-hl7-capture"
+	}
 	if setup.FHIR != nil {
 		kind = "fhir-r4"
 	}
@@ -402,6 +427,9 @@ func readConnectedObservation(c *loadedCatalog, item catalog.Item, paths map[str
 	}
 	if setup.BarrierObservation != "" {
 		summary.Completion = "processing-barrier"
+	}
+	if setup.Capture != nil {
+		return view{name: item.Name, summary: ItemSummary{Observation: summary}}, nil
 	}
 	history := typedObservationHistory(c, ItemRequest{Ref: ItemRef{Kind: ObservationItem, ID: item.ID}}, held)
 	if len(history.Collections) > 0 {

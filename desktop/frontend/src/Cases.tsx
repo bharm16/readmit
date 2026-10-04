@@ -3,11 +3,13 @@
 // is applied shows as chips that remove it. A row opens its Messages; the
 // case's rarer tasks are in its menu. Status describes the investigation,
 // never a test result.
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { CaseStatus, CatalogItem, InterfaceRevision } from "./bindings";
 import { DataTable, type Column, type SortState } from "./DataTable";
 import { EmptyState, FormDialog, Menu, Modal, ValueRows, usePaletteActions, type MenuItem } from "./layout";
 import { listDate } from "./Projects";
+import "./captures.css";
+import searchIcon from "./assets/workbench/search.svg";
 
 export const CASE_STATUSES: { value: CaseStatus; label: string }[] = [
   { value: "open", label: "Open" },
@@ -73,7 +75,10 @@ export function sortCases(items: CatalogItem[], sort: SortState | null): Catalog
   });
 }
 
-export type CaseAction = "edit" | "notes" | "attachments" | "variant" | "compare" | "remove" | "delete" | "details";
+/** Display an unregistered source by its actual entry; never rename the catalog object. */
+export function captureLabel(item:CatalogItem):string { return item.name || fields(item).entry || `Unnamed capture · ${item.ref.id}`; }
+
+export type CaseAction = "edit" | "notes" | "attachments" | "variant" | "compare" | "remove" | "delete" | "details" | "source-context";
 const CASE_ACTIONS: { action: CaseAction; label: string; separated?: boolean; tone?: "danger" }[] = [
   { action: "edit", label: "Edit details" },
   { action: "notes", label: "Notes" },
@@ -81,6 +86,7 @@ const CASE_ACTIONS: { action: CaseAction; label: string; separated?: boolean; to
   { action: "variant", label: "Create variant", separated: true },
   { action: "compare", label: "Compare" },
   { action: "details", label: "Details", separated: true },
+ {action:"source-context",label:"Source context"},
   { action: "remove", label: "Remove from project", tone: "danger" },
   { action: "delete", label: "Delete from this computer…", tone: "danger" },
 ];
@@ -103,6 +109,7 @@ export function CaseList({
   busy,
   loading,
   failure = null,
+  toolbarActions,
 }: {
   cases: CatalogItem[];
   /** The project's interface revisions, which search matches by name. */
@@ -125,11 +132,13 @@ export function CaseList({
   /** The project's cases are being read: no rows are known yet. */
   loading: boolean;
   failure?: string | null;
+  toolbarActions?: ReactNode;
 }) {
   const shown = sortCases(applyView(cases, view, revisions), sort);
   const filtered = view.query !== "" || view.statuses.length > 0 || view.owner !== "" || view.tags.length > 0;
   const chosen = cases.find((item) => item.ref.id === selected) ?? null;
-  usePaletteActions(chosen?.name ?? null, chosen ? actionsFor(chosen) : []);
+  const contextual = cases.some(item=>Boolean(fields(item).capture_context));
+  usePaletteActions(chosen ? captureLabel(chosen):null, chosen ? actionsFor(chosen) : []);
   if (loading && cases.length === 0) {
     return <DataTable label="Cases" className="page-table" rows={[]} rowId={() => ""} rowLabel={() => ""} columns={[]} selected={null} onSelect={() => {}} onOpen={() => {}} loading />;
   }
@@ -139,7 +148,7 @@ export function CaseList({
   if (cases.length === 0) {
     return (
       <EmptyState
-        title="No cases yet"
+        title="No captures yet"
         action={
           <button type="button" className="primary" disabled={busy} onClick={onImport}>
             Import
@@ -160,7 +169,7 @@ export function CaseList({
   const columns: Column<CatalogItem>[] = [
     {
       key: "case",
-      header: "Case",
+      header: "Capture",
       priority: 1,
       minWidth: 15,
       sortable: true,
@@ -169,7 +178,7 @@ export function CaseList({
         const marker = f.provenance === "synthetic" ? "Synthetic" : f.provenance === "variant" ? "Variant" : null;
         return (
           <span className="case-name">
-            <span>{item.name}</span>
+            {contextual && item.availability==="available" ? <button type="button" className="link" disabled={busy} onClick={event=>{event.stopPropagation();onSelect(item.ref.id);onOpen(item);}}>{captureLabel(item)}</button>:<span>{captureLabel(item)}</span>}
             {marker ? <span className="badge">{marker}</span> : null}
             {notices[item.ref.id] ? (
               <span className="row-reason" title={notices[item.ref.id]}>{notices[item.ref.id]}</span>
@@ -180,16 +189,22 @@ export function CaseList({
         );
       },
     },
-    { key: "status", header: "Status", priority: 2, minWidth: 9, sortable: true, render: (item) => statusLabel(fields(item).status) },
-    { key: "owner", header: "Owner", priority: 4, minWidth: 10, sortable: true, render: (item) => fields(item).owner || "Unassigned" },
-    { key: "updated", header: "Updated", priority: 5, minWidth: 8, sortable: true, render: (item) => listDate(item.updated_at) },
+    ...(cases.some(item=>fields(item).occurrences!==undefined) ? [{key:"occurrences",header:"Occurrences",priority:2,minWidth:7.5,render:(item:CatalogItem)=>fields(item).occurrences??"Not recorded"}]:[]),
+    {key:"source",header:"Source",priority:contextual?2:6,minWidth:15,flex:true,render:(item:CatalogItem)=>fields(item).capture_context?.sources.map(source=>source.source||"Unknown").join(" · ")||"Unknown"},
+    {key:"received",header:"Received at",priority:contextual?2:6,minWidth:18,render:(item:CatalogItem)=>fields(item).capture_context?.sources.map(source=>source.received_at ? `${source.received_at_name||"Recorded target"} · ${source.basis}` : "Not recorded").join(" · ")||"Not recorded"},
+    ...(contextual ? [] : [
+      {key:"status",header:"Status",priority:2,minWidth:9,sortable:true,render:(item:CatalogItem)=>statusLabel(fields(item).status)},
+      {key:"owner",header:"Owner",priority:4,minWidth:10,sortable:true,render:(item:CatalogItem)=>fields(item).owner||"Unassigned"},
+      {key:"updated",header:"Updated",priority:5,minWidth:8,sortable:true,render:(item:CatalogItem)=>listDate(item.updated_at)},
+    ]),
     {
       key: "actions",
       header: "",
       priority: 1,
-      minWidth: 5.5,
+      minWidth: contextual ? 10.5:5.5,
       render: (item) => (
         <span className="row-actions" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+          {contextual && item.availability==="available" ? <button type="button" className="link" disabled={busy} onClick={()=>{onSelect(item.ref.id);onOpen(item);}}>Open messages</button>:null}
           {item.availability === "missing" ? (
             <button type="button" disabled={busy} onClick={() => onLocate(item)}>
               Locate
@@ -199,13 +214,14 @@ export function CaseList({
               Retry
             </button>
           ) : null}
-          <Menu label={`More actions for ${item.name}`} items={actionsFor(item)} />
+          <Menu label={`More actions for ${captureLabel(item)}`} items={actionsFor(item)} />
         </span>
       ),
     },
   ];
   return (
-    <>
+    <section className="capture-library" aria-label="Capture library">
+      <div className="capture-search-row"><label className="capture-search-field"><span className="visually-hidden">Search captures</span><span className="capture-search-icon" aria-hidden="true"><img src={searchIcon} alt=""/></span><input id="capture-search" type="search" className="capture-search" placeholder="Search captures…" maxLength={200} value={view.query} onChange={event=>onView({...view,query:event.target.value})}/></label>{toolbarActions ? <div className="toolbar-group">{toolbarActions}</div>:null}</div>
       <ViewChips view={view} onView={onView} />
       {shown.length === 0 && filtered ? (
         <EmptyState
@@ -219,12 +235,13 @@ export function CaseList({
       ) : (
         <DataTable
           label="Cases"
-          className="page-table"
+          className="capture-table"
           rows={shown}
           rowId={(item) => item.ref.id}
-          rowLabel={(item) => item.name}
+          rowLabel={captureLabel}
           columns={columns}
           selected={selected}
+          openOnClick={item=>!fields(item).capture_context}
           onSelect={onSelect}
           onOpen={(id) => {
             const item = cases.find((candidate) => candidate.ref.id === id);
@@ -234,7 +251,8 @@ export function CaseList({
           onSort={onSort}
         />
       )}
-    </>
+      {chosen ? <div className="capture-selected-workspace"><section className="capture-source-details" aria-label="Selected capture"><h2>{captureLabel(chosen)}</h2><ValueRows rows={[...(fields(chosen).occurrences!==undefined ? [{label:"Occurrences",value:fields(chosen).occurrences}]:[]),{label:"Source",value:fields(chosen).capture_context?.sources.map(source=>source.source||"Unknown").join(" · ")||"Unknown"},{label:"Received at",value:fields(chosen).capture_context?.sources.map(source=>source.received_at ? `${source.received_at_name||"Recorded target"} · ${source.basis}` : "Not recorded").join(" · ")||"Not recorded"},{label:"Status",value:statusLabel(fields(chosen).status)}]} /><button type="button" className="primary" disabled={busy || chosen.availability!=="available"} onClick={()=>onOpen(chosen)}>Open messages</button></section><section className="capture-related-work" aria-label="Related capture work"><h3>Related work</h3>{fields(chosen).protocol!=="fhir-r4" ? <button type="button" className="link" disabled={busy || chosen.availability!=="available"} onClick={()=>onAction(chosen,"source-context")}>Source context</button>:null}<button type="button" className="link" disabled={busy || chosen.availability!=="available"} onClick={()=>onAction(chosen,"compare")}>Compare captures</button><button type="button" className="link" disabled={busy || chosen.availability!=="available"} onClick={()=>onAction(chosen,"variant")}>Create variant</button></section></div> : null}
+    </section>
   );
 }
 

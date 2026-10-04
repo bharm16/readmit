@@ -32,6 +32,7 @@ export async function renderApp(handlers: FacadeHandlers = {}) {
     // The window reads these on start; the journeys below replace the ones
     // they are about.
     Shell: () => shellResult(),
+    WorkingSession: () => ({ state: "completed", session: { schema: "readmit-desktop-session/v2", view: { workspace: "", region: "", case: "", run: "" } } }),
     Filters: () => filtersResult(),
     EditorDrafts: () => ({ state: "empty" }),
     OperationStatus: () => ({ state: "empty", selected: false, author_seats: 0, runner_instances: 0 }),

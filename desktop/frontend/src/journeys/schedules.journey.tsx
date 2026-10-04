@@ -227,9 +227,8 @@ async function suiteSchedules(user: UserEvent) {
 
 /** Runs › Schedules, read again from the hub. */
 async function schedules(user: UserEvent) {
-  await goTo(user, "Cases");
-  await goTo(user, "Runs");
-  if (!page().queryByRole("heading", { level: 1, name: "Runs" })) await goTo(user, "Runs");
+  await goTo(user,"Tests");
+  if(!page().queryByRole("button",{name:"Schedules"}))await goTo(user,"Tests");
   await press(user, await page().findByRole("button", { name: "Schedules" }));
   await page().findByRole("heading", { level: 1, name: "Schedules" });
   await journey.settled();
@@ -361,7 +360,7 @@ test(
     await goTo(user, "Projects");
     await journey.settled();
     await press(user, await within(await page().findByRole("table", { name: "Projects" })).findByRole("row", { name: "Scheduling interface" }));
-    await page().findByRole("heading", { level: 1, name: "Cases" }, { timeout: 10_000 });
+    await page().findByRole("heading", { level: 1, name: "Captures" }, { timeout: 10_000 });
     await signInToTeam(user, hub, "analyst");
     await schedules(user);
     expect((await row("Nightly regression"))[3]).toBe("Pending");

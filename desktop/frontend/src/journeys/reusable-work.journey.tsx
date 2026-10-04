@@ -47,8 +47,7 @@ function rowsOf(table: HTMLElement): string[][] {
 /** Tests › Library, on one of its categories. */
 async function library(user: UserEvent, category: "Profiles" | "Checks" | "Scenarios"): Promise<void> {
   await goTo(user, "Tests");
-  if (!page().queryByRole("button", { name: "Library" })) await goTo(user, "Tests");
-  await press(user, await page().findByRole("button", { name: "Library" }));
+  await goTo(user,"Library");
   await press(user, await page().findByRole("tab", { name: category }));
 }
 
@@ -61,7 +60,7 @@ async function answered(method: Parameters<Journey["callsTo"]>[0], from: number)
 test("a check group, a profile and a scenario are created in the library, and the scenario generates a synthetic case from its saved seed and base time without running a test", async () => {
   const user = userEvent.setup();
   journey.placeFixture("local-profile.json", "library/scheduling-profile.json");
-  await licensedProject(journey, user);
+  const project=await licensedProject(journey, user);
 
   // A check group of two checks, saved once and reopened read-only.
   await library(user, "Checks");
@@ -127,9 +126,18 @@ test("a check group, a profile and a scenario are created in the library, and th
   // Create case generates the synthetic case from the saved scenario and
   // opens it; nothing is sent or run.
   const cases = journey.callsTo("CreateScenarioCase").length;
-  await pressServed(user, journey, await page().findByRole("button", { name: "Create case" }), "CreateScenarioCase");
-  const created = await answered("CreateScenarioCase", cases);
-  expect(created).toMatchObject({ state: "completed", provenance: "synthetic", seed: first!.seed });
+  const createCase=await waitFor(()=>{
+    const current=page().getByRole("button",{name:"Create case"});
+    expect(current.isConnected).toBe(true);expect(current.matches(":disabled")).toBe(false);
+    return current;
+  });
+  await press(user,createCase);
+  await waitFor(()=>expect(journey.callsTo("CreateScenarioCase").length).toBe(cases+1),{timeout:10_000});
+  const result=await answered("CreateScenarioCase",cases) as unknown as import("../bindings").ScenarioCaseResult;
+  expect(result).toMatchObject({state:"completed",provenance:"synthetic",seed:first!.seed});
+  expect(journey.callsTo("GenerateScenarioCases")).toHaveLength(0);
+  const manifest=JSON.parse(journey.readFile(`${project.slice(journey.path().length+1)}/${result.entry}/manifest.json`));
+  expect(manifest.provenance.mode).toBe("generated");
   const table = await screen.findByRole("table", { name: "Messages" }, { timeout: 30_000 });
   await waitFor(() => expect(table.querySelectorAll("tr[data-row-id]").length).toBe(generated.length));
   for (const run of ["ExecuteReviewedAction", "StartDurableRun", "StartSuiteRun", "RunPractice"] as const) expect(journey.callsTo(run)).toHaveLength(0);
@@ -184,7 +192,7 @@ async function twoTests(user: UserEvent) {
   await createRecordTest(user, journey, environment, FIRST);
   // The second test is a copy of the first under its own name.
   await goTo(user, "Tests");
-  if (!page().queryByRole("heading", { level: 1, name: "Tests" })) await goTo(user, "Tests");
+  if (!page().queryByRole("heading", { level: 1, name: "Test cases" })) await goTo(user, "Tests");
   await user.dblClick(await page().findByText(FIRST, undefined, { timeout: 10_000 }));
   await page().findByLabelText("Setup", { selector: "dl" }, { timeout: 10_000 });
   await press(user, page().getByRole("button", { name: "More test actions" }));
@@ -306,6 +314,18 @@ test("a suite of two tests with an environment's bindings, two data rows, an exp
   // The reopened suite names its bound environment, not a removed one.
   await waitFor(() => expect(rowsOf(page().getByRole("table", { name: "Environments" }))).toEqual([[environment, "records", environment, "Appointments"], [environment, "secondary-records", environment, "Appointments"]]), { timeout: 10_000 });
 
+  // CI handoff is the existing typed generator for this exact saved version.
+  // Agent paths belong to the customer's CI host; generating executes nothing.
+  await press(user,page().getByRole("button",{name:"More suite actions"}));
+  await press(user,screen.getByRole("menuitem",{name:"Set up CI"}));
+  const ci=within(await screen.findByRole("dialog",{name:"Set up CI"}));
+  for(const [label,value] of [["Readmit program","/opt/readmit"],["Operation policy","/etc/readmit/operation.json"],["Suite file","/srv/readmit/suite.json"],["Run folder","/srv/readmit/ci-run"],["Coverage declaration","/srv/readmit/coverage.json"]])await enter(user,ci.getByLabelText(label!),value!);
+  await press(user,ci.getByRole("button",{name:"Next"}));
+  await journey.nameNewFolder(journey.path("handoff.sh"),"Generate configuration");
+  await pressServed(user,journey,ci.getByRole("button",{name:"Generate configuration"}),"SaveCIHandoff");
+  await waitFor(()=>expect(screen.queryByRole("dialog",{name:"Set up CI"})).toBeNull());
+  expect(journey.readFile("handoff.sh")).toContain("suite ci");expect(downstream.received()).toHaveLength(0);
+
   // Run: the review states the exact version, environment and jobs; nothing
   // is sent before Send.
   await press(user, page().getByRole("button", { name: "Run" }));
@@ -364,10 +384,24 @@ test("two retained runs of one test compare a changed check definition as a chan
   downstream.reset();
   await sendReviewed(user, journey, await reviewRun(user, journey, new RegExp(`^${FIRST}`)));
   await waitFor(() => expect(rowsOf(page().getByRole("table", { name: "Checks" }))).toEqual([["Record count", "1", "1", "Passed"]]));
+  // The visual result's evidence action reads the actual retained legacy
+  // snapshot, with values masked until a deliberate local reveal.
+  const sendsBeforeInspection=journey.callsTo("ExecuteReviewedAction").length;
+  await press(user,page().getByRole("button",{name:"View retained observation"}));
+  const retainedSnapshot=within(await screen.findByRole("dialog",{name:"Retained observation"}));
+  await retainedSnapshot.findByRole("table",{name:"Retained observation records"});
+  const masked=journey.callsTo("ReadConnectedObservation").at(-1)!;
+  expect(masked.args[0]).toMatchObject({family:"legacy-ledger",phase:"retained",dataset:"appointment-ledger",reveal:false});
+  expect(masked.result).toMatchObject({state:"completed",available:true,hidden:true,total:1});
+  expect((masked.result as {rows:{values:{text?:string}[]}[]}).rows.flatMap(row=>row.values).every(value=>!value.text)).toBe(true);
+  await press(user,retainedSnapshot.getByRole("button",{name:"Show values"}));
+  await waitFor(()=>expect(journey.callsTo("ReadConnectedObservation").at(-1)?.result).toMatchObject({state:"completed",available:true,hidden:false,total:1}));
+  await press(user,retainedSnapshot.getByRole("button",{name:"Close retained observation"}));
+  expect(journey.callsTo("ExecuteReviewedAction")).toHaveLength(sendsBeforeInspection);
 
   // The check is changed to expect two: a new version of the test.
   await goTo(user, "Tests");
-  for (let step = 0; step < 3 && !page().queryByRole("heading", { level: 1, name: "Tests" }); step++) {
+  for (let step = 0; step < 3 && !page().queryByRole("heading", { level: 1, name: "Test cases" }); step++) {
     const back = page().queryAllByRole("button", { name: /^Back to / })[0];
     if (!back) await goTo(user, "Tests");
     else await press(user, back);
@@ -375,7 +409,7 @@ test("two retained runs of one test compare a changed check definition as a chan
   await user.dblClick(await page().findByText(FIRST, undefined, { timeout: 10_000 }));
   await page().findByLabelText("Setup", { selector: "dl" }, { timeout: 10_000 });
   await press(user, page().getByRole("button", { name: "Edit" }));
-  await press(user, await page().findByRole("tab", { name: "Checks" }));
+  await press(user, await page().findByRole("tab", { name: "Expectations" }));
   await press(user, (await page().findByRole("table", { name: "Checks" })).querySelector<HTMLElement>('[aria-label="More actions for Record count"]')!);
   await press(user, await screen.findByRole("menuitem", { name: "Edit" }));
   const check = within(await screen.findByRole("dialog", { name: "Edit record count check" }));
@@ -406,6 +440,24 @@ test("two retained runs of one test compare a changed check definition as a chan
   const answer = journey.callsTo("CompareRunItems").filter((call) => (call.result as { state: string }).state === "completed").at(-1)!.result as { comparison: { checks: { change: string }[] } };
   expect(answer.comparison.checks.map((entry) => entry.change)).toEqual(["changed_check"]);
   expect(within(compared).queryByText(/Regress/)).toBeNull();
+
+  // Selected-test views use genuine archived origin pins, not copied specs.
+  const sends=journey.callsTo("ExecuteReviewedAction").length;
+  await goTo(user,"Tests");await page().findByRole("heading",{name:"Test cases"});await user.dblClick(await page().findByText(FIRST));
+  for(const name of ["Inputs","Expectations","Runs","Before/after","Exports"])expect(page().getByRole("tab",{name})).toBeTruthy();
+  await press(user,page().getByRole("tab",{name:"Runs"}));const retained=await page().findByRole("table",{name:"Runs"});await waitFor(()=>expect(retained.querySelectorAll("tr[data-row-id]")).toHaveLength(2));
+  const rows=(journey.callsTo("ListCatalog").filter(call=>(call.args[0] as {kind:string}).kind==="run").at(-1)!.result as {page:{items:import("../bindings").CatalogItem[]}}).page.items;
+  const before=rows.find(item=>item.summary.run?.result==="passed")!,after=rows.find(item=>item.summary.run?.result==="failed")!;
+  expect(before.summary.run?.test_association).toBe("linked");expect(after.summary.run?.test_association).toBe("linked");
+  await press(user,page().getByRole("tab",{name:"Before/after"}));await user.selectOptions(page().getByLabelText("Before"),before.ref.id);await user.selectOptions(page().getByLabelText("After"),after.ref.id);
+  const scoped=await page().findByRole("table",{name:"Checks"});await waitFor(()=>expect(rowsOf(scoped)).toEqual([["Record count","1 / Passed","1 / Failed","Changed check"]]));
+  expect(journey.callsTo("CompareRunItems").at(-1)?.args[0]).toMatchObject({before:{id:before.ref.id},after:{id:after.ref.id}});
+  await press(user,page().getByRole("button",{name:"Create report"}));const creating=within(await screen.findByRole("dialog",{name:"New report"}));await enter(user,creating.getByLabelText("Name"),"Selected test before and after");
+  expect((creating.getByLabelText("Compare with") as HTMLSelectElement).value).toBe(before.ref.id);await pressServed(user,journey,creating.getByRole("button",{name:"Create"}),"SaveItem");
+  await page().findByRole("heading",{name:"Selected test before and after"});await press(user,page().getByRole("button",{name:"Back to test"}));await page().findByRole("tab",{name:"Before/after",selected:true});
+  await press(user,page().getByRole("tab",{name:"Exports"}));const reports=await page().findByRole("table",{name:"Test reports"});await within(reports).findByText("Selected test before and after");
+  await press(user,within(reports).getByRole("button",{name:"Open report"}));await page().findByRole("heading",{name:"Selected test before and after"});await press(user,page().getByRole("button",{name:"Back to test"}));await page().findByRole("tab",{name:"Exports",selected:true});
+  expect(journey.callsTo("ExecuteReviewedAction")).toHaveLength(sends);
 });
 
 test("a suite version is approved as a local baseline and, as its own decision that deploys nothing, for an environment, and that approval is marked changed once the environment it bound moves", async () => {

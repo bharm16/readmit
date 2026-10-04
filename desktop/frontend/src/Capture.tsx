@@ -1,3 +1,4 @@
+import "./workflow.css";
 // Capture: a bounded session that records messages from one saved source and
 // finishes into one case. Setup names the case, the source and its limits and
 // starts deliberately; the running session shows what actually arrived; Stop
@@ -117,6 +118,8 @@ export function useCapture({ root, context, busy, setupRequest, onOpenCase }: Ca
   const [sessions, setSessions] = useState<CaptureSessionRow[] | null>(null);
   const [historyFailure, setHistoryFailure] = useState<string | null>(null);
   const [setup, setSetup] = useState(false);
+  const [receiverSettings,setReceiverSettings]=useState<CaptureSourceDraft|null>(null);
+  const [receiverDetails,setReceiverDetails]=useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [failed, setFailed] = useState<{ session: string; reason: string } | null>(null);
   const [now, setNow] = useState(Date.now());
@@ -222,19 +225,26 @@ export function useCapture({ root, context, busy, setupRequest, onOpenCase }: Ca
     },
   ];
 
+  useEffect(()=>{
+   let current=true;setReceiverSettings(null);setReceiverDetails(false);
+   if(progress?.source)void openItemDraft({context:context(),ref:progress.source}).then(answer=>{if(current&&answer.state==="completed"&&answer.draft?.source)setReceiverSettings(answer.draft.source);});
+   return()=>{current=false;};
+  },[progress?.source?.id,progress?.source?.revision,context]);
   const active = progress ? (
-    <section className="value-group" aria-labelledby="capture-active">
+    <section className={listening?"workflow-page workflow-receiving":"value-group"} aria-labelledby="capture-active">
+      {listening?<aside className="workflow-rail"><h2>Messages</h2><div className="workflow-step-summary"><strong>Receiver</strong><span>{progress.finishing?"Finishing":`Listening · ${progress.received??0} messages`}</span></div></aside>:null}
+      <div className="workflow-receiving-main">
       <header className="value-group-header">
-        <h2 id="capture-active">{progress.name || "Capture"}</h2>
+        <h2 id="capture-active">{listening?"Receiving · MLLP":progress.name || "Capture"}</h2>
       </header>
-      <ValueRows
+      {!listening ? (<ValueRows
         rows={[
           { label: "Source", value: progress.source_name || (progress.source_type ? SOURCE_TYPES[progress.source_type] : "—") },
           ...(listening ? [{ label: "Address", value: progress.bound_address || "Starting…" }] : []),
           { label: "Elapsed", value: elapsedText(progress.started_at, now) },
           ...(progress.received ? [{ label: "Received", value: String(progress.received) }] : []),
         ]}
-      />
+      />) : null}
       {(progress.messages ?? []).length > 0 ? (
         <table className="plain-table" aria-label="Incoming messages">
           <thead>
@@ -255,8 +265,11 @@ export function useCapture({ root, context, busy, setupRequest, onOpenCase }: Ca
           </tbody>
         </table>
       ) : (
-        <p aria-live="polite">{progress.finishing ? "Finishing…" : "Waiting for messages"}</p>
+        <section className="workflow-receive-waiting"><h2 aria-live="polite">{progress.finishing ? "Finishing…" : "Waiting for messages"}</h2>{listening?<><p className="workflow-receive-address">{progress.bound_address||"Starting…"}</p><p className="workflow-caption">Messages received by this listener will appear here.</p></>:null}</section>
       )}
+      </div>
+      {listening?<aside className="workflow-receiver-pane" aria-label="Receiver"><h3>Receiver</h3><section className="workflow-receiver-content"><h3>{progress.source_name||progress.name||"Receiver"}</h3><ValueRows rows={[{label:"Address",value:progress.bound_address||"Starting…"},{label:"Acknowledgment",value:receiverSettings?.listener?.ack_code??receiverSettings?.responder?.acknowledgement.code??"Not recorded"},{label:"Message limit",value:receiverSettings?.listener?String(receiverSettings.listener.message_limit):"Not recorded"},{label:"Time limit",value:receiverSettings?.listener?.idle_timeout??"Not recorded"},{label:"Elapsed",value:elapsedText(progress.started_at,now)},...(progress.received?[{label:"Received",value:String(progress.received)}]:[])]}/><p className="workflow-caption">Receive and send destination are configured separately.</p><button type="button" className="quiet" disabled={!receiverSettings} onClick={()=>setReceiverDetails(true)}>Receiver settings</button></section></aside>:null}
+      {receiverDetails&&receiverSettings?<CaptureSourceDetails source={receiverSettings} onClose={()=>setReceiverDetails(false)}/>:null}
     </section>
   ) : null;
 
@@ -336,7 +349,7 @@ export function useCapture({ root, context, busy, setupRequest, onOpenCase }: Ca
   );
 
   return {
-    title: "Capture",
+    title: listening ? "Messages":"Capture",
     recording,
     /** Finishes the recording capture: it stops taking messages, and its case
      * is published and opened. */
@@ -367,6 +380,18 @@ export function useCapture({ root, context, busy, setupRequest, onOpenCase }: Ca
 /** What a cancelled, interrupted or unfinalized capture kept, read-only. It
  * is not a case of the project and nothing here makes it one. */
 function RetainedData({ context, session, onClose }: { context: () => RequestContext; session: CaptureSessionRow; onClose: () => void }) {
+  const load = useCallback(() => openRetainedCapture({ context: context(), session: session.id }), [context, session.id]);
+  return <RetainedEvidence name={session.name} resultLabel={OUTCOMES[session.state] ?? "—"} reason={session.reason} load={load} onClose={onClose} />;
+}
+
+/** One read-only owner for retained capture and exchange evidence. */
+export function RetainedEvidence({ name, resultLabel, reason, load, onClose }: {
+  name: string;
+  resultLabel: string;
+  reason?: string | undefined;
+  load: () => Promise<RetainedCaptureResult>;
+  onClose: () => void;
+}) {
   const [opened, setOpened] = useState<RetainedCaptureResult | null>(null);
   const [rows, setRows] = useState<MessageRow[] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -374,7 +399,12 @@ function RetainedData({ context, session, onClose }: { context: () => RequestCon
   const [loading, setLoading] = useState(false);
   useEffect(() => {
     let live = true;
-    void openRetainedCapture({ context: context(), session: session.id }).then(async (answer) => {
+    reads.current++;
+    setOpened(null);
+    setRows(null);
+    setSelected(null);
+    setReading(null);
+    void load().then(async (answer) => {
       if (!live) return;
       setOpened(answer);
       if (answer.state !== "completed" || !answer.case || !answer.workspace) return;
@@ -383,8 +413,9 @@ function RetainedData({ context, session, onClose }: { context: () => RequestCon
     });
     return () => {
       live = false;
+      reads.current++;
     };
-  }, [session.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [load]);
   const reads = useRef(0);
   const inspect = async (occurrence: string, path = "", nodeOffset = 0, byteOffset = -1, reveal = reading?.inspection?.revealed ?? false) => {
     if (!opened?.case || !opened.workspace) return null;
@@ -405,12 +436,12 @@ function RetainedData({ context, session, onClose }: { context: () => RequestCon
   return (
     <section className="value-group" aria-labelledby="capture-retained">
       <header className="value-group-header">
-        <h2 id="capture-retained">{session.name}</h2>
+        <h2 id="capture-retained">{name}</h2>
         <button type="button" onClick={onClose}>
           Close
         </button>
       </header>
-      <ValueRows rows={[{ label: "Result", value: OUTCOMES[session.state] ?? "—" }, ...(session.reason ? [{ label: "Reason", value: session.reason }] : [])]} />
+      <ValueRows rows={[{ label: "Result", value: resultLabel }, ...(reason ? [{ label: "Reason", value: reason }] : [])]} />
       {opened && opened.state !== "completed" ? <p role="alert">{opened.reason ?? "The kept messages could not be read."}</p> : null}
       {rows ? (
         rows.length === 0 ? (
@@ -586,16 +617,18 @@ function CaptureSetup({ open, context, onClose, onStart }: { open: boolean; cont
 
 /** One saved capture source: its type and only that type's settings, and for
  * an MLLP listener its responder. One Save publishes them together. */
-function SourceEditor({
+export function SourceEditor({
   context,
   item,
   draft: saved,
+  title,
   onClose,
   onSaved,
 }: {
   context: () => RequestContext;
   item: CatalogItem | null;
   draft: CaptureSourceDraft | null;
+ title?:string;
   onClose: () => void;
   onSaved: (ref: ItemRef) => void | Promise<void>;
 }) {
@@ -666,7 +699,7 @@ function SourceEditor({
     <>
       <FormDialog
         open={!responder}
-        title={item ? "Edit source" : "New source"}
+        title={title ?? (item ? "Edit source" : "New source")}
         submitLabel="Save"
         submitDisabled={name.trim() === "" || source.type === "api"}
         dirty={dirty}

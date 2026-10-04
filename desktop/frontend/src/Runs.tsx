@@ -1,3 +1,5 @@
+import "./workflow.css";
+import searchAsset from "./assets/workbench/search.svg";
 // Runs (view 07): what executed and what needs attention, newest first with
 // the running one on top. Run test starts a reviewed send; a finished run
 // opens its own page; two finished runs of a test are compared. Nothing here
@@ -91,8 +93,8 @@ export function useRunActivity(root: string | null, finished: (run: ItemRef) => 
   return { activity, running: activity !== null && activity.result === null, start, stop, dismiss };
 }
 
-type Filters = { results: RunResult[]; environments: string[]; names: string[]; from: string; to: string };
-const NO_FILTERS: Filters = { results: [], environments: [], names: [], from: "", to: "" };
+type Filters = { kind: string; results: RunResult[]; environments: string[]; names: string[]; from: string; to: string };
+const NO_FILTERS: Filters = { kind:"", results: [], environments: [], names: [], from: "", to: "" };
 
 function summaryOf(item: CatalogItem): RunSummary {
   return item.summary.run ?? { started_at: null, completed_at: null, uncertain: 0, delivery_uncertain: false, active: false };
@@ -164,6 +166,7 @@ function applyFilters(items: CatalogItem[], filters: Filters): CatalogItem[] {
   const to = filters.to ? new Date(`${filters.to}T23:59:59.999`).getTime() : null;
   return items.filter((item) => {
     const summary = summaryOf(item);
+    if (filters.kind && summary.kind!==filters.kind) return false;
     if (filters.results.length > 0 && !filters.results.includes(summary.active ? "running" : (summary.result ?? "incomplete"))) return false;
     if (filters.environments.length > 0 && !filters.environments.includes(summary.environment_name ?? "")) return false;
     if (filters.names.length > 0 && !filters.names.includes(item.name)) return false;
@@ -180,7 +183,7 @@ function applyFilters(items: CatalogItem[], filters: Filters): CatalogItem[] {
 /** A run that can be compared: a finished, readable run of a test. */
 export function comparable(item: CatalogItem): boolean {
   const summary = summaryOf(item);
-  return item.availability === "available" && summary.kind === "test" && !summary.active;
+  return item.availability === "available" && summary.kind === "test" && !summary.active && summary.can_compare!==false;
 }
 
 type RunsProps = {
@@ -204,6 +207,7 @@ export function useRuns({ root, shown, busy, generation, onOpen, onRun, onCompar
   const [runnable, setRunnable] = useState<{ tests: CatalogItem[]; suites: CatalogItem[] }>({ tests: [], suites: [] });
   const [failure, setFailure] = useState<string | null>(null);
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
+const [search,setSearch]=useState("");
   const [selected, setSelected] = useState<string | null>(null);
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [sheet, setSheet] = useState<null | "filter" | "run" | "ci">(null);
@@ -240,23 +244,25 @@ export function useRuns({ root, shown, busy, generation, onOpen, onRun, onCompar
 
   const all = items ?? [];
   const shownRuns = useMemo(() => sortRuns(applyFilters(all, filters)), [all, filters]);
-  const chosen = all.filter((item) => checked.has(item.ref.id));
+  const chosen = [...checked].flatMap(id=>{const item=all.find(row=>row.ref.id===id);return item?[item]:[]});
   const canCompare = chosen.length === 2 && chosen.every(comparable);
 
   const columns: Column<CatalogItem>[] = [
     {
       key: "name",
-      header: "Test / suite",
+      header: "Run",
       priority: 1,
       minWidth: 15,
       flex: true,
       render: (item) => (
         <span className="case-name">
-          <span>{named(item)}</span>
+          <span className="workflow-link">{named(item)}</span>
           {item.availability === "available" ? null : <span className="row-reason">{item.reason ?? "Cannot be read"}</span>}
         </span>
       ),
     },
+    {key:"test-association",header:"Test",priority:2,minWidth:9,render:item=>item.summary.run?.test_association==="missing"?"Missing":item.summary.run?.test_association==="unlinked"?"Unlinked":item.summary.run?.kind==="send"?"One-off send":item.name},
+    {key:"source",header:"Source",priority:2,minWidth:10,render:item=>item.summary.run?.source_association==="missing"?"Missing":item.summary.run?.source_name||"Unlinked"},
     { key: "environment", header: "Environment", priority: 3, minWidth: 10, render: (item) => summaryOf(item).environment_name || "—" },
     { key: "started", header: "Started", priority: 2, minWidth: 10, render: (item) => startedText(summaryOf(item).started_at, compact) },
     { key: "duration", header: "Duration", priority: 4, minWidth: 6, render: (item) => duration(summaryOf(item).started_at, summaryOf(item).completed_at) },
@@ -304,7 +310,7 @@ export function useRuns({ root, shown, busy, generation, onOpen, onRun, onCompar
       <DataTable
         label="Runs"
         className="page-table"
-        rows={shownRuns}
+        rows={shownRuns.filter(item=>`${named(item)} ${item.summary.run?.source_name??""} ${item.summary.run?.environment_name??""}`.toLowerCase().includes(search.toLowerCase()))}
         rowId={(item) => item.ref.id}
         rowLabel={(item) => `${named(item)} · ${startedText(summaryOf(item).started_at)}`}
         columns={columns}
@@ -337,6 +343,7 @@ export function useRuns({ root, shown, busy, generation, onOpen, onRun, onCompar
       ) : null,
     toolbar: root ? (
       <div className="toolbar-group">
+        <label className="sr-only" htmlFor="execution-kind-filter">Execution kind</label><select id="execution-kind-filter" value={filters.kind} onChange={event=>setFilters({...filters,kind:event.target.value})}><option value="">All execution kinds</option><option value="test">Test runs</option><option value="suite">Suite runs</option><option value="send">One-off sends</option></select>
         <IconButton icon="filter" label="Filter runs" onClick={() => setSheet("filter")} />
         <button type="button" disabled={!canCompare} onClick={() => onCompare(chosen.map((item) => item.ref.id))}>
           Compare
@@ -350,7 +357,7 @@ export function useRuns({ root, shown, busy, generation, onOpen, onRun, onCompar
       </div>
     ) : null,
     body: (
-      <>
+      <div className="workflow-page workflow-content workflow-run-history"><label className="workflow-search"><span className="workflow-search-icon"><img src={searchAsset} alt=""/></span><input type="search" aria-label="Search runs" placeholder="Search runs…" value={search} onChange={event=>setSearch(event.target.value)}/></label>
         {sheet === "ci" ? <CIResultsSheet onClose={() => setSheet(null)} /> : null}
         {chips.length > 0 ? (
           <div className="chips" role="group" aria-label="Applied filters">
@@ -377,7 +384,7 @@ export function useRuns({ root, shown, busy, generation, onOpen, onRun, onCompar
             onRun(request);
           }}
         />
-      </>
+      </div>
     ),
     refresh,
   };

@@ -33,6 +33,7 @@ import { listDate } from "./Projects";
 import { instantOf } from "./Messages";
 import { authenticationText, CHECK_OUTCOMES, TRANSPORTS, validatorText } from "./Environments";
 import { THEMES, term } from "./display";
+import "./system-workbench.css";
 
 // ---------- Preferences ----------
 
@@ -100,7 +101,7 @@ export function GeneralView({
   const { saved } = preferences;
   return (
     <>
-      <div className="section-header">
+      <div className="section-header system-general-header">
         <h2>General</h2>
         <span className="row-actions">
           <button type="button" onClick={() => setEditing(true)}>
@@ -115,7 +116,7 @@ export function GeneralView({
           />
         </span>
       </div>
-      <ValueRows
+      <div className="system-general-values"><ValueRows
         label="General"
         rows={[
           { label: "Theme", value: themeLabel(saved.theme) },
@@ -123,7 +124,7 @@ export function GeneralView({
           ...(saved.reviewer ? [{ label: "Reviewer", value: saved.reviewer }] : []),
         ]}
       />
-      <GeneralSheet open={editing} preferences={preferences} themes={themes} scales={scales} onClose={() => setEditing(false)} />
+      </div><GeneralSheet open={editing} preferences={preferences} themes={themes} scales={scales} onClose={() => setEditing(false)} />
       <Modal
         open={about}
         title="About Readmit"

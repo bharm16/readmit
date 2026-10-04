@@ -54,19 +54,21 @@ func (r *RunDetailResult) refuse(state State, reason string) { r.State, r.Reason
 // and what came back, a suite run's jobs, the details it was run with and,
 // for a run the journal recorded, what recovery establishes.
 type RunDetail struct {
-	ConnectedReport   *runqueue.ConnectedReport `json:"connected_report,omitzero"`
-	Item              CatalogItem               `json:"item"`
-	Job               string                    `json:"job,omitzero"`
-	Name              string                    `json:"name"`
-	Result            RunResult                 `json:"result,omitzero"`
-	DeliveryUncertain bool                      `json:"delivery_uncertain"`
-	Checks            []RunCheck                `json:"checks"`
-	Messages          []RunMessage              `json:"messages"`
-	Jobs              []RunJob                  `json:"jobs"`
-	Details           RunDetails                `json:"details"`
-	Recovery          *RunRecovery              `json:"recovery,omitzero"`
-	Report            *RunReportSource          `json:"report,omitzero"`
-	Revealed          bool                      `json:"revealed"`
+	RetainedObservation *RunRetainedObservation      `json:"retained_observation,omitzero"`
+	Lifecycle           *ConnectedIndividualEvidence `json:"lifecycle,omitzero"`
+	ConnectedReport     *runqueue.ConnectedReport    `json:"connected_report,omitzero"`
+	Item                CatalogItem                  `json:"item"`
+	Job                 string                       `json:"job,omitzero"`
+	Name                string                       `json:"name"`
+	Result              RunResult                    `json:"result,omitzero"`
+	DeliveryUncertain   bool                         `json:"delivery_uncertain"`
+	Checks              []RunCheck                   `json:"checks"`
+	Messages            []RunMessage                 `json:"messages"`
+	Jobs                []RunJob                     `json:"jobs"`
+	Details             RunDetails                   `json:"details"`
+	Recovery            *RunRecovery                 `json:"recovery,omitzero"`
+	Report              *RunReportSource             `json:"report,omitzero"`
+	Revealed            bool                         `json:"revealed"`
 }
 
 // RunReportSource is what Create report hands the report it starts: the run,
@@ -198,6 +200,25 @@ func (a *App) OpenRun(request RunRequest) RunDetailResult {
 		switch {
 		case item.Availability != ItemAvailable:
 			detail.Details.Reason = item.Reason
+		case connectedIndividualArtifact(path):
+			evidence, err := readConnectedIndividualDetail(ctx, path, request.Reveal)
+			if err != nil {
+				result.refuse(Failed, "the retained connected lifecycle cannot be verified")
+				return result
+			}
+			detail.Lifecycle = evidence
+			if evidence.Identity != "" {
+				detail.Report = &RunReportSource{Run: loaded.entryOf(path)}
+			}
+			detail.Details.Boundary = evidence.Lifecycle.Boundary
+			detail.Details.LifecycleState = evidence.Lifecycle.State
+			detail.Result = connectedIndividualResult(evidence.actual)
+			detail.DeliveryUncertain = evidence.Lifecycle.State == "uncertain"
+			detail.Details.Engine = &RunEnginePin{Engine: evidence.actual.Engine, Spec: evidence.actual.Schema}
+			if evidence.Lifecycle.State != "complete" || evidence.Lifecycle.Cleanup != "complete" {
+				detail.Recovery = &RunRecovery{Terminal: !evidence.actual.CompletedAt.IsZero(), CanResume: false, ResumeRefusal: "this connected lifecycle has no admitted desktop continuation checkpoint; inspect retained delivery and cleanup, then review a separate Run again"}
+			}
+
 		case declares(filepath.Join(path, "manifest.json"), suite.ConnectedExecutionSchema):
 			execution, err := suite.OpenConnectedExecution(ctx, path)
 			if err != nil {
@@ -277,6 +298,7 @@ func runFolder(path string) string {
 // deliveries, its details and its recovery.
 func (c *loadedCatalog) testDetail(path string, detail *RunDetail, reveal, active bool) {
 	opened, err := runresult.Open(path)
+	detail.RetainedObservation = legacyRetainedObservation(opened)
 	var spec *testrunner.Spec
 	var inputs *testrunner.PinnedInputs
 	if retained, _, err := durablerun.RetainedInputs(path); err == nil {
@@ -862,6 +884,8 @@ func (c *loadedCatalog) observedAround(path string) (observed, observed, *ItemRe
 // RunComparisonItemsRequest names the two runs a comparison is between and
 // up to fourteen further runs of the same test whose results are counted.
 type RunComparisonItemsRequest struct {
+	Before  *ItemRef       `json:"before,omitzero"`
+	After   *ItemRef       `json:"after,omitzero"`
 	Context RequestContext `json:"context"`
 	Runs    []ItemRef      `json:"runs"`
 }
@@ -898,13 +922,14 @@ const (
 // definition, each part of the configuration compared on its own, and the
 // results of every run counted across the repeats.
 type RunComparisonView struct {
-	Earlier       RunComparisonSide      `json:"earlier"`
-	Later         RunComparisonSide      `json:"later"`
-	Repeats       []RunComparisonSide    `json:"repeats"`
-	Checks        []RunCheckComparison   `json:"checks"`
-	Configuration []RunConfigurationPart `json:"configuration"`
-	Specification string                 `json:"specification"`
-	Stability     RunStability           `json:"stability"`
+	Connected     *runcompare.FlowComparison `json:"connected,omitzero"`
+	Earlier       RunComparisonSide          `json:"earlier"`
+	Later         RunComparisonSide          `json:"later"`
+	Repeats       []RunComparisonSide        `json:"repeats"`
+	Checks        []RunCheckComparison       `json:"checks"`
+	Configuration []RunConfigurationPart     `json:"configuration"`
+	Specification string                     `json:"specification"`
+	Stability     RunStability               `json:"stability"`
 }
 
 // RunComparisonSide is one run of a comparison as its row names it.
@@ -960,6 +985,15 @@ type RunStability struct {
 func (a *App) CompareRunItems(request RunComparisonItemsRequest) RunComparisonItemsResult {
 	return runNamed[RunComparisonItemsResult, *RunComparisonItemsResult](a, profiles["CompareRuns"], func(ctx context.Context) RunComparisonItemsResult {
 		result := RunComparisonItemsResult{Context: request.Context}
+		explicit := request.Before != nil || request.After != nil
+		if explicit {
+			if request.Before == nil || request.After == nil || (len(request.Runs) > 0 && (len(request.Runs) != 2 || request.Runs[0] != *request.Before || request.Runs[1] != *request.After)) {
+				result.refuse(Failed, "select explicit Before and After roles without conflicting selections")
+				return result
+			}
+			request.Runs = []ItemRef{*request.Before, *request.After}
+		}
+
 		if len(request.Runs) < 2 || len(request.Runs) > 2+runcompare.MaxRepeats {
 			result.refuse(Failed, "a comparison is between two runs, with up to fourteen more")
 			return result
@@ -968,6 +1002,9 @@ func (a *App) CompareRunItems(request RunComparisonItemsRequest) RunComparisonIt
 		if loaded == nil {
 			result.refuse(declined.state, declined.reason)
 			return result
+		}
+		if compared, handled := a.compareConnectedRunItems(ctx, request, loaded); handled {
+			return compared
 		}
 		sides := make([]RunComparisonSide, 0, len(request.Runs))
 		opened := make([]*runresult.Result, 0, len(request.Runs))
@@ -1001,7 +1038,7 @@ func (a *App) CompareRunItems(request RunComparisonItemsRequest) RunComparisonIt
 		}
 		// Earlier and later are set by when each run started; the later run's
 		// start is unknown last.
-		if stampOf(sides[1].StartedAt) != "" && (stampOf(sides[0].StartedAt) == "" || stampOf(sides[1].StartedAt) < stampOf(sides[0].StartedAt)) {
+		if !explicit && stampOf(sides[1].StartedAt) != "" && (stampOf(sides[0].StartedAt) == "" || stampOf(sides[1].StartedAt) < stampOf(sides[0].StartedAt)) {
 			sides[0], sides[1] = sides[1], sides[0]
 			opened[0], opened[1] = opened[1], opened[0]
 		}

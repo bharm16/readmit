@@ -1,0 +1,16 @@
+.value-maps,.value-map-detail { display:flex; flex-direction:column; gap:var(--s3); min-width:0; }
+.value-map-header,.value-map-actions { display:flex; align-items:center; flex-wrap:wrap; gap:var(--s2); }
+.value-map-header { justify-content:space-between; }
+.value-map-workspace { display:flex; flex-wrap:wrap; border-top:1px solid var(--line); gap:0; }
+.value-map-rail { flex:0 1 16rem; min-width:0; border-right:1px solid var(--line); }
+.value-map-detail { flex:1 1 34rem; padding:var(--s5); overflow:auto; }
+.value-map-detail h3,.value-map-detail p { margin:0; }
+.value-map-detail p { color:var(--muted); }
+.value-map-detail label { display:flex; flex-direction:column; gap:var(--s2); max-width:40rem; }
+.value-map-detail input,.value-map-detail select { width:100%; }
+.value-map-definition { background:var(--rail); padding:var(--s5); }
+
+.value-map-entry-card { display:flex; flex-direction:column; gap:var(--s3); background:var(--rail); padding:var(--s5); min-width:0; }
+.value-map-entry-card label { display:flex; flex-direction:column; gap:var(--s2); width:min(100%,32.5rem); color:var(--muted); font-size:var(--text-support); }
+.value-map-entry-card input { width:100%; color:var(--text); }
+.value-map-entry-card h3 { margin:0; }

@@ -29,6 +29,7 @@ import {
   type ScheduleReview,
   type ScheduleRow,
 } from "./bindings";
+import {blankConnectedRunnerOptions,ConnectedRunnerOptionsFields,completeConnectedRunnerOptions} from "./ConnectedRunnerOptions";
 import { DataTable, type Column } from "./DataTable";
 import { EmptyState, FormDialog, Menu, Modal, StepDialog, ValueRows, type FlowStep, type MenuItem, type SubmitFailure } from "./layout";
 import { localZone, zones } from "./suite-model";
@@ -94,6 +95,7 @@ function ScheduleFlow({ context, existing, start, suites, runners, onClose, onDo
   onClose: () => void;
   onDone: () => void;
 }) {
+  const [connectedRequired,setConnectedRequired]=useState(!!start.connected);
   const [step, setStep] = useState("schedule");
   const [draft, setDraft] = useState<ScheduleDraft>(start);
   const [environments, setEnvironments] = useState<{ id: string; name: string }[]>([]);
@@ -107,16 +109,21 @@ function ScheduleFlow({ context, existing, start, suites, runners, onClose, onDo
     let live = true;
     void openItemDraft({ context: context(), ref: { kind: "suite", id: draft.suite.id } }).then((opened) => {
       if (!live || opened.state !== "completed") return;
+      const connected=!!opened.draft?.suite?.connected || !!opened.suite?.tests.some(test=>!!test.connected);
+      setConnectedRequired(connected);
       const envs = (opened.draft?.suite?.environments ?? []).map((env) => ({ id: env.id, name: env.name || env.id }));
       setEnvironments(envs);
       const revision = existing && draft.suite.revision ? draft.suite.revision : opened.ref?.revision;
       setVersion(revision ?? "");
-      setDraft((held) => ({
-        ...held,
+      setDraft((held) => {
+        const {connected:previous,...rest}=held;
+        return {
+        ...rest,
+        ...(connected ? {connected:previous??blankConnectedRunnerOptions()}:{}),
         suite: { kind: "suite", id: held.suite.id, ...(revision ? { revision } : {}) },
         environment: envs.some((env) => env.id === held.environment) ? held.environment : envs[0]?.id ?? "",
         name: held.name || (suites.find((entry) => entry.ref.id === held.suite.id)?.name ?? ""),
-      }));
+      };});
     });
     return () => { live = false; };
   }, [draft.suite.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -130,7 +137,7 @@ function ScheduleFlow({ context, existing, start, suites, runners, onClose, onDo
     setReview(null);
   };
   const valid = draft.name.trim() !== "" && draft.suite.id !== "" && draft.environment !== "" && draft.runner !== "" && /^\d\d:\d\d$/.test(draft.at) &&
-    draft.zone !== "" && draft.window_minutes >= 1 && (draft.repeat !== "days" || draft.days.length > 0);
+    draft.zone !== "" && draft.window_minutes >= 1 && (draft.repeat !== "days" || draft.days.length > 0) && (!connectedRequired || !!draft.connected && completeConnectedRunnerOptions(draft.connected,true));
   const send = async (request: Omit<ScheduleCommandRequest, "context" | "intent">): Promise<SubmitFailure | null> => {
     const answer = await commandSchedule({ context: context(), intent: intent.current, ...request });
     if (answer.state === "completed") {
@@ -173,6 +180,7 @@ function ScheduleFlow({ context, existing, start, suites, runners, onClose, onDo
             <option value="">Choose…</option>
             {runners.map((entry) => <option key={entry.ref.id} value={entry.ref.id}>{entry.name}</option>)}
           </select>
+          {connectedRequired && draft.connected ? <ConnectedRunnerOptionsFields value={draft.connected} onChange={connected=>set({connected})} schedule/>:null}
           <label htmlFor="schedule-repeat">Repeat</label>
           <select id="schedule-repeat" value={draft.repeat} onChange={(event) => set({ repeat: event.target.value, days: event.target.value === "days" ? draft.days : [] })}>
             {REPEATS.map((entry) => <option key={entry.key} value={entry.key}>{entry.label}</option>)}

@@ -18,7 +18,7 @@ function fixture(name: string): string {
 
 async function library(user: UserEvent, category: "Profiles" | "Scenarios") {
   await goTo(user, "Tests");
-  await press(user, screen.getByRole("button", { name: "Library" }));
+  await goTo(user,"Library");
   await press(user, screen.getByRole("tab", { name: category }));
   await journey.settled();
 }

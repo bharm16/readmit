@@ -51,6 +51,7 @@ import (
 
 // TestLinksSchema is the contract of a test's links member.
 const TestLinksSchema = "readmit-test-links/v1"
+const TestLinksSchemaV2 = "readmit-test-links/v2"
 
 // TestReset is how a test's reset instructions are decided: followed from
 // its environment's named reset, or written by a person.
@@ -65,9 +66,10 @@ const (
 type TestSourceKind string
 
 const (
-	SourceCase    TestSourceKind = "case"
-	SourceFinding TestSourceKind = "finding"
-	SourceVariant TestSourceKind = "variant"
+	SourceExchange TestSourceKind = "exchange"
+	SourceCase     TestSourceKind = "case"
+	SourceFinding  TestSourceKind = "finding"
+	SourceVariant  TestSourceKind = "variant"
 )
 
 // TestProposalSource is where one proposed check came from.
@@ -117,22 +119,24 @@ type TestLinks struct {
 // TestSource is where a test was created from: a case, a confirmed finding of
 // a review, or a variant.
 type TestSource struct {
-	Kind         TestSourceKind `json:"kind"`
-	Finding      string         `json:"finding,omitzero"`
-	Review       string         `json:"review,omitzero"`
-	ReportSHA256 string         `json:"report_sha256,omitzero"`
-	Variant      *ItemRef       `json:"variant,omitzero"`
+	Exchange     *ExchangeTestProvenance `json:"exchange,omitzero"`
+	Kind         TestSourceKind          `json:"kind"`
+	Finding      string                  `json:"finding,omitzero"`
+	Review       string                  `json:"review,omitzero"`
+	ReportSHA256 string                  `json:"report_sha256,omitzero"`
+	Variant      *ItemRef                `json:"variant,omitzero"`
 }
 
 // TestOrigin is where a new test starts: the case, the occurrences selected
 // in it (none selects every one a test can send), the title proposed for
 // the test, the source it records and checks proposed for it. Proposals reach the editor undecided and never the draft.
 type TestOrigin struct {
-	Case      ItemRef        `json:"case"`
-	Messages  []string       `json:"messages"`
-	Title     string         `json:"title,omitzero"`
-	Source    *TestSource    `json:"source,omitzero"`
-	Proposals []TestProposal `json:"proposals,omitzero"`
+	Exchange  *ExchangeOrigin `json:"exchange,omitzero"`
+	Case      ItemRef         `json:"case"`
+	Messages  []string        `json:"messages"`
+	Title     string          `json:"title,omitzero"`
+	Source    *TestSource     `json:"source,omitzero"`
+	Proposals []TestProposal  `json:"proposals,omitzero"`
 }
 
 // TestProposal is one check proposed from a run or a confirmed finding. It is
@@ -225,7 +229,7 @@ func validateTestDraft(scope draftScope, draft ItemDraft) ([]catalog.Staged, Ite
 		links = *draft.TestLinks
 		links.Tags = slices.Sorted(slices.Values(links.Tags))
 	}
-	links.Schema = TestLinksSchema
+	links.Schema = schemaForTestLinks(links)
 	problems = append(problems, checkTestLinks(links)...)
 
 	var environment *environmentMembers
@@ -387,12 +391,21 @@ func checkTestLinks(links TestLinks) []FieldProblem {
 		problems = append(problems, FieldProblem{Field: "test_links.tags", Problem: err.Error()})
 	}
 	if source := links.Source; source != nil {
-		valid := slices.Contains([]TestSourceKind{SourceCase, SourceFinding, SourceVariant}, source.Kind)
+		valid := slices.Contains([]TestSourceKind{SourceCase, SourceFinding, SourceVariant, SourceExchange}, source.Kind)
 		for _, reference := range []string{source.Finding, source.Review, source.ReportSHA256} {
 			valid = valid && len(reference) <= maxSourceBytes && catalog.ValidToken(reference) == (reference != "")
 		}
 		if source.Variant != nil {
 			valid = valid && source.Variant.Kind == VariantItem && catalog.ValidID(source.Variant.ID)
+		}
+		if source.Kind == SourceExchange {
+			valid = valid && source.Exchange != nil
+			if source.Exchange != nil {
+				x := source.Exchange
+				valid = valid && catalog.ValidToken(x.Origin.ID) && len(x.Origin.Identity) == 64 && catalog.ValidID(x.Inputs.Case.ID) && len(x.Inputs.Identity) == 64 && len(x.Inputs.Messages) > 0 && len(x.Inputs.Messages) <= maxConnectedSteps
+			}
+		} else {
+			valid = valid && source.Exchange == nil
 		}
 		if !valid {
 			problems = append(problems, FieldProblem{Field: "test_links.source", Problem: "a test's source is a case, a confirmed finding or a variant, named by its references"})
@@ -404,7 +417,7 @@ func checkTestLinks(links TestLinks) []FieldProblem {
 // decodeTestLinks reads one test links member exactly as written.
 func decodeTestLinks(data []byte) (TestLinks, error) {
 	var links TestLinks
-	if len(data) > maxLinksBytes || json.Unmarshal(data, &links, json.RejectUnknownMembers(true)) != nil || links.Schema != TestLinksSchema {
+	if len(data) > maxLinksBytes || json.Unmarshal(data, &links, json.RejectUnknownMembers(true)) != nil || (links.Schema != TestLinksSchema && links.Schema != TestLinksSchemaV2) || links.Schema == TestLinksSchema && hasExchangeSourceMember(data) {
 		return TestLinks{}, errors.New("the test's links cannot be read")
 	}
 	if len(checkTestLinks(links)) > 0 || !slices.IsSorted(links.Tags) {
@@ -916,6 +929,9 @@ func (a *App) openTestDraft(ctx context.Context, request ItemRequest) ItemDraftR
 		return result
 	}
 	if request.Ref.ID == "" {
+		if request.From != nil && request.From.Exchange != nil {
+			return a.newExchangeTestDraft(ctx, loaded, result, request.From)
+		}
 		return loaded.newTestDraft(result, request.From)
 	}
 	index := loaded.document.Find(request.Ref.ID)
@@ -1014,17 +1030,24 @@ func (c *loadedCatalog) newTestDraft(result ItemDraftResult, origin *TestOrigin)
 		result.refuse(Failed, err.Error())
 		return result
 	}
-	selected := map[string]bool{}
-	for _, id := range origin.Messages {
-		selected[id] = true
-	}
 	context := &TestContext{Case: ref, CaseName: name, Messages: caseMessages(source), Observations: c.testObservations(), Unsupported: []TestClause{}, Proposals: []TestProposal{}, Connected: c.connectedContext(nil)}
-	all := len(origin.Messages) == 0
-	for _, message := range context.Messages {
-		if (all || selected[message.ID]) && message.Sendable {
-			draft.Messages = append(draft.Messages, message.ID)
+	if len(origin.Messages) == 0 {
+		for _, message := range context.Messages {
+			if message.Sendable {
+				draft.Messages = append(draft.Messages, message.ID)
+			}
 		}
-		delete(selected, message.ID)
+	} else {
+		seen := map[string]bool{}
+		for _, id := range origin.Messages {
+			if seen[id] {
+				continue
+			}
+			seen[id] = true
+			if slices.ContainsFunc(context.Messages, func(message TestMessage) bool { return message.ID == id && message.Sendable }) {
+				draft.Messages = append(draft.Messages, id)
+			}
+		}
 	}
 	if left := len(origin.Messages) - len(draft.Messages); left > 0 {
 		result.Problems = append(result.Problems, FieldProblem{Field: "test.messages",
@@ -1499,4 +1522,39 @@ func linkedEnvironment(links *TestLinks) string {
 		return ""
 	}
 	return links.Environment
+}
+
+type ExchangeOrigin struct {
+	ID       string `json:"id"`
+	Identity string `json:"identity"`
+}
+type ExchangeTestProvenance struct {
+	Origin             ExchangeOrigin      `json:"origin"`
+	Inputs             ExchangeInputOrigin `json:"inputs"`
+	Receiver           ItemRef             `json:"receiver"`
+	ReceiverIdentity   string              `json:"receiver_identity"`
+	Target             ItemRef             `json:"target"`
+	Coverage           string              `json:"coverage"`
+	Received           int                 `json:"received"`
+	HorizonMS          int                 `json:"horizon_ms"`
+	ConfigurationState string              `json:"configuration_state"`
+}
+
+func schemaForTestLinks(links TestLinks) string {
+	if links.Source != nil && (links.Source.Kind == SourceExchange || links.Source.Exchange != nil) {
+		return TestLinksSchemaV2
+	}
+	return TestLinksSchema
+}
+func hasExchangeSourceMember(data []byte) bool {
+	var fields map[string]any
+	if json.Unmarshal(data, &fields) != nil {
+		return true
+	}
+	source, ok := fields["source"].(map[string]any)
+	if !ok {
+		return false
+	}
+	_, member := source["exchange"]
+	return member || source["kind"] == "exchange"
 }

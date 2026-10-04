@@ -23,7 +23,7 @@ func Compare(left, right Input, options Options) (Report, error) {
 // is supplied, is told what the comparison found; it never changes what the
 // readmit-diff/v1 report says, so the raw comparison stays exactly what it was
 // before any rule was authored.
-func compare(left, right Input, options Options, applied *appliedPolicy) (Report, error) {
+func compare(left, right Input, options Options, applied *appliedPolicy, explicit ...*selectedPair) (Report, error) {
 	if options.Boundary == "" {
 		options.Boundary = Messages
 	}
@@ -58,6 +58,24 @@ func compare(left, right Input, options Options, applied *appliedPolicy) (Report
 	if err != nil {
 		return Report{}, err
 	}
+	var selected *selectedPair
+	if len(explicit) > 0 {
+		selected = explicit[0]
+	}
+	if selected != nil {
+		if len(options.Keys) > 0 {
+			return Report{}, errors.New("explicit occurrence pairing takes no alignment keys")
+		}
+		leftItem, err := explicitOccurrence(l, selected.left)
+		if err != nil {
+			return Report{}, err
+		}
+		rightItem, err := explicitOccurrence(r, selected.right)
+		if err != nil {
+			return Report{}, err
+		}
+		l.items, r.items = []*occurrence{leftItem}, []*occurrence{rightItem}
+	}
 	labels, err := dictionary.Load()
 	if err != nil {
 		return Report{}, err
@@ -82,9 +100,15 @@ func compare(left, right Input, options Options, applied *appliedPolicy) (Report
 			}
 		}
 	}
-	pairs, err := align(l, r, keys, options.Boundary, &report)
-	if err != nil {
-		return Report{}, err
+	var pairs []alignedPair
+	if selected != nil {
+		report.Alignment = "explicit-occurrences"
+		pairs = []alignedPair{{l.items[0], r.items[0]}}
+	} else {
+		pairs, err = align(l, r, keys, options.Boundary, &report)
+		if err != nil {
+			return Report{}, err
+		}
 	}
 	comparisons := 0
 	for _, pair := range pairs {

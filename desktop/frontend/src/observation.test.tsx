@@ -150,6 +150,7 @@ async function openNamedObservation(user: User, extra: FacadeHandlers = {}): Pro
   await goTo(user, "Environments");
   const table = await page().findByRole("table", { name: "Environments" });
   await user.click(table.querySelector<HTMLElement>('[data-row-id="env-qa"]')!);
+  await user.click(page().getByRole("tab", { name: "Observations" }));
   await user.click(await page().findByRole("button", { name: "Appointments" }));
   await page().findByRole("heading", { name: "Appointments" });
   return facade;

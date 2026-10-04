@@ -80,6 +80,9 @@ func bindTypedCollect(a *App, ctx context.Context, request PrepareActionRequest,
 		return nil, refusal{Failed, err.Error()}
 	}
 	setup := *draft.Connected
+	if setup.Capture != nil {
+		return nil, refusal{Failed, "live HL7 collection executes only inside the reviewed connected Run lifecycle"}
+	}
 	destination, declined := destinationFor(loaded.root, "", "typed-observation")
 	if destination.Name == "" {
 		return nil, declined
@@ -400,6 +403,10 @@ func readTypedCollection(root, entry string, draft *ObservationDraft) (typedColl
 
 func typedObservationHistory(c *loadedCatalog, request ItemRequest, draft *ObservationDraft) ObservationHistoryResult {
 	result := ObservationHistoryResult{State: Empty, Context: request.Context, Collections: []CollectionRow{}}
+	if draft.Connected != nil && draft.Connected.Capture != nil {
+		result.Reason = "live capture evidence is retained in its connected run"
+		return result
+	}
 	entries, err := os.ReadDir(c.root)
 	if err != nil {
 		result.refuse(Failed, "The project cannot be read")

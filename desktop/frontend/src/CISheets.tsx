@@ -4,7 +4,8 @@
 // summaries; Gate results verifies a retained change-gate snapshot against the
 // gate policy it was pinned to. Every path the configuration names is an Agent
 // path, on the CI host, never this Mac's.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import {blankConnectedRunnerOptions,completeConnectedRunnerOptions,ConnectedRunnerOptionsFields} from "./ConnectedRunnerOptions";
 import {
   chooseRunnerPath,
   inspectCIResults,
@@ -17,6 +18,7 @@ import {
   type GatePolicyResult,
   type RequestContext,
   type RunnerRow,
+  type PathChoiceResult,
 } from "./bindings";
 import { FormDialog, Modal, StepDialog, ValueRows, type FlowStep } from "./layout";
 
@@ -58,14 +60,16 @@ type Gate = { releases: string; promotion: string; revision: string; baseline: s
 /** Set up CI: integration, exact version, environment, runner and the agent
  * paths the runner does not supply; an optional reviewed change gate; then
  * Generate configuration writes the file where the person names. */
-export function SetUpCISheet({ suite, version, environments, context, onClose, onDone }: {
+export function SetUpCISheet({ suite, version, environments, context, onClose, onDone,connected=false }: {
   suite: string;
   version: string;
+  connected?:boolean;
   environments: { id: string; name: string }[];
   context: () => RequestContext;
   onClose: () => void;
   onDone: (output: string) => void;
 }) {
+  const [dispatch,setDispatch]=useState(blankConnectedRunnerOptions);
   const [step, setStep] = useState("setup");
   const [integration, setIntegration] = useState("posix");
   const [environment, setEnvironment] = useState(environments[0]?.id ?? "");
@@ -85,7 +89,7 @@ export function SetUpCISheet({ suite, version, environments, context, onClose, o
     setAgent((held) => (held.run ? held : { ...held, run: `${chosenRunner.root}/ci-runs/${environment}` }));
     setGate((held) => (held.snapshot ? held : { ...held, snapshot: `${chosenRunner.root}/ci-gates/${environment}` }));
   }, [runner]); // eslint-disable-line react-hooks/exhaustive-deps
-  const agentComplete = Object.values(agent).every((value) => value.trim() !== "");
+  const agentComplete = Object.entries(agent).every(([key,value]) => connected && key==="coverage" || value.trim() !== "") && (!connected || completeConnectedRunnerOptions(dispatch));
   const steps: FlowStep[] = [
     {
       key: "setup",
@@ -113,8 +117,9 @@ export function SetUpCISheet({ suite, version, environments, context, onClose, o
             <Field id="ci-policy" label="Operation policy" value={agent.policy} onChange={(value) => setAgent({ ...agent, policy: value })} />
             <Field id="ci-suite" label="Suite file" value={agent.suite} onChange={(value) => setAgent({ ...agent, suite: value })} />
             <Field id="ci-run" label="Run folder" value={agent.run} onChange={(value) => setAgent({ ...agent, run: value })} />
-            <Field id="ci-coverage" label="Coverage declaration" value={agent.coverage} onChange={(coverage) => setAgent({ ...agent, coverage })} />
+            <Field id="ci-coverage" label={connected ? "Coverage declaration (optional)":"Coverage declaration"} value={agent.coverage} onChange={(coverage) => setAgent({ ...agent, coverage })} />
           </fieldset>
+          {connected ? <ConnectedRunnerOptionsFields value={dispatch} onChange={setDispatch} agent/>:null}
           <label className="check"><input type="checkbox" checked={gated} onChange={(event) => setGated(event.target.checked)} /> Change gate</label>
         </>
       ),
@@ -123,7 +128,7 @@ export function SetUpCISheet({ suite, version, environments, context, onClose, o
       ? [{
           key: "gate",
           label: "Change gate",
-          valid: policy?.read.state === "completed" && Object.values(gate).every((value) => value.trim() !== ""),
+          valid: policy?.read.state === "completed" && Object.entries(gate).every(([key,value]) => connected && ["releases","promotion","revision"].includes(key) || value.trim() !== ""),
           render: () => (
             <>
               <Chosen id="ci-gate-policy" label="Gate policy" kind="gate-policy" value={policy?.path ?? ""} onChange={(path) => void inspectGatePolicy(path).then((read) => setPolicy({ path, read }))} />
@@ -132,12 +137,13 @@ export function SetUpCISheet({ suite, version, environments, context, onClose, o
               ) : policy ? <p role="alert">{policy.read.reason}</p> : null}
               <fieldset className="checks">
                 <legend>Agent paths</legend>
-                <Field id="ci-releases" label="Release pins" value={gate.releases} onChange={(releases) => setGate({ ...gate, releases })} />
+                {!connected ? <><Field id="ci-releases" label="Release pins" value={gate.releases} onChange={(releases) => setGate({ ...gate, releases })} />
                 <Field id="ci-promotion" label="Approved promotion" value={gate.promotion} onChange={(promotion) => setGate({ ...gate, promotion })} />
+                </>:null}
                 <Field id="ci-baseline" label="Reviewed baseline run" value={gate.baseline} onChange={(baseline) => setGate({ ...gate, baseline })} />
                 <Field id="ci-snapshot" label="Gate results folder" value={gate.snapshot} onChange={(snapshot) => setGate({ ...gate, snapshot })} />
               </fieldset>
-              <Field id="ci-revision" label="Target revision" value={gate.revision} onChange={(revision) => setGate({ ...gate, revision })} />
+              {!connected ? <Field id="ci-revision" label="Target revision" value={gate.revision} onChange={(revision) => setGate({ ...gate, revision })} />:null}
             </>
           ),
         }]
@@ -154,6 +160,7 @@ export function SetUpCISheet({ suite, version, environments, context, onClose, o
             { label: "Environment", value: environments.find((entry) => entry.id === environment)?.name ?? environment },
             { label: "Runner", value: chosenRunner?.name ?? "None" },
             { label: "Change gate", value: gated ? "After the suite" : "None" },
+            ...(connected ? [{label:"Installed authority",value:dispatch.authority},{label:"Promotion identity",value:dispatch.promotion_identity},{label:"Dispatch identity",value:dispatch.instance}]:[]),
           ]} />
           <p className="consequence">Writes a configuration file; nothing is pushed, installed or enabled.</p>
         </>
@@ -172,9 +179,10 @@ export function SetUpCISheet({ suite, version, environments, context, onClose, o
       onSubmit={async () => {
         const answer = await saveCIHandoff({
           integration, binary: agent.binary.trim(), operation_policy: agent.policy.trim(), suite_file: agent.suite.trim(), environment,
+          ...(connected ? {connected:dispatch}:{}),
           run_directory: agent.run.trim(), coverage_file: agent.coverage.trim(), output: "", suite: `${suite} ${version}`,
           ...(gated && policy?.read.state === "completed"
-            ? { gate: { releases: gate.releases.trim(), promotion: gate.promotion.trim(), promotion_identity: policy.read.promotion_identity ?? "", revision: gate.revision.trim(),
+            ? { gate: { releases: gate.releases.trim(), promotion: gate.promotion.trim(), promotion_identity: connected ? "" : policy.read.promotion_identity ?? "", revision: gate.revision.trim(),
                 baseline: gate.baseline.trim(), policy: policy.path, policy_identity: policy.read.identity ?? "", snapshot_directory: gate.snapshot.trim() } }
             : {}),
         });
@@ -191,15 +199,22 @@ export function SetUpCISheet({ suite, version, environments, context, onClose, o
 export function CIResultsSheet({ onClose }: { onClose: () => void }) {
   const [folder, setFolder] = useState("");
   const [read, setRead] = useState<CIInspectResult | null>(null);
+  const choice=useRef<Promise<PathChoiceResult>|null>(null);
   useEffect(() => {
-    void chooseRunnerPath("ci-results").then((chosen) => {
-      if (chosen.state !== "completed" || !chosen.paths?.[0]) return onClose();
+    let current=true;
+    choice.current??=chooseRunnerPath("ci-results");
+    void choice.current.then(async chosen=>{
+      if(!current)return;
+      if(chosen.state==="cancelled")return onClose();
+      if(chosen.state!=="completed" || !chosen.paths?.[0]) {setRead({state:"failed",reason:chosen.reason??"The CI folder could not be chosen."});return;}
       setFolder(chosen.paths[0]);
-      void inspectCIResults(chosen.paths[0]).then(setRead);
+      const result=await inspectCIResults(chosen.paths[0]);
+      if(current)setRead(result);
     });
+    return ()=>{current=false;};
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <Modal open={folder !== ""} title="CI results" onClose={onClose} footer={<div className="dialog-footer"><button type="button" onClick={onClose}>Close</button></div>}>
+    <Modal open={folder !== "" || read!==null} title="CI results" onClose={onClose} footer={<div className="dialog-footer"><button type="button" onClick={onClose}>Close</button></div>}>
       {read?.state === "completed" ? (
         <ValueRows label="CI results" rows={[
           { label: "Folder", value: folder },
@@ -207,6 +222,7 @@ export function CIResultsSheet({ onClose }: { onClose: () => void }) {
           { label: "Exit status", value: String(read.ci?.exit_code ?? "—") },
           { label: "Change gate", value: read.gate ? result(read.gate.state) : "None retained" },
           ...(read.warning ? [{ label: "Warning", value: read.warning }] : []),
+          ...(read.refusal ? [{label:"Refusal category",value:read.refusal.category},{label:"Required",value:read.refusal.required.join(", ")}]:[]),
         ]} />
       ) : read ? <p role="alert">{read.reason}</p> : null}
     </Modal>

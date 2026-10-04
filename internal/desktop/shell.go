@@ -283,7 +283,7 @@ var privacyStatus = Privacy{
 		"explicit correlation decisions, including analyst and reason text you enter, in separate owner-readable readmit-correlation-review/v1 directories",
 		"the explicitly selected operation policy path, signed entitlement, local UTC high-water and runner admission records; no evidence is stored in them",
 		"the filters and views you have saved, including any value you typed to filter by, in readmit-filters/v2, which also reads readmit-filters/v1",
-		"where you were — the folder, case, region and run you had open — in readmit-desktop-session/v1",
+		"where you were — the workspace, destination, object, filters, selections, reference catalog pin and scroll position — in readmit-desktop-session/v3, which also reads readmit-desktop-session/v1 and readmit-desktop-session/v2; authored filter terms may contain patient data, but original message values, revealed values and execution consent are not retained",
 		"the editor work you had not stored yet — notes you were writing, test drafts, assertion-set drafts, canonical edits, suite drafts and reproducer plans — in readmit-desktop-drafts/v1, or readmit-desktop-drafts/v2 once a draft names the object it edits",
 		"the folder new projects are created in and each project you have opened, as its identity, folder and name, in readmit-desktop-projects/v1, which starts from the projects an earlier release's readmit-desktop-recent/v1 list names; that list is read once and never written",
 		"when you last opened each object of a project, as the project's and the object's identities and the time, in readmit-desktop-opened/v1",

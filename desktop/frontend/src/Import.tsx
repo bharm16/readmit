@@ -97,7 +97,7 @@ function newMapping(): Mapping {
 /** The format the import reads its inputs as. */
 type Format = { kind: "plan"; plan: ImportPlan; label: string } | { kind: "recipe"; envelope: ImportEnvelope; label: string } | { kind: "engine"; engine: EnginePlan; label: string } | { kind: "fhir"; declaration: FhirevidenceDeclaration; label: string };
 
-type DraftContent = { step: string; sources: Sources; caseName: string; named: boolean; format: Format | null; mapping: Mapping };
+type DraftContent = { investigation?: import("./bindings").ImportInvestigation; step: string; sources: Sources; caseName: string; named: boolean; format: Format | null; mapping: Mapping };
 
 const TIME_FORMATS: Record<Exclude<ImportTimeOperator, "unknown">, string> = {
   rfc3339: "ISO 8601 with offset",
@@ -195,12 +195,14 @@ export type ImportFlowProps = {
   busy: boolean;
   onClose: () => void;
   /** The case the import published, by reference and entry. */
-  onImported: (ref: ItemRef) => void;
+  onImported: (ref: ItemRef,selection?: import("./bindings").RetainedImportSelection) => void;
+ seed?: import("./bindings").ImportInvestigation | null;
 };
 
-export function ImportFlow({ open, root, context, drafts, busy: windowBusy, onClose, onImported }: ImportFlowProps) {
+export function ImportFlow({ open, root, context, drafts, busy: windowBusy, onClose, onImported, seed }: ImportFlowProps) {
   const vocabulary = useVocabulary();
   const retainer = useRetainer();
+  const [investigation,setInvestigation]=useState<import("./bindings").ImportInvestigation | undefined>(undefined);
   const [step, setStep] = useState("source");
   const [sources, setSources] = useState<Sources>(NO_SOURCES);
   const [caseName, setCaseName] = useState("");
@@ -236,9 +238,14 @@ export function ImportFlow({ open, root, context, drafts, busy: windowBusy, onCl
     }
     if (restored.current) return;
     restored.current = true;
-    const held = draftFor(drafts, DRAFT_KIND, root);
+    const held = seed ? undefined : draftFor(drafts, DRAFT_KIND, root);
+    if(seed) {
+      const next={...NO_SOURCES,files:[seed.file]};
+      setInvestigation(seed);setSources(next);setCaseName(proposedName(next));setNamed(false);setMapping(newMapping());setFormat(null);setStep("source");setProbe(null);void runProbe(next);
+    } else
     if (held && held.content_schema === DRAFT_SCHEMA && held.content && typeof held.content === "object") {
       const content = held.content as DraftContent;
+      setInvestigation(content.investigation);
       setSources(content.sources ?? NO_SOURCES);
       setCaseName(content.caseName ?? "");
       setNamed(content.named ?? false);
@@ -248,6 +255,7 @@ export function ImportFlow({ open, root, context, drafts, busy: windowBusy, onCl
       retainer.keepId(held.id);
       void runProbe(content.sources ?? NO_SOURCES, false);
     } else {
+      setInvestigation(undefined);
       setSources(NO_SOURCES);
       setCaseName("");
       setNamed(false);
@@ -270,8 +278,8 @@ export function ImportFlow({ open, root, context, drafts, busy: windowBusy, onCl
   useEffect(() => {
     if (!open || !restored.current) return;
     if (sources === NO_SOURCES && caseName === "" && format === null) return;
-    keep({ step, sources, caseName, named, format, mapping });
-  }, [step, sources, caseName, named, format, mapping]); // eslint-disable-line react-hooks/exhaustive-deps
+    keep({ step, sources, caseName, named, format, mapping, ...(investigation ? {investigation} : {}) });
+  }, [step, sources, caseName, named, format, mapping, investigation]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Reads the heads of the chosen inputs: what each is, and which formats
    * fit them. A format is chosen for the person only when exactly one fits. */
@@ -300,6 +308,7 @@ export function ImportFlow({ open, root, context, drafts, busy: windowBusy, onCl
 
   /** A change of inputs withdraws any preview and re-reads what they are. */
   const changeSources = (next: Sources) => {
+    setInvestigation(undefined);
     setSources(next);
     setPreview(null);
     if (!named) setCaseName(proposedName(next));
@@ -586,7 +595,7 @@ export function ImportFlow({ open, root, context, drafts, busy: windowBusy, onCl
       </button>
     </div>
   ) : preview ? (
-    <>
+    <section className="import-preview" aria-label="Import summary">
       <ValueRows
         rows={[
           { label: "Case", value: <span title={caseName}>{caseName}</span> },
@@ -594,6 +603,7 @@ export function ImportFlow({ open, root, context, drafts, busy: windowBusy, onCl
           { label: "Format", value: format?.label ?? "—" },
         ]}
       />
+      <table className="plain-table import-summary-table" aria-label="Import totals"><thead><tr><th scope="col">Preview</th><th scope="col">Result</th></tr></thead><tbody><tr><th scope="row">Occurrences</th><td>{preview.row_total ?? preview.plan_preview?.totals.occurrences ?? "Not recorded"}</td></tr><tr><th scope="row">Message types in preview</th><td>{[...new Set(rows.map(row=>row.type).filter(Boolean))].join(" · ") || "Not recorded"}</td></tr></tbody></table>
       {problems && (problems.excluded || problems.unparsed || problems.unmapped) ? (
         <div className="chips" aria-label="Problems">
           {/* Each chip opens the first row it counts. */}
@@ -636,7 +646,7 @@ export function ImportFlow({ open, root, context, drafts, busy: windowBusy, onCl
           onReveal={(reveal) => void readRow(selectedRow, reading?.inspection?.selected.path ?? "", 0, -1, reveal)}
         />
       ) : null}
-    </>
+    </section>
   ) : null;
 
   const steps: FlowStep[] = [
@@ -687,7 +697,7 @@ export function ImportFlow({ open, root, context, drafts, busy: windowBusy, onCl
           const req = request();
           if (!req || !preview?.preview_token) return { reason: "Preview the import first." };
           setImporting(true);
-          const answer = await importCase({ context: context(), name: caseName.trim(), source: req, preview_token: preview.preview_token, intent_id: intentFor(intents.current, req, caseName) }).finally(() => setImporting(false));
+          const answer = await importCase({ context: context(), name: caseName.trim(), source: req, preview_token: preview.preview_token, intent_id: intentFor(intents.current, req, caseName), ...(investigation ? {investigation} : {}) }).finally(() => setImporting(false));
           if (answer.stale) {
             void runPreview();
             return { reason: "The inputs or their format changed since this preview; it was read again." };
@@ -696,7 +706,7 @@ export function ImportFlow({ open, root, context, drafts, busy: windowBusy, onCl
           // The import is stored: its draft goes before the case opens, so
           // nothing is offered back as unstored work.
           await retainer.dropCurrent();
-          onImported(answer.case);
+          onImported(answer.case,answer.selection);
           return null;
         }}
       />

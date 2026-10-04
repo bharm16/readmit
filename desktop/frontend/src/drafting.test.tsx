@@ -5,8 +5,9 @@
 // workspace, and nothing queued is written once an earlier retention found its
 // draft gone.
 import { expect, test } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import {useState} from "react";
 import { RetentionStatus, useRetainer } from "./drafting";
 import { installFacade } from "./testkit/wails";
 import { WORKSPACE_ROOT } from "./testkit/fixtures";
@@ -164,4 +165,26 @@ test("discarding a new owner waits for the earlier owner's writes and never canc
   expect(facade.oneCall("DiscardEditorDraft")[0]).toBe("held-B");
   expect(facade.callsTo("SaveEditorDraft")).toHaveLength(2);
   expect(await screen.findByText("idle")).toBeTruthy();
+});
+
+function FlushLatest(){
+ const retainer=useRetainer();
+ const [acknowledged,setAcknowledged]=useState("waiting");
+ return <><button onClick={()=>retainer.save(draft("note","first"))}>first edit</button><button onClick={()=>retainer.save(draft("note","latest"))}>latest edit</button><button onClick={()=>void retainer.flush().then(answer=>setAcknowledged(answer.state))}>flush latest</button><output aria-label="Acknowledgement">{acknowledged}</output></>;
+}
+
+test("explicit flush waits for later queued edits and returns the latest refusal instead of an older acknowledgement",async()=>{
+ const answers:((value:EditorDraftsResult)=>void)[]=[];
+ const facade=installFacade({SaveEditorDraft:()=>new Promise(resolve=>answers.push(resolve))});
+ const user=userEvent.setup();render(<FlushLatest/>);
+ await user.click(screen.getByRole("button",{name:"first edit"}));
+ await waitFor(()=>expect(answers).toHaveLength(1));
+ await user.click(screen.getByRole("button",{name:"flush latest"}));
+ await user.click(screen.getByRole("button",{name:"latest edit"}));
+ await act(async()=>{answers[0]!({state:"completed",drafts:[draft("note","first","first-owned")]});});
+ await waitFor(()=>expect(answers).toHaveLength(2));
+ expect(screen.getByLabelText("Acknowledgement").textContent).toBe("waiting");
+ await act(async()=>{answers[1]!({state:"permission_denied",reason:"Latest edit could not be retained",drafts:[]});});
+ await waitFor(()=>expect(screen.getByLabelText("Acknowledgement").textContent).toBe("not-retained"));
+ expect(facade.callsTo("SaveEditorDraft")).toHaveLength(2);
 });

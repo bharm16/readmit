@@ -1,3 +1,6 @@
+import "./workflow.css";
+import searchAsset from "./assets/workbench/search.svg";
+import { TaskTabs } from "./TaskTabs";
 // Environments: the project's named test systems. The list opens a read-only
 // environment; every change is one Edit sheet and one Save of one revision.
 // Nothing here connects on opening: Test connection, Check destination, Check
@@ -202,6 +205,7 @@ function referrers(list: Referrer[]): string {
 
 /** Everything Environments needs from the window. */
 export type EnvironmentsProps = {
+  shown?: boolean;
   root: string | null;
   context: () => RequestContext;
   place: EnvironmentPlace;
@@ -212,6 +216,7 @@ export type EnvironmentsProps = {
    * returns: with the saved connection's ref once saved, without one when
    * closed unsaved. Without it the saved environment opens. */
   onAdded?: ((saved?: string) => void) | undefined;
+  onChooseCapture?: ((item:CatalogItem)=>Promise<void>|void)|undefined;
   /** The retained capture a new observation starts from, when a capture
    * started it. */
   capture?: CaptureObservationBinding | null | undefined;
@@ -224,9 +229,13 @@ export type EnvironmentsProps = {
 };
 
 /** Environments supplies its page's title, way back, actions and body. */
-export function useEnvironments({ root, context, place, go, back, busy, onAdded, capture, onObservationClosed, onObservationSaved }: EnvironmentsProps) {
+export function useEnvironments({ shown=true, root, context, place, go, back, busy, onAdded, capture, onObservationClosed, onObservationSaved, onChooseCapture }: EnvironmentsProps) {
   const [items, setItems] = useState<CatalogItem[] | null>(null);
   const [listSelected, setListSelected] = useState<string | null>(null);
+const [search, setSearch] = useState("");
+const [captureChoices,setCaptureChoices]=useState<CatalogItem[]|null>(null);
+const [choosingCapture,setChoosingCapture]=useState(false);
+const [captureFailure,setCaptureFailure]=useState<string|null>(null);
   const [listFailure, setListFailure] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [example, setExample] = useState<{ path: string; summary: ConnectionExampleSummary } | null>(null);
@@ -246,7 +255,7 @@ export function useEnvironments({ root, context, place, go, back, busy, onAdded,
   });
 
   const refresh = useCallback(async () => {
-    if (!root) return;
+  if (!root) return;
     await readList(asked => listWholeCatalog({ context: asked, kind: "environment", filter: {} }), answer => {
     if (answer.state === "completed" || answer.state === "empty") {
       setItems(answer.page?.items ?? []);
@@ -258,10 +267,12 @@ export function useEnvironments({ root, context, place, go, back, busy, onAdded,
   }, [readList, root]);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    if(shown)void refresh();
+  }, [refresh,shown]);
 
   const envId = place.kind === "environment" || place.kind === "credentials" ? place.id : null;
+  const captureOwner=useRef({root,target:envId});captureOwner.current={root,target:envId};
+  useEffect(()=>{setChoosingCapture(false);setCaptureChoices(null);setCaptureFailure(null);},[root,envId]);
   const selected = envId ? (items?.find((item) => item.ref.id === envId) ?? null) : null;
   const detail = useEnvironmentDetail({ owner: root, item: selected, context, refresh, go, back, busy, place, onEdited: onAdded });
   const observation = useObservation({
@@ -287,17 +298,28 @@ export function useEnvironments({ root, context, place, go, back, busy, onAdded,
     else setExampleFailure(read.reason ?? "The example cannot be read.");
   };
 
-  if (!root) return { title: "Environments", back: null, actions: null, body: null };
+    const chooseProductionCapture=()=>{
+ setChoosingCapture(true);setCaptureChoices(null);setCaptureFailure(null);
+ const owner=root;const target=envId;const asked=context();
+ void listWholeCatalog({context:asked,kind:"case",filter:{}}).then(answer=>{
+  if(owner!==captureOwner.current.root || target!==captureOwner.current.target)return;
+  if(answer.state!=="completed" && answer.state!=="empty") {setCaptureFailure(answer.reason??"The captures could not be read.");return;}
+  if(answer.page && (!answer.page.recorded || answer.page.incomplete.length>0)) {setCaptureFailure("The capture inventory is incomplete; reopen the project before choosing evidence.");return;}
+  setCaptureChoices(answer.page?.items??[]);
+ });
+ };
+ const capturePicker=<Modal open={choosingCapture} title="Choose a capture" className="workflow-sheet" onClose={()=>setChoosingCapture(false)}>{captureFailure?<p role="alert">{captureFailure}</p>:captureChoices===null?<p aria-live="polite">Reading captures…</p>:captureChoices.length===0?<p>No captures are available in this project.</p>:<DataTable label="Production reference captures" rows={captureChoices} rowId={item=>item.ref.id} rowLabel={item=>item.name||item.summary.case?.entry||item.ref.id} selected={null} onSelect={()=>undefined} onOpen={id=>{const item=captureChoices.find(row=>row.ref.id===id);if(item?.availability==="available" && onChooseCapture) {setChoosingCapture(false);void onChooseCapture(item);}}} columns={[{key:"name",header:"Capture",priority:1,minWidth:14,flex:true,render:item=>item.name||item.summary.case?.entry||item.ref.id},{key:"state",header:"Availability",priority:1,minWidth:8,render:item=>item.availability==="available"?"Available":item.reason??item.availability},{key:"open",header:"",priority:1,minWidth:8,render:item=><button type="button" disabled={item.availability!=="available" || !onChooseCapture} onClick={()=>{setChoosingCapture(false);void onChooseCapture?.(item);}}>Open capture</button>}]}/>}<p className="workflow-caption">Opens original retained evidence. Choosing a capture does not assert an association or contact this target.</p></Modal>;
+  if (!root) return { title: "Environments", back: null, actions: null, body: null, palette:null };
 
-  if (place.kind === "observation") return { ...observation, back: <BackLink label={observation.backLabel} onBack={back} /> };
+  if (place.kind === "observation") return { ...observation, palette:null, back: <BackLink label={observation.backLabel} onBack={back} /> };
   if (place.kind === "environment" || place.kind === "credentials") {
-    return { ...detail, back: <BackLink label={place.kind === "credentials" ? (selected?.name ?? "Environment") : "Environments"} onBack={back} /> };
+    return { ...detail, actions: place.kind==="credentials" || selected?.summary.environment?.protocol==="fhir-r4" ? detail.actions : <><button type="button" className="primary" disabled={busy} onClick={()=>go("", "add")}>New target</button>{"palette" in detail && detail.palette ? <Menu label="More environment actions" items={detail.palette.items}/>:null}</>, back: <BackLink label={place.kind === "credentials" ? (selected?.name ?? "Environment") : "Environments"} onBack={back} />, body: place.kind==="credentials" ? detail.body : selected?.summary.environment?.classification==="production" ? <div className="workflow-page workflow-content workflow-production-reference"><h2>{selected.name}</h2><div className="workflow-connection-fields"><ValueRows rows={[{label:"Name",value:selected.name},{label:"Classification",value:"Production"},{label:"Address",value:selected.summary.environment.address||"Not configured"}]}/></div><h3>Imported evidence</h3><p>Use this target as a reference when inspecting imported messages.</p><button type="button" disabled={!onChooseCapture || busy} onClick={chooseProductionCapture}>Choose a capture</button><p className="workflow-caption">Test sends are unavailable for a production target.</p><details><summary>Target details and reviews</summary>{detail.body}</details>{capturePicker}</div> : <div className="workflow-page workflow-workspace workflow-targets"><aside className="workflow-rail" aria-label="Saved targets"><h2>Targets</h2>{items?.map(item=><button key={item.ref.id} className="workflow-step" type="button" aria-current={item.ref.id===place.id?"page":undefined} onClick={()=>go(item.ref.id)}><strong>{item.name}</strong><span>{classificationText(summaryOf(item)?.classification)} · {summaryOf(item)?.address||"Not configured"}</span></button>)}</aside><div className="workflow-content workflow-target-detail">{detail.body}</div></div> };
   }
 
   const columns: Column<CatalogItem>[] = [
     {
       key: "name",
-      header: "Environment",
+      header: "Target",
       priority: 1,
       minWidth: 13.75,
       flex: true,
@@ -319,6 +341,7 @@ export function useEnvironments({ root, context, place, go, back, busy, onAdded,
     },
     { key: "address", header: "Address", priority: 2, minWidth: 13.75, flex: true, render: (item) => summaryOf(item)?.address || "—" },
     { key: "classification", header: "Classification", priority: 3, minWidth: 9, render: (item) => classificationText(summaryOf(item)?.classification) },
+ {key:"transport",header:"Transport",priority:3,minWidth:8,render:item=>summaryOf(item)?.protocol==="fhir-r4" ? "FHIR HTTP(S)":summaryOf(item)?.transport==="tls" ? "TLS":summaryOf(item)?.transport==="plain" ? "MLLP":"Not configured"},
     {
       key: "checked",
       header: "Last checked",
@@ -328,7 +351,7 @@ export function useEnvironments({ root, context, place, go, back, busy, onAdded,
         const summary = summaryOf(item);
         if (!summary?.last_checked_at) return "—";
         const outcome = summary.last_check_outcome;
-        return outcome && outcome !== "reachable" ? `${listDate(summary.last_checked_at)} · ${CHECK_OUTCOMES[outcome] ?? "Failed"}` : listDate(summary.last_checked_at);
+        return `${CHECK_OUTCOMES[outcome??""]??"Checked"} · ${listDate(summary.last_checked_at)}${summary.last_check_revision && summary.last_check_revision!==item.ref.revision ? " · before the last edit; check again":""}`;
       },
     },
   ];
@@ -362,10 +385,10 @@ export function useEnvironments({ root, context, place, go, back, busy, onAdded,
       <DataTable
         label="Environments"
         className="page-table values-table"
-        rows={sorted}
+        rows={sorted.filter(item=>item.name.toLowerCase().includes(search.toLowerCase()) || summaryOf(item)?.address?.toLowerCase().includes(search.toLowerCase()))}
         rowId={(item) => item.ref.id}
         rowLabel={(item) => item.name}
-        columns={columns}
+        columns={[columns[0]!,columns[2]!,columns[3]!,columns[1]!,...columns.slice(4)]}
         selected={listSelected}
         onSelect={setListSelected}
         onOpen={(id) => go(id)}
@@ -376,6 +399,7 @@ export function useEnvironments({ root, context, place, go, back, busy, onAdded,
 
   return {
     title: "Environments",
+    palette:null,
     back: null,
     actions: (
       <>
@@ -390,7 +414,8 @@ export function useEnvironments({ root, context, place, go, back, busy, onAdded,
       </>
     ),
     body: (
-      <>
+      <div className="workflow-page workflow-content workflow-target-library">
+        <label className="workflow-search"><span className="workflow-search-icon"><img src={searchAsset} alt=""/></span><input type="search" aria-label="Search targets" placeholder="Search targets…" value={search} onChange={event=>setSearch(event.target.value)}/></label>
         {exampleFailure ? <p role="alert" className="object-problem">{exampleFailure}</p> : null}
         {body}
         <ImportExampleSheet
@@ -426,7 +451,7 @@ export function useEnvironments({ root, context, place, go, back, busy, onAdded,
           onClose={() => (onObservationClosed ? onObservationClosed() : back())}
           onSaved={(saved) => (onObservationSaved ? onObservationSaved(saved.id) : go(`observation:${saved.id}`))}
         />
-      </>
+      </div>
     ),
   };
 }
@@ -591,6 +616,7 @@ function useEnvironmentDetail({
   onEdited?: ((saved?: string) => void) | undefined;
 }) {
   const [draft, setDraft] = useState<ItemDraft | null>(null);
+const [targetTab,setTargetTab]=useState("connection");
   const [draftFailure, setDraftFailure] = useState<string | null>(null);
   const [sheet, setSheet] = useState<
     null | "connection" | "approve" | "check" | "check-authorization" | "check-capabilities" | "isolation-preflight" | "isolation-setup" | "isolation-reconcile" | "isolation-cleanup" | "ranges" | "destinations" | "check-destination" | "reset-edit" | "reset" | "remove" | "details" | "observation" | "observation-link" | "validator" | "validator-install"
@@ -662,7 +688,7 @@ function useEnvironmentDetail({
   };
 
   if (!item || !ref) {
-    return { title: "Environment", actions: null, body: <p aria-live="polite">Reading…</p> };
+    return { title: "Environment", palette:null, actions: null, body: <p aria-live="polite">Reading…</p> };
   }
   if (place.kind === "credentials") {
     return credentialsPage({ item, context, busy });
@@ -710,7 +736,8 @@ function useEnvironmentDetail({
   };
 
   const body = (
-    <div className="object-page">
+    <div className="object-page workflow-page workflow-target-object">
+      <TaskTabs label="Target views" id="target-workflow-views" tabs={[{key:"connection",label:"Connection"},{key:"observations",label:"Observations"},{key:"reset",label:"Reset"}]} selected={targetTab} onSelect={setTargetTab}><span/></TaskTabs>
       {item.availability !== "available" ? (
         <p role="alert" className="object-problem">
           {item.reason ?? "This environment cannot be read."}
@@ -721,19 +748,19 @@ function useEnvironmentDetail({
           {notice ?? draftFailure}
         </p>
       ) : null}
-      <section className="value-group" aria-labelledby="environment-connection">
+      <section hidden={targetTab!=="connection"} className="value-group" aria-labelledby="environment-connection">
         <header className="value-group-header">
           <h2 id="environment-connection">Connection</h2>
           <button type="button" disabled={busy || !draft} onClick={() => setSheet("connection")}>
             Edit
           </button>
         </header>
+        <div className="workflow-result-context"><div className="workflow-connection-fields"><ValueRows rows={[{label:"Address",value:address||"Not configured"},{label:"Transport",value:fhir ? "HTTPS" : tls ? `TLS${unapproved ? " · Not approved":""}` : target?.transport==="plain" ? `MLLP${unapproved ? " · Not approved":""}` : "Not configured"},{label:"Classification",value:classificationText(fhir?.classification??target?.classification??summary?.classification)}]}/></div><section className="workflow-surface" aria-label="Last connection check"><h3>Last connection check</h3><p>{checkedLine()}</p>{!fhir && !unapproved ? <button type="button" disabled={busy||!draft} onClick={()=>setSheet("check")}>Test connection</button>:null}</section></div>
+        <h3>Test setup</h3><table className="plain-table" aria-label="Recorded target test setup"><thead><tr><th>Setting</th><th>Value</th><th/></tr></thead><tbody><tr><td>ACK mode</td><td>Not recorded</td><td/></tr><tr><td>Reset</td><td>{summary?.reset_name||"Not configured"}</td><td><button type="button" className="quiet" disabled={busy||!draft} onClick={()=>setSheet("reset-edit")}>Edit</button></td></tr><tr><td>Observation</td><td>{summary?.observation_name||"Not configured"}</td><td>{observationRef?<button className="quiet" type="button" onClick={()=>go(`observation:${observationRef.id}:${ref.id}`)}>Open</button>:null}</td></tr></tbody></table>
+        <details><summary>Connection details</summary>
         <ValueRows
           rows={[
-            { label: "Address", value: address || "—" },
             ...(fhir ? [{ label: "Protocol", value: `FHIR R4 ${fhir.version}` }, { label: "Authentication", value: authenticationText(fhir.authentication) }] : []),
-            { label: "Transport", value: fhir ? "HTTPS" : `${tls ? "TLS" : target?.transport === "plain" ? "TCP/MLLP" : "—"}${unapproved ? " · Not approved" : ""}` },
-            { label: "Classification", value: classificationText(fhir?.classification ?? target?.classification ?? summary?.classification) },
             ...(fhir?.server_name ? [{ label: "Server name", value: fhir.server_name }] : []),
             ...(fhir?.ca_file ? [{ label: "CA certificate", value: fileName(fhir.ca_file) }] : []),
             ...(fhir?.authentication === "smart" ? [
@@ -747,15 +774,15 @@ function useEnvironmentDetail({
             ...(tls && target?.ca_file ? [{ label: "CA certificate", value: fileName(target.ca_file) }] : []),
             ...(tls && target?.client_certificate ? [{ label: "Client certificate", value: fileName(target.client_certificate) }] : []),
             ...(target?.credential?.reference ? [{ label: "Credential", value: target.credential.reference }] : []),
-            { label: "Last checked", value: checkedLine() },
             ...(fhir ? [{ label: "Capabilities", value: <FHIRCheckStatus check={fhirChecks["check-capabilities"] ?? summary?.capabilities} revision={ref.revision} /> }] : []),
             ...(fhir && summary?.validator ? [{ label: "Validation", value: validatorText(summary.validator) }] : []),
           ]}
         />
         {fhir ? <FHIRClaims check={fhirChecks["check-capabilities"] ?? summary?.capabilities} /> : null}
+        </details>
       </section>
 
-      <section className="value-group" aria-labelledby="environment-observation">
+      <section hidden={targetTab!=="observations"} className="value-group" aria-labelledby="environment-observation">
         <header className="value-group-header">
           <h2 id="environment-observation">Observation</h2>
           {observationRef ? (
@@ -786,7 +813,7 @@ function useEnvironmentDetail({
         )}
       </section>
 
-      <section className="value-group" aria-labelledby="environment-reset">
+      <section hidden={targetTab!=="reset"} className="value-group" aria-labelledby="environment-reset">
         <header className="value-group-header">
           <h2 id="environment-reset">Reset</h2>
           {(reset && reset.actions.length > 0) || isolation ? (
@@ -2275,7 +2302,7 @@ function RemoveEnvironmentSheet({ open, context, item, onClose, onRemoved }: { o
 // ---------- Credentials ----------
 
 function credentialsPage({ item, context, busy }: { item: CatalogItem; context: () => RequestContext; busy: boolean }) {
-  return { title: "Credentials", actions: <CredentialsActions item={item} context={context} busy={busy} />, body: <CredentialsList item={item} context={context} busy={busy} /> };
+  return { title: "Credentials", palette:null, actions: <CredentialsActions item={item} context={context} busy={busy} />, body: <CredentialsList item={item} context={context} busy={busy} /> };
 }
 
 /** Credentials' header actions and list share one read, so each is its own

@@ -1,6 +1,7 @@
 package desktop
 
 import (
+	"context"
 	"errors"
 	"io/fs"
 	"slices"
@@ -173,6 +174,10 @@ type ViewsResult struct {
 	Views  []grid.View `json:"views"`
 }
 
+func (r *ViewsResult) refuse(state State, reason string) {
+	r.State, r.Reason, r.Views = state, reason, []grid.View{}
+}
+
 func (r refusal) views() ViewsResult {
 	return ViewsResult{State: r.state, Reason: r.reason, Views: []grid.View{}}
 }
@@ -290,51 +295,48 @@ func (a *App) ClearViews(workspace string) ViewsResult {
 // slot and stores the whole document. A refused change stores nothing and
 // reports the views as they were.
 func (a *App) changeViews(workspace string, change func([]grid.View) ([]grid.View, refusal)) ViewsResult {
-	release, claimed := a.claim("")
-	if !claimed {
-		return busyRefusal.views()
-	}
-	defer release()
-	root, declined := resolveFolder(workspace)
-	if root == "" {
-		return declined.views()
-	}
-	document, declined := a.savedFilters()
-	if declined.state != "" {
-		return declined.views()
-	}
-	current := projectViews(document, root)
-	changed, declined := change(slices.Clone(current))
-	if declined.state != "" {
-		result := listedViews(current)
-		result.State, result.Reason = declined.state, declined.reason
-		return result
-	}
-	if key, folder := viewsKey(root); key != folder {
-		document = document.WithProjectViews(folder, nil).WithProjectViews(key, changed)
-	} else {
-		document = document.WithProjectViews(root, changed)
-	}
-	if len(document.Views) > grid.MaxViewProjects {
-		result := listedViews(current)
-		result.State, result.Reason = Failed, "views are already saved for as many projects as this release stores"
-		return result
-	}
-	data, err := grid.Encode(document)
-	if err != nil {
-		result := listedViews(current)
-		result.State, result.Reason = Failed, "these views no longer fit the bounded document this release writes; save a shorter one, or remove one"
-		return result
-	}
-	if err := a.documents.write(filtersName, data); err != nil {
-		result := listedViews(current)
-		result.State, result.Reason = Failed, "the view could not be stored; an interrupted write may be retained beside the saved filters"
-		if errors.Is(err, fs.ErrPermission) {
-			result.State, result.Reason = PermissionDenied, "this account cannot write the saved views"
+	return run(a, false, false, func(context.Context) ViewsResult {
+		root, declined := resolveFolder(workspace)
+		if root == "" {
+			return declined.views()
 		}
-		return result
-	}
-	return listedViews(changed)
+		document, declined := a.savedFilters()
+		if declined.state != "" {
+			return declined.views()
+		}
+		current := projectViews(document, root)
+		changed, declined := change(slices.Clone(current))
+		if declined.state != "" {
+			result := listedViews(current)
+			result.State, result.Reason = declined.state, declined.reason
+			return result
+		}
+		if key, folder := viewsKey(root); key != folder {
+			document = document.WithProjectViews(folder, nil).WithProjectViews(key, changed)
+		} else {
+			document = document.WithProjectViews(root, changed)
+		}
+		if len(document.Views) > grid.MaxViewProjects {
+			result := listedViews(current)
+			result.State, result.Reason = Failed, "views are already saved for as many projects as this release stores"
+			return result
+		}
+		data, err := grid.Encode(document)
+		if err != nil {
+			result := listedViews(current)
+			result.State, result.Reason = Failed, "these views no longer fit the bounded document this release writes; save a shorter one, or remove one"
+			return result
+		}
+		if err := a.documents.write(filtersName, data); err != nil {
+			result := listedViews(current)
+			result.State, result.Reason = Failed, "the view could not be stored; an interrupted write may be retained beside the saved filters"
+			if errors.Is(err, fs.ErrPermission) {
+				result.State, result.Reason = PermissionDenied, "this account cannot write the saved views"
+			}
+			return result
+		}
+		return listedViews(changed)
+	})
 }
 
 func listedViews(views []grid.View) ViewsResult {

@@ -54,6 +54,7 @@ function policy(): string {
  * accepted, AA at MSA-1, with the operator's reset declared. One Create test. */
 async function createAckTest(user: UserEvent, environment: string): Promise<void> {
   const table = await screen.findByRole("table", { name: "Messages" });
+  await waitFor(()=>expect(table.querySelectorAll("tbody tr[data-row-id]")).toHaveLength(2));
   for (const box of within(table).getAllByRole("checkbox").filter((box) => !(box as HTMLInputElement).checked && box.closest("tr[data-row-id]"))) {
     await press(user, box);
   }
@@ -148,7 +149,7 @@ test("checks suggested from a passing run are added only as a person accepts the
   if (!(await page().findByText(TEST, undefined, { timeout: 3_000 }).catch(() => null))) await goTo(user, "Tests");
   await user.dblClick(await page().findByText(TEST, undefined, { timeout: 10_000 }));
   await press(user, await page().findByRole("button", { name: "Edit" }, { timeout: 10_000 }));
-  await press(user, await page().findByRole("tab", { name: "Checks" }, { timeout: 10_000 }));
+  await press(user, await page().findByRole("tab", { name: "Expectations" }, { timeout: 10_000 }));
   const decided = checks();
   expect(decided).toHaveLength(1);
 

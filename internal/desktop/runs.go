@@ -459,6 +459,9 @@ func runReaching(saved savedRun, test string, target replay.Target) reachingTarg
 
 func readRun(c *loadedCatalog, item catalog.Item, paths map[string]string) (view, error) {
 	path := paths[primaryRole(RunItem)]
+	if connectedIndividualArtifact(path) {
+		return readConnectedIndividualRun(c, item, path)
+	}
 	if declares(filepath.Join(path, "manifest.json"), suite.ConnectedExecutionSchema) {
 		return readConnectedSuiteRun(c, item, path)
 	}

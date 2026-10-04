@@ -31,8 +31,12 @@ func (r *InspectionPathResult) refuse(state State, reason string) { r.State, r.R
 
 // The paths ChooseInspectionPath chooses.
 const (
-	inspectionFile  = "file"
-	copyDestination = "copy-destination"
+	inspectionFile             = "file"
+	referenceCatalogFile       = "reference-catalog"
+	referenceProfileFile       = "reference-profile"
+	referencePackFile          = "reference-pack"
+	referenceDocumentationFile = "reference-documentation"
+	copyDestination            = "copy-destination"
 )
 
 // ChooseInspectionPath presents the host's native dialog for the file to open
@@ -42,6 +46,19 @@ const (
 func (a *App) ChooseInspectionPath(kind, source string) InspectionPathResult {
 	return run(a, true, false, func(ctx context.Context) InspectionPathResult {
 		switch kind {
+		case referenceProfileFile, referencePackFile, referenceDocumentationFile:
+			titles := map[string]string{referenceProfileFile: "Open local HL7 profile", referencePackFile: "Open pinned HL7 profile pack", referenceDocumentationFile: "Open local reference documentation"}
+			path, declined := a.chooseOneFile(ctx, titles[kind])
+			if path == "" {
+				return InspectionPathResult{State: declined.state, Reason: declined.reason, Kind: kind}
+			}
+			return InspectionPathResult{State: Completed, Kind: kind, Path: path}
+		case referenceCatalogFile:
+			path, declined := a.chooseOneFile(ctx, "Open offline HL7 reference catalog")
+			if path == "" {
+				return InspectionPathResult{State: declined.state, Reason: declined.reason, Kind: kind}
+			}
+			return InspectionPathResult{State: Completed, Kind: kind, Path: path}
 		case inspectionFile:
 			path, declined := a.chooseOneFile(ctx, "Open HL7 file")
 			if path == "" {
@@ -162,16 +179,19 @@ func (a *App) ListFileMessages(request FileMessagesRequest) FileMessagesResult {
 // message list was read from; a file that changed since is refused rather
 // than joined to a list of a different file. Message is zero-based.
 type FileInspectRequest struct {
-	File       string `json:"file"`
-	Format     string `json:"format"`
-	Terminator string `json:"terminator"`
-	Expect     string `json:"expect"`
-	Message    int    `json:"message"`
-	Path       string `json:"path"`
-	NodeOffset int    `json:"node_offset"`
-	ByteOffset int    `json:"byte_offset"`
-	RawOffset  int    `json:"raw_offset"`
-	Reveal     bool   `json:"reveal"`
+	ReferenceSelection *HL7ReferenceSelection `json:"reference_selection,omitzero"`
+	ReferenceIdentity  string                 `json:"reference_identity,omitzero"`
+	ReferenceCatalog   string                 `json:"reference_catalog,omitzero"`
+	File               string                 `json:"file"`
+	Format             string                 `json:"format"`
+	Terminator         string                 `json:"terminator"`
+	Expect             string                 `json:"expect"`
+	Message            int                    `json:"message"`
+	Path               string                 `json:"path"`
+	NodeOffset         int                    `json:"node_offset"`
+	ByteOffset         int                    `json:"byte_offset"`
+	RawOffset          int                    `json:"raw_offset"`
+	Reveal             bool                   `json:"reveal"`
 }
 
 // InspectFileMessage inspects one message of a file named by its full path.
@@ -198,7 +218,7 @@ func (a *App) InspectFileMessage(request FileInspectRequest) InspectionResult {
 			return fail(Failed, err.Error())
 		}
 		view, reason := inspectDocument(data, document, request.Message, inspectorWindow{
-			Path: request.Path, NodeOffset: request.NodeOffset, ByteOffset: request.ByteOffset, RawOffset: request.RawOffset, Reveal: request.Reveal,
+			Path: request.Path, NodeOffset: request.NodeOffset, ByteOffset: request.ByteOffset, RawOffset: request.RawOffset, Reveal: request.Reveal, ReferenceCatalog: request.ReferenceCatalog, ReferenceIdentity: request.ReferenceIdentity, ReferenceSelection: request.ReferenceSelection,
 		})
 		if view == nil {
 			return fail(Failed, reason)

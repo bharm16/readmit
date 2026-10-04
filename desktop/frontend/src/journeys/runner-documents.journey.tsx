@@ -92,7 +92,9 @@ async function assignment(user: UserEvent, sheet: Scope, setup: Setup): Promise<
 /** Adds a runner for another host from Settings › Runners and exports its
  * setup into a new file named in the host's save dialog. Returns the file. */
 async function addRunner(user: UserEvent, setup: Setup, file: string): Promise<string> {
-  await goToView(user, "Settings", "Runners");
+  await goTo(user,"Tests");
+  await press(user,await page().findByRole("button",{name:"Reusable work"}));
+  await press(user,await screen.findByRole("menuitem",{name:"Runners"}));
   const panel = within(await page().findByRole("region", { name: "Runners" }));
   // A runner left open is closed back to the list first.
   const back = panel.queryByRole("button", { name: "Back to runners" });
@@ -254,6 +256,7 @@ test("a staged runner update is verified against the pinned deployment key witho
  * accepted, AA at MSA-1, with the operator's reset declared. One Create test. */
 async function createAckTest(user: UserEvent, environment: string): Promise<void> {
   const table = await screen.findByRole("table", { name: "Messages" });
+  await waitFor(()=>expect(table.querySelectorAll("tbody tr[data-row-id]")).toHaveLength(2));
   for (const box of within(table).getAllByRole("checkbox").filter((box) => !(box as HTMLInputElement).checked && box.closest("tr[data-row-id]"))) {
     await press(user, box);
   }

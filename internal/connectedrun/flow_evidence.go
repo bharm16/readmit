@@ -7,9 +7,14 @@ import (
 
 	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/assertion"
+	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/connectedtest"
 	"github.com/bharm16/readmit/internal/dataset"
+	"github.com/bharm16/readmit/internal/fhirrest"
 	"github.com/bharm16/readmit/internal/fhirvalidator"
+	"github.com/bharm16/readmit/internal/networkaction"
+	"github.com/bharm16/readmit/internal/observeinterval"
+	"github.com/bharm16/readmit/internal/replay"
 )
 
 // FlowEvidence is a verified retained lifecycle with the evidence its verdicts
@@ -32,6 +37,10 @@ type FlowEvidence struct {
 // values its own responses supplied: the runtime identity mapping, which is
 // server-assigned addressing, never expected clinical truth.
 type PhaseEvidence struct {
+	Intervals    map[string]observeinterval.Result
+	Captures     map[string]*bundle.Bundle
+	HTTPStatus   map[string]int
+	Transport    *replay.Run
 	Tables       map[string]assertion.Table
 	Observations map[string]string
 	Boundaries   map[string]string
@@ -90,7 +99,7 @@ func verifyFlowEvidence(ctx context.Context, path string, files map[string][]byt
 			continue
 		}
 		dir := filepath.Join(path, "phases", phase.ID)
-		pe := PhaseEvidence{Tables: map[string]assertion.Table{}, Observations: map[string]string{}, Boundaries: map[string]string{}, Inputs: map[string]string{}, Bound: map[string]string{}, Steps: []FHIRStepRecord{}, Validators: map[string]ValidatorRun{}}
+		pe := PhaseEvidence{Tables: map[string]assertion.Table{}, Observations: map[string]string{}, Boundaries: map[string]string{}, Inputs: map[string]string{}, Bound: map[string]string{}, Steps: []FHIRStepRecord{}, Validators: map[string]ValidatorRun{}, HTTPStatus: map[string]int{}, Captures: map[string]*bundle.Bundle{}, Intervals: map[string]observeinterval.Result{}}
 		if fhir {
 			_, run, _, tables, err := openFHIRPhaseTables(ctx, plan, phase, dir, artifactdir.Subtree(files, prefix), bound)
 			if err != nil {
@@ -100,6 +109,29 @@ func verifyFlowEvidence(ctx context.Context, path string, files map[string][]byt
 				bound[k] = v
 			}
 			pe.Tables, pe.Boundaries, pe.Inputs, pe.Bound, pe.Steps = tables, run.Boundaries, run.Inputs, run.Bound, run.Steps
+			for _, definition := range phase.Datasets {
+				if definition.Kind == "typed-rows" {
+					if _, ok := files[prefix+"/intervals/"+definition.ID+"/manifest.json"]; ok {
+						interval, err := observeinterval.Verify(ctx, artifactdir.Subtree(files, prefix+"/intervals/"+definition.ID))
+						if err != nil {
+							return FlowEvidence{}, invalid
+						}
+						pe.Intervals[definition.ID] = interval
+					}
+				}
+			}
+			for _, step := range run.Steps {
+				if step.Result != "" {
+					response, err := fhirrest.VerifyEvidence(ctx, artifactdir.Subtree(files, prefix+"/steps/"+step.Step))
+					if err != nil {
+						return FlowEvidence{}, invalid
+					}
+					actual := response.Result()
+					if len(actual.Attempts) > 0 {
+						pe.HTTPStatus[step.Step] = actual.Attempts[len(actual.Attempts)-1].Receipt.HTTPStatus
+					}
+				}
+			}
 			for id := range tables {
 				pe.Observations[id] = run.Observations[id]
 			}
@@ -124,6 +156,20 @@ func verifyFlowEvidence(ctx context.Context, path string, files map[string][]byt
 			}
 			pe.Boundaries = verified.Result.Boundaries()
 			for _, ds := range phase.Datasets {
+				if _, ok := files[prefix+"/intervals/"+ds.ID+"/manifest.json"]; ok {
+					interval, err := observeinterval.Verify(ctx, artifactdir.Subtree(files, prefix+"/intervals/"+ds.ID))
+					if err != nil {
+						return FlowEvidence{}, invalid
+					}
+					pe.Intervals[ds.ID] = interval
+				}
+				if _, ok := files[prefix+"/intervals/"+ds.ID+"/capture/identity.sha256"]; ok {
+					capture, err := networkaction.VerifyCaptureEvidence(artifactdir.Subtree(files, prefix+"/intervals/"+ds.ID+"/capture"))
+					if err != nil {
+						return FlowEvidence{}, invalid
+					}
+					pe.Captures[ds.ID] = capture.Capture
+				}
 				name := prefix + "/evaluation/datasets/" + ds.ID + "/identity.sha256"
 				if _, ok := files[name]; !ok {
 					continue
@@ -135,6 +181,13 @@ func verifyFlowEvidence(ctx context.Context, path string, files map[string][]byt
 				pe.Tables[ds.ID] = assertion.SnapshotTable(snapshot)
 				pe.Observations[ds.ID] = "evaluation/datasets/" + ds.ID
 			}
+		}
+		if _, ok := files[prefix+"/transport/run/identity.sha256"]; ok {
+			transport, err := replay.Verify(artifactdir.Subtree(files, prefix+"/transport/run"))
+			if err != nil {
+				return FlowEvidence{}, invalid
+			}
+			pe.Transport = transport
 		}
 		e.Phases[phase.ID] = pe
 	}

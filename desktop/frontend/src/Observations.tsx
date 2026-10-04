@@ -46,9 +46,10 @@ import { ReviewSheet } from "./ReviewSheet";
 import { useVocabulary } from "./vocabulary";
 import { ConnectedObservationFields, type ConnectedNumberProblem } from "./ConnectedObservationFields";
 
-type SourceKind = "file-export" | "http-api" | "downstream-capture" | "database-query" | "fhir-r4";
+type SourceKind = "file-export" | "http-api" | "downstream-capture" | "database-query" | "fhir-r4" | "live-hl7-capture";
 
 const SOURCE_KINDS: Record<SourceKind, string> = {
+ "live-hl7-capture":"Live received HL7",
   "file-export": "File export",
   "http-api": "HTTPS API",
   "downstream-capture": "Downstream capture",
@@ -147,6 +148,7 @@ function caseName(path: string, cases: CatalogItem[]): string {
 
 function sourceRows(draft: ObservationDraft | undefined, cases: CatalogItem[], environments: CatalogItem[]): { label: string; value: ReactNode }[] {
   if (!draft) return [];
+if(draft.connected?.capture){const setup=draft.connected;return [{label:"Type",value:"Live received HL7"},{label:"Saved listener",value:`${setup.capture!.source.id} · v${setup.capture!.source.revision??""}`},{label:"Runtime marker selector",value:setup.capture!.run_selector},{label:"Output occurrence identity",value:setup.capture!.output_key_selector},{label:"Fields",value:setup.projection?.columns.map(field=>`${field.name}: ${field.selector??""}`).join(", ")??"None"},{label:"Execution",value:"Inside normal connected Run; capture arms before stimulus"}]}
   const source = draft.source;
   if (draft.connected?.fhir) {
     const setup = draft.connected;
@@ -165,7 +167,7 @@ function sourceRows(draft: ObservationDraft | undefined, cases: CatalogItem[], e
     ];
   }
   if (!source) return [{ label: "Source", value: "Unavailable" }];
-  const kind = source.source.kind as SourceKind;
+  const kind = draft.connected?.capture?"live-hl7-capture":source.source.kind as SourceKind;
   const rows: { label: string; value: ReactNode }[] = [
     { label: "Type", value: SOURCE_KINDS[kind] ?? "Unsupported" },
     { label: "Scope", value: source.source.scope || "—" },
@@ -371,6 +373,7 @@ export function useObservation({
       <section className="value-group" aria-labelledby="observation-history">
         <header className="value-group-header">
           <h2 id="observation-history">Collections</h2>
+          {observation?.connected?.capture?<p>Captured evidence is retained with each normal connected Run.</p>:null}
         </header>
         {historyFailure ? (
           <p role="alert">{historyFailure}</p>
@@ -517,9 +520,7 @@ export function useObservation({
         <button type="button" disabled={busy || !draft} onClick={() => setSheet("edit")}>
           Edit
         </button>
-        <button type="button" className="primary" disabled={busy || !draft} onClick={() => setSheet("collect")}>
-          Collect
-        </button>
+        {!draft?.observation?.connected?.capture?<button type="button" className="primary" disabled={busy || !draft} onClick={() => setSheet("collect")}>Collect</button>:null}
         <Menu label="More observation actions" items={[{ label: "Remove…", tone: "danger" as const, onSelect: () => setSheet("remove") }]} />
       </>
     ) : null,
@@ -681,6 +682,7 @@ function ObservationEditor({
   const [environments, setEnvironments] = useState<CatalogItem[]>([]);
   const [observations, setObservations] = useState<CatalogItem[]>([]);
   const [numberProblem, setNumberProblem] = useState<ConnectedNumberProblem | null>(null);
+  const [captureSources,setCaptureSources]=useState<CatalogItem[]>([]);
   const [typedOptions, setTypedOptions] = useState<ObservationFieldsResult | null>(null);
   const fhirSearch = useRef<FHIRSearchDraft | null>(null);
   const [fields, setFields] = useState<{ fields: string[]; reason?: string } | null>(null);
@@ -735,6 +737,7 @@ function ObservationEditor({
     if (start.source && start.window) fill();
     else if (start.connected?.fhir) void openItemDraft({ context: context(), ref: { kind: "observation", id: "" } }).then((answer) => { if (live) fill(answer.draft?.observation); });
     else setReadFailure("The saved observation's source or completion rule is unavailable.");
+    void listWholeCatalog({context:context(),kind:"source",filter:{}}).then(answer=>{if(live)setCaptureSources(answer.page?.items??[])});
     void listWholeCatalog({ context: context(), kind: "case", filter: {} }).then((answer) => setCases(answer.page?.items ?? []));
     void listCredentials({ context: context(), ref: { kind: "environment", id: "" } }).then((answer) => setCredentials(answer.credentials.filter((row) => row.purpose === "source-endpoint")));
     void observationSupport().then((answer) => setSupport(answer.support ?? []));
@@ -745,7 +748,7 @@ function ObservationEditor({
 
   if (!held) return readFailure ? <Modal open={open} title={item ? "Edit observation" : "Add observation"} onClose={onClose}><p role="alert">{readFailure}</p></Modal> : null;
   const source = held.source;
-  const kind: SourceKind = held.connected?.fhir ? "fhir-r4" : source.source.kind as SourceKind;
+  const kind: SourceKind = held.connected?.capture ? "live-hl7-capture" : held.connected?.fhir ? "fhir-r4" : source.source.kind as SourceKind;
   const change = (next: (value: EditableObservationDraft) => void) => {
     setHeld((current) => {
       if (!current) return current;
@@ -763,10 +766,23 @@ function ObservationEditor({
   // with what has no default left empty.
   const startOf = (next: SourceKind) => starts.find((entry) => entry.source.kind === next);
   const setKind = (next: SourceKind) => {
+    if(next==="live-hl7-capture"){
+      if(!vocabulary?.connected)return;
+      const start=startOf("downstream-capture");
+      change(value=>{
+        value.connected??=structuredClone(vocabulary.connected.observation);
+        delete value.connected.fhir;
+        value.connected.capture={source:{kind:"source",id:""},run_selector:"",output_key_selector:"",input_key_selector:"",include:[]};
+        value.connected.phase="after";value.connected.completion.mode="stream";value.connected.completion.freshness="ingress";
+        value.source.source.kind="downstream-capture";value.source.capture=structuredClone(start?.capture??null);value.source.extraction=null;
+        delete value.connected.projection;
+      });return;
+    }
     if (next === "fhir-r4") {
       if (!vocabulary?.connected) return;
       change((value) => {
         value.connected ??= structuredClone(vocabulary.connected.observation);
+        delete value.connected.capture;
         value.connected.fhir = structuredClone(fhirSearch.current ?? vocabulary.connected.search);
       });
       return;
@@ -774,7 +790,7 @@ function ObservationEditor({
     if (held.connected?.fhir) fhirSearch.current = structuredClone(held.connected.fhir);
     const start = startOf(next);
     change((value) => {
-      if (value.connected) delete value.connected.fhir;
+      if (value.connected) {delete value.connected.fhir;delete value.connected.capture;}
       value.source.source.kind = next;
       value.window.source.kind = next;
       if (start) value.source.schema = start.schema;
@@ -908,7 +924,19 @@ function ObservationEditor({
           </option>
         ))}
       </select>
+      {kind==="live-hl7-capture" && held.connected?.capture?<>
+        <label htmlFor="observation-live-source">Saved listener</label>
+        <select id="observation-live-source" value={held.connected.capture.source.id} onChange={event=>change(value=>{const source=captureSources.find(row=>row.ref.id===event.target.value);if(source)value.connected!.capture!.source=source.ref})}>
+         <option value="">Choose a saved listener</option>{captureSources.filter(row=>row.summary.source?.type==="mllp-listener").map(row=><option key={row.ref.id} value={row.ref.id}>{row.name}</option>)}
+        </select>
+        <label htmlFor="observation-live-selector">Runtime marker HL7 selector</label>
+        <input id="observation-live-selector" value={held.connected.capture.run_selector} onChange={event=>change(value=>{value.connected!.capture!.run_selector=event.target.value})}/>
+        <label htmlFor="observation-live-input-key">Original input identity HL7 selector</label><input id="observation-live-input-key" value={held.connected.capture.input_key_selector} onChange={event=>change(value=>{value.connected!.capture!.input_key_selector=event.target.value})}/>
+        <label htmlFor="observation-live-output-key">Output occurrence identity HL7 selector</label><input id="observation-live-output-key" value={held.connected.capture.output_key_selector} onChange={event=>change(value=>{value.connected!.capture!.output_key_selector=event.target.value})}/>
+        <p className="muted">Plain loopback listeners support a full after-phase horizon and a 64 KiB frame limit. The selector must match the explicitly derived marker field of every stimulus. Business keys alone cannot own an output.</p>
+       </>:null}
       {kind !== "fhir-r4" ? <>
+      {kind!=="live-hl7-capture"?<>
       <label htmlFor="observation-scope">Scope</label>
       <input id="observation-scope" type="text" value={source.source.scope} onChange={(event) => change((value) => { value.source.source.scope = event.target.value; value.window.source.scope = event.target.value; })} />
       <label htmlFor="observation-max-age">Maximum age</label>
@@ -917,6 +945,7 @@ function ObservationEditor({
         <input type="checkbox" checked={source.enabled} onChange={(event) => change((value) => { value.source.enabled = event.target.checked; })} />
         Enable collection
       </label>
+      </>:null}
 
       {kind === "file-export" && source.file ? (
         <>
@@ -993,9 +1022,9 @@ function ObservationEditor({
         </>
       ) : null}
 
-      {kind === "downstream-capture" && source.capture ? (
+      {(kind === "downstream-capture" || kind==="live-hl7-capture") && source.capture ? (
         <>
-          <label htmlFor="observation-case">Case</label>
+          <label htmlFor="observation-case">{kind==="live-hl7-capture"?"Retained HL7 field sample":"Case"}</label>
           <select id="observation-case" value={source.capture.path} onChange={(event) => change((value) => { value.source.capture!.path = event.target.value; })}>
             {source.capture.path === "" ? <option value="">Choose a case</option> : null}
             {cases.map((entry) => (

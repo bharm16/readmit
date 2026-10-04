@@ -4,6 +4,7 @@ import (
 	"encoding/json/v2"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -41,7 +42,7 @@ func storedSession(t *testing.T, store string) desktop.Session {
 
 func TestSessionStoreRefusesUnknownVersionsMembersAndCorruption(t *testing.T) {
 	for name, contents := range map[string]string{
-		"unknown version":   `{"schema":"readmit-desktop-session/v2","view":{"workspace":"","region":"","case":"","run":""}}`,
+		"unknown version":   `{"schema":"readmit-desktop-session/v4","view":{"workspace":"","region":"","case":"","run":""}}`,
 		"unknown member":    `{"schema":"readmit-desktop-session/v1","view":{"workspace":"","region":"","case":"","run":""},"last_seen":"2026-01-01"}`,
 		"unknown view":      `{"schema":"readmit-desktop-session/v1","view":{"workspace":"","region":"","case":"","run":"","scroll":3}}`,
 		"relative folder":   `{"schema":"readmit-desktop-session/v1","view":{"workspace":"relative","region":"","case":"","run":""}}`,
@@ -207,5 +208,149 @@ func TestConcurrentSessionWritesNeverProduceAPartialDocument(t *testing.T) {
 	wait.Wait()
 	if stored := storedSession(t, store); !slices.Contains(roots, stored.View.Workspace) {
 		t.Fatalf("concurrent writes left a view nobody recorded: %+v", stored)
+	}
+}
+
+func TestWorkingSessionRestoresNavigationAndReadsV1WithoutRewriting(t *testing.T) {
+	store := sessionStore(t)
+	root := t.TempDir()
+	legacy := `{"schema":"readmit-desktop-session/v1","view":{"workspace":"` + root + `","region":"evidence","case":"case-1","run":""}}`
+	if err := os.WriteFile(store, []byte(legacy), 0600); err != nil {
+		t.Fatal(err)
+	}
+	app := sessionApp(t, store)
+	got := app.WorkingSession()
+	if got.State != desktop.Completed || got.Session == nil || got.Session.View.Case != "case-1" {
+		t.Fatalf("legacy session was not readable: %+v", got)
+	}
+	untouched, err := os.ReadFile(store)
+	if err != nil || string(untouched) != legacy {
+		t.Fatal("reading rewrote the legacy session")
+	}
+	nav := &desktop.ViewNavigation{Destination: "cases", SourceIdentity: "sha256:" + strings.Repeat("a", 64), Occurrence: "s0001-e000002", FieldPath: "MSH-9.2", Filter: "Only reschedules", ScrollTop: 440}
+	if saved := app.RecordView(desktop.View{Workspace: root, Region: "inspector", Case: "case-1", Navigation: nav}); saved.State != desktop.Completed {
+		t.Fatalf("navigation was not recorded: %+v", saved)
+	}
+	reopened := sessionApp(t, store).WorkingSession()
+	if reopened.State != desktop.Completed || reopened.Session == nil || reopened.Session.Schema != desktop.SessionSchema || reopened.Session.View.Navigation == nil || !reflect.DeepEqual(reopened.Session.View.Navigation, nav) {
+		t.Fatalf("navigation did not reopen: %+v", reopened)
+	}
+}
+
+func TestWorkingSessionRejectsUnknownConsentAndLegacyNavigationWithoutRewriting(t *testing.T) {
+	for _, contents := range []string{
+		`{"schema":"readmit-desktop-session/v1","view":{"workspace":"","region":"","case":"","run":"","navigation":null}}`,
+		`{"schema":"readmit-desktop-session/v2","view":{"workspace":"","region":"","case":"","run":"","navigation":{"destination":"messages","consent":true}}}`,
+		`{"schema":"readmit-desktop-session/v2","view":{"workspace":"","region":"","case":"","run":"","navigation":{"destination":"messages","value":"source text"}}}`,
+	} {
+		store := sessionStore(t)
+		if err := os.WriteFile(store, []byte(contents), 0600); err != nil {
+			t.Fatal(err)
+		}
+		result := sessionApp(t, store).WorkingSession()
+		if result.State != desktop.Failed || result.Session != nil {
+			t.Fatalf("unknown navigation was accepted: %+v", result)
+		}
+		raw, err := os.ReadFile(store)
+		if err != nil || string(raw) != contents {
+			t.Fatal("a refused session was rewritten")
+		}
+	}
+}
+
+func TestWorkingSessionV3RetainsOnlyPinnedReferenceSelectionsAndReadsV2(t *testing.T) {
+	store := sessionStore(t)
+	legacy := `{"schema":"readmit-desktop-session/v2","view":{"workspace":"","region":"","case":"","run":"","navigation":{"destination":"messages"}}}`
+	if err := os.WriteFile(store, []byte(legacy), 0600); err != nil {
+		t.Fatal(err)
+	}
+	app := sessionApp(t, store)
+	if result := app.WorkingSession(); result.State != desktop.Completed || result.Session.Schema != desktop.SessionSchema {
+		t.Fatalf("v2 was not adapted: %+v", result)
+	}
+	raw, err := os.ReadFile(store)
+	if err != nil || string(raw) != legacy {
+		t.Fatal("v2 read changed its bytes")
+	}
+	pin := desktop.HL7ReferenceSelection{Documentation: filepath.Join(t.TempDir(), "local.txt"), DocumentationIdentity: "sha256:" + strings.Repeat("a", 64)}
+	nav := &desktop.ViewNavigation{Destination: "messages", ReferenceSelection: pin}
+	if result := app.RecordView(desktop.View{Navigation: nav}); result.State != desktop.Completed {
+		t.Fatalf("selection refused: %+v", result)
+	}
+	if result := sessionApp(t, store).WorkingSession(); result.State != desktop.Completed || result.Session.View.Navigation.ReferenceSelection != pin {
+		t.Fatalf("selection did not reopen: %+v", result)
+	}
+	for _, schema := range []string{"readmit-desktop-session/v2", desktop.SessionSchema} {
+		contents := `{"schema":"` + schema + `","view":{"workspace":"","region":"","case":"","run":"","navigation":{"destination":"messages","reference_selection":{"documentation":"/local.txt","documentation_identity":"sha256:` + strings.Repeat("a", 64) + `","text":"private text"}}}}`
+		if err := os.WriteFile(store, []byte(contents), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if result := sessionApp(t, store).WorkingSession(); result.State != desktop.Failed {
+			t.Fatalf("unversioned or private text accepted: %+v", result)
+		}
+	}
+	contents := `{"schema":"readmit-desktop-session/v2","view":{"workspace":"","region":"","case":"","run":"","navigation":{"destination":"messages","reference_selection":null}}}`
+	if err := os.WriteFile(store, []byte(contents), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if result := sessionApp(t, store).WorkingSession(); result.State != desktop.Failed {
+		t.Fatalf("v3 member accepted under v2: %+v", result)
+	}
+}
+
+func TestWorkingSessionRetainsOrderedFileSelectionAndRefusesInvalidSelections(t *testing.T) {
+	store := sessionStore(t)
+	file := filepath.Join(t.TempDir(), "source.hl7")
+	nav := &desktop.ViewNavigation{Destination: "messages", SourceKind: "file", File: file, FileIdentity: strings.Repeat("a", 64), FileMessages: []int{3, 1}}
+	app := sessionApp(t, store)
+	if result := app.RecordView(desktop.View{Navigation: nav}); result.State != desktop.Completed {
+		t.Fatalf("ordered selection refused: %+v", result)
+	}
+	if result := sessionApp(t, store).WorkingSession(); result.State != desktop.Completed || !slices.Equal(result.Session.View.Navigation.FileMessages, []int{3, 1}) {
+		t.Fatalf("selection changed: %+v", result)
+	}
+	for _, invalid := range [][]int{{1, 1}, {-1}, {1<<20 + 1}, make([]int, 1025)} {
+		nav.FileMessages = invalid
+		if result := app.RecordView(desktop.View{Navigation: nav}); result.State != desktop.Failed {
+			t.Fatalf("invalid selection accepted: %+v", result)
+		}
+	}
+	contents := `{"schema":"readmit-desktop-session/v2","view":{"workspace":"","region":"","case":"","run":"","navigation":{"destination":"messages","file_messages":null}}}`
+	if err := os.WriteFile(store, []byte(contents), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if result := sessionApp(t, store).WorkingSession(); result.State != desktop.Failed {
+		t.Fatalf("v3 selection accepted under v2: %+v", result)
+	}
+}
+
+func TestWorkingSessionRetainsOrderedCaseChecksOnlyWithTheirSource(t *testing.T) {
+	store := sessionStore(t)
+	nav := &desktop.ViewNavigation{Destination: "messages", SourceIdentity: "sha256:" + strings.Repeat("a", 64), CheckedOccurrences: []string{"s0001-e000003", "s0001-e000001"}}
+	view := desktop.View{Workspace: t.TempDir(), Case: "captured", Navigation: nav}
+	app := sessionApp(t, store)
+	if result := app.RecordView(view); result.State != desktop.Completed {
+		t.Fatalf("checked occurrences refused: %+v", result)
+	}
+	if result := sessionApp(t, store).WorkingSession(); result.State != desktop.Completed || !slices.Equal(result.Session.View.Navigation.CheckedOccurrences, nav.CheckedOccurrences) {
+		t.Fatalf("checked order changed: %+v", result)
+	}
+	for _, invalid := range [][]string{{"same", "same"}, {""}, {"bad\nidentity"}, make([]string, 1025)} {
+		nav.CheckedOccurrences = invalid
+		if result := app.RecordView(view); result.State != desktop.Failed {
+			t.Fatalf("invalid checked occurrences accepted: %+v", result)
+		}
+	}
+	nav.CheckedOccurrences = []string{"s0001-e000001"}
+	nav.SourceIdentity = ""
+	if result := app.RecordView(view); result.State != desktop.Failed {
+		t.Fatalf("unbound checked occurrences accepted: %+v", result)
+	}
+	contents := `{"schema":"readmit-desktop-session/v2","view":{"workspace":"","region":"","case":"","run":"","navigation":{"destination":"messages","checked_occurrences":null}}}`
+	if err := os.WriteFile(store, []byte(contents), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if result := sessionApp(t, store).WorkingSession(); result.State != desktop.Failed {
+		t.Fatalf("v3 checks accepted under v2: %+v", result)
 	}
 }

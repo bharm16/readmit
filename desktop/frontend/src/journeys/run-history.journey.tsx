@@ -85,7 +85,7 @@ test("retained runs are chosen from the keyboard, Back restores the choice, a ch
   const line = page().getByText(/^Failed · /).textContent;
   await goTo(user, "Tests");
   if (!page().queryByRole("heading", { level: 1, name: "Tests" })) await goTo(user, "Tests");
-  await press(user, await page().findByRole("button", { name: "Library" }));
+  await goTo(user,"Library");
   await press(user, await page().findByRole("tab", { name: "Checks" }));
   await press(user, (await page().findAllByRole("button", { name: "New check group" }))[0]!);
   await enter(user, await page().findByLabelText("Name", undefined, { timeout: 10_000 }), "ACK accepted");

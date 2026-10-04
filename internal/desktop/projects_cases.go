@@ -383,6 +383,12 @@ func readCase(c *loadedCatalog, item catalog.Item, paths map[string]string) (vie
 		read.createdAt, read.updatedAt = manifest.Provenance.ImportedAt, manifest.Provenance.ImportedAt
 	}
 	if manifest, err := bundle.Describe(paths[primaryRole(CaseItem)]); err == nil {
+		// VerifiedCase already opened these original bytes successfully; its
+		// second result is derivation provenance, not a verification status.
+		if read.summary.Case.Protocol != "fhir-r4" {
+			count := manifest.EventCount
+			read.summary.Case.Occurrences = &count
+		}
 		read.createdAt = provenanceTime(manifest.Provenance)
 		read.updatedAt = read.createdAt
 	}

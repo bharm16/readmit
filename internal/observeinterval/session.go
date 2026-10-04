@@ -222,6 +222,18 @@ func (s *Session) StimulusStarted() error {
 	}
 	return s.record(Record{Kind: "stimulus-started", Status: "healthy"})
 }
+
+// StimulusTime names the retained IO checkpoint, independent of business clocks.
+func (s *Session) StimulusTime() time.Time {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, record := range s.result.Records {
+		if record.Kind == "stimulus-started" {
+			return record.RecordedAt
+		}
+	}
+	return time.Time{}
+}
 func (s *Session) StimulusFinished() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

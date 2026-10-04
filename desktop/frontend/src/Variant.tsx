@@ -359,8 +359,8 @@ export function useVariantEditor({
   );
 
   const body = (
-    <div className="object-page variant-editor">
-      <p className="variant-name">{name}</p>
+    <div className={`object-page variant-editor${draft.fhir ? "" : " hl7-variant-editor"}`}>
+      {draft.fhir ? <p className="variant-name">{name}</p> : <label className="variant-name" htmlFor="variant-name-inline">Name<input id="variant-name-inline" value={name} disabled={busy || saving !== null} onChange={event=>{setName(event.target.value);setPreviewing(false);}} onBlur={()=>keep({name,draft})}/></label>}
       {failure ? <p role="alert">{failure}</p> : null}
       {saveProblem ? <p role="alert">{saveProblem}</p> : null}
       {retainer.retention.state === "not-retained" || retainer.retention.state === "conflict" ? <RetentionStatus retention={retainer.retention} onRetry={retainer.retry} onKeepAsNew={retainer.keepAsNew} /> : null}
@@ -398,7 +398,7 @@ export function useVariantEditor({
           </section>
         </div>
       ) : (
-        <div className="variant-columns">
+        <div className="variant-columns hl7-variant-columns">
           <section aria-labelledby="variant-included">
             <div className="section-heading">
               <h2 id="variant-included">Included messages</h2>
@@ -568,7 +568,7 @@ export function useVariantEditor({
       ) : null}
     </div>
   );
-  return { title: "Case variant", actions, body, leave };
+  return { title: draft.fhir ? "Case variant" : "Create variant", actions, body, leave };
 }
 
 function FHIRVariantChangeSheet({ open, root, source, resources, draft, initialOccurrence, onClose, onApply }: {

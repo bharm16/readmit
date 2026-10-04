@@ -226,3 +226,21 @@ test("returned to by Back, the list scrolls by row to the one that was first on 
   );
   expect(scroller.scrollTop).toBe(0);
 });
+
+test("64px headerless browser rows keep keyboard and scroll positions aligned at both text scales",async()=>{
+  const user=userEvent.setup();
+  function Browser(){const [selected,setSelected]=useState<string|null>(null);return <DataTable label="Browser rows" rows={ROWS} rowId={row=>row.id} rowLabel={row=>row.name} columns={COLUMNS} selected={selected} onSelect={setSelected} onOpen={()=>undefined} rowHeightRem={4} hideHeader/>;}
+  render(<Browser/>);
+  const scroller=document.querySelector<HTMLElement>(".table-view")!;
+  drawn()[0]!.focus();await user.keyboard("{End}");
+  expect(selectedRow()?.dataset.rowId).toBe("case-9999");
+  expect(scroller.scrollTop).toBe(10_000*64-size.height);
+  await user.keyboard("{Home}");
+  expect(scroller.scrollTop).toBe(0);
+  scroller.scrollTop=64*5000;act(()=>scroller.dispatchEvent(new Event("scroll")));
+  expect(drawn().find(row=>row.dataset.rowId==="case-5000")).toBeTruthy();
+  document.documentElement.style.fontSize="32px";resize({height:880,width:640});
+  drawn()[0]!.focus();await user.keyboard("{End}");
+  expect(selectedRow()?.dataset.rowId).toBe("case-9999");
+  expect(scroller.scrollTop).toBe(10_000*128-size.height);
+});
