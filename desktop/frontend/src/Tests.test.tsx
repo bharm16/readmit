@@ -4,7 +4,7 @@
 // Run hands the saved version to the run review. Fixtures carry names,
 // states and synthetic tokens only.
 import { expect, test } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { CatalogItem, CatalogQuery, IncompleteSave, ItemDraftResult, ItemRequest, RunExplanation, SaveItemRequest, TestContext, TestDraftDocument, TestHistoryResult } from "./bindings";
 import { renderApp } from "./testkit/app";
@@ -199,7 +199,7 @@ test("Search matches names and authored tags only; Filter narrows by case, resul
   await waitFor(() => expect(checkRowsOf(table).map((row) => row[0])).toEqual(["Reschedule keeps one appointment"]));
 });
 
-test("Create test from selected case messages opens Setup prefilled in source order without visiting Messages", async () => {
+test.each([false, true])("Create test uses checked messages or the inspected message without selecting the whole capture (checked: %s)", async (checked) => {
   const user = userEvent.setup();
   const { facade } = await renderApp({
     SelectWorkspace: () => folderWithCase(),
@@ -213,12 +213,14 @@ test("Create test from selected case messages opens Setup prefilled in source or
   await goTo(user, "Cases");
   await user.dblClick(await findCaseRow(CASE_ENTRY));
   await page().findByRole("table", { name: "Messages" });
+  const messages = page().getByRole("table", { name: "Messages" });
+  await user.click(messages.querySelector<HTMLElement>(`tr[data-row-id="${NEXT_OCCURRENCE}"]`)!);
+  if (checked) await user.click(within(messages.querySelector<HTMLElement>(`tr[data-row-id="${GRID_OCCURRENCE}"]`)!).getByRole("checkbox"));
   await user.click(await screen.findByRole("button", { name: "More case actions" }));
   await user.click(await screen.findByRole("menuitem", { name: "Create test" }));
   expect(await page().findByRole("heading", { level: 1, name: "New test" })).toBeTruthy();
   const opened = facade.oneCall("OpenItemDraft")[0] as ItemRequest;
-  expect(opened.from).toMatchObject({ case: CASE.ref, messages: [] });
-  expect(await page().findByText("SIU · S12, SIU · S13")).toBeTruthy();
+  expect(opened.from).toMatchObject({ case: CASE.ref, identity: CASE_IDENTITY, messages: [checked ? GRID_OCCURRENCE : NEXT_OCCURRENCE] });
   expect((page().getByRole("textbox", { name: "Name" }) as HTMLInputElement).value).toBe(CASE_ENTRY);
 });
 
@@ -245,11 +247,38 @@ test("an environment saved after Tests was last listed is offered to a test crea
   environments = [QA];
   await goTo(user, "Cases");
   await user.dblClick(await findCaseRow(CASE_ENTRY));
-  await page().findByRole("table", { name: "Messages" });
+  const messages = await page().findByRole("table", { name: "Messages" });
+  await user.click(messages.querySelector<HTMLElement>(`tr[data-row-id="${GRID_OCCURRENCE}"]`)!);
   await user.click(await screen.findByRole("button", { name: "More case actions" }));
   await user.click(await screen.findByRole("menuitem", { name: "Create test" }));
   const choice = await page().findByRole("combobox", { name: /^(Target|Environment)$/ });
   await waitFor(() => expect(within(choice).queryByRole("option", { name: "Scheduling QA" })).toBeTruthy());
+});
+
+test("an abandoned draft-opening reply cannot populate a newer blank test", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp({
+    SelectWorkspace: () => folderWithCase(), OpenCase: () => caseResult(),
+    ReadMessages: () => messagesResult([messageRow(GRID_OCCURRENCE)]),
+  });
+  facade.reply({ListCatalog: query => catalog([])(query, facade)});
+  const opening = facade.park("OpenItemDraft");
+  await goTo(user, "Projects");
+  await user.click(screen.getByRole("button", {name: "Open"}));
+  await goTo(user, "Cases");
+  await user.dblClick(await findCaseRow(CASE_ENTRY));
+  const messages = await page().findByRole("table", {name: "Messages"});
+  await user.click(messages.querySelector<HTMLElement>(`tr[data-row-id="${GRID_OCCURRENCE}"]`)!);
+  await user.click(screen.getByRole("button", {name: "More case actions"}));
+  await user.click(screen.getByRole("menuitem", {name: "Create test"}));
+  await waitFor(() => expect(opening.size).toBe(1));
+  const request = facade.oneCall("OpenItemDraft")[0];
+  await goTo(user, "Tests");
+  await user.click(await page().findByRole("button", {name: "New test case"}));
+  await page().findByRole("combobox", {name: "Case"});
+  await act(async () => opening.resolve(newDraftAnswer(request, {name: "Abandoned draft"})));
+  expect(page().getByRole("combobox", {name: "Case"})).toHaveProperty("value", "");
+  expect(page().queryByRole("textbox", {name: "Name"})).toBeNull();
 });
 
 function checkRowsOf(table:HTMLElement):string[][] {
@@ -917,6 +946,28 @@ test("a selected saved test exposes Inputs, Expectations, Runs, Before/after and
  await user.click(page().getByRole("tab",{name:"Exports"}));await page().findByRole("button",{name:"Export test definition"});
  await user.click(page().getByRole("button",{name:"More test actions"}));await user.click(screen.getByRole("menuitem",{name:"Versions"}));await page().findByRole("table",{name:"Versions"});
  expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
+});
+
+test("an unavailable retained run list stays unavailable and can be retried without executing the test", async () => {
+  const user = userEvent.setup();
+  const {facade} = await openTests(user, [RESCHEDULE], {
+    OpenItemDraft: request => savedAnswer(request),
+    TestHistory: request => ({state: "completed", context: request.context, versions: [], runs: []}),
+  });
+  const retained: CatalogItem = {ref: {kind: "run", id: "retained-run"}, name: "Retained run", created_at: null, updated_at: null, last_opened_at: null, availability: "available", capabilities: [], summary: {run: {kind: "test", test: RESCHEDULE.ref, test_association: "linked", result: "passed", started_at: "2026-01-02T12:00:00Z", completed_at: "2026-01-02T12:01:00Z", uncertain: 0, delivery_uncertain: false, active: false, entry: "retained-run"}}};
+  let unavailable = true;
+  facade.reply({ListCatalog: query => query.kind === "run" && unavailable
+    ? {state: "failed", context: query.context, reason: "Retained runs could not be read."}
+    : catalog([RESCHEDULE], {run: [retained]})(query, facade)});
+  await user.dblClick(await page().findByText(RESCHEDULE.name));
+  await user.click(page().getByRole("tab", {name: "Runs"}));
+  await page().findByText("Retained runs could not be read.");
+  expect(page().queryByText("No runs yet")).toBeNull();
+  unavailable = false;
+  await user.click(page().getByRole("button", {name: "Retry runs"}));
+  await waitFor(() => expect(rowsOf(page().getByRole("table", {name: "Runs"}))).toHaveLength(1));
+  expect(page().queryByText("Retained runs could not be read.")).toBeNull();
+  expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
 });
 
 test("selected-test retained views exclude copied or other-test records and comparison keeps the explicitly chosen roles",async()=>{

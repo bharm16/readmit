@@ -18,8 +18,8 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
 import { enter, Journey, press } from "../testkit/journey";
 import type { Downstream } from "../testkit/downstream.js";
-import { findMessageRow, goTo, page } from "../testkit/navigation";
-import { activateLicense, createProject, EXPORTED_BOOKING, EXPORTED_RESCHEDULE, importExport } from "./steps";
+import { goTo, page } from "../testkit/navigation";
+import { activateLicense, createProject, EXPORTED_BOOKING, EXPORTED_RESCHEDULE, framed } from "./steps";
 
 let journey: Journey;
 
@@ -101,11 +101,18 @@ async function addEnvironment(user: UserEvent, address: string): Promise<void> {
 /** Creates the acknowledgement test from both messages of the open case:
  * the reschedule's MSA-1 is AA, after the operator's reset. */
 async function createTest(user: UserEvent): Promise<void> {
-  await goTo(user, "Cases");
-  for (const occurrence of ["s0001-e000001", "s0002-e000001"]) {
-    await user.click(within(await findMessageRow(occurrence)).getByRole("checkbox"));
-  }
-  await press(user, within(screen.getByRole("group", { name: "Selected messages" })).getByRole("button", { name: "Create test" }));
+  await goTo(user, "Messages");
+  await journey.chooseFiles([journey.path("exports/scheduling-feed.mllp")], "Open HL7 file");
+  await press(user, page().getByRole("button", {name: "Open file"}));
+  const messages = await screen.findByRole("table", {name: "Messages in this file"});
+  for (const checkbox of messages.querySelectorAll<HTMLInputElement>('tbody tr[data-row-id] input[type="checkbox"]')) await user.click(checkbox);
+  await act(user, page().getByRole("button", {name: "Create test case"}));
+  const importing = within(await screen.findByRole("dialog", {name: "Import"}));
+  await enter(user, importing.getByLabelText("Case"), "Reschedule is refused");
+  await waitFor(() => expect(journey.callsTo("ProbeImport").at(-1)?.settled).toBe(true));
+  await press(user, importing.getByRole("button", {name: "Next"}));
+  await importing.findByRole("table", {name: "Preview"});
+  await press(user, importing.getByRole("button", {name: /^Import$/}));
   await page().findByRole("heading", { level: 1, name: "New test" });
   await enter(user, await page().findByRole("textbox", { name: "Name" }), TEST);
   await page().findByRole("option", { name: ENVIRONMENT });
@@ -119,7 +126,7 @@ async function createTest(user: UserEvent): Promise<void> {
   await press(user, await page().findByRole("button", { name: "Add check" }));
   await press(user, await screen.findByRole("menuitem", { name: "ACK field" }));
   const check = within(await screen.findByRole("dialog", { name: "Add ack field check" }));
-  await user.selectOptions(check.getByLabelText("Message"), "s0002-e000001");
+  await user.selectOptions(check.getByLabelText("Message"), "s0001-e000002");
   await user.selectOptions(check.getByLabelText("Field"), "MSA-1");
   await enter(user, check.getByLabelText("Expected value"), "AA");
   await press(user, check.getByRole("button", { name: "Apply" }));
@@ -171,10 +178,9 @@ function runEntries(): string[] {
 
 test("a test of an independent downstream system fails on its defect, passes once it is fixed and fails again when the defect returns", async () => {
   const user = userEvent.setup();
-  journey.writeFile("exports/scheduling-feed.hl7", EXPORTED_BOOKING + EXPORTED_RESCHEDULE);
+  journey.writeFile("exports/scheduling-feed.mllp", framed(EXPORTED_BOOKING) + framed(EXPORTED_RESCHEDULE));
   const downstream = await journey.startDownstream("downstream/appointments.csv", "defective");
   await licensed(user);
-  await importExport(user, journey, "exports/scheduling-feed.hl7", "Reschedule is refused");
 
   // The environment: a named nonproduction target, its one allowed address,
   // and a reachability check that sends nothing. The command line reads the

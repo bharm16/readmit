@@ -3,10 +3,59 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { enter, Journey, press } from "../testkit/journey";
 import { details, page, sidebar } from "../testkit/navigation";
-import { EXPORTED_BOOKING, EXPORTED_RESCHEDULE, framed, licensedProject } from "./steps";
+import { activateLicense, createProject, EXPORTED_BOOKING, EXPORTED_RESCHEDULE, framed, licensedProject } from "./steps";
 let journey: Journey;
 beforeEach(()=>{journey=Journey.create();});
 afterEach(async()=>{await journey.dispose();});
+
+test.each(["inspected", "checked", "new-project"])("Create test case retains an opened file with its explicit inputs (%s)", async (entry) => {
+ const user = userEvent.setup();
+ journey.writeFile("exports/failing.mllp", framed(EXPORTED_BOOKING) + framed(EXPORTED_RESCHEDULE));
+ if (entry === "new-project") {
+  await journey.launch();
+  await activateLicense(user, journey);
+ } else await licensedProject(journey, user);
+ await press(user, sidebar().getByRole("button", {name: "Messages"}));
+ await journey.chooseFiles([journey.path("exports/failing.mllp")], "Open HL7 file");
+ await press(user, page().getByRole("button", {name: "Open file"}));
+ const messages = await screen.findByRole("table", {name: "Messages in this file"});
+ await press(user, messages.querySelector<HTMLElement>('[data-row-id="1"]')!);
+ if (entry === "checked") {
+  await user.click(messages.querySelector<HTMLInputElement>('[data-row-id="1"] input[type="checkbox"]')!);
+  await user.click(messages.querySelector<HTMLInputElement>('[data-row-id="0"] input[type="checkbox"]')!);
+ }
+ await journey.settled();
+ const create = page().getByRole("button", {name: "Create test case"});
+ expect(create).toHaveProperty("disabled", false);
+ await press(user, create);
+ if (entry === "new-project") await createProject(user, journey, "investigations", "message-test", "Message test");
+ const importing = within(await screen.findByRole("dialog", {name: "Import"}));
+ await enter(user, importing.getByLabelText("Case"), "Failing reschedule");
+ await waitFor(() => expect(journey.callsTo("ProbeImport").at(-1)?.settled).toBe(true));
+ await press(user, importing.getByRole("button", {name: "Next"}));
+ await importing.findByRole("table", {name: "Preview"});
+ await press(user, importing.getByRole("button", {name: /^Import$/}));
+ await screen.findByRole("dialog", {name: "Create test case"});
+ const steps = within(screen.getByRole("list", {name: "Authored input steps"}));
+ expect(steps.getAllByRole("listitem")).toHaveLength(entry === "checked" ? 2 : 1);
+ expect(steps.getAllByRole("button")[0]!.textContent).toContain("SIU^S13");
+ if (entry === "checked") expect(steps.getAllByRole("button")[1]!.textContent).toContain("SIU^S12");
+ expect(journey.callsTo("ExecuteReviewedAction")).toHaveLength(0);
+ expect(journey.callsTo("SaveItem").filter(call => (call.args[0] as {kind: string}).kind === "test")).toHaveLength(0);
+ if (entry === "inspected") {
+  await enter(user, page().getByRole("textbox", {name: "Name"}), "Retained failing message");
+  await press(user, page().getByRole("button", {name: "Save draft"}));
+  await page().findByRole("table", {name: "Test drafts"});
+  journey.moveFolder("exports", "moved-originals");
+  await journey.settled();
+  await journey.close();
+  await journey.launch();
+  await page().findByRole("table", {name: "Test drafts"});
+  await press(user, screen.getByRole("button", {name: "Resume Retained failing message"}));
+  await screen.findByRole("dialog", {name: "Create test case"});
+  expect(within(screen.getByRole("list", {name: "Authored input steps"})).getAllByRole("listitem")).toHaveLength(1);
+ }
+});
 
 async function openSourceContext(user: ReturnType<typeof userEvent.setup>) {
  const direct=page().queryByRole("button",{name:"Source context"});

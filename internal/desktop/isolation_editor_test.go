@@ -224,7 +224,7 @@ func TestIsolationHistoryPublicationRefusesConcurrentClaimsAndLinkedStorage(t *t
 
 // Build the customer-store stand-in before any reviewed action starts. A
 // reexecuted desktop test binary also initializes every imported engine package
-// and the race runtime inside the operation's one-second budget. This provider
+// and the race runtime inside each operation's request budget. This provider
 // only records the lookup and emits a synthetic role value; production
 // deadlines and the instrumented facade/transport remain unchanged.
 func isolationCredentialProvider(t *testing.T) string {
@@ -398,6 +398,11 @@ func TestIsolationEditorRealFacadeSavesPassivelyAndRunsReviewedLifecycle(t *test
 	path, registry := isolationRegistration(t)
 	adapter := &registry.Adapters[0]
 	adapter.Project, adapter.URL, adapter.ServerName = created.Context.ProjectID, server.URL, "example.com"
+	// This checks the complete reviewed lifecycle, not a one-second latency
+	// guarantee. Each request includes credential startup, authority rereads,
+	// retained intents and TLS; allow normal hosted-runner scheduling delays.
+	// Production timeout enforcement and uncertainty checks are unchanged.
+	adapter.TimeoutMS = 5000
 	adapter.Authorities = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw})
 	address := server.Listener.Addr().String()
 	_, port, _ := net.SplitHostPort(address)

@@ -13792,6 +13792,7 @@ export interface TestObservation {
 export interface TestOrigin {
   exchange?: ExchangeOrigin;
   case: ItemRef;
+  identity?: string;
   messages: string[];
   title?: string;
   source?: TestSource;

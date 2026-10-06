@@ -534,7 +534,8 @@ test("actual connected report exports its reviewed value-free extract and reopen
  await user.dblClick(await within(testList).findByText("Unchanged appointment expectation"));
  for(const name of ["Inputs","Expectations","Runs","Before/after","Exports"])expect(page().getByRole("tab",{name})).toBeTruthy();
  await press(user,page().getByRole("tab",{name:"Runs"}));
- const ownRuns=await page().findByRole("table",{name:"Runs"});await waitFor(()=>expect(ownRuns.querySelectorAll("tr[data-row-id]")).toHaveLength(1));
+ await page().findByRole("table", {name: "Runs"});
+ await waitFor(() => expect(page().getByRole("table", {name: "Runs"}).querySelectorAll("tr[data-row-id]")).toHaveLength(1));
  const linked=(journey.callsTo("ListCatalog").filter(call=>(call.args[0] as {kind:string}).kind==="run" && (call.result as {state?:string})?.state==="completed").at(-1)!.result as {page:{items:CatalogItem[]}}).page.items;
  expect(linked[0]?.summary.run?.test?.id).toBe(saved.saved?.id);
  await press(user,page().getByRole("tab",{name:"Exports"}));

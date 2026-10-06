@@ -130,9 +130,11 @@ type TestSource struct {
 // TestOrigin is where a new test starts: the case, the occurrences selected
 // in it (none selects every one a test can send), the title proposed for
 // the test, the source it records and checks proposed for it. Proposals reach the editor undecided and never the draft.
+// Identity, when supplied by an evidence reader, pins the source it displayed.
 type TestOrigin struct {
 	Exchange  *ExchangeOrigin `json:"exchange,omitzero"`
 	Case      ItemRef         `json:"case"`
+	Identity  string          `json:"identity,omitzero"`
 	Messages  []string        `json:"messages"`
 	Title     string          `json:"title,omitzero"`
 	Source    *TestSource     `json:"source,omitzero"`
@@ -1024,6 +1026,18 @@ func (c *loadedCatalog) newTestDraft(result ItemDraftResult, origin *TestOrigin)
 	if source == nil {
 		result.refuse(Failed, "the case this test sends cannot be verified")
 		return result
+	}
+	if origin.Identity != "" && origin.Identity != source.Identity {
+		result.refuse(Failed, "the selected source evidence changed; inspect it again before creating a test")
+		return result
+	}
+	if origin.Source != nil && origin.Source.Kind == SourceFinding {
+		resolved, err := c.findingTestOrigin(*origin, source)
+		if err != nil {
+			result.refuse(Failed, err.Error())
+			return result
+		}
+		origin = &resolved
 	}
 	draft, err := testauthor.NewDraft(entry, source.Identity)
 	if err != nil {

@@ -1,0 +1,4 @@
+- Create a test case directly from an opened HL7 file. The existing import review retains its original bytes and continues with checked messages in their selected order, or the inspected message when none are checked. Retained captures use the same explicit selection rule.
+- Start a test draft from a confirmed message finding even when it has no automatic ACK checks. The original finding, source and current confirmation are verified; expected behavior remains explicitly authored.
+- Saving a test draft opens Drafts and restores that location after restart. Drafts created from loose files use retained source evidence and remain available after the original file moves.
+- Refuse changed source evidence when opening the editor, discard superseded draft-opening replies, and keep unreadable run history visibly unavailable with a retry action.

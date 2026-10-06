@@ -1241,8 +1241,14 @@ and the list scrolled back to the finding that was first on screen. Review
 shows the reviewer as the name set on this computer; when none
 is set it asks for a reviewer on this computer and saves the name to this
 computer's preferences before the decision. A refused save shows its reason
-and keeps the sheet open. Create test is offered for a confirmed finding and
-is disabled, with the reason, when the finding cannot become a test.
+and keeps the sheet open. Create test is offered for a confirmed finding in
+the current analysis, including findings without automatic ACK proposals.
+The facade reopens its original report and current confirmation, verifies the
+source identity, and selects only sendable messages implicated by the finding
+or linked by its ACK proposals. Missing provenance, withdrawn confirmation or
+no linked sendable input is reported instead of selecting the whole capture.
+The finding supplies evidence for a draft; the author still chooses the
+expected behavior. Supported ACK proposals remain undecided.
 
 Analysis settings has Import settings… and Export settings… in its More
 settings actions menu. Import opens the file as unsaved settings in the sheet;
@@ -1816,9 +1822,21 @@ original case.
 ## Authoring a regression test
 
 
+From an opened HL7 file, **Create test case** uses checked messages in checked
+order, or the inspected message when none are checked. It first retains the
+original source through the existing Import review, then opens the test editor
+with that exact selection. If no project is open, choose or create one and
+continue the same import. Cancelling import returns to the file. The retained
+draft and its inputs remain usable when the original loose file is moved.
+Creating a draft sends nothing.
+The source identity shown by the reader is checked again when the editor
+opens. Replaced evidence is refused, and an editor-opening reply that arrives
+after navigation or a newer draft cannot populate the current editor.
+
 Tests lists the project's saved tests by name, case, latest compatible result
 and update time; Search and Filter apply without saving anything. New test, a
-case's Create test (its chosen messages, in recorded source order) and a
+case's Create test (checked messages in checked order, otherwise the inspected
+message; an empty selection never means the whole capture) and a
 confirmed finding (its expectations as undecided proposals) open one editor:
 Setup (name, case, messages, a named environment, outcome, observation for
 Appointment records, reset), Checks (Record count, Exact records, ACK field,
@@ -1829,6 +1847,16 @@ and the runs of each); Edit opens the same editor with one Save, refused
 against a stale version; Run hands the saved version to the run review, where
 sending stays a separate explicit step. Duplicate, Export test, Import test,
 Edit JSON and Details are in its menu.
+
+**Save draft** opens the Drafts list, whose selected location survives restart.
+Resume continues the retained inputs and authored choices without restoring
+execution consent. To reproduce a failure, select the target, declare its
+starting state and the expected response or observation, create the test, then
+use **Run** and review **Send**. Rerun the same expectations after correcting
+the receiver or explicitly creating a corrected input version; each execution
+retains its own observed result.
+If the saved test's retained runs cannot be read, Runs reports that failure
+and offers **Retry runs**; it does not describe unavailable evidence as no runs.
 
 **Connected tests.** Choosing Engine output or Application records as the
 Outcome makes the test a connected test: what decides it is what the systems

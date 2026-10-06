@@ -737,7 +737,7 @@ test("a refused review save shows the reason and keeps the sheet open", async ()
   expect(rowsOf(table)[0]).toContain("New");
 });
 
-test("Create test is disabled with the reason for a confirmed finding that cannot become a test", async () => {
+test("a confirmed finding without proposed checks still opens a draft with explicit expectations left to the author", async () => {
   const user = userEvent.setup();
   const { facade } = await openFindings(user, {
     OpenCaseFindings: (request) => ({ ...findings(["f000001"]), context: request.context }),
@@ -749,13 +749,22 @@ test("Create test is disabled with the reason for a confirmed finding that canno
       revisions: [{ revision: "1", published_at: "2026-01-02T10:00:00Z", author: "Avery QA", decisions: [{ finding: "f000001", verdict: "confirmed" as const, rationale: "must keep rejecting" }] }],
       statuses: [findingStatus("f000001", "confirmed", { next_evidence: "Capture the acknowledgement the case does not hold." })],
     }),
+    OpenItemDraft: (request) => ({
+      state: "completed", context: request.context, new: true, ref: {kind: "test", id: ""},
+      draft: {name: "Unexpected acknowledgement", test: {schema: "readmit-test-draft/v1", case: {entry: CASE_ENTRY, identity: CASE_IDENTITY}, name: "Unexpected acknowledgement", messages: [GRID_OCCURRENCE], target: "", boundary: "", observation: "", reset: "", expectations: []}, test_links: {source: request.from!.source!}},
+      test: {case: CASE.ref, case_name: CASE_ENTRY, messages: [], observations: [], unsupported: [], proposals: [], read_only: false},
+    }),
   });
   const table = await page().findByRole("table", { name: "Findings" });
   await waitFor(() => expect(rowsOf(table)[0]).toContain("Confirmed"));
   await user.click(within(table).getAllByRole("row")[1]!);
-  expect(details().getByRole("button", { name: "Create test" })).toHaveProperty("disabled", true);
+  expect(details().getByRole("button", { name: "Create test" })).toHaveProperty("disabled", false);
   expect(details().getByText("Capture the acknowledgement the case does not hold.")).toBeTruthy();
-  expect(facade.callsTo("OpenItemDraft")).toHaveLength(0);
+  await user.click(details().getByRole("button", {name: "Create test"}));
+  await screen.findByRole("dialog", {name: "Create test case"});
+  expect((facade.oneCall("OpenItemDraft")[0] as ItemRequest).from).toMatchObject({case: CASE.ref, source: {kind: "finding", finding: "f000001", report_sha256: REPORT_SHA256, review: "review-1"}});
+  expect(page().getByText(/Choose the expected behavior/)).toBeTruthy();
+  expect(facade.callsTo("SaveItem")).toHaveLength(0);
 });
 
 test("Import settings opens the file as an unsaved draft, an unsupported pair is saved unchanged, and Export writes the saved settings", { timeout: 15_000 }, async () => {

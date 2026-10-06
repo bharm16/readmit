@@ -945,6 +945,9 @@ const [inlineCheck,setInlineCheck]=useState<number>(0);
 
   const body = (
     <div className="flow workflow-page workflow-editor">
+      {work?.links.source?.kind === "finding" ? (
+        <p className="workflow-caption">Choose the expected behavior for this finding's messages. The observed failure is evidence, not an expected passing result. Suggested checks require your review.</p>
+      ) : null}
       {notices.map((notice) => (
         <p key={notice.field + notice.problem} role="status">
           {notice.problem}

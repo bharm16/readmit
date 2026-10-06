@@ -5,9 +5,34 @@ import (
 	"github.com/bharm16/readmit/internal/fhirevidence"
 	"github.com/bharm16/readmit/internal/fhirr4"
 	"github.com/bharm16/readmit/internal/grid"
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 )
+
+func TestTestDraftRefusesAReplacedCaptureAfterMessageSelection(t *testing.T) {
+	app, context := namedProject(t)
+	source := writeCase(t, context.Project, "capture", framed(sampleImportHL7))
+	registerCase(t, context.Project, "capture", "Pinned capture")
+	item := caseAt(t, app, context, "capture")
+	request := desktop.ItemRequest{Context: context, Ref: desktop.ItemRef{Kind: desktop.TestItem}, From: &desktop.TestOrigin{
+		Case: item.Ref, Identity: source.Identity, Messages: []string{"s0001-e000001"},
+	}}
+	if got := app.OpenItemDraft(request); got.State != desktop.Completed || got.Draft.Test.Case.Identity != source.Identity {
+		t.Fatalf("unchanged selected evidence: %+v", got)
+	}
+	writeCase(t, context.Project, "replacement", framed(secondImportHL7))
+	if err := os.Rename(filepath.Join(context.Project, "capture"), filepath.Join(context.Project, "original")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(filepath.Join(context.Project, "replacement"), filepath.Join(context.Project, "capture")); err != nil {
+		t.Fatal(err)
+	}
+	if got := app.OpenItemDraft(request); got.State != desktop.Failed || got.Draft != nil {
+		t.Fatalf("same occurrence ID from replacement evidence created a draft: %+v", got)
+	}
+}
 
 func TestIncompleteTestDraftKeepsExplicitInputOrderBeforeAnyExecutionSetup(t *testing.T) {
 	app, context := namedProject(t)
@@ -43,12 +68,17 @@ func TestFHIRDraftRequestsKeepExplicitRetainedInputOrder(t *testing.T) {
 		t.Fatalf("retained resources: %+v", rows)
 	}
 	requested := []string{rows.Rows[2].ID, rows.Rows[1].ID}
-	answer := app.OpenItemDraft(desktop.ItemRequest{Context: context, Ref: desktop.ItemRef{Kind: desktop.TestItem}, From: &desktop.TestOrigin{Case: *imported.Case, Messages: requested}})
+	request := desktop.ItemRequest{Context: context, Ref: desktop.ItemRef{Kind: desktop.TestItem}, From: &desktop.TestOrigin{Case: *imported.Case, Identity: verified.Case.Identity, Messages: requested}}
+	answer := app.OpenItemDraft(request)
 	if answer.Draft == nil || answer.Draft.ConnectedTest == nil || len(answer.Draft.ConnectedTest.Steps) != 2 {
 		t.Fatalf("typed draft: %+v", answer)
 	}
 	steps := answer.Draft.ConnectedTest.Steps
 	if steps[0].Source.Occurrence != requested[0] || steps[1].Source.Occurrence != requested[1] || !slices.Equal(steps[1].After, []string{steps[0].ID}) {
 		t.Fatalf("authored request order: %+v", steps)
+	}
+	request.From.Identity = "changed"
+	if got := app.OpenItemDraft(request); got.State != desktop.Failed {
+		t.Fatalf("different R4 source identity created a draft: %+v", got)
 	}
 }

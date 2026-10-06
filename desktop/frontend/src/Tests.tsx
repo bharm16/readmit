@@ -47,7 +47,7 @@ import "./tests.css";
 export type TestWorkspaceView="setup"|"checks"|"history"|"runs"|"compare"|"exports";
 export function isTestWorkspaceView(view:string|undefined):view is TestWorkspaceView {return ["setup","checks","history","runs","compare","exports"].includes(view??"");}
 export type TestsPlace =
-  | { kind: "list" }
+  | { kind: "list"; category?: "all" | "drafts" }
   | { kind: "test"; id: string; view: TestWorkspaceView }
   | { kind: "new" }
   | { kind: "edit"; id: string };
@@ -162,7 +162,7 @@ export function useTests({ root, projectId="", retainedDrafts=[],onResumeDraft, 
   const scope = useRef(new RequestScope());
   const context = useCallback(() => scope.current.enter(root ?? "",projectId), [root,projectId]);
   const [items, setItems] = useState<CatalogItem[] | null>(null);
-const [browse,setBrowse]=useState("all");
+  const browse = place.kind === "list" ? place.category ?? "all" : "all";
 const [recentRuns,setRecentRuns]=useState<CatalogItem[]|null>(null);
 const [runsFailure,setRunsFailure]=useState<string|null>(null);
 const [listedSuites,setListedSuites]=useState<CatalogItem[]|null>(null);
@@ -180,7 +180,7 @@ const [suitesFailure,setSuitesFailure]=useState<string|null>(null);
   const [sheet, setSheet] = useState<null | "search" | "filter">(null);
   const [start, setStart] = useState<EditorStart | null>(null);
   const [opening, setOpening] = useState<string | null>(null);
-  const browseTests=useCallback((category:"all"|"drafts")=>{setBrowse(category);go({kind:"list"});},[go]);
+  const browseTests = useCallback((category: "all" | "drafts") => go({ kind: "list", category }), [go]);
 
   const refreshes = useRef(0);
   const refresh = useCallback(async () => {
@@ -229,6 +229,12 @@ const [suitesFailure,setSuitesFailure]=useState<string|null>(null);
   // they are now: one opened straight from a case's messages, without the
   // list shown first, reads them when it is shown.
   const editorShown = pageShown && (place.kind === "new" || place.kind === "edit");
+  const newEditorShown = pageShown && place.kind === "new";
+  const draftOpening = useRef({ generation: 0, root, projectId, shown: newEditorShown });
+  if (draftOpening.current.root !== root || draftOpening.current.projectId !== projectId || (draftOpening.current.shown && !newEditorShown)) {
+    draftOpening.current.generation += 1;
+  }
+  draftOpening.current = { ...draftOpening.current, root, projectId, shown: newEditorShown };
   useEffect(() => {
     if (editorShown && (place.kind === "new" || place.kind === "edit" && start?.mode === "edit" && start.ref?.id === place.id)) void refresh();
   }, [editorShown, place.kind, refresh]);
@@ -237,6 +243,7 @@ const [suitesFailure,setSuitesFailure]=useState<string|null>(null);
    * finding's proposals, an import, or nothing yet. */
   const startNew = useCallback(
     async (origin?: TestOrigin) => {
+      const generation = ++draftOpening.current.generation;
       if (!origin) {
         // A new test left unfinished is still the new test to return to.
         setStart((held) => (held?.mode === "new" && held.work ? held : { mode: "new", project:root??"", work: null, context: null }));
@@ -246,9 +253,10 @@ const [suitesFailure,setSuitesFailure]=useState<string|null>(null);
       setStart(null);
       go({ kind: "new" });
       const answer = await openItemDraft({ context: context(), ref: { kind: "test", id: "" }, from: origin });
+      if (draftOpening.current.generation !== generation || !draftOpening.current.shown || draftOpening.current.root !== root) return;
       setStart(answer.state === "completed" ? startOf("new", answer) : { mode: "new", work: null, context: null, notices: [{ field: "test", problem: answer.reason ?? "This case could not be read." }] });
     },
-    [context, go],
+    [context, go, root],
   );
 
   const openCase = useCallback(
@@ -341,7 +349,7 @@ const [suitesFailure,setSuitesFailure]=useState<string|null>(null);
     onOpenExchange,
     onReadSavedView:view=>{if(start?.ref)go({kind:"test",id:start.ref.id,view});},
  ownerRoot:root??"",
-    onDraftSaved:()=>{if(currentEditorShown.current)go({kind:"list"});},
+    onDraftSaved: () => { if (currentEditorShown.current) browseTests("drafts"); },
     inspectedField,
     context,
     cases,
@@ -523,7 +531,7 @@ const [suitesFailure,setSuitesFailure]=useState<string|null>(null);
     toolbar: null,
     listTools,
     body: (
-      <div className="workflow-page workflow-workspace workflow-library"><aside className="workflow-rail" aria-label="Browse test cases"><h2>Browse</h2><button className="workflow-step" type="button" aria-current={browse==="all"?"page":undefined} onClick={()=>setBrowse("all")}><strong>All test cases</strong><span>{failure?"Unavailable":items===null?"Reading…":`${all.length} saved ${all.length===1?"test":"tests"}`}</span></button><button className="workflow-step" type="button" aria-current={browse==="drafts"?"page":undefined} onClick={()=>setBrowse("drafts")}><strong>Drafts</strong><span>Resume unfinished work</span></button>{suitesFailure?<p role="status">{suitesFailure}</p>:listedSuites===null?<p aria-live="polite">Reading suites…</p>:null}{listedSuites?.map(suite=><button key={suite.ref.id} type="button" className="workflow-step" disabled={!onOpenSuite || suite.availability!=="available"} onClick={()=>onOpenSuite?.(suite.ref)}><strong>{suite.name||suite.summary.suite?.entry||suite.ref.id}</strong><span>{suite.summary.suite?.tests??""} test cases</span></button>)}</aside><div className="workflow-content"><label className="workflow-search"><span className="workflow-search-icon"><img src={searchAsset} alt=""/></span><input type="search" aria-label="Search test cases" placeholder="Search test cases…" value={view.query} onChange={event=>setView({...view,query:event.target.value})}/></label>
+      <div className="workflow-page workflow-workspace workflow-library"><aside className="workflow-rail" aria-label="Browse test cases"><h2>Browse</h2><button className="workflow-step" type="button" aria-current={browse==="all"?"page":undefined} onClick={()=>browseTests("all")}><strong>All test cases</strong><span>{failure?"Unavailable":items===null?"Reading…":`${all.length} saved ${all.length===1?"test":"tests"}`}</span></button><button className="workflow-step" type="button" aria-current={browse==="drafts"?"page":undefined} onClick={()=>browseTests("drafts")}><strong>Drafts</strong><span>Resume unfinished work</span></button>{suitesFailure?<p role="status">{suitesFailure}</p>:listedSuites===null?<p aria-live="polite">Reading suites…</p>:null}{listedSuites?.map(suite=><button key={suite.ref.id} type="button" className="workflow-step" disabled={!onOpenSuite || suite.availability!=="available"} onClick={()=>onOpenSuite?.(suite.ref)}><strong>{suite.name||suite.summary.suite?.entry||suite.ref.id}</strong><span>{suite.summary.suite?.tests??""} test cases</span></button>)}</aside><div className="workflow-content"><label className="workflow-search"><span className="workflow-search-icon"><img src={searchAsset} alt=""/></span><input type="search" aria-label="Search test cases" placeholder="Search test cases…" value={view.query} onChange={event=>setView({...view,query:event.target.value})}/></label>
         {incomplete.map((save) => (
           <div key={save.operation} className="notice danger" role="alert">
             <span>
@@ -704,6 +712,7 @@ function useTestDetail({
   const [history, setHistory] = useState<TestHistoryResult | null>(null);
   const [associatedRuns,setAssociatedRuns]=useState<SelectedTestRun[]>([]);
   const [associatedFailure,setAssociatedFailure]=useState<string|null>(null);
+  const [detailRetry, setDetailRetry] = useState(0);
   const [sheet, setSheet] = useState<null | "duplicate" | "json" | "details">(null);
   const [inspectingConnected, setInspectingConnected] = useState<ReturnType<typeof connectedCheckRows>[number] | null>(null);
   const [notice, setNotice] = useState<{ text: string; problem?: boolean } | null>(null);
@@ -725,16 +734,24 @@ function useTestDetail({
     runRequest.current += 1;
     if (!ref) return;
     let live = true;
-    void Promise.all([openItemDraft({ context: context(), ref: { kind: "test", id: ref.id } }), testHistory({ context: context(), ref: { kind: "test", id: ref.id } }),listWholeCatalog({context:context(),kind:"run",filter:{}})]).then(([draft, versions,recordedRuns]) => {
+    // These readers share the facade's operation slot. Serial reads avoid
+    // spending their busy-retry budget competing with one another.
+    void (async () => {
+      const request = { context: context(), ref: { kind: "test" as const, id: ref.id } };
+      const draft = await openItemDraft(request);
+      if (!live) return;
+      const versions = await testHistory(request);
+      if (!live) return;
+      const recordedRuns = await listWholeCatalog({ context: request.context, kind: "run", filter: {} });
       if (!live) return;
       setOpened(draft);
       setHistory(versions);
       if(recordedRuns.state==="completed" || recordedRuns.state==="empty")setAssociatedRuns(associatedTestRuns(recordedRuns.page?.items??[],ref));else setAssociatedFailure(recordedRuns.reason??"The retained run associations could not be verified.");
-    });
+    })();
     return () => {
       live = false;
     };
-  }, [ref?.id, item?.updated_at]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ref?.id, item?.updated_at, detailRetry]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!item || !ref) return { title: "Test", actions: null, body: <p aria-live="polite">Reading…</p> };
 
@@ -827,8 +844,8 @@ function useTestDetail({
   </>);
   const runsBody = (
     <>
-      <h2>Runs</h2>{associatedFailure ? <p role="alert">{associatedFailure}</p>:null}
-      {history && runs.length === 0 ? (
+      <h2>Runs</h2>
+      {associatedFailure ? <p role="alert">{associatedFailure} <button type="button" onClick={() => setDetailRetry(value => value + 1)}>Retry runs</button></p> : history && runs.length === 0 ? (
         <EmptyState
           title="No runs yet"
           action={
