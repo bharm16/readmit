@@ -24,7 +24,7 @@ test("installing every reference edition makes exact message selection automatic
   await journey.chooseFiles([source],"Open HL7 file");await press(user,screen.getByRole("button",{name:"Open file"}));
   let list=await screen.findByRole("table",{name:"Messages in this file"});
   await press(user,list.querySelector<HTMLElement>('[data-row-id="0"]')!);
-  await press(user,screen.getByRole("button",{name:"HL7 reference version"}));
+  await press(user,screen.getByRole("button",{name:"HL7 reference version"}));await press(user,screen.getByRole("menuitem",{name:"Manage reference library…"}));
   const library=within(await screen.findByRole("dialog",{name:"HL7 reference library"}));
   await library.findByRole("option",{name:"HL7 2.9 · Not installed"});
   await journey.chooseFolder(journey.path("references"),"Install HL7 reference library");await press(user,library.getByRole("button",{name:"Install library…"}));

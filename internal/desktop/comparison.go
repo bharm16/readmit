@@ -153,13 +153,15 @@ func (r *CaseComparisonResult) refuse(state State, reason string) { r.State, r.R
 // ComparisonSide is one compared case: its reference and version, its name
 // and how many messages it holds.
 type ComparisonSide struct {
-	Occurrence string  `json:"occurrence,omitzero"`
-	Identity   string  `json:"identity,omitzero"`
-	RawSHA256  string  `json:"raw_sha256,omitzero"`
-	RawBytes   int     `json:"raw_bytes,omitzero"`
-	Ref        ItemRef `json:"ref"`
-	Name       string  `json:"name"`
-	Messages   int     `json:"messages"`
+	MessageCode  string  `json:"message_code,omitzero"`
+	TriggerEvent string  `json:"trigger_event,omitzero"`
+	Occurrence   string  `json:"occurrence,omitzero"`
+	Identity     string  `json:"identity,omitzero"`
+	RawSHA256    string  `json:"raw_sha256,omitzero"`
+	RawBytes     int     `json:"raw_bytes,omitzero"`
+	Ref          ItemRef `json:"ref"`
+	Name         string  `json:"name"`
+	Messages     int     `json:"messages"`
 }
 
 // CaseComparison is one comparison, windowed: the two sides, the keys and
@@ -318,6 +320,16 @@ func (a *App) CompareCases(request CaseComparisonRequest) CaseComparisonResult {
 			equal := bytes.Equal(leftBytes, rightBytes)
 			comparison.RawEqual = &equal
 			comparison.Current.Occurrence, comparison.Other.Occurrence = request.Pair.Left, request.Pair.Right
+			for index, side := range []*ComparisonSide{&comparison.Current, &comparison.Other} {
+				for _, event := range sides[index].Events {
+					if event.ID == side.Occurrence {
+						if doc, err := sides[index].Document(event); err == nil {
+							side.MessageCode, side.TriggerEvent = messageType(doc, 0)
+						}
+						break
+					}
+				}
+			}
 			comparison.Current.Identity, comparison.Other.Identity = sides[0].Identity, sides[1].Identity
 			comparison.Current.RawSHA256, comparison.Other.RawSHA256 = digestOf(leftBytes), digestOf(rightBytes)
 			comparison.Current.RawBytes, comparison.Other.RawBytes = len(leftBytes), len(rightBytes)

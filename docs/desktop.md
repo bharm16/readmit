@@ -888,6 +888,28 @@ selection is the whole message or lies outside the window. `raw` stays the
 selected part's own escaped bytes, the value Copy value copies. A standalone
 file's message is windowed within that message, at the file's offsets.
 
+The readable window also carries numbered physical `lines` and `tokens`.
+Each token carries rendered text, its original half-open byte span, and the
+canonical parser path where navigation is available. `hl7.Document.SourceNodes`
+projects the original tree over the bounded window; the frontend never splits
+HL7 values or reconstructs paths from displayed characters. Clicking a token
+uses the same inspection call as a grid row and retains the current raw window.
+Arrow keys move between tokens; Enter or Space inspects the focused position.
+The response expands the selected segment and component ancestry in the grid.
+Repeated equal values retain separate occurrence paths. Separators select the
+position they introduce; selected empty values have an insertion marker, and
+omitted positions have no fabricated source highlight. CRLF counts as one line
+even across windows, and non-ASCII bytes remain escaped whole.
+
+Syntax colors use the approved Codex light/dark roles: segment names and types
+are purple, declared dates green, declared code values orange, and numeric
+datatypes and item identifiers blue/cyan. Unknown value types remain neutral;
+digits inside identifiers do not imply a numeric datatype. Selected text is
+neutral with an outline. Colors describe syntax and metadata, never validation.
+PHI masking applies before token text is rendered and retains original paths
+and byte offsets. Its icon remains beside the message tab independently of the
+removed visible Original message heading.
+
 An occurrence's `source_name` is the name declared for its source, empty when
 nothing names it and it reads by `source_id`; `direction` is the direction the
 case recorded. A standalone file has neither.
@@ -2247,7 +2269,8 @@ scroll position. Explicitly selected reference
 catalog, profile, pack and documentation paths retain their verified hashes.
 Reopening verifies those identities again; changed files require explicit
 selection. It never retains reference prose, message values or execution
-consent, and values reopen hidden.
+consent. A protective PHI mask preference is retained for HL7 readers; other
+value views reopen hidden.
 
 A session an earlier release wrote may also carry a `drafts` member, the note
 edits that release kept there. It is read past, whatever it holds, and never
@@ -2515,14 +2538,17 @@ General shows.
 
 **Tokens.** Sizes come from the shared rem tokens at a 16px root, with the
 workbench's 32px toolbar buttons and 28px tabs matching their Figma variants.
-The central control palette matches Interface / Button (`2220:3737`): primary,
-hover, border, disabled and on-primary roles are declared once in `styles.css`.
-Surfaces, text, status and light/dark preference still follow the platform;
-forced colours replace control roles with their system pairs. The stylesheet
-checks pin those exact Figma declarations and refuse arbitrary colour literals
-elsewhere, gradients, remote resources, forced-colours opt-outs, panel-owned
-control/table sizing, unscaled lengths, unrelated radii and width media queries.
-Keyboard focus remains visible and measured layout uses the same rem tokens.
+The neutral palette matches the approved page 12 Figma previews, Codex Light
+(`2388:26677`) and Codex Dark (`2394:3836`). Surfaces, text, borders, selection
+and control roles are centralized in `styles.css`; the saved light/dark choice
+or system preference selects them. Selected tabs use a soft gray fill, primary
+buttons invert against the surface, and reference links retain an underline.
+Status colours remain platform roles, and forced colours replace the palette
+with paired system colours. The stylesheet checks pin the Figma palette and
+refuse arbitrary colour literals elsewhere, gradients, remote resources,
+forced-colours opt-outs, panel-owned control/table sizing, unscaled lengths,
+unrelated radii and width media queries. Keyboard focus remains visible and
+measured layout uses the same rem tokens.
 
 **Vocabulary.** Closed vocabularies read through explicit captions keyed by
 their generated types, and a member without one reads *Unsupported* with its
@@ -2542,8 +2568,9 @@ provider and free-text fields, including their repetitions and components, in
 the original text, hex, grid and Details views. Unknown custom Z segments are
 masked conservatively. Structural delimiters and original offsets remain. This
 is a display aid, not de-identification; exports and evidence retain original
-bytes. The mask stays active while navigating within the reader and resets on
-restart. It does not change FHIR, reports, comparison or aggregate reveal rules.
+bytes. The mask stays active while navigating within the reader and after
+restoring that file or capture on restart. The saved preference grants no reveal
+authorization and never resumes execution. It does not change FHIR, reports, comparison or aggregate reveal rules.
 
 **Other value views.** Values are shown and hidden by one control where they can
 be: *Show values* with *May contain patient data.* beside it while they are

@@ -253,6 +253,7 @@ export function ProjectSwitcher({
   onSettings,
   onFiles,
   onProjects,
+  onTools,
   disabled,
 }: {
   name: string;
@@ -265,6 +266,7 @@ export function ProjectSwitcher({
   onFiles?: () => void;
   /** The complete project library remains available from the source card. */
   onProjects?: () => void;
+  onTools?: () => void;
   disabled?: boolean;
 }) {
   return (
@@ -284,6 +286,7 @@ export function ProjectSwitcher({
         { label: "New project…", onSelect: onNew, disabled },
         { label: "Project settings", onSelect: onSettings, disabled },
         ...(onFiles ? [{ label: "Files", onSelect: onFiles }] : []),
+        ...(onTools ? [{ label: "Tools", onSelect: onTools, separated: true }] : []),
       ]}
     />
   );

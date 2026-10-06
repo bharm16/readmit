@@ -1,6 +1,8 @@
 package desktop
 
 import (
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/bharm16/readmit/internal/dictionary"
@@ -54,9 +56,20 @@ func attachInspectorGrid(view *Inspection, doc *hl7.Document, message int, label
 	if err != nil {
 		return
 	}
+	if view.Selected.Field > len(fields) {
+		missing, _, err := doc.Navigate(message, segmentPath+"-"+strconv.Itoa(view.Selected.Field))
+		if err == nil {
+			fields = append(fields, missing)
+		}
+	}
 	grid := &HL7InspectorGrid{Segment: segmentPath, Rows: []InspectorNode{describeInspectorNode(doc, message, segment, labels, catalog, view.Revealed)}, FieldCount: len(fields)}
 	if view.Selected.Field > 0 {
-		grid.Offset = (view.Selected.Field - 1) / InspectorNodeWindow * InspectorNodeWindow
+		for index, field := range fields {
+			if field.Field == view.Selected.Field {
+				grid.Offset = index / InspectorNodeWindow * InspectorNodeWindow
+				break
+			}
+		}
 	} else {
 		grid.Offset = view.NodeOffset
 	}
@@ -76,7 +89,21 @@ func attachInspectorGrid(view *Inspection, doc *hl7.Document, message int, label
 			continue
 		}
 		chosen := hl7.Node{}
-		if len(repetitions) == 1 {
+		selectedParts, selectedErr := hl7.ParseSelector(view.Selected.Path)
+		missingRepetition := selectedErr == nil && selectedParts.Parts().Repetition > len(repetitions)
+		if missingRepetition {
+			for _, repetition := range inspectorBranchWindow(repetitions, field.Path, view) {
+				add(repetition, 2)
+			}
+			parts := selectedParts.Parts()
+			parts.Component, parts.Subcomponent = 0, 0
+			if path, err := hl7.NewSelector(parts); err == nil {
+				chosen, _, _ = doc.Navigate(message, path.String())
+			}
+			if chosen.Path != "" {
+				add(chosen, 2)
+			}
+		} else if len(repetitions) == 1 {
 			chosen = repetitions[0]
 			if view.Selected.Kind == "repetition" {
 				add(chosen, 2)
@@ -96,25 +123,13 @@ func attachInspectorGrid(view *Inspection, doc *hl7.Document, message int, label
 		if err != nil {
 			continue
 		}
+		if !inspectorHasCompositeChildren(components, chosen, view.Selected, catalog) {
+			continue
+		}
 		if len(repetitions) == 1 && view.Selected.Kind == "field" && len(components) > InspectorNodeWindow {
 			add(chosen, 2)
 		}
-		// Catalogue-known omitted components remain explicit, never fabricated present.
-		observed := map[string]hl7.Node{}
-		for _, node := range inspectorBranchWindow(components, chosen.Path, view) {
-			observed[node.Path] = node
-		}
-		for _, value := range view.ReferenceValues {
-			if value.Node.Parent == chosen.Path && value.Node.State == hl7.Omitted && view.NodeOffset == 0 {
-				observed[value.Node.Path] = value.Node
-			}
-		}
-		ordered := []hl7.Node{}
-		for _, node := range observed {
-			ordered = append(ordered, node)
-		}
-		sortNodes(ordered)
-		for _, component := range ordered {
+		for _, component := range inspectorGridBranch(doc, message, chosen, components, view, catalog) {
 			add(component, 2)
 			if view.Selected.Path != component.Path && !strings.HasPrefix(view.Selected.Path, component.Path+".") {
 				continue
@@ -123,7 +138,10 @@ func attachInspectorGrid(view *Inspection, doc *hl7.Document, message int, label
 			if err != nil {
 				continue
 			}
-			for _, sub := range inspectorBranchWindow(subcomponents, component.Path, view) {
+			if !inspectorHasCompositeChildren(subcomponents, component, view.Selected, catalog) {
+				continue
+			}
+			for _, sub := range inspectorGridBranch(doc, message, component, subcomponents, view, catalog) {
 				add(sub, 3)
 			}
 		}
@@ -143,16 +161,26 @@ func attachInspectorGrid(view *Inspection, doc *hl7.Document, message int, label
 	view.Grid = grid
 }
 func sortNodes(nodes []hl7.Node) {
-	// Parser positions give stable numeric order even when omitted nodes have no span.
-	for i := 1; i < len(nodes); i++ {
-		for j := i; j > 0; j-- {
-			left, _ := hl7.ParseSelector(nodes[j-1].Path)
-			right, _ := hl7.ParseSelector(nodes[j].Path)
-			if left.Parts().Component <= right.Parts().Component {
-				break
-			}
-			nodes[j-1], nodes[j] = nodes[j], nodes[j-1]
+	// Parse each Go-owned position once. Large valid composites must not pay
+	// quadratic regex/allocation work before their bounded page is selected.
+	type position struct {
+		node  hl7.Node
+		parts hl7.Parts
+	}
+	ordered := make([]position, len(nodes))
+	for i, node := range nodes {
+		selector, _ := hl7.ParseSelector(node.Path)
+		ordered[i] = position{node: node, parts: selector.Parts()}
+	}
+	sort.Slice(ordered, func(i, j int) bool {
+		a, b := ordered[i].parts, ordered[j].parts
+		if a.Component != b.Component {
+			return a.Component < b.Component
 		}
+		return a.Subcomponent < b.Subcomponent
+	})
+	for i, row := range ordered {
+		nodes[i] = row.node
 	}
 }
 
@@ -172,4 +200,108 @@ func inspectorBranchWindow(nodes []hl7.Node, parent string, view *Inspection) []
 	}
 	offset = min(offset, len(nodes))
 	return nodes[offset:min(len(nodes), offset+InspectorNodeWindow)]
+}
+
+// A scalar's first syntactic component is the same value, not another branch.
+// Composite metadata or actual separators supply meaningful child positions.
+func inspectorHasCompositeChildren(children []hl7.Node, parent, selected hl7.Node, catalog *hl7reference.Catalog) bool {
+	if strings.HasPrefix(selected.Path, parent.Path+".") {
+		return true
+	}
+	if len(children) > 1 {
+		return true
+	}
+	if len(children) == 1 && (children[0].Start != parent.Start || children[0].End != parent.End || selected.Path == children[0].Path || strings.HasPrefix(selected.Path, children[0].Path+".")) {
+		return true
+	}
+	if catalog != nil {
+		answer := referenceFor(catalog, parent)
+		if answer.DatatypeKey != "" {
+			_, _, count, err := catalog.Entity(catalog.Edition(), answer.DatatypeKey, 0, InspectorNodeWindow)
+			return err == nil && count > 0
+		}
+	}
+	return false
+}
+
+// Every expanded ancestor owns its reference children, independently of the
+// selected descendant's datatype. The parser supplies omitted states and spans.
+func inspectorGridBranch(doc *hl7.Document, message int, parent hl7.Node, children []hl7.Node, view *Inspection, catalog *hl7reference.Catalog) []hl7.Node {
+	observed := map[string]hl7.Node{}
+	for _, node := range children {
+		observed[node.Path] = node
+	}
+	selector, err := hl7.ParseSelector(parent.Path)
+	if err != nil {
+		return inspectorBranchWindow(children, parent.Path, view)
+	}
+	base := selector.Parts()
+	addPosition := func(position int) {
+		parts := base
+		if parts.Component == 0 {
+			parts.Component = position
+		} else {
+			parts.Subcomponent = position
+		}
+		path, err := hl7.NewSelector(parts)
+		if err != nil {
+			return
+		}
+		node, _, err := doc.Navigate(message, path.String())
+		if err == nil {
+			observed[node.Path] = node
+		}
+	}
+	if catalog != nil {
+		answer := referenceFor(catalog, parent)
+		if answer.DatatypeKey != "" {
+			_, records, _, err := catalog.Entity(catalog.Edition(), answer.DatatypeKey, 0, InspectorNodeWindow)
+			if err == nil {
+				for _, record := range records {
+					addPosition(record.Position)
+				}
+			}
+		}
+	}
+	// An explicitly addressed missing descendant stays at its parent and depth,
+	// even when no reference catalog defines it.
+	if strings.HasPrefix(view.Selected.Path, parent.Path+".") {
+		if selected, err := hl7.ParseSelector(view.Selected.Path); err == nil {
+			if parent.Kind == "repetition" {
+				addPosition(selected.Parts().Component)
+			} else if parent.Kind == "component" {
+				addPosition(selected.Parts().Subcomponent)
+			}
+		}
+	}
+	ordered := make([]hl7.Node, 0, len(observed))
+	for _, node := range observed {
+		ordered = append(ordered, node)
+	}
+	sortNodes(ordered)
+	return inspectorBranchWindow(ordered, parent.Path, view)
+}
+
+// Message identity and bounded segment navigation belong to every inspection,
+// including a directly restored descendant, independently of reference visits.
+func attachInspectorMessage(view *Inspection, doc *hl7.Document, message int, labels *dictionary.Dictionary, catalog *hl7reference.Catalog) {
+	_, segments, err := doc.Navigate(message, "")
+	if err != nil {
+		return
+	}
+	view.SegmentCount = len(segments)
+	for _, segment := range segments[:min(len(segments), InspectorNodeWindow)] {
+		view.Segments = append(view.Segments, describeInspectorNode(doc, message, segment, labels, catalog, false))
+	}
+	if !view.Revealed {
+		return
+	}
+	control, _, err := doc.Navigate(message, "MSH[1]-10")
+	if err != nil {
+		return
+	}
+	row := describeInspectorNode(doc, message, control, labels, nil, true)
+	if control.State == hl7.Present && !row.Truncated && row.DecodeState == "decoded" {
+		view.ControlID = row.Value
+	}
 }

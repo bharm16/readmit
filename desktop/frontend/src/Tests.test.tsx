@@ -216,8 +216,7 @@ test.each([false, true])("Create test uses checked messages or the inspected mes
   const messages = page().getByRole("table", { name: "Messages" });
   await user.click(messages.querySelector<HTMLElement>(`tr[data-row-id="${NEXT_OCCURRENCE}"]`)!);
   if (checked) await user.click(within(messages.querySelector<HTMLElement>(`tr[data-row-id="${GRID_OCCURRENCE}"]`)!).getByRole("checkbox"));
-  await user.click(await screen.findByRole("button", { name: "More case actions" }));
-  await user.click(await screen.findByRole("menuitem", { name: "Create test" }));
+  await user.click(await screen.findByRole("button", { name: "Create test case" }));
   expect(await page().findByRole("heading", { level: 1, name: "New test" })).toBeTruthy();
   const opened = facade.oneCall("OpenItemDraft")[0] as ItemRequest;
   expect(opened.from).toMatchObject({ case: CASE.ref, identity: CASE_IDENTITY, messages: [checked ? GRID_OCCURRENCE : NEXT_OCCURRENCE] });
@@ -249,8 +248,7 @@ test("an environment saved after Tests was last listed is offered to a test crea
   await user.dblClick(await findCaseRow(CASE_ENTRY));
   const messages = await page().findByRole("table", { name: "Messages" });
   await user.click(messages.querySelector<HTMLElement>(`tr[data-row-id="${GRID_OCCURRENCE}"]`)!);
-  await user.click(await screen.findByRole("button", { name: "More case actions" }));
-  await user.click(await screen.findByRole("menuitem", { name: "Create test" }));
+  await user.click(await screen.findByRole("button", { name: "Create test case" }));
   const choice = await page().findByRole("combobox", { name: /^(Target|Environment)$/ });
   await waitFor(() => expect(within(choice).queryByRole("option", { name: "Scheduling QA" })).toBeTruthy());
 });
@@ -269,8 +267,7 @@ test("an abandoned draft-opening reply cannot populate a newer blank test", asyn
   await user.dblClick(await findCaseRow(CASE_ENTRY));
   const messages = await page().findByRole("table", {name: "Messages"});
   await user.click(messages.querySelector<HTMLElement>(`tr[data-row-id="${GRID_OCCURRENCE}"]`)!);
-  await user.click(screen.getByRole("button", {name: "More case actions"}));
-  await user.click(screen.getByRole("menuitem", {name: "Create test"}));
+  await user.click(screen.getByRole("button", {name: "Create test case"}));
   await waitFor(() => expect(opening.size).toBe(1));
   const request = facade.oneCall("OpenItemDraft")[0];
   await goTo(user, "Tests");

@@ -59,8 +59,10 @@ type View struct {
 }
 
 // ViewNavigation stores bounded identities and layout choices. Saved filters
-// are referenced by name; source values, consent and reveal state have no fields.
+// are referenced by name; source values, consent and reveal authorization have
+// no fields. PHIMasked retains only the protective display preference.
 type ViewNavigation struct {
+	PHIMasked          bool                  `json:"phi_masked,omitzero"`
 	CheckedOccurrences []string              `json:"checked_occurrences,omitzero"`
 	FileMessages       []int                 `json:"file_messages,omitzero"`
 	ReferenceSelection HL7ReferenceSelection `json:"reference_selection,omitzero"`
@@ -249,7 +251,7 @@ func decodeSession(data []byte) (Session, error) {
 		if err := json.Unmarshal(data, &wire); err != nil {
 			return Session{}, err
 		}
-		for _, member := range []string{"reference_selection", "file_messages", "checked_occurrences"} {
+		for _, member := range []string{"reference_selection", "file_messages", "checked_occurrences", "phi_masked"} {
 			if _, added := wire.View.Navigation[member]; added {
 				return Session{}, errors.New("retained reader selections require working session v3")
 			}
