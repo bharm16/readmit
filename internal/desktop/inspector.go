@@ -50,6 +50,7 @@ type InspectRequest struct {
 	ByteOffset         int                    `json:"byte_offset"`
 	RawOffset          int                    `json:"raw_offset"`
 	Reveal             bool                   `json:"reveal"`
+	MaskPHI            bool                   `json:"mask_phi,omitzero"`
 }
 
 // RawWindow is one window of the whole message's original bytes as escaped
@@ -133,6 +134,7 @@ type Inspection struct {
 	ReadableWindow        *RawWindow           `json:"readable_window,omitzero"`
 	ReferenceValues       []HL7ReferenceValue  `json:"reference_values,omitzero"`
 	ReferenceValuesNotice string               `json:"reference_values_notice,omitzero"`
+	ReferenceCatalog      string               `json:"reference_catalog,omitzero"`
 	Reference             *hl7reference.Answer `json:"reference,omitzero"`
 	FHIR                  *FHIRInspection      `json:"fhir,omitzero"`
 	Metadata              FieldMetadata        `json:"metadata"`
@@ -155,6 +157,7 @@ type Inspection struct {
 	ChildCount            int                  `json:"child_count"`
 	Bytes                 []HexRow             `json:"bytes"`
 	ByteOffset            int                  `json:"byte_offset"`
+	PHIMasked             bool                 `json:"phi_masked,omitzero"`
 	Revealed              bool                 `json:"revealed"`
 	Raw                   string               `json:"raw"`
 	RawWindow             *RawWindow           `json:"raw_window,omitzero"`
@@ -187,7 +190,7 @@ func (a *App) inspectOccurrence(request InspectRequest) InspectionResult {
 		if root == "" {
 			return InspectionResult{State: declined.state, Reason: declined.reason}
 		}
-		return inspectFHIR(context.Background(), source.Identity, request.Occurrence, source.Manifest.Declaration, source.Raw(), source.Document, inspectorWindow{Path: request.Path, NodeOffset: request.NodeOffset, ByteOffset: request.ByteOffset, RawOffset: request.RawOffset, Reveal: request.Reveal, ReferenceCatalog: request.ReferenceCatalog, ReferenceIdentity: request.ReferenceIdentity, ReferenceSelection: request.ReferenceSelection})
+		return inspectFHIR(context.Background(), source.Identity, request.Occurrence, source.Manifest.Declaration, source.Raw(), source.Document, inspectorWindow{Path: request.Path, NodeOffset: request.NodeOffset, ByteOffset: request.ByteOffset, RawOffset: request.RawOffset, Reveal: request.Reveal, MaskPHI: request.MaskPHI, ReferenceCatalog: request.ReferenceCatalog, ReferenceIdentity: request.ReferenceIdentity, ReferenceSelection: request.ReferenceSelection})
 	}
 	fail := func(reason string) InspectionResult { return InspectionResult{State: Failed, Reason: reason} }
 	if request.NodeOffset < 0 || request.ByteOffset < -1 || request.RawOffset < -1 {
@@ -224,8 +227,8 @@ func (a *App) inspectOccurrence(request InspectRequest) InspectionResult {
 			return fail("the occurrence could not be parsed consistently with its case")
 		}
 	}
-	view, reason := inspectDocument(raw, doc, 0, inspectorWindow{Path: request.Path, NodeOffset: request.NodeOffset, ByteOffset: request.ByteOffset,
-		RawOffset: request.RawOffset, Reveal: request.Reveal, ReferenceCatalog: request.ReferenceCatalog, ReferenceIdentity: request.ReferenceIdentity, ReferenceSelection: request.ReferenceSelection})
+	view, reason := a.inspectDocument(raw, doc, 0, inspectorWindow{Path: request.Path, NodeOffset: request.NodeOffset, ByteOffset: request.ByteOffset,
+		RawOffset: request.RawOffset, Reveal: request.Reveal, MaskPHI: request.MaskPHI, ReferenceCatalog: request.ReferenceCatalog, ReferenceIdentity: request.ReferenceIdentity, ReferenceSelection: request.ReferenceSelection})
 	if view == nil {
 		return fail(reason)
 	}
@@ -247,17 +250,31 @@ type inspectorWindow struct {
 	ByteOffset         int
 	RawOffset          int
 	Reveal             bool
+	MaskPHI            bool
 }
 
 // inspectDocument is the one inspector over one message of parsed original
 // bytes, for a case occurrence and a standalone file alike. A nil document is
 // an occurrence nothing could parse: it has original bytes and no tree. The
 // reason is returned with a nil inspection when the window is refused.
-func inspectDocument(raw []byte, doc *hl7.Document, message int, window inspectorWindow) (*Inspection, string) {
-	view := &Inspection{Message: message, Size: len(raw), Children: []InspectorNode{}, Bytes: []HexRow{}, Revealed: window.Reveal,
+func (a *App) inspectDocument(raw []byte, doc *hl7.Document, message int, window inspectorWindow) (*Inspection, string) {
+	if window.MaskPHI && window.Reveal {
+		raw = maskInspectorPHI(raw, doc)
+	}
+	view := &Inspection{Message: message, Size: len(raw), Children: []InspectorNode{}, Bytes: []HexRow{}, Revealed: window.Reveal, PHIMasked: window.MaskPHI,
 		Selected: hl7.Node{Kind: "occurrence", State: hl7.Present, End: len(raw)}, DecodeState: "unparsed",
 		Notice: "The occurrence could not be parsed; original bytes remain available."}
-	catalog, reference := inspectionReference(window.ReferenceCatalog, window.ReferenceIdentity)
+	referencePath, referenceIdentity := window.ReferenceCatalog, window.ReferenceIdentity
+	var libraryErr error
+	if referencePath == "" && doc != nil && message >= 0 && message < len(doc.Messages) {
+		referencePath, referenceIdentity, libraryErr = a.installedReference(fieldMetadata(doc, message, hl7.Node{}).HL7Version)
+	}
+	catalog, reference := inspectionReference(referencePath, referenceIdentity)
+	if libraryErr != nil {
+		catalog = nil
+		reference = hl7reference.Answer{Status: "not_available", Reason: "The installed reference library is unavailable."}
+	}
+	view.ReferenceCatalog = referencePath
 	view.Reference = &reference
 	if doc != nil {
 		if message < 0 || message >= len(doc.Messages) {
@@ -327,6 +344,9 @@ func inspectDocument(raw []byte, doc *hl7.Document, message int, window inspecto
 		}
 		view.RawWindow = shown
 		view.ReadableWindow, _ = readableWindow(raw, bounds, view.Selected, window.RawOffset)
+	}
+	if window.MaskPHI && window.Reveal {
+		maskInspectorValues(view, raw)
 	}
 	return view, ""
 }

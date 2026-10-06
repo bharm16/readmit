@@ -501,3 +501,82 @@ func TestInspectorRawWindowShowsTheWholeOccurrenceIncludingUnparsedAndLarge(t *t
 		t.Fatalf("an unparsed occurrence's Raw text: %+v", unparsed.RawWindow)
 	}
 }
+
+func TestInspectorPHIMasksAllValueSurfacesWithoutChangingSource(t *testing.T) {
+	app, root, _ := gridWorkspace(t)
+	original := "MSH|^~\\&|SENDER|FACILITY|RECEIVER|FACILITY|20260101||ADT^A01|control|P|2.5.1\rPID|1||OWNED-ID||OWNED-NAME^GIVEN||19800101|F|||OWNED-STREET^CITY\rOBX|1|TX|NOTE||OWNED-NARRATIVE\rZAA|OWNED-EXTENSION\r"
+	b := writeCase(t, root, "phi", framed(original))
+	before := fingerprint(t, root)
+	for _, path := range []string{"", "PID[1]", "PID[1]-3", "PID[1]-5[1].1", "OBX[1]-5", "ZAA[1]-1"} {
+		request := desktop.InspectRequest{Workspace: root, Case: "phi", Identity: b.Identity, Occurrence: "s0001-e000001", Path: path, ByteOffset: -1, RawOffset: -1, Reveal: true, MaskPHI: true}
+		got := app.InspectOccurrence(request)
+		if got.State != desktop.Completed || got.Inspection == nil {
+			t.Fatalf("%s: %+v", path, got)
+		}
+		body, _ := json.Marshal(got.Inspection)
+		for _, secret := range []string{"OWNED-ID", "OWNED-NAME", "GIVEN", "19800101", "OWNED-STREET", "OWNED-NARRATIVE", "OWNED-EXTENSION"} {
+			if strings.Contains(string(body), secret) {
+				t.Fatalf("%s leaked %s", path, secret)
+			}
+		}
+		if !got.Inspection.PHIMasked || !got.Inspection.Revealed || got.Inspection.ReadableWindow == nil {
+			t.Fatal("masking hid the entire message")
+		}
+		text := got.Inspection.ReadableWindow.Before + got.Inspection.ReadableWindow.Selected + got.Inspection.ReadableWindow.After
+		if !strings.Contains(text, "SENDER") || !strings.Contains(text, "ADT^A01") || !strings.Contains(text, "PID|1||********||**********^*****") {
+			t.Fatalf("lost structure: %s", text)
+		}
+		request.MaskPHI = false
+		plain := app.InspectOccurrence(request)
+		if plain.Inspection.PHIMasked || plain.Inspection.Selected.Start != got.Inspection.Selected.Start || !strings.Contains(plain.Inspection.ReadableWindow.Before+plain.Inspection.ReadableWindow.Selected+plain.Inspection.ReadableWindow.After, "OWNED-NAME") {
+			t.Fatal("toggle failed to restore original values and spans")
+		}
+	}
+	if !reflect.DeepEqual(before, fingerprint(t, root)) {
+		t.Fatal("display masking wrote evidence")
+	}
+}
+
+func TestPHIMaskedFileHexProtectsAdjacentMessagesAndOriginalSyntax(t *testing.T) {
+	app := desktop.New(nil, desktop.ShellDocuments{})
+	file := filepath.Join(t.TempDir(), "messages.hl7")
+	original := "MSH*^~\\&*A*B*C*D*20260101**ADT^A01*one*P*2.5.1\rPID*1**FIRST_ID**\"\"^GIVEN~SECOND^\"\"\rMSH|^~\\&|A|B|C|D|20260101||ADT^A01|two|P|2.5.1\rPID|1||NEIGHBOR_ID||NEIGHBOR_NAME\r"
+	first, second, _ := strings.Cut(original, "MSH|^~")
+	original = framed(first) + framed("MSH|^~"+second)
+	if err := os.WriteFile(file, []byte(original), 0600); err != nil {
+		t.Fatal(err)
+	}
+	listed := app.ListFileMessages(desktop.FileMessagesRequest{File: file, Format: "auto", Terminator: "auto"})
+	for _, path := range []string{"PID[1]-5[1].1", "PID[1]-5[1].2", "PID[1]-5[2].2"} {
+		req := desktop.FileInspectRequest{File: file, Format: "auto", Terminator: "auto", Expect: listed.SHA256, Path: path, Reveal: true, MaskPHI: true, ByteOffset: 0, RawOffset: -1}
+		masked := app.InspectFileMessage(req)
+		req.MaskPHI = false
+		plain := app.InspectFileMessage(req)
+		if masked.Inspection == nil || plain.Inspection == nil {
+			t.Fatalf("inspect: %+v", masked)
+		}
+		if masked.Inspection.Selected != plain.Inspection.Selected {
+			t.Fatal("display masking changed a node, null state or original span")
+		}
+		var data []byte
+		for _, row := range masked.Inspection.Bytes {
+			part, err := hex.DecodeString(strings.Join(strings.Fields(row.Hex), ""))
+			if err != nil {
+				t.Fatal(err)
+			}
+			data = append(data, part...)
+		}
+		for _, value := range []string{"FIRST_ID", "GIVEN", "SECOND", "NEIGHBOR_ID", "NEIGHBOR_NAME"} {
+			if strings.Contains(string(data), value) {
+				t.Fatalf("masked hex leaked %s", value)
+			}
+		}
+		if !strings.Contains(string(data), "\"\"^#####~######^\"\"") {
+			t.Fatalf("custom delimiter or null token changed: %s", data)
+		}
+	}
+	after, _ := os.ReadFile(file)
+	if string(after) != original {
+		t.Fatal("masking changed the file")
+	}
+}

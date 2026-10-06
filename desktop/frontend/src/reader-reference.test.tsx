@@ -2,7 +2,7 @@ import { expect, test, vi } from "vitest";
 import { render, screen, within, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MessageReader } from "./Inspector";
-import type { ReferenceCatalogResult, HL7ReferenceResult } from "./bindings";
+import type { ReferenceCatalogResult, HL7ReferenceResult, HL7Node } from "./bindings";
 import { installFacade } from "./testkit/wails";
 import { CASE_IDENTITY, WORKSPACE_ROOT, inspectionResult } from "./testkit/fixtures";
 
@@ -28,7 +28,10 @@ test("the reference details distinguish catalog failure without removing raw or 
   const result=inspectionResult(undefined,{reference:{status:"not_available",reason:"Catalog is unavailable.",identity:"",edition:"",coverage:{segments:0,fields:0,definitions:0,missing:[]},missing_count:0}});
   render(<MessageReader result={result} loading={false} busy={false} onInspect={async()=>result} onReveal={()=>undefined} />);
   expect(screen.getByText("Catalog is unavailable.")).toBeTruthy();
-  expect(screen.getByText("Reference edition: Not available")).toBeTruthy();
+  await user.click(screen.getByRole("button",{name:"Reference information"}));
+  const information=screen.getByRole("dialog",{name:"Reference information"});
+  expect(within(information).getByText("Reference edition: Not available")).toBeTruthy();
+  await user.click(within(information).getByRole("button",{name:"Close reference information"}));
   await user.click(screen.getByRole("button",{name:"More message actions"}));
   await user.click(screen.getByRole("menuitem",{name:"Hex"}));
   expect(screen.getByRole("tabpanel",{name:"Hex"})).toBeTruthy();
@@ -58,6 +61,29 @@ function ownedFieldReference() {
   const missing={state:"not_specified",value:""};
   return {key:"field/MSH/9",kind:"field",segment:"MSH",field:9,name:"Message Type",datatype:{state:"specified",value:"MSG"},optionality:missing,length:missing,conformance_length:missing,repetition:missing,item:missing,table:missing,section:missing,definition:"",source:"owned"};
 }
+
+test("the selected row owns navigation and the Details panel reopens without rereading evidence",async()=>{
+ const user=userEvent.setup();
+ const selected:HL7Node={path:"MSH[1]-9[1].1",kind:"component",parent:"MSH[1]-9[1]",segment:"MSH",field:9,state:"empty",start:10,end:10};
+ const sibling={...selected,path:"MSH[1]-9[1].2"};
+ const result=inspectionResult(undefined,{selected,reference:{status:"available",reason:"",identity:"catalog",edition:"2.5.1",coverage:{segments:0,fields:1,definitions:0,missing:[]},missing_count:0,record:ownedFieldReference()},children:[{node:selected,label:"First component",selector:"",segment_name:"",value:"",truncated:false},{node:sibling,label:"Second component",selector:"",segment_name:"",value:"",truncated:false}]});
+ const inspect=vi.fn(async()=>null);
+ render(<MessageReader result={result} loading={false} busy={false} onInspect={inspect} onReveal={()=>undefined}/>);
+ expect(screen.getAllByRole("group",{name:"Selected position navigation"})).toHaveLength(1);
+ expect(screen.getAllByRole("button",{name:"Next position"})).toHaveLength(1);
+ expect((screen.getByRole("button",{name:"Previous position"}) as HTMLButtonElement).disabled).toBe(true);
+ await user.click(screen.getByRole("button",{name:"Next position"}));
+ expect(inspect).toHaveBeenCalledWith(sibling.path,0,-1,undefined,undefined,undefined,"catalog");
+ await user.click(screen.getByRole("button",{name:"Hide Details panel"}));
+ expect(screen.queryByRole("region",{name:"Reference details"})).toBeNull();
+ await user.click(screen.getByRole("button",{name:"More message actions"}));
+ await user.click(screen.getByRole("menuitem",{name:"Show Details panel"}));
+ expect(screen.getByRole("region",{name:"Reference details"})).toBeTruthy();
+ await user.click(screen.getByRole("button",{name:"Hide Details panel"}));
+ await user.click(screen.getByRole("button",{name:"Column guide"}));
+ expect(screen.getByRole("region",{name:"Reference attributes"})).toBeTruthy();
+ expect(inspect).toHaveBeenCalledTimes(1);
+});
 
 test("datatype drilldown and Back retain the selected evidence and reject delayed replies after Back",async()=>{
   const user=userEvent.setup();
@@ -181,4 +207,12 @@ test("explicit owned context replaces the right pane without rereading evidence 
   expect(screen.queryByText("Owned workflow context")).toBeNull();
   expect(screen.getByRole("region",{name:"Reference details"})).toBeTruthy();
   expect(inspect).not.toHaveBeenCalled();
+});
+
+test("a primitive field retains Overview without an empty Components tab",()=>{
+ const result=inspectionResult(undefined,{selected:{path:"MSH[1]-8",kind:"field",parent:"MSH[1]",segment:"MSH",field:8,state:"empty",start:10,end:10},reference:{status:"available",reason:"",identity:"catalog",edition:"2.5.1",coverage:{segments:0,fields:1,definitions:0,missing:[]},missing_count:0,record:{...ownedFieldReference(),name:"Security",datatype:{state:"specified",value:"ST"}},datatype_key:"datatype/ST"}});
+ render(<MessageReader result={result} loading={false} busy={false} onInspect={async()=>result} onReveal={()=>undefined}/>);
+ expect(screen.getByRole("tab",{name:"Overview"})).toBeTruthy();
+ expect(screen.queryByRole("tab",{name:"Components"})).toBeNull();
+ expect(screen.getByRole("button",{name:"Datatype · ST"})).toBeTruthy();
 });

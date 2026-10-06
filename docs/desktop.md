@@ -562,6 +562,10 @@ through the wait and acquisition, so Stop during the wait prevents it from
 starting. An action arriving during another action reports `busy`. A finished
 operation always releases the slot, including after failure or cancellation,
 so the next request proceeds.
+`ReadReferenceLibrary` reads the bounded local edition/path/hash registry without
+claiming the slot. Reference library installation holds the cancellable local
+operation slot and records the registry only after the complete batch succeeds.
+
 `Filters`, `Shell`, `RecordView`, `SaveEditorDraft`,
 `DiscardEditorDraft` and `EditorDrafts` are the exceptions. The first three read one small local file each — `Shell` reads
 nothing at all — so none of them claims the slot and all stay available while
@@ -2504,7 +2508,16 @@ manual-confirmation reset (*Manual confirmation*) are defined for the screens
 that show those codes. Generated evidence reads *Synthetic*, and a derived
 case *Variant*.
 
-**Reveal.** Values are shown and hidden by one control everywhere they can
+**HL7 parser PHI.** Parser values are visible by default. The shield button reads
+*PHI* when masking is off and *Hide* when on. It masks known patient, contact,
+provider and free-text fields, including their repetitions and components, in
+the original text, hex, grid and Details views. Unknown custom Z segments are
+masked conservatively. Structural delimiters and original offsets remain. This
+is a display aid, not de-identification; exports and evidence retain original
+bytes. The mask stays active while navigating within the reader and resets on
+restart. It does not change FHIR, reports, comparison or aggregate reveal rules.
+
+**Other value views.** Values are shown and hidden by one control where they can
 be: *Show values* with *May contain patient data.* beside it while they are
 hidden, and *Hide values* once shown.
 

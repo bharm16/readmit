@@ -820,14 +820,14 @@ test("reader browser resizing survives wider windows and switches to details alo
   await screen.findByRole("region", { name: "Details" });
   const width = () => (document.querySelector(".workarea") as HTMLElement).style.getPropertyValue("--message-browser-width");
   expect(document.querySelector(".workarea")?.classList.contains("reader-layout")).toBe(true);
-  expect(width()).toBe("11rem");
+  expect(width()).toBe("17.5rem");
   const separator=screen.getByRole("separator", { name: "Resize details" });
   separator.focus();await user.keyboard("{Home}");
   expect(width()).toBe("10rem");
   separator.focus();await user.keyboard("{End}");
-  // At1100/16, the compact11.5rem sidebar leaves57.25rem. The
-  // reader keeps37rem plus the1px divider, so20.1875rem goes to browsing.
-  expect(Number.parseFloat(width())).toBeCloseTo(1100/16-11.5-37-1/16);
+  // The collapsed4rem rail leaves room for the wider message browser.
+  // Resizing still preserves the reader minimum and1px divider.
+  expect(Number.parseFloat(width())).toBe(25);
   const chosen=width();
   windowWidth(1300);expect(width()).toBe(chosen);
   windowWidth(1000);expect(document.querySelector(".workarea")?.classList.contains("detail-only")).toBe(true);

@@ -33,6 +33,7 @@ func (r *InspectionPathResult) refuse(state State, reason string) { r.State, r.R
 const (
 	inspectionFile             = "file"
 	referenceCatalogFile       = "reference-catalog"
+	referenceLibraryFolder     = "reference-library"
 	referenceProfileFile       = "reference-profile"
 	referencePackFile          = "reference-pack"
 	referenceDocumentationFile = "reference-documentation"
@@ -49,6 +50,12 @@ func (a *App) ChooseInspectionPath(kind, source string) InspectionPathResult {
 		case referenceProfileFile, referencePackFile, referenceDocumentationFile:
 			titles := map[string]string{referenceProfileFile: "Open local HL7 profile", referencePackFile: "Open pinned HL7 profile pack", referenceDocumentationFile: "Open local reference documentation"}
 			path, declined := a.chooseOneFile(ctx, titles[kind])
+			if path == "" {
+				return InspectionPathResult{State: declined.state, Reason: declined.reason, Kind: kind}
+			}
+			return InspectionPathResult{State: Completed, Kind: kind, Path: path}
+		case referenceLibraryFolder:
+			path, declined := a.chooseFolder(ctx, "Install HL7 reference library")
 			if path == "" {
 				return InspectionPathResult{State: declined.state, Reason: declined.reason, Kind: kind}
 			}
@@ -192,6 +199,7 @@ type FileInspectRequest struct {
 	ByteOffset         int                    `json:"byte_offset"`
 	RawOffset          int                    `json:"raw_offset"`
 	Reveal             bool                   `json:"reveal"`
+	MaskPHI            bool                   `json:"mask_phi,omitzero"`
 }
 
 // InspectFileMessage inspects one message of a file named by its full path.
@@ -217,8 +225,8 @@ func (a *App) InspectFileMessage(request FileInspectRequest) InspectionResult {
 		if err != nil {
 			return fail(Failed, err.Error())
 		}
-		view, reason := inspectDocument(data, document, request.Message, inspectorWindow{
-			Path: request.Path, NodeOffset: request.NodeOffset, ByteOffset: request.ByteOffset, RawOffset: request.RawOffset, Reveal: request.Reveal, ReferenceCatalog: request.ReferenceCatalog, ReferenceIdentity: request.ReferenceIdentity, ReferenceSelection: request.ReferenceSelection,
+		view, reason := a.inspectDocument(data, document, request.Message, inspectorWindow{
+			Path: request.Path, NodeOffset: request.NodeOffset, ByteOffset: request.ByteOffset, RawOffset: request.RawOffset, Reveal: request.Reveal, MaskPHI: request.MaskPHI, ReferenceCatalog: request.ReferenceCatalog, ReferenceIdentity: request.ReferenceIdentity, ReferenceSelection: request.ReferenceSelection,
 		})
 		if view == nil {
 			return fail(Failed, reason)

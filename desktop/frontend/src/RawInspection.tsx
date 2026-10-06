@@ -73,11 +73,12 @@ export function useFileReader({ busy, request, onCancelled, onNavigation }: { bu
   const [messageSearch,setMessageSearch]=useState("");
   const [messageGrouping,setMessageGrouping]=useState<"all"|"type">("all");
   const [referenceRequest,setReferenceRequest]=useState(0);
+  const [referenceLibraryRequest,setReferenceLibraryRequest]=useState(0);
   const [selected, setSelected] = useState<number | null>(null);
  const [checked,setChecked]=useState<Set<string>>(new Set());
  const checkedOwner=useRef("");
   const [inspection, setInspection] = useState<InspectionResult | null>(null);
-  const [revealed, setRevealed] = useState(false);
+  const [revealed, setRevealed] = useState(true);
   const [formatting, setFormatting] = useState(false);
   const [info, setInfo] = useState(false);
   const [copied, setCopied] = useState<RoundTripResult | null>(null);
@@ -124,7 +125,7 @@ export function useFileReader({ busy, request, onCancelled, onNavigation }: { bu
         if (!current()) return;
         if (checked.state !== "completed" || checked.overlay?.status === "not_available") setChosen("A previous profile or documentation file changed or is unavailable. Select it again explicitly; the source stays inspectable.");
       }
-      const result = await inspectFileMessage({ file: saved.file!, format, terminator: ending, expect: answer.sha256, message: saved.file_message ?? 0, path: saved.field_path ?? "", node_offset: saved.node_offset ?? 0, byte_offset: -1, raw_offset: -1, reveal: false, ...(catalog ? { reference_catalog: catalog, reference_identity: saved.reference_identity ?? "" } : {}), ...(selection ? { reference_selection: selection } : {}) });
+      const result = await inspectFileMessage({ file: saved.file!, format, terminator: ending, expect: answer.sha256, message: saved.file_message ?? 0, path: saved.field_path ?? "", node_offset: saved.node_offset ?? 0, byte_offset: -1, raw_offset: -1, reveal: true, ...(catalog ? { reference_catalog: catalog, reference_identity: saved.reference_identity ?? "" } : {}), ...(selection ? { reference_selection: selection } : {}) });
       if (!current()) return;
       restoredFile.current = saved.file!;
       referenceCatalog.current = catalog;
@@ -133,7 +134,7 @@ export function useFileReader({ busy, request, onCancelled, onNavigation }: { bu
       where.current = { path: saved.field_path ?? "", nodeOffset: saved.node_offset ?? 0, byteOffset: -1 };
       setFile(saved.file!); setFraming(format); setTerminator(ending); setListing(answer);
       setChecked(new Set((saved.file_messages??[]).map(String)));checkedOwner.current=answer.sha256;
-      setSelected(saved.file_message ?? 0); setInspection(result); setRevealed(false); setBytesShown(false);
+      setSelected(saved.file_message ?? 0); setInspection(result); setRevealed(true); setBytesShown(false);
       accepted = true;
     });
     return accepted;
@@ -181,7 +182,8 @@ export function useFileReader({ busy, request, onCancelled, onNavigation }: { bu
           node_offset: nodeOffset,
           byte_offset: byteOffset,
           raw_offset: rawOffset,
-          reveal,
+          reveal: true,
+          ...(!reveal ? {mask_phi:true} : {}),
           ...(referenceCatalog.current ? { reference_catalog: referenceCatalog.current } : {}),
           ...(referenceIdentity.current ? { reference_identity: referenceIdentity.current } : {}),
           ...(referenceSelection.current ? { reference_selection: referenceSelection.current } : {}),
@@ -211,7 +213,7 @@ export function useFileReader({ busy, request, onCancelled, onNavigation }: { bu
         setFile(answer.path);
         setFraming("auto");
         setTerminator("auto");
-        setRevealed(false);
+        setRevealed(true);
       } else if (answer.state !== "cancelled") {
         setChosen(answer.reason ?? "The file could not be opened.");
       } else if (!openFile.current) {
@@ -230,7 +232,7 @@ export function useFileReader({ busy, request, onCancelled, onNavigation }: { bu
       setChosen(null);
       setFraming("auto");
       setTerminator("auto");
-      setRevealed(false);
+      setRevealed(true);
       if (path === file) void list(path, "auto", "auto");
       else {
         referenceCatalog.current = "";
@@ -287,6 +289,7 @@ export function useFileReader({ busy, request, onCancelled, onNavigation }: { bu
 
   const reveal = (next: boolean) => {
     setRevealed(next);
+    if(!next) setInspection(null);
     if (selected !== null) void inspect(selected, where.current.path, where.current.nodeOffset, where.current.byteOffset, next);
   };
 
@@ -309,6 +312,7 @@ export function useFileReader({ busy, request, onCancelled, onNavigation }: { bu
       {...(referenceSelection.current ? { referenceSelection: referenceSelection.current } : {})}
       toolbarReference
       referenceRequest={referenceRequest}
+      referenceLibraryRequest={referenceLibraryRequest}
       result={inspection}
       loading={running === "inspecting"}
       busy={disabled}
@@ -374,7 +378,7 @@ export function useFileReader({ busy, request, onCancelled, onNavigation }: { bu
   } else {
     body = (
       <div className={selected !== null ? "file-reader-browser" : "file-reader-list"}>
-      {selected !== null ? <><h2 className="file-browser-heading">Messages</h2><label className="file-browser-search"><img className="workbench-icon" src={searchAsset} alt="" /><input aria-label="Search messages" placeholder="Search…" value={messageSearch} onChange={event=>setMessageSearch(event.target.value)} /></label><div className="file-browser-tabs" role="tablist" aria-label="Message grouping"><button type="button" role="tab" aria-selected={messageGrouping==="all"} onClick={()=>setMessageGrouping("all")}>All</button><button type="button" role="tab" aria-selected={messageGrouping==="type"} onClick={()=>setMessageGrouping("type")}>By type</button></div><div className="file-browser-source"><strong>{listing.name || fileName(file)}</strong><span>{listing.total} {listing.total===1 ? "message" : "messages"}</span></div></> : null}
+      {selected !== null ? <><label className="file-browser-search"><img className="workbench-icon" src={searchAsset} alt="" /><input aria-label="Search messages" placeholder="Search…" value={messageSearch} onChange={event=>setMessageSearch(event.target.value)} /></label><div className="file-browser-tabs" role="tablist" aria-label="Message grouping"><button type="button" role="tab" aria-selected={messageGrouping==="all"} onClick={()=>setMessageGrouping("all")}>All</button><button type="button" role="tab" aria-selected={messageGrouping==="type"} onClick={()=>setMessageGrouping("type")}>By type</button></div></> : null}
       <div className="file-browser-scroll"><DataTable
         label="Messages in this file"
         className={selected !== null ? `page-table messages-table${checked.size ? " has-checked" : ""}` : "page-table"}
@@ -395,7 +399,7 @@ export function useFileReader({ busy, request, onCancelled, onNavigation }: { bu
         onOpen={() => undefined}
       />
       </div>
-      {selected !== null ? <footer className="file-browser-footer"><span>Source</span><strong>{listing.name || fileName(file)}</strong><span>Original bytes retained</span></footer> : null}
+      {selected !== null ? <footer className="file-browser-footer"><span>Source</span><strong>{listing.name || fileName(file)}</strong></footer> : null}
       {listing.rows.length<listing.total ? <button type="button" disabled={disabled} onClick={()=>void loadMore()}>Load more messages</button> : null}
       </div>
     );
@@ -410,7 +414,9 @@ export function useFileReader({ busy, request, onCancelled, onNavigation }: { bu
     restore,
     openPath,
     edition: inspection?.inspection?.metadata.hl7_version || "",
+    referenceEdition:inspection?.inspection?.reference?.edition || "",
     chooseReference:()=>setReferenceRequest(count=>count+1),
+    chooseReferenceVersion:()=>setReferenceLibraryRequest(count=>count+1),
     title: file ? (listing?.name || fileName(file)) : "Inspect file",
     actions: (
       <>

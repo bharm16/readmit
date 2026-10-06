@@ -42,7 +42,7 @@ def reference_context(lines, start, end, stop, rows):
     return {"section":section, "name":name, "overview":overview, "sections":sections}
 
 
-DATATYPE_HEADING = re.compile(r"^(2\.(?:A|8|9)\.\d+)\s+([A-Z][A-Z0-9]{1,7})\s*[-–—_]\s*(.+)")
+DATATYPE_HEADING = re.compile(r"^(2(?:\.A|A|\.8|\.9)(?:\.\d+){1,2})\s+([A-Z][A-Z0-9]{1,7})\s*[-–—_]\s*(.+)")
 
 
 def datatype_sections(lines, member):
@@ -59,7 +59,7 @@ def datatype_sections(lines, member):
         # A final datatype stops at the next sibling/outside section, not at
         # the end of a complete older single-volume publication.
         for j in range(start+1,end):
-            heading=re.match(r"^(2\.[\dA-C.]+)\s+",hl7.clean(lines[j][0]))
+            heading=re.match(r"^(2[A-C]?(?:\.[\dA-C]+)+)\s+",hl7.clean(lines[j][0]))
             if heading and not heading.group(1).startswith(section+"."):
                 end=j
                 break
@@ -99,7 +99,7 @@ def component_context(lines,start,end,stop,rows,name):
     sections={}
     for line,_ in lines[end:stop]:
         text=hl7.clean(line)
-        found=re.match(r"^(2\.A\.\d+\.\d+)\s+(.+?)\s*\([\w*]+\)\s*$",text)
+        found=re.match(r"^(2(?:\.A|A)(?:\.\d+){2,3})\s+(.+?)\s*\([\w*]+\)\s*$",text)
         if found and root and found.group(1).startswith(root+"."):
             positions=names.get(simple(found.group(2)),[])
             if len(positions)==1:
@@ -107,11 +107,11 @@ def component_context(lines,start,end,stop,rows,name):
     return {"section":root,"sections":sections}
 
 
-CODE_CAPTION = re.compile(r"^\s*(?:(HL7|User-defined|User defined|External|Imported)\s+)?[Tt]able\s+(\d{4})\s*[-–—]\s*(.+?)\s*$")
+CODE_CAPTION = re.compile(r"^\s*(?:(HL7|User-defined|User defined|External|Imported)\s+)?[Tt]able\s+(\d{4})\s*(?:[-–—:]\s*)?(.+?)\s*$")
 CODE_HEADER = re.compile(r"^\s*(Value|Code|Message)\s+(Description|Events|Definition|Meaning)\b",re.I)
 
 
-def code_tables(lines,member):
+def code_tables(lines,member,table_ends=()):
     """Generic source tables with lexical codes; no remote/expanded vocabulary."""
     out=[]
     for start,(line,_) in enumerate(lines):
@@ -131,7 +131,8 @@ def code_tables(lines,member):
         kind={"HL7":"hl7","User-defined":"user","User defined":"user","External":"external","Imported":"imported",None:"unknown"}[caption.group(1)]
         codes=[]; current=None; missing=[]; notes=[]
         desc=CODE_HEADER.match(lines[header][0]).start(2)
-        for index in range(header+1,len(lines)):
+        end=next((stop for stop in sorted(table_ends) if stop>header),len(lines))
+        for index in range(header+1,end):
             line=lines[index][0];text=hl7.clean(line)
             if not text:
                 continue
@@ -199,9 +200,9 @@ def sourced_attribute(value="", state="not_specified", source="standard", locato
     return result
 
 def finish_origins(records,dataset):
-    schema_file=dataset["sources"]["schemas"]["file"]
+    schema_file=dataset["sources"].get("schemas",{}).get("file","")
     for record in records:
-        role="schemas" if record["source"].startswith(schema_file) else "standard"
+        role="schemas" if schema_file and record["source"].startswith(schema_file) else "standard"
         locator=record["source"]
         kind="schema" if role=="schemas" else "normative"
         # Each attribute gets its own origin. Missing legacy contextual origins
@@ -223,7 +224,7 @@ def catalog_from(dataset):
     for segment in sorted(edition.segments):
         table, count = edition.table("segment", segment)
         context = table.get("reference", {}) if table else {}
-        source = table["member"] if table else dataset["sources"]["schemas"]["file"]
+        source = table["member"] if table else dataset["sources"].get("schemas",dataset["sources"]["standard"])["file"]
         absent = "not_specified" if table else "not_available"
         common = {"datatype":attribute(state="not_applicable"), "optionality":attribute(state="not_applicable"), "length":attribute(state="not_applicable"), "conformance_length":attribute(state="not_applicable"), "repetition":attribute(state="not_applicable"), "item":attribute(state="not_applicable"), "table":attribute(state="not_applicable")}
         records.append({"key":"segment/"+segment, "kind":"segment", "segment":segment, "field":0, "name":context.get("name") or segment, **common, "section":attribute(context.get("section"), absent), "definition":context.get("overview", ""), "source":source})
@@ -252,7 +253,7 @@ def catalog_from(dataset):
                       "length":attribute(row.get("len") if row else schema.get("maxLength"), row_absent), "conformance_length":attribute(row.get("clen"), row_absent),
                       "repetition":attribute(row.get("rp"), row_absent), "item":attribute(item, row_absent), "table":attribute(row.get("table"), row_absent),
                       "section":attribute(context.get("sections", {}).get(row.get("item")), row_absent), "definition":definition,
-                      "source":source if row else dataset["sources"]["schemas"]["file"]}
+                      "source":source if row else dataset["sources"].get("schemas",dataset["sources"]["standard"])["file"]}
             chapter_locator=source+"#"+segment+"-"+str(pos)
             schema_locator="fields.xsd#"+segment+"."+str(pos)
             record["name_origin"]=origin("normative","standard",chapter_locator) if row.get("name") else origin("schema","schemas",schema_locator+".LongName") if schema.get("LongName") else origin("identity",locator=key)
@@ -270,7 +271,7 @@ def catalog_from(dataset):
             missing.append("datatype/"+datatype+":unsupported_schema_identifier")
             continue
         if datatype not in type_contexts:
-            type_contexts[datatype]={"name":datatype,"section":"","definition":"","source":dataset["sources"]["schemas"]["file"],"components":[]}
+            type_contexts[datatype]={"name":datatype,"section":"","definition":"","source":dataset["sources"].get("schemas",dataset["sources"]["standard"])["file"],"components":[]}
             missing.append("datatype/"+datatype+":definition")
     for datatype,context in sorted(type_contexts.items()):
         na=attribute(state="not_applicable")
@@ -279,7 +280,7 @@ def catalog_from(dataset):
         if not table:
             owncomponents=context.get("components",[])
             if not owncomponents:
-                owncomponents=[{"seq":str(r["position"]),"name":r.get("LongName") or datatype+"."+str(r["position"]),"dt":r.get("Type",""),"section":"","definition":"","schema_length":r.get("maxLength",""),"source":dataset["sources"]["schemas"]["file"]} for r in edition.composite.get(datatype,[])]
+                owncomponents=[{"seq":str(r["position"]),"name":r.get("LongName") or datatype+"."+str(r["position"]),"dt":r.get("Type",""),"section":"","definition":"","schema_length":r.get("maxLength",""),"source":dataset["sources"].get("schemas",dataset["sources"]["standard"])["file"]} for r in edition.composite.get(datatype,[])]
             for row in owncomponents:
                 key="component/%s/%s" % (datatype,row["seq"])
                 if not row["dt"]:missing.append(key+":unsupported_component_type_form")
@@ -367,7 +368,7 @@ def catalog_from(dataset):
         unsupported=opaque(sequence)
         if unsupported:missing.append("structure/"+structure+":unsupported_schema_placeholder")
         missing.append("structure/"+structure+":definition")
-        record=entity("structure/"+structure,"structure",structure,dataset["sources"]["schemas"]["file"]+":"+structure+".xsd","","","available" if not unsupported else "not_available")
+        record=entity("structure/"+structure,"structure",structure,dataset["sources"].get("schemas",dataset["sources"]["standard"])["file"]+":"+structure+".xsd","","","available" if not unsupported else "not_available")
         record.update({"structure_id":structure,"sequence":sequence if not unsupported else []})
         records.append(record)
         family=structure.split("_",1)[0]

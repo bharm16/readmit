@@ -344,7 +344,6 @@ export function MessageList({
   busy,
   browser = false,
   browserSourceName,
-  browserSourceKind,
  sourceSendableCount,
  selectionReading=false,
  selectionReason,
@@ -511,7 +510,7 @@ export function MessageList({
   return (
     <section className={`messages${browser ? " message-browser" : ""}`} aria-label="Messages">
       {selectionReason ? <p role="alert">{selectionReason}</p> : null}
-      {browser ? <><div className="file-browser-heading"><h2>Messages</h2><Menu className="reader-menu" trigger={<img className="workbench-icon" src={moreAsset} alt="" />} label="Messages view" items={[...viewItems,{label:"Filter messages",onSelect:()=>setFiltering(true)},{label:"Search messages",onSelect:()=>setSearching(true)},{label:"Columns…",onSelect:()=>setColumnsOpen(true)},...(unsaved ? [{label:"Save view",onSelect:()=>setSaving(true)}] : []),{label:"Create variant",onSelect:onCreateVariant,disabled:busy || selectionReading || sendable===0},{label:"Send selected",onSelect:onSendSelected,disabled:busy || selectionReading || sendable===0}]}/></div><form className="file-browser-search" onSubmit={event=>{event.preventDefault();const form=new FormData(event.currentTarget);const text=String(form.get("search") || "");onQuery({...query,search:text ? {scope:query.search?.scope || "metadata",text}:null});}}><img className="workbench-icon" src={searchAsset} alt=""/><input name="search" aria-label="Search messages" placeholder="Search…" defaultValue={query.search?.text || ""}/></form><div className="file-browser-tabs" role="tablist" aria-label="Message grouping"><button type="button" role="tab" aria-selected={!browserByType} onClick={()=>setBrowserByType(false)}>All</button><button type="button" role="tab" aria-selected={browserByType} onClick={()=>setBrowserByType(true)}>By type</button></div><div className="file-browser-source"><strong>{browserSourceName || rows.find(row=>row.id===selected)?.source_name || rows.find(row=>row.id===selected)?.source_id || "Retained capture"}</strong><span>{result?.matched ?? rows.length} {(result?.matched ?? rows.length) === 1 ? "message" : "messages"}{browserSourceKind === "derived" ? " · Derived" : ""}</span></div></> : null}
+      {browser ? <><div className="file-browser-heading"><Menu className="reader-menu" trigger={<img className="workbench-icon" src={moreAsset} alt="" />} label="Messages view" items={[...viewItems,{label:"Filter messages",onSelect:()=>setFiltering(true)},{label:"Search messages",onSelect:()=>setSearching(true)},{label:"Columns…",onSelect:()=>setColumnsOpen(true)},...(unsaved ? [{label:"Save view",onSelect:()=>setSaving(true)}] : []),{label:"Create variant",onSelect:onCreateVariant,disabled:busy || selectionReading || sendable===0},{label:"Send selected",onSelect:onSendSelected,disabled:busy || selectionReading || sendable===0}]}/></div><form className="file-browser-search" onSubmit={event=>{event.preventDefault();const form=new FormData(event.currentTarget);const text=String(form.get("search") || "");onQuery({...query,search:text ? {scope:query.search?.scope || "metadata",text}:null});}}><img className="workbench-icon" src={searchAsset} alt=""/><input name="search" aria-label="Search messages" placeholder="Search…" defaultValue={query.search?.text || ""}/></form><div className="file-browser-tabs" role="tablist" aria-label="Message grouping"><button type="button" role="tab" aria-selected={!browserByType} onClick={()=>setBrowserByType(false)}>All</button><button type="button" role="tab" aria-selected={browserByType} onClick={()=>setBrowserByType(true)}>By type</button></div></> : null}
       {!browser ? <div className="toolbar list-toolbar">
         <div className="toolbar-group">
           <IconButton icon="search" label="Search messages" onClick={() => setSearching(true)} />
@@ -576,7 +575,7 @@ export function MessageList({
         </div>
       ) : null}
       {body}
-      {browser ? <footer className="file-browser-footer"><span>Source</span><strong>{browserSourceName || rows.find(row=>row.id===selected)?.source_name || rows.find(row=>row.id===selected)?.source_id || "Retained capture"}</strong><span>Original bytes retained</span></footer> : null}
+      {browser ? <footer className="file-browser-footer"><span>Source</span><strong>{browserSourceName || rows.find(row=>row.id===selected)?.source_name || rows.find(row=>row.id===selected)?.source_id || "Retained capture"}</strong></footer> : null}
 
       <ColumnsSheet
         open={columnsOpen}

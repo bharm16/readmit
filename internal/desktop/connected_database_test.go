@@ -98,7 +98,7 @@ func (p *connectedPostgres) sql(statement string) {
 	p.run("psql", "-h", p.root, "-p", p.port, "-U", "lab_owner", "-d", "application", "-v", "ON_ERROR_STOP=1", "-c", statement)
 }
 
-func saveDatabaseObservation(t *testing.T, f *connectedAuthoring, p *connectedPostgres) desktop.ItemRef {
+func saveDatabaseObservation(t *testing.T, f *connectedAuthoring, p *connectedPostgres, maxGapMS int64) desktop.ItemRef {
 	t.Helper()
 	ca := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: f.fixture.Certificate().Raw})
 	if err := os.WriteFile(filepath.Join(f.root, "database-ca.pem"), ca, 0o600); err != nil {
@@ -116,7 +116,7 @@ func saveDatabaseObservation(t *testing.T, f *connectedAuthoring, p *connectedPo
 	source := observesource.Source{Schema: observesource.SchemaDatabase, Observes: scope, Enabled: true, Freshness: observesource.Freshness{MaxAge: "30s"}, Database: &observesource.Database{Driver: "postgresql", Address: p.address, Classification: "nonproduction", Name: "application", Username: "observer", CAFile: filepath.Join(f.root, "database-ca.pem"), ServerName: "example.com", Credential: observesource.DatabaseCredential{}, View: []string{"public", "observed"}, RecordKey: "appointment", KeyType: "text", Filters: []observesource.DatabaseFilter{}, Limits: &observesource.DatabaseLimits{Timeout: "5s", MaxRows: 10, MaxBytes: 65536}}}
 	window := observewindow.Window{Schema: observewindow.WindowSchema, Source: scope, Watermark: observewindow.Watermark{Kind: "none"}, PreExisting: observewindow.PreExisting{Declaration: observewindow.DeclaredEmpty}, Completion: observewindow.Rule{Deadline: "3s", QuietPeriod: "10ms", StableSamples: 2, MaxRecords: 10, MaxSamples: 20}}
 	projection := dataset.Projection{Schema: dataset.ProjectionSchema, ID: "database-appointments", Format: "database", Order: "unordered", Columns: []dataset.Column{{Name: "appointment", Type: "text", Locator: importer.Locator{"appointment"}, Key: true, Required: true}, {Name: "status", Type: "text", Locator: importer.Locator{"status"}, Required: true}}, Limits: dataset.Limits{MaxRows: 10, MaxBytes: 65536, TimeoutMS: 5000}}
-	saved := f.app.SaveItem(desktop.SaveItemRequest{Context: f.context, Kind: desktop.ObservationItem, IntentID: "database-observation", Draft: desktop.ItemDraft{Name: "Actual database appointments", Observation: &desktop.ObservationDraft{Source: source, Window: window, Credential: "database-observer", Connected: &desktop.ConnectedObservation{Schema: desktop.ConnectedObservationSchema, Environment: f.v2.ID, Namespace: "appointments", Phase: "both", Baseline: "before-run", BusinessKeys: []desktop.BusinessKeyMapping{{Field: "appointment", Variable: "appointment-key"}}, Projection: &projection, Completion: observeinterval.Definition{Schema: observeinterval.Schema, Enabled: true, Mode: "snapshots", Freshness: "snapshot-only", HorizonMS: 100, SampleMS: 100, MaxGapMS: 1000, MaxSamples: 400, MaxRecords: 10, MaxBytes: 65536}}}}})
+	saved := f.app.SaveItem(desktop.SaveItemRequest{Context: f.context, Kind: desktop.ObservationItem, IntentID: "database-observation", Draft: desktop.ItemDraft{Name: "Actual database appointments", Observation: &desktop.ObservationDraft{Source: source, Window: window, Credential: "database-observer", Connected: &desktop.ConnectedObservation{Schema: desktop.ConnectedObservationSchema, Environment: f.v2.ID, Namespace: "appointments", Phase: "both", Baseline: "before-run", BusinessKeys: []desktop.BusinessKeyMapping{{Field: "appointment", Variable: "appointment-key"}}, Projection: &projection, Completion: observeinterval.Definition{Schema: observeinterval.Schema, Enabled: true, Mode: "snapshots", Freshness: "snapshot-only", HorizonMS: 100, SampleMS: 100, MaxGapMS: maxGapMS, MaxSamples: 400, MaxRecords: 10, MaxBytes: 65536}}}}})
 	if saved.Saved == nil {
 		t.Fatalf("database observation: %+v", saved)
 	}
@@ -125,7 +125,7 @@ func saveDatabaseObservation(t *testing.T, f *connectedAuthoring, p *connectedPo
 		t.Fatalf("saved database setup unavailable: %+v", reopened)
 	}
 	held := reopened.Draft.Observation
-	if held.Connected.Projection.Identity() != projection.Identity() || held.Connected.Completion.MaxGapMS != 1000 || len(held.Connected.BusinessKeys) != 1 || held.Connected.BusinessKeys[0].Variable != "appointment-key" || held.Credential != "database-observer" {
+	if held.Connected.Projection.Identity() != projection.Identity() || held.Connected.Completion.MaxGapMS != maxGapMS || len(held.Connected.BusinessKeys) != 1 || held.Connected.BusinessKeys[0].Variable != "appointment-key" || held.Credential != "database-observer" {
 		t.Fatalf("database choices changed through save/reopen: %+v", held)
 	}
 	return *saved.Saved
@@ -133,7 +133,10 @@ func saveDatabaseObservation(t *testing.T, f *connectedAuthoring, p *connectedPo
 func TestSavedConnectedDatabaseNormalRunUsesRegisteredReferenceAndActualRows(t *testing.T) {
 	f := newConnectedAuthoring(t)
 	p := startConnectedPostgres(t, f)
-	observation := saveDatabaseObservation(t, f, p)
+	// This case checks retained database rows and verdicts, not one-second
+	// coverage. Allow the same five seconds already declared for an acquisition;
+	// the separate strict-gap case below proves late evidence stays undecided.
+	observation := saveDatabaseObservation(t, f, p, 5000)
 
 	draft := captureTestDraft(f, observation)
 	draft.Boundary = desktop.ApplicationBoundary
@@ -209,7 +212,7 @@ func TestSavedConnectedDatabaseNormalRunUsesRegisteredReferenceAndActualRows(t *
 func TestSavedConnectedDatabaseReviewRefusesChangedCredentialGenerationBeforeEffects(t *testing.T) {
 	f := newConnectedAuthoring(t)
 	p := startConnectedPostgres(t, f)
-	observation := saveDatabaseObservation(t, f, p)
+	observation := saveDatabaseObservation(t, f, p, 1000)
 	draft := captureTestDraft(f, observation)
 	draft.Boundary = desktop.ApplicationBoundary
 	draft.Steps[0].V2 = &desktop.ConnectedV2{}
@@ -232,7 +235,7 @@ func TestSavedConnectedDatabaseFreshAuthorityRejectsChangedInputsDuringExecution
 		t.Run(mutation, func(t *testing.T) {
 			f := newConnectedAuthoring(t)
 			p := startConnectedPostgres(t, f)
-			observation := saveDatabaseObservation(t, f, p)
+			observation := saveDatabaseObservation(t, f, p, 1000)
 			draft := captureTestDraft(f, observation)
 			draft.Boundary = desktop.ApplicationBoundary
 			draft.Steps[0].V2 = &desktop.ConnectedV2{}
@@ -303,7 +306,7 @@ func TestSavedConnectedDatabaseFreshAuthorityRejectsChangedInputsDuringExecution
 func TestSavedConnectedDatabaseCancellationRetainsInsufficientScope(t *testing.T) {
 	f := newConnectedAuthoring(t)
 	p := startConnectedPostgres(t, f)
-	observation := saveDatabaseObservation(t, f, p)
+	observation := saveDatabaseObservation(t, f, p, 1000)
 	draft := captureTestDraft(f, observation)
 	draft.Boundary = desktop.ApplicationBoundary
 	draft.Steps[0].V2 = &desktop.ConnectedV2{}
@@ -341,4 +344,56 @@ func TestSavedConnectedDatabaseCancellationRetainsInsufficientScope(t *testing.T
 		t.Fatalf("cancelled table became empty comparison: %+v %v", comparison.Records, err)
 	}
 
+}
+
+func TestSavedConnectedDatabaseStrictGapRejectsSlowAcquisition(t *testing.T) {
+	f := newConnectedAuthoring(t)
+	p := startConnectedPostgres(t, f)
+	// The real view delays its one returned value; no fake clock or recorded
+	// timestamp is substituted. The acquisition fits its five-second budget
+	// while necessarily exceeding this explicitly chosen one-second gap.
+	p.sql(`CREATE FUNCTION delayed_status(text) RETURNS text LANGUAGE plpgsql VOLATILE AS $$ BEGIN PERFORM pg_sleep(1.2); RETURN $1; END $$;
+ CREATE OR REPLACE VIEW observed AS SELECT appointment,delayed_status(status) AS status FROM private_appointments;`)
+	observation := saveDatabaseObservation(t, f, p, 1000)
+	draft := captureTestDraft(f, observation)
+	draft.Boundary = desktop.ApplicationBoundary
+	draft.Steps[0].V2 = &desktop.ConnectedV2{}
+	draft.Phases[0].Checks = draft.Phases[0].Checks[:2]
+	draft.Phases[0].Checks[1].Check.Column = "status"
+	item := f.save(t, "Strict database coverage", "database-strict-gap", draft, f.v2.ID)
+	errors := make(chan error, 1)
+	f.engine.SetAfter(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_, err := exec.CommandContext(ctx, filepath.Join(p.bin, "psql"), "-h", p.root, "-p", p.port, "-U", "lab_owner", "-d", "application", "-v", "ON_ERROR_STOP=1", "-c", "INSERT INTO private_appointments VALUES ('APT-1','booked')").CombinedOutput()
+		if err != nil {
+			errors <- err
+		}
+	})
+	review := prepared(t, f.app, desktop.PrepareActionRequest{Context: f.context, Action: desktop.RunTestAction, Items: []desktop.ItemRef{item}})
+	actual := f.app.ExecuteReviewedAction(desktop.ExecuteActionRequest{Context: f.context, Token: review.Token, IntentID: "strict-database-gap"})
+	select {
+	case err := <-errors:
+		t.Fatal(err)
+	default:
+	}
+	if actual.Lifecycle == nil || actual.Run == nil || actual.Lifecycle.State != "incomplete" || actual.Lifecycle.Verdict != assertion.VerdictUndecided {
+		t.Fatalf("late snapshot was allowed to settle: %+v", actual.Lifecycle)
+	}
+	proof, err := connectedrun.OpenFlowEvidence(context.Background(), filepath.Join(f.root, actual.Lifecycle.Output))
+	if err != nil {
+		t.Fatal(err)
+	}
+	interval := proof.Phases["reschedule"].Intervals["received"]
+	if interval.Reason != "lost-coverage" || interval.Boundary != "insufficient" || interval.Definition.MaxGapMS != 1000 {
+		t.Fatalf("strict coverage was weakened: %+v", interval)
+	}
+	rows := f.app.ReadConnectedObservation(desktop.ConnectedObservationRequest{Context: f.context, Run: *actual.Run, Phase: "reschedule", Dataset: "received", Reveal: true})
+	if rows.Available || !strings.Contains(rows.Reason, "lost-coverage") {
+		t.Fatalf("late rows were exposed as a sufficient observation: %+v", rows)
+	}
+	table := proof.Phases["reschedule"].Tables["received"]
+	if len(table.Rows) != 1 || len(table.Rows[0].Values) != 2 || table.Rows[0].Values[1].Text != "booked" {
+		t.Fatalf("test did not retain the real late database row: %+v", table)
+	}
 }

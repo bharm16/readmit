@@ -26,6 +26,7 @@ import type {
   ValueMapDraftRequest,
   ValueMapDraftResult,
   ReferenceCatalogResult,
+  ReferenceLibraryResult,
   InterfaceSpecsResult,
   InterfaceSpecResult,
   InterfaceSpecSaveRequest,
@@ -2436,4 +2437,15 @@ export function readValueMapDraft(request: ValueMapDraftRequest): Promise<ValueM
 }
 export function readContextEditorDraft(request: ContextEditorDraftRequest): Promise<ContextEditorDraftResult> {
   return retryingRead(() => facade().ReadContextEditorDraft(request), { state: "failed", context: request.context });
+}
+
+/** Installed reference metadata; no source message leaves the typed facade. */
+export function readReferenceLibrary():Promise<ReferenceLibraryResult> {
+  return retryingRead(()=>facade().ReadReferenceLibrary(),{state:"failed",editions:[]});
+}
+export function installReferenceLibrary(folder:string):Promise<ReferenceLibraryResult> {
+  return guard(()=>facade().InstallReferenceLibrary(folder),{state:"failed",editions:[]});
+}
+export function installReferenceCatalog(path:string):Promise<ReferenceLibraryResult> {
+  return guard(()=>facade().InstallReferenceCatalog(path),{state:"failed",editions:[]});
 }

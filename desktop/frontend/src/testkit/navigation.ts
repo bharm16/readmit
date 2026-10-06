@@ -226,3 +226,18 @@ export async function findMessageRow(occurrence: string): Promise<HTMLElement> {
   });
   return row!;
 }
+
+/** Edition provenance moved to the Details information dialog. */
+export async function referenceInformation(user: UserEvent) {
+  await user.click(await screen.findByRole("button", { name: "Reference information" }));
+  return within(await screen.findByRole("dialog", { name: "Reference information" }));
+}
+export async function closeReferenceInformation(user: UserEvent) {
+  await user.click(screen.getByRole("button", { name: "Close reference information" }));
+}
+export async function expectReferenceEdition(user: UserEvent, edition: string) {
+  const information = await referenceInformation(user);
+  await user.click(information.getByText("Message and reference edition", { selector: "summary" }));
+  await information.findByText("Reference edition: " + edition);
+  await closeReferenceInformation(user);
+}

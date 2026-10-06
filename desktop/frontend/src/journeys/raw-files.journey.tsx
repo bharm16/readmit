@@ -45,12 +45,11 @@ test("a raw file is inspected and copied in the window exactly as the command li
   const messages = command.stdout.split("\n").filter((line) => /^Message \d+:/.test(line));
   await waitFor(() => expect(within(table).getAllByRole("row").filter((row) => row.hasAttribute("data-row-id"))).toHaveLength(messages.length));
 
-  // Values appear only once a person asks for them.
+  // Parser values are visible by default.
   await press(user, table.querySelector<HTMLElement>('[data-row-id="0"]')!);
   const details = within(await screen.findByRole("region", { name: "Message details" }));
-  expect(details.queryByText(/EXAMPLE\^CHARLIE/)).toBeNull();
+  expect((await details.findAllByText(/EXAMPLE\^CHARLIE/)).length).toBeGreaterThan(0);
   await press(user, details.getByRole("button", { name: /^PID/ }));
-  await press(user, details.getByRole("button", { name: "Show values" }));
   expect((await details.findAllByText(/EXAMPLE\^CHARLIE/)).length).toBeGreaterThan(0);
 
   // A byte-identical copy goes to a new file the person named.

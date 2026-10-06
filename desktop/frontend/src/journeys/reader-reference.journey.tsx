@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Journey, press } from "../testkit/journey";
+import { referenceInformation, closeReferenceInformation, expectReferenceEdition } from "../testkit/navigation";
 import type { Hl7referenceRecord } from "../bindings";
 
 let journey:Journey;
@@ -40,7 +41,6 @@ test("real reader selection keeps original spans, all metadata columns and expli
   await waitFor(()=>expect(journey.callsTo("ReadReferenceCatalog")[0]?.result).toMatchObject({state:"completed",reference:{coverage:{segments:1,fields:1}}}));
   await press(user,await details.findByRole("button",{name:/^MSH\[1\].*Owned message header/}));
   await press(user,await details.findByRole("button",{name:/^MSH\[1\]-9\s/}));
-  await press(user,details.getByRole("button",{name:"Show values"}));
   expect(await details.findByRole("heading",{name:"SIU^S12 · synthetic-1"})).toBeTruthy();
   const original=within(details.getByRole("region",{name:"Original message"}));
   await waitFor(()=>expect(original.getByText("SIU^S12",{selector:"mark"})).toBeTruthy());
@@ -124,36 +124,35 @@ test("real datatype drilldown and component inspection keep original repeated cu
   await journey.settled();
   await waitFor(()=>expect(journey.callsTo("ReadReferenceCatalog")[0]?.result).toMatchObject({state:"completed"}));
   await selectReaderPath(user,"MSH[1]-9");
-  await press(user,details.getByRole("button",{name:"Show values"}));
   const original=within(details.getByRole("region",{name:"Original message"}));
   const reference=within(details.getByRole("region",{name:"Reference details"}));
   await press(user,reference.getByRole("button",{name:"Datatype · MSG"}));
   expect(await reference.findByText("Selected field: MSH[1]-9")).toBeTruthy();
-  expect(await reference.findByText("Original value: S12")).toBeTruthy();
-  expect(reference.getByText("Original value: Omitted")).toBeTruthy();
+  expect(await within(await reference.findByRole("table",{name:"Datatype components"})).findByText("S12")).toBeTruthy();
+  expect(within(reference.getByRole("table",{name:"Datatype components"})).getByText("Omitted")).toBeTruthy();
   expect(original.getByText("SIU^S12",{selector:"mark"})).toBeTruthy();
-  await press(user,await reference.findByRole("button",{name:"2 · Trigger Event"}));
+  await press(user,await reference.findByRole("button",{name:"Trigger Event"}));
   expect(await reference.findByText("Owned datatype reference for Trigger Event.")).toBeTruthy();
   expect(original.getByText("SIU^S12",{selector:"mark"})).toBeTruthy();
   await press(user,reference.getByRole("button",{name:"Back to reference"}));
-  await reference.findByRole("button",{name:"2 · Trigger Event"});
+  await reference.findByRole("button",{name:"Trigger Event"});
   await press(user,reference.getByRole("button",{name:"Back to selected field"}));
   expect(reference.getByRole("button",{name:"Datatype · MSG"})).toBeTruthy();
   await selectReaderPath(user,"MSH[1]-9[1].2");
   expect(await reference.findByRole("heading",{name:"Trigger Event"})).toBeTruthy();
-  expect(reference.getByText("2.A.44.2",{selector:"dd"})).toBeTruthy();
-  expect(reference.getAllByText("Not applicable",{selector:"dd"}).length).toBeGreaterThanOrEqual(2);
+  expect(reference.getByRole("button",{name:"§2.A.44.2"})).toBeTruthy();
+  expect(reference.getAllByText("Not applicable").length).toBeGreaterThanOrEqual(2);
   expect(original.getByText("S12",{selector:"mark"})).toBeTruthy();
   await press(user,list.querySelector<HTMLElement>('[data-row-id="1"]')!);
   await details.findByRole("heading",{name:"ADT · A01"});
   await selectReaderPath(user,"PV1[2]-7[2].2.1");
   expect(await reference.findByRole("heading",{name:"Surname"})).toBeTruthy();
   expect(original.getByText("BETA",{selector:"mark"})).toBeTruthy();
-  expect(reference.getByText("2.A.30.1",{selector:"dd"})).toBeTruthy();
-  expect(reference.getByText(/Parent Item#: 00137/)).toBeTruthy();
+  expect(reference.getByRole("button",{name:"§2.A.30.1"})).toBeTruthy();
+  const parentInfo=await referenceInformation(user); expect(parentInfo.getByText(/Parent Item#: 00137/)).toBeTruthy(); await closeReferenceInformation(user);
   await press(user,reference.getByRole("button",{name:"Parent datatype · FN"}));
-  expect(await reference.findByRole("button",{name:"1 · Surname"})).toBeTruthy();
-  expect(reference.getByText("Original value: BETA")).toBeTruthy();
+  expect(await reference.findByRole("button",{name:"Surname"})).toBeTruthy();
+  expect(within(reference.getByRole("table",{name:"Datatype components"})).getByText("BETA")).toBeTruthy();
   expect(original.getByText("BETA",{selector:"mark"})).toBeTruthy();
   await press(user,reference.getByRole("button",{name:"Back to selected field"}));
   expect(reference.getByRole("heading",{name:"Surname"})).toBeTruthy();
@@ -197,7 +196,6 @@ test("real offline table search, element and section drilldowns preserve context
   await journey.settled();
   await waitFor(()=>expect(journey.callsTo("ReadReferenceCatalog")[0]?.result).toMatchObject({state:"completed"}));
   await selectReaderPath(user,"MSH[1]-9[1].2");
-  await press(user,details.getByRole("button",{name:"Show values"}));
   const original=within(details.getByRole("region",{name:"Original message"}));
   const reference=within(details.getByRole("region",{name:"Reference details"}));
   await press(user,reference.getByRole("button",{name:"Table · 0003"}));
@@ -219,7 +217,8 @@ test("real offline table search, element and section drilldowns preserve context
   await press(user,reference.getByRole("button",{name:"Back to selected field"}));
   await selectReaderPath(user,"MSH[1]-9");
   await press(user,reference.getByRole("button",{name:"Item# · 00009"}));
-  expect(await reference.findByText("Item number: 00009")).toBeTruthy();
+  expect(await reference.findByText("00009",{exact:true})).toBeTruthy();
+  await press(user,reference.getByRole("button",{name:"Expand definition"}));
   expect(reference.getByText(/<img src=x onerror=window.__readerInjected=true>/)).toBeTruthy();
   const definition=reference.getByText(/END_SOURCE_DEFINITION/);
   expect(definition.textContent!.length).toBeGreaterThan(512);
@@ -228,7 +227,7 @@ test("real offline table search, element and section drilldowns preserve context
   expect((window as unknown as {__readerInjected?:boolean}).__readerInjected).toBeUndefined();
   expect(original.getByText("SIU^S13",{selector:"mark"})).toBeTruthy();
   await press(user,reference.getByRole("button",{name:"Back to selected field"}));
-  await press(user,reference.getByRole("button",{name:"Sect · §2.15.9.9"}));
+  await press(user,reference.getByRole("button",{name:"§2.15.9.9"}));
   expect(await reference.findByText("Owned reference definition for the message code and trigger.")).toBeTruthy();
   expect(reference.getByText("Selected field: MSH[1]-9")).toBeTruthy();
   await press(user,reference.getByRole("button",{name:"Back to selected field"}));
@@ -277,11 +276,10 @@ test("real message context keeps source structure omitted and selected profile d
   await press(user,screen.getByRole("button",{name:"Reference"}));
   await journey.settled();
   await waitFor(()=>expect(journey.callsTo("ReadReferenceCatalog")[0]?.result).toMatchObject({state:"completed"}));
-  let context=within(details.getByRole("region",{name:"Message context"}));
-  expect(context.getByText("Structure: SIU_S12")).toBeTruthy();
-  expect(context.getByText("Resolved from message code + trigger event")).toBeTruthy();
-  const provenance=()=>within(details.getByText("Message structure provenance",{selector:"summary"}).closest("details")!);
-  await press(user,details.getByText("Message structure provenance",{selector:"summary"}));
+  expect(details.getByRole("button",{name:"SIU_S12"})).toBeTruthy();
+  let information=await referenceInformation(user);
+  const provenance=()=>within(information.getByText("Message structure provenance",{selector:"summary"}).closest("details")!);
+  await press(user,information.getByText("Message structure provenance",{selector:"summary"}));
   expect(provenance().getByText("Transmitted MSH-9.3: Omitted")).toBeTruthy();
   expect(provenance().getByText("Reference structure: SIU_S12 · inferred")).toBeTruthy();
   await press(user,provenance().getByRole("button",{name:"Message overview"}));
@@ -289,13 +287,18 @@ test("real message context keeps source structure omitted and selected profile d
   await press(user,details.getByRole("button",{name:"Back to selected field"}));
   await press(user,list.querySelector<HTMLElement>('[data-row-id="1"]')!);
   await details.findByRole("heading",{name:"ADT · A08"});
-  context=within(details.getByRole("region",{name:"Message context"}));
-  expect(context.getByText("Structure: ADT_A01")).toBeTruthy();
+  expect(details.getByRole("button",{name:"ADT_A01"})).toBeTruthy();
+  information=await referenceInformation(user);
+  await press(user,information.getByText("Message structure provenance",{selector:"summary"}));
   expect(provenance().getByText("Transmitted MSH-9.3: Omitted")).toBeTruthy();
   expect(provenance().getByText("Reference structure: ADT_A01 · inferred")).toBeTruthy();
+  await closeReferenceInformation(user);
   await selectReaderPath(user,"PV1[2]-7");
-  await press(user,details.getByText("Selected occurrence placement",{selector:"summary"}));
-  expect(details.getByText(/PATIENT\[2\].*visit\[1\]/)).toBeTruthy();
+  information=await referenceInformation(user);
+  await press(user,information.getByText("Message structure provenance",{selector:"summary"}));
+  await press(user,information.getByText("Selected occurrence placement",{selector:"summary"}));
+  expect(information.getByText(/PATIENT\[2\].*visit\[1\]/)).toBeTruthy();
+  await closeReferenceInformation(user);
   await journey.chooseFiles([profile],"Open local HL7 profile");
   await press(user,details.getByRole("button",{name:"More message actions"}));
   await press(user,screen.getByRole("menuitem",{name:"Choose local profile…"}));
@@ -315,7 +318,7 @@ test("real message context keeps source structure omitted and selected profile d
   await journey.launch();
   details=within(await screen.findByRole("region",{name:"Message details"}));
   expect(await details.findByText(/Profile: owned-adt/)).toBeTruthy();
-  expect(details.queryByText("456^SECOND")).toBeNull();
+  expect(details.getAllByText("456^SECOND").length).toBeGreaterThan(0);
   await journey.close();
   journey.writeFile("owned-profile.json",journey.readFile("owned-profile.json")+"\n");
   await journey.launch();
@@ -345,9 +348,9 @@ test("real reader selects each earlier local edition while retaining the declare
   await selectReaderPath(user,"MSH[1]-9");
   const reference=within(details.getByRole("region",{name:"Reference details"}));
   expect(await reference.findByRole("heading",{name:"Owned edition "+["2.3.1","2.4","2.5"][i]+" message type"})).toBeTruthy();
-  expect(reference.getByText("Message edition: 2.5.1")).toBeTruthy();
-  expect(reference.getByText("Reference edition: "+["2.3.1","2.4","2.5"][i])).toBeTruthy();
-  expect(reference.getByText(/Selected reference edition differs/)).toBeTruthy();
+  await expectReferenceEdition(user,["2.3.1","2.4","2.5"][i]!);
+  expect(reference.getByText(/Message declares: HL7 2.5.1/)).toBeTruthy();
+  expect(reference.getByRole("button",{name:"Return to message edition"})).toBeTruthy();
   expect(reference.getByText(i===0?"7":i===1?"13":"15",{exact:true})).toBeTruthy();
   await press(user,reference.getByRole("button",{name:"Datatype · MSG"}));
   expect(await details.findByRole("heading",{name:"Message Type"})).toBeTruthy();
@@ -372,23 +375,23 @@ test.skipIf(!process.env.READMIT_HL7_REFERENCE_DIRECTORY)("supplied official ear
   await journey.settled();
   await selectReaderPath(user,"MSH[1]-9");
   const reference=within(details.getByRole("region",{name:"Reference details"}));
-  await waitFor(()=>expect(reference.getByText("Reference edition: "+edition)).toBeTruthy());
-  expect(reference.getByText("Message edition: 2.5.1")).toBeTruthy();expect(reference.getByText(length!,{exact:true})).toBeTruthy();expect(reference.getByText("00009",{exact:true})).toBeTruthy();
+  await expectReferenceEdition(user,edition!);
+  expect(reference.getByText(/Message declares: HL7 2.5.1/)).toBeTruthy();expect(reference.getByText(length!,{exact:true})).toBeTruthy();expect(reference.getByText("00009",{exact:true})).toBeTruthy();
   await press(user,reference.getByRole("button",{name:"Item# · 00009"}));
-  expect(await reference.findByRole("heading",{name:/^00009 · /})).toBeTruthy();
+  expect(await reference.findByText("00009",{exact:true})).toBeTruthy();
   await press(user,reference.getByRole("button",{name:"Back to selected field"}));
-  const section=reference.getByRole("button",{name:/^Sect · /});await press(user,section);
+  const section=reference.getByRole("button",{name:/^§/});await press(user,section);
   expect(await reference.findByRole("heading",{name:"Source definition"})).toBeTruthy();
   await press(user,reference.getByRole("button",{name:"Back to selected field"}));
   const table=reference.queryByRole("button",{name:"Table · 0003"});
   if(table){await press(user,table);expect(await reference.findByRole("heading",{name:"Table reference"})).toBeTruthy();await press(user,reference.getByRole("button",{name:"Back to selected field"}));}
-  await press(user,reference.getByRole("button",{name:"Message overview"}));
+  const information=await referenceInformation(user);await press(user,information.getByText("Message structure provenance",{selector:"summary"}));await press(user,information.getByRole("button",{name:"Message overview"}));
   expect(await reference.findByRole("heading",{name:"Source definition"})).toBeTruthy();
   await press(user,reference.getByRole("button",{name:"Back to selected field"}));
   await selectReaderPath(user,"PV1[1]-7[1].2");
-  expect(reference.getByText("Reference edition: "+edition)).toBeTruthy();
+  await expectReferenceEdition(user,edition!);
   await press(user,reference.getByRole("button",{name:"Parent datatype · XCN"}));
-  expect(await reference.findByRole("heading",{name:/^XCN · /})).toBeTruthy();
+  expect(await reference.findByText("XCN",{exact:true})).toBeTruthy();
   await press(user,reference.getByRole("button",{name:"Back to selected field"}));
   expect(details.getByRole("button",{current:"location"}).textContent).toContain("PV1[1]-7[1].2");
  }
@@ -409,11 +412,11 @@ test.skipIf(!process.env.READMIT_HL7_LATER_REFERENCE_DIRECTORY)("supplied later 
   for(const [field,expected] of [[2,edition==="2.6"?"4":"4..5"],[7,"DTM"],[8,edition==="2.6"?"40":"40="],[10,edition==="2.6"?"199":"1..199"]] as const) {
    await selectReaderPath(user,"MSH[1]-"+field);
    const reference=within(details.getByRole("region",{name:"Reference details"}));
-   expect(reference.getByText("Message edition: 2.5.1")).toBeTruthy();expect(reference.getByText("Reference edition: "+edition)).toBeTruthy();expect(reference.getByText(expected,{exact:true})).toBeTruthy();
-   if(field===10&&edition!=="2.6") {expect(reference.getByText("=",{exact:true})).toBeTruthy();expect(reference.getByText(/receiving application’s storage capacity/)).toBeTruthy();}
+   expect(reference.getByText(/Message declares: HL7 2.5.1/)).toBeTruthy();await expectReferenceEdition(user,edition!);expect(reference.getByText(expected,{exact:true})).toBeTruthy();
+   if(field===10&&edition!=="2.6") {expect(reference.getByText("=",{exact:true})).toBeTruthy();const information=await referenceInformation(user);await press(user,information.getByText("Source attributes and provenance",{selector:"summary"}));expect(information.getByText(/receiving application’s storage capacity/)).toBeTruthy();await closeReferenceInformation(user);}
   }
   await journey.chooseFiles([returned],"Open offline HL7 reference catalog");await press(user,details.getByRole("button",{name:"Return to message edition"}));await journey.settled();
-  expect(details.getByText("Reference edition: 2.5.1")).toBeTruthy();expect(details.queryByRole("button",{name:"Return to message edition"})).toBeNull();
+  await expectReferenceEdition(user,"2.5.1");expect(details.queryByRole("button",{name:"Return to message edition"})).toBeNull();
  }
  expect(journey.digest("later-edition-source.mllp")).toBe(baseline);
 });
@@ -453,7 +456,7 @@ test("real reader exposes independent v5 attribute origins and unknown-edition p
  for(const record of data.records){record.name_origin={kind:"normative",source:"standard",locator:"owned-chapter.pdf"};record.definition_origin=record.definition?{kind:"normative",source:"standard",locator:"owned-chapter.pdf"}:{kind:"not_available"};for(const key of ["datatype","optionality","length","conformance_length","repetition","item","table","section"]){const a=record[key];a.origin=["not_applicable","not_available"].includes(a.state)?{kind:a.state}:{kind:"normative",source:"standard",locator:"owned-chapter.pdf#"+key};}}
  const field=data.records.find((record:Hl7referenceRecord)=>record.key==="field/MSH/9");field.datatype.origin={kind:"schema",source:"schemas",locator:"fields.xsd#MSH.9.Type"};field.item.origin={kind:"schema",source:"schemas",locator:"fields.xsd#MSH.9.Item"};field.name_origin={kind:"schema",source:"schemas",locator:"fields.xsd#MSH.9.LongName"};field.definition="";field.definition_origin={kind:"not_available"};data.coverage.definitions--;
  const catalog=journey.writeFile("owned-origin-reference.json",JSON.stringify(data));const profile=(family:string)=>journey.writeFile("owned-profile-"+family+".json",JSON.stringify({schema:"readmit-local-profile/v1",profile:{id:"owned-"+family.toLowerCase(),version:"1"},base:{pack:{id:"owned-pack",version:"1"},hl7_version:"2.5.1",family},segments:[{id:"MSH",fields:[{position:9,usage:"R"}]}]}));const adt=profile("ADT"),siu=profile("SIU");
- await journey.launch();await journey.chooseFiles([file],"Open HL7 file");await user.keyboard("{Control>}k{/Control}");await user.type(screen.getByLabelText("Search commands"),"Inspect file{Enter}");await press(user,(await screen.findByRole("table",{name:"Messages in this file"})).querySelector<HTMLElement>('[data-row-id="0"]')!);const details=within(await screen.findByRole("region",{name:"Message details"}));await journey.chooseFiles([catalog],"Open offline HL7 reference catalog");await press(user,screen.getByRole("button",{name:"Reference"}));await journey.settled();await selectReaderPath(user,"MSH[1]-9");const reference=within(details.getByRole("region",{name:"Reference details"}));await press(user,reference.getByText("Attribute origins",{selector:"summary"}));expect(reference.getByText("Messaging schema · owned-fields.xsd · fields.xsd#MSH.9.Type")).toBeTruthy();expect(reference.getByText("Messaging schema · owned-fields.xsd · fields.xsd#MSH.9.Item")).toBeTruthy();expect(reference.getByText(/Normative chapter.*owned-chapter.pdf#length/)).toBeTruthy();expect(reference.getByText("Definition not available.")).toBeTruthy();
+ await journey.launch();await journey.chooseFiles([file],"Open HL7 file");await user.keyboard("{Control>}k{/Control}");await user.type(screen.getByLabelText("Search commands"),"Inspect file{Enter}");await press(user,(await screen.findByRole("table",{name:"Messages in this file"})).querySelector<HTMLElement>('[data-row-id="0"]')!);const details=within(await screen.findByRole("region",{name:"Message details"}));await journey.chooseFiles([catalog],"Open offline HL7 reference catalog");await press(user,screen.getByRole("button",{name:"Reference"}));await journey.settled();await selectReaderPath(user,"MSH[1]-9");const reference=within(details.getByRole("region",{name:"Reference details"}));const information=await referenceInformation(user);await press(user,information.getByText("Source attributes and provenance",{selector:"summary"}));await press(user,information.getByText("Attribute origins",{selector:"summary"}));expect(information.getByText("Messaging schema · owned-fields.xsd · fields.xsd#MSH.9.Type")).toBeTruthy();expect(information.getByText("Messaging schema · owned-fields.xsd · fields.xsd#MSH.9.Item")).toBeTruthy();expect(information.getByText(/Normative chapter.*owned-chapter.pdf#length/)).toBeTruthy();await closeReferenceInformation(user);expect(reference.getByText("Definition not available.")).toBeTruthy();
  for(const [path,status,applicability]of [[adt,"not_available","incompatible"],[siu,"profile_selected","unknown_edition"]]){await journey.chooseFiles([path!],"Open local HL7 profile");await press(user,details.getByRole("button",{name:"More message actions"}));await press(user,screen.getByRole("menuitem",{name:"Choose local profile…"}));await journey.settled();expect(journey.callsTo("ReadHL7ReferenceSelection").at(-1)?.result).toMatchObject({state:"completed"});expect(journey.callsTo("InspectFileMessage").at(-1)?.result).toMatchObject({state:"completed",inspection:{metadata:{hl7_version:""},reference_overlay:{status,applicability}}});expect(details.queryByText(/Usage R · Datatype/)).toBeNull();}
  expect(journey.digest("origin-reader.mllp")).toBe(before);
 });

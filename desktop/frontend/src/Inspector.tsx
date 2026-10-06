@@ -10,6 +10,9 @@ import { useMeasured } from "./measure";
 import closeAsset from "./assets/workbench/close.svg";
 import downAsset from "./assets/workbench/down.svg";
 import moreAsset from "./assets/workbench/more.svg";
+import { ReaderIcon } from "./ReaderIcon";
+import { ReaderSelectionHeader, ReferenceAttributes, ReferenceBadge, ReferenceDefinition } from "./ReaderPresentation";
+import { ReferenceLibrary } from "./ReferenceLibrary";
 import "./inspector.css";
 
 type ReaderView = "fields" | "raw" | "hex";
@@ -91,8 +94,8 @@ function StructureOutline({nodes}:{nodes:ProfileevalNode[]}) {
 
 /** The shared reader of one message: Fields, Raw and Hex over the same
  * verified occurrence. Case messages, Timeline, Findings and a standalone file
- * all read a message through this one view. Values stay hidden until Show
- * values; revealing applies to what is open now and never reaches a list,
+ * all read a message through this one view. PHI masking applies to this reader
+ * while list, report and FHIR reveal policies remain independently owned,
  * a query or a log. */
 export function MessageReader({
   result,
@@ -100,6 +103,7 @@ export function MessageReader({
  referenceIdentity: suppliedIdentity = "",
   referenceSelection: suppliedSelection,
   referenceRequest = 0,
+  referenceLibraryRequest = 0,
   toolbarReference = false,
   compactReader,
   onCompactReader,
@@ -128,6 +132,7 @@ export function MessageReader({
  referenceIdentity?: string;
   referenceSelection?: HL7ReferenceSelection;
   referenceRequest?: number;
+  referenceLibraryRequest?: number;
   toolbarReference?: boolean;
   compactReader?: boolean;
   onCompactReader?: () => void;
@@ -169,12 +174,16 @@ export function MessageReader({
   const compactWorkbench = workbenchSize.width > 0 && workbenchSize.width / workbenchSize.rem < 42;
   const [goingTo, setGoingTo] = useState(false);
   const [info, setInfo] = useState(false);
+  const [libraryOpen,setLibraryOpen]=useState(false);
+  const [referenceInfo, setReferenceInfo] = useState(false);
+  const [detailsVisible, setDetailsVisible] = useState(true);
   const [path, setPath] = useState("");
   const [catalogPath, setCatalogPath] = useState("");
  const [catalogIdentity,setCatalogIdentity]=useState("");
   const [catalogProblem, setCatalogProblem] = useState("");
   const [catalogReading, setCatalogReading] = useState(false);
   const [fullDefinition, setFullDefinition] = useState(false);
+  const [definitionVisible,setDefinitionVisible]=useState(true);
   const referenceSerial = useRef(0);
   const referenceContext = useRef("");
   const referenceOwner = useRef("");
@@ -188,6 +197,9 @@ export function MessageReader({
   const [codeQuery, setCodeQuery] = useState("");
   const [activeQuery, setActiveQuery] = useState("");
   const [columnGuide, setColumnGuide] = useState(false);
+  const [segmentFields,setSegmentFields] = useState(false);
+  const [entityOverview,setEntityOverview] = useState(false);
+  const [fieldComponents,setFieldComponents] = useState(false);
   const [validationShown,setValidationShown]=useState(false);
   const referenceTabFocus=useRef(false);
   const [overlaySelection, setOverlaySelection] = useState<HL7ReferenceSelection | undefined>();
@@ -195,14 +207,16 @@ export function MessageReader({
   const overlaySerial=useRef(0);
   const inspection = result?.inspection;
   const selected = inspection?.selected;
-  const referencePin=catalogIdentity || suppliedIdentity || inspection?.reference?.identity || undefined;
+  const manualCatalog=catalogPath || suppliedCatalog;
+  const referencePath=manualCatalog || inspection?.reference_catalog || "";
+  const referencePin=manualCatalog ? catalogIdentity || suppliedIdentity || inspection?.reference?.identity || undefined : inspection?.reference?.identity || undefined;
   const contextKey = `${inspection?.identity ?? ""}/${inspection?.occurrence ?? inspection?.message ?? ""}/${selected?.path ?? ""}/${inspection?.revealed ?? false}/${inspection?.reference_overlay?.selection.profile_identity ?? ""}/${inspection?.reference_overlay?.selection.pack_identity ?? ""}/${inspection?.reference_overlay?.selection.documentation_identity ?? ""}`;
   referenceContext.current = contextKey;
   useEffect(()=>setValidationShown(false),[inspection?.identity,inspection?.occurrence,inspection?.message]);
-  const lookupContext = `${contextKey}/${referencePin ?? ""}/${catalogPath || suppliedCatalog}/${inspection?.reference?.status ?? ""}`;
+  const lookupContext = `${contextKey}/${referencePin ?? ""}/${referencePath}/${inspection?.reference?.status ?? ""}`;
   lookupOwner.current = lookupContext;
   useEffect(() => { ++lookupSerial.current; setReferenceView(null); setReferenceLoading(false); setReferenceKey(""); setReferenceTrail([]); setCodeQuery(""); setActiveQuery(""); setColumnGuide(false); }, [lookupContext]);
-  useEffect(() => { setCatalogProblem(""); setFullDefinition(false); }, [contextKey]);
+  useEffect(() => { setCatalogProblem(""); setFullDefinition(false); setDefinitionVisible(true); setSegmentFields(false); setEntityOverview(false); }, [contextKey]);
   useEffect(() => {
     const identity = inspection?.identity;
     if (!identity) return; // A transient read clears its result, not its owner.
@@ -272,6 +286,9 @@ export function MessageReader({
   const handledReferenceRequest = useRef(referenceRequest);
   useEffect(()=>{if(referenceRequest !== handledReferenceRequest.current){handledReferenceRequest.current=referenceRequest;void chooseReference();}},[referenceRequest]);
 
+  const handledLibraryRequest=useRef(referenceLibraryRequest);
+  useEffect(()=>{if(referenceLibraryRequest!==handledLibraryRequest.current){handledLibraryRequest.current=referenceLibraryRequest;setLibraryOpen(true);}},[referenceLibraryRequest]);
+
   const referenceKeys=(event:KeyboardEvent<HTMLDivElement>)=>{
     const tabs=[...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]:not([disabled])')];
     const active=document.activeElement;
@@ -301,18 +318,20 @@ export function MessageReader({
     await onInspect(selected?.path ?? "",inspection?.node_offset ?? 0,-1,undefined,catalogPath || suppliedCatalog || undefined,verified.overlay.selection,referencePin);
   };
 
-  const openReference = async (key: string, offset = 0, remember = true, query = "") => {
+  const openReference = async (key: string, offset = 0, remember = true, query = "", asComponents = false) => {
     if (!inspection?.reference) return;
     const owner = lookupContext;
     const serial = ++lookupSerial.current;
     if (remember && referenceKey && referenceKey !== key) setReferenceTrail((held) => [...held, {key:referenceKey,offset:referenceView?.offset ?? 0,query:activeQuery}]);
     if(referenceKey!==key)setLookupDefinitionExpanded(false);
+    setFieldComponents(asComponents);
+    setEntityOverview(false);
     setReferenceKey(key);
     setCodeQuery(query);
     setActiveQuery(query);
     setReferenceView(null);
     setReferenceLoading(true);
-    const answer = await lookupHL7Reference({catalog:catalogPath || suppliedCatalog, identity:inspection.reference.identity, edition:inspection.reference.edition, key, offset, limit:100, ...(query ? {query} : {})});
+    const answer = await lookupHL7Reference({catalog:referencePath, identity:inspection.reference.identity, edition:inspection.reference.edition, key, offset, limit:100, ...(query ? {query} : {})});
     if (lookupOwner.current !== owner || lookupSerial.current !== serial) return;
     setReferenceView(answer);
     setReferenceLoading(false);
@@ -328,6 +347,29 @@ export function MessageReader({
       setReferenceLoading(false);
       setReferenceKey("");
     }
+  };
+
+  const referenceTabs = () => {
+    const reference=inspection?.reference;
+    if(!reference || !selected)return null;
+    const record=referenceView?.reference?.record;
+    const messageEntity=record?.kind==="message" || record?.kind==="structure";
+    const datatypeEntity=record?.kind==="datatype";
+    const reset=()=>{++lookupSerial.current;setReferenceTrail([]);setReferenceView(null);setReferenceKey("");setReferenceLoading(false);setSegmentFields(false);};
+    const tabs:{name:string;icon:"overview"|"componentTab"|"components"|"dataElement";selected:boolean;action:()=>void}[]=[];
+    if(messageEntity){
+      tabs.push({name:"Overview",icon:"overview",selected:record.kind==="message",action:()=>{if(inspection.message_context?.message_key)void openReference(inspection.message_context.message_key);}});
+      if(inspection.message_context?.structure_key)tabs.push({name:"Structure",icon:"componentTab",selected:record.kind==="structure",action:()=>void openReference(inspection.message_context!.structure_key)});
+    } else if(datatypeEntity && !fieldComponents){
+      tabs.push({name:"Overview",icon:"overview",selected:entityOverview,action:()=>setEntityOverview(true)},{name:"Components",icon:"componentTab",selected:!entityOverview,action:()=>setEntityOverview(false)});
+    } else {
+      tabs.push({name:"Overview",icon:"overview",selected:!referenceKey&&!segmentFields,action:reset});
+      if(selected.kind==="segment")tabs.push({name:"Fields",icon:"componentTab",selected:segmentFields,action:()=>{reset();setSegmentFields(true);}});
+      else if(reference.datatype_key && inspection.reference_values?.some(value=>value.node.kind==="component") && (selected.kind==="field" || selected.kind==="repetition"))tabs.push({name:"Components",icon:"componentTab",selected:fieldComponents && Boolean(referenceKey),action:()=>void openReference(reference.datatype_key!,0,true,"",true)});
+      for(const key of reference.table_keys??[])tabs.push({name:reference.table_keys!.length>1 ? `Table ${key.slice(6)}`:"Table",icon:"components",selected:referenceKey===key,action:()=>void openReference(key)});
+      if(reference.element_key)tabs.push({name:"Data element",icon:"dataElement",selected:referenceKey===reference.element_key,action:()=>void openReference(reference.element_key!)});
+    }
+    return <div className="reader-reference-tabs" onKeyDown={referenceKeys} role="tablist" aria-label="Reference views">{tabs.map(tab=><button key={tab.name} type="button" role="tab" aria-selected={tab.selected} disabled={busy} onClick={tab.action}><ReaderIcon name={tab.icon}/>{tab.name}</button>)}</div>;
   };
 
   if (inspection?.fhir) return <FHIRReader inspection={inspection} fhir={inspection.fhir} busy={busy} onInspect={onInspect} onReveal={onReveal} onInspectResource={onInspectResource} onCreateCheck={onCreateFHIRCheck} onClose={onClose} backLabel={backLabel} onBack={onBack} />;
@@ -352,7 +394,7 @@ export function MessageReader({
           ) : null}
           {catalogProblem ? <p role="alert">{catalogProblem}</p> : null}
           {overlayProblem ? <p role="alert">{overlayProblem}</p> : null}
-          <div ref={setWorkbenchElement} className={`reader-workbench${compactWorkbench ? " compact-workbench" : ""}`}>
+          <div ref={setWorkbenchElement} className={`reader-workbench${compactWorkbench ? " compact-workbench" : ""}${detailsVisible ? "" : " reader-details-hidden"}`}>
           <div className={`reader-center reader-view-${view}`}>
       <header className="reader-header reader-context">
         {backLabel && onBack ? <BackLink label={backLabel} onBack={onBack} /> : null}
@@ -361,6 +403,7 @@ export function MessageReader({
           {onClose ? <button className="reader-tab-close" type="button" aria-label="Close message details" onClick={onClose}><img className="workbench-icon" src={closeAsset} alt="" /></button> : null}
           {facts.length > 0 ? <p className="reader-facts">{facts.join(" · ")}</p> : null}
         </div>
+        {view !== "fields" ? <PHIToggle masked={inspection?.phi_masked ?? false} disabled={busy} onToggle={()=>onReveal(Boolean(inspection?.phi_masked))} /> : null}
         {onCompactReader ? <button type="button" className="link" onClick={onCompactReader}>{compactReader ? "Wide view" : "Compact view"}</button> : null}
         {inspection && !toolbarReference ? <button type="button" disabled={busy || catalogReading} onClick={() => void chooseReference()}>Reference</button> : null}
         {inspection ? (
@@ -371,7 +414,7 @@ export function MessageReader({
               {label:"Fields",onSelect:()=>selectView("fields")},
               {label:"Raw",onSelect:()=>selectView("raw")},
               {label:"Hex",onSelect:()=>selectView("hex")},
-              ...(onRequirements ? [{label:"Validation",onSelect:()=>setValidationShown(true)}] : []),
+              ...(onRequirements ? [{label:"Validation",onSelect:()=>{setDetailsVisible(true);setValidationShown(true);}}] : []),
 
           {label:"Choose local profile…",onSelect:() => void chooseOverlay("reference-profile"),disabled:busy},
           {label:"Choose exact profile pack…",onSelect:() => void chooseOverlay("reference-pack"),disabled:busy},
@@ -383,12 +426,14 @@ export function MessageReader({
               ...(onFieldValues ? [{label:"Field values",onSelect:()=>onFieldValues(inspection.selector),disabled:busy||!field||!inspection.selector}] : []),
               { label: "Go to field…", onSelect: () => setGoingTo(true), disabled: busy || inspection.decode_state === "unparsed" },
               { label: "Info", onSelect: () => setInfo(true) },
+              { label: detailsVisible ? "Hide Details panel" : "Show Details panel", onSelect: () => setDetailsVisible(shown => !shown) },
+              ...(onCreateVariant ? [{label:"Create variant",onSelect:onCreateVariant,disabled:busy}] : []),
             ]}
           />
         ) : null}
       </header>
-          {view === "fields" ? <section className="reader-original" aria-label="Original message"><h3>Original message <span>Read only</span></h3>{revealed && (inspection.readable_window || inspection.raw_window) ? <RawText window={inspection.readable_window || inspection.raw_window!} busy={busy} onPage={(offset) => void onInspect(selected.path, inspection.node_offset, inspection.byte_offset, offset, catalogPath || suppliedCatalog || undefined,overlaySelection || suppliedSelection,referencePin)} /> : <p className="reader-hidden">{HIDDEN_VALUE}</p>}</section> : null}
-          <div className="reader-grid-controls"><h3>Segment grid</h3><button type="button" className="link" onClick={()=>setColumnGuide(!columnGuide)}>Column guide</button><span>Base HL7 {inspection.reference?.edition || "not selected"}</span></div>
+          {view === "fields" ? <section className="reader-original" aria-label="Original message"><h3>Original message <PHIToggle masked={inspection.phi_masked ?? false} disabled={busy} onToggle={()=>onReveal(Boolean(inspection.phi_masked))} /></h3>{revealed && (inspection.readable_window || inspection.raw_window) ? <RawText window={inspection.readable_window || inspection.raw_window!} busy={busy} onPage={(offset) => void onInspect(selected.path, inspection.node_offset, inspection.byte_offset, offset, catalogPath || suppliedCatalog || undefined,overlaySelection || suppliedSelection,referencePin)} /> : <p className="reader-hidden">{HIDDEN_VALUE}</p>}</section> : null}
+          <div className="reader-grid-controls"><h3>Segment grid</h3><button type="button" className="link" onClick={()=>{setDetailsVisible(true);setValidationShown(false);setColumnGuide(!columnGuide);}}>Column guide</button></div>
           {view !== "fields" ? <TaskTabs tablistClass="reader-view-tabs" label="Message views" id="reader-views" tabs={VIEWS} selected={view} onSelect={selectView} panels>{null}</TaskTabs> : <span id="reader-views-tab-fields" hidden>Fields</span>}
           <>
             <TaskPanel tabs="reader-views" tab="fields" shown={view === "fields"}>
@@ -460,88 +505,76 @@ export function MessageReader({
               )}
             </TaskPanel>
           </>
-          <footer className="reader-grid-footer">{segmentShortcuts.length ? <nav aria-label="Other segments" className="crumbs">{segmentShortcuts.map(row=><button key={row.node.path} type="button" title={row.node.path} aria-label={`Inspect ${row.node.path}`} disabled={busy} onClick={()=>go(row.node.path)}>{row.node.segment}</button>)}</nav> : null}<nav aria-label="Path" className="crumbs"><button type="button" disabled={busy} onClick={()=>go("")}>Segments</button>{selected.parent && selected.parent !== selected.path ? <button type="button" disabled={busy} onClick={()=>go(selected.parent)}>{selected.parent}</button> : null}</nav><span>— Not specified / not applicable · ? Not available · Empty ≠ Omitted</span></footer>
+          <footer className="reader-grid-footer">{segmentShortcuts.length ? <nav aria-label="Other segments" className="crumbs">{segmentShortcuts.map(row=><button key={row.node.path} type="button" title={row.node.path} aria-label={`Inspect ${row.node.path}`} disabled={busy} onClick={()=>go(row.node.path)}>{row.node.segment}</button>)}</nav> : null}<nav aria-label="Path" className="crumbs"><button type="button" disabled={busy} onClick={()=>go("")}>Segments</button>{selected.parent && selected.parent !== selected.path ? <button type="button" disabled={busy} onClick={()=>go(selected.parent)}>{selected.parent}</button> : null}</nav></footer>
           </div>
-          {contextDetails !== undefined && contextDetails !== null && !validationShown ? <section className="reader-reference" aria-label="Context details"><h3 className="reader-pane-heading">{contextDetailsTitle}</h3><div className="reader-reference-scroll">{contextDetails}</div></section> : inspection.reference ? <section className="reader-reference" aria-label="Reference details">{validationShown ? <div className="reader-pane-tabs" onKeyDown={referenceKeys} role="tablist" aria-label="Inspector views"><button type="button" role="tab" aria-selected={!validationShown} onClick={()=>setValidationShown(false)}>Details</button><button type="button" role="tab" aria-selected={validationShown} onClick={()=>setValidationShown(true)}>Validation</button></div> : <h3 className="reader-pane-heading">Details</h3>}<div className="reader-reference-scroll">
+          {contextDetails !== undefined && contextDetails !== null && !validationShown ? <section className="reader-reference" aria-label="Context details" hidden={!detailsVisible}><h3 className="reader-pane-heading">{contextDetailsTitle}</h3><div className="reader-reference-scroll">{contextDetails}</div></section> : inspection.reference ? <section className="reader-reference" aria-label="Reference details" hidden={!detailsVisible}>{validationShown ? <div className="reader-pane-tabs" onKeyDown={referenceKeys} role="tablist" aria-label="Inspector views"><button type="button" role="tab" aria-selected={!validationShown} onClick={()=>setValidationShown(false)}>Details</button><button type="button" role="tab" aria-selected={validationShown} onClick={()=>setValidationShown(true)}>Validation</button></div> : <div className="reader-pane-heading"><h3>Details</h3><button type="button" className="reader-plain-icon" aria-label="Hide Details panel" onClick={()=>setDetailsVisible(false)}><ReaderIcon name="close" /></button><button type="button" className="reader-plain-icon reader-pane-options" aria-label="Reference information" onClick={()=>setReferenceInfo(true)}><ReaderIcon name="settings" /></button></div>}{!validationShown && !columnGuide ? <ReaderSelectionHeader inspection={inspection} nodes={gridNodes} busy={busy} onSelect={go} onGoToField={()=>setGoingTo(true)} /> : null}<div className="reader-reference-scroll">
+            {!validationShown && !columnGuide && field ? <div className="reader-value-control"><pre className="value" aria-label="Original value">{selected.state === "present" ? revealed ? inspection.raw || decodeStateText(inspection.decode_state) : HIDDEN_VALUE : stateText(selected.state,revealed,"")}</pre>{inspection.reference?.datatype_key && inspection.reference_values?.some(value=>value.node.kind==="component") ? <button type="button" className="reader-plain-icon" aria-label="Inspect components" disabled={busy} onClick={()=>void openReference(inspection.reference!.datatype_key!,0,true,"",true)}><ReaderIcon name="components" /></button> : null}<button type="button" className="reader-plain-icon" aria-label="Copy value" disabled={!revealed || selected.state!=="present" || !inspection.raw || inspection.decode_state==="too_large"} onClick={()=>void navigator.clipboard?.writeText(inspection.raw)}><ReaderIcon name="copy" /></button></div> : null}
+            {!validationShown && !columnGuide && inspection.message_context && (atRoot || selected.segment==="MSH" && selected.field===9) ? <div className="reader-structure-strip"><span>Message structure</span><button type="button" className="link" disabled={busy || !inspection.message_context.structure_key} onClick={()=>inspection.message_context?.structure_key && void openReference(inspection.message_context.structure_key)}>{inspection.message_context.resolved_structure || "Not available"}</button></div> : null}
             {validationShown ? <section className="reader-validation" aria-label="Validation"><h4>Validation</h4><h5>No validation result available in this inspection</h5><p>Choose the specification used to check these messages. Reading reference metadata does not run validation.</p><button type="button" className="primary" disabled={busy} onClick={()=>onRequirements?.(inspection.selector || selected.path)}>Select specification</button><ValueRows rows={[{label:"Message",value:title},{label:"Field",value:inspection.selector || selected.path || "Message"}]} /><label>Original value</label><pre className="value">{selected.state === "present" ? revealed ? inspection.raw || decodeStateText(inspection.decode_state) : HIDDEN_VALUE : stateText(selected.state,revealed,"")}</pre>{onValidationFindings ? <button type="button" className="link" onClick={onValidationFindings}>View findings</button> : null}</section> : null}
             {!validationShown && !columnGuide && <>{referenceKey ? <>
               <h3 className="reader-reference-kind visually-hidden">{referenceKey.startsWith("table/") ? "Table reference" : referenceKey.startsWith("element/") ? "Data element" : referenceKey.startsWith("datatype/") ? "Datatype reference" : "Source definition"}</h3>
-              <button type="button" className="link reader-reference-back" onClick={backReference}>{referenceTrail.length ? "Back to reference" : "Back to selected field"}</button>
-              <details className="reader-extra-metadata reader-selected-evidence"><summary>Selected evidence</summary><p className="selector">Selected field: {selected.path || "Message"}</p></details>
-              {referenceView?.reference?.record ? <><p className="selector reader-selected-path">{referenceCaption(referenceView.reference.record)}</p><h4 className="reader-selected-name">{referenceView.reference.record.name}</h4></> : null}
-              <div className="reader-reference-tabs" onKeyDown={referenceKeys} role="tablist" aria-label="Reference views"><button type="button" role="tab" aria-selected="false" onClick={()=>{++lookupSerial.current;setReferenceTrail([]);setReferenceView(null);setReferenceKey("");setReferenceLoading(false);}}>Overview</button><button type="button" role="tab" aria-selected={referenceKey.startsWith("datatype/")} disabled={!inspection.reference.datatype_key && !inspection.reference.parent_datatype_key} onClick={()=>void openReference(inspection.reference!.datatype_key || inspection.reference!.parent_datatype_key!)}>Components</button><button type="button" role="tab" aria-selected={referenceKey.startsWith("element/") || referenceKey.startsWith("table/")} disabled={!inspection.reference.element_key && !inspection.reference.table_keys?.length} onClick={()=>void openReference(inspection.reference!.element_key || inspection.reference!.table_keys![0]!)}>{inspection.reference.element_key ? "Data element" : "Table"}</button></div>
+              {!fieldComponents ? <button type="button" className="link reader-reference-back" onClick={backReference}>{referenceTrail.length ? "Back to reference" : "Back to selected field"}</button> : null}
+              <span className="visually-hidden">Selected field: {selected.path || "Message"}</span>
+
+              {referenceTabs()}
+              {referenceView?.reference?.record && !fieldComponents ? <div className="reader-entity-heading"><code className="reference-badge">{referenceCaption(referenceView.reference.record)}</code><h4>{referenceView.reference.record.name}</h4></div> : null}
               {referenceLoading ? <p role="status">Reading reference…</p> : null}
               {referenceView && referenceView.state !== "completed" ? <p role="alert">{referenceView.reason || "This reference is unavailable."}</p> : null}
               {referenceView?.reference?.reason ? <p role="status">{referenceView.reference.reason}</p> : null}
               {referenceView?.reference?.record ? <>
 
-                {referenceView.reference.record.kind === "table" ? <><p>{referenceView.reference.record.table_kind || "Unknown"} table · {referenceView.total_count} extracted source codes</p>{referenceView.reference.record.unparsed_rows ? <p role="status">Partial table extraction: {referenceView.reference.record.unparsed_rows} source rows could not be interpreted. The receipt identifies each gap.</p> : null}</> : referenceView.reference.record.kind === "datatype" ? null : <ValueRows rows={referenceRows(referenceView.reference.record)} />}
+                {referenceView.reference.record.kind === "table" ? <>{referenceView.reference.record.unparsed_rows ? <p role="status">Partial table extraction: {referenceView.reference.record.unparsed_rows} source rows could not be interpreted. The receipt identifies each gap.</p> : null}</> : referenceView.reference.record.kind === "datatype" || referenceView.reference.record.kind === "element" ? null : <ReferenceAttributes record={referenceView.reference.record} />}
 
-                {referenceView.reference.record.kind === "element" ? <><p>Item number: {referenceView.reference.record.item_id}</p><p>Used by: {referenceView.reference.record.uses?.join(", ") || "Not available"}</p><p>Original message value: {selected.state === "present" ? revealed ? inspection.raw : HIDDEN_VALUE : stateText(selected.state,revealed,"")}</p></> : null}
+
 
                 {referenceView.reference.record.sequence?.length ? <StructureOutline nodes={referenceView.reference.record.sequence} /> : null}
-                <div className={`reader-definition${lookupDefinitionExpanded ? " reader-definition-full" : ""}${referenceView.reference.record.kind === "datatype" ? " reader-datatype-summary" : ""}`}><p>{referenceView.reference.record.definition ? lookupDefinitionExpanded ? referenceView.reference.record.definition : compactDefinition(referenceView.reference.record.definition) : "Definition not available."}</p></div>
-                {referenceView.reference.record.definition ? <button type="button" className="link" onClick={()=>setLookupDefinitionExpanded(!lookupDefinitionExpanded)}>{lookupDefinitionExpanded ? "Collapse definition" : "Expand definition"}</button> : null}
+                {fieldComponents ? null : referenceView.reference.record.definition ? <ReferenceDefinition text={referenceView.reference.record.definition} compact={compactDefinition(referenceView.reference.record.definition)} expanded={lookupDefinitionExpanded} onToggle={()=>setLookupDefinitionExpanded(shown=>!shown)} /> : <p>Definition not available.</p>}
+                {referenceView.reference.record.kind === "element" ? <><dl className="reference-attributes"><div><dt>Data type</dt><dd><ReferenceBadge attribute={referenceView.reference.record.datatype}/></dd></div><div><dt>Length</dt><dd><ReferenceBadge attribute={referenceView.reference.record.length}/></dd></div></dl><section className="reader-element-uses"><h4>Used in ({referenceView.reference.record.uses?.length ?? 0})</h4>{referenceView.reference.record.uses?.map(key=><button type="button" key={key} className="link" onClick={()=>void openReference(key)}>{key}</button>)}</section></> : null}
               </> : null}
+              {referenceView?.reference?.record?.kind === "table" ? <details className="reader-table-metadata"><summary>Metadata</summary><ValueRows rows={[{label:"Edition",value:referenceView.reference.edition},{label:"Table",value:referenceView.reference.record.table_id||"Not available"},{label:"Kind",value:referenceView.reference.record.table_kind||"Not available"},...(referenceView.reference.record.table_metadata ? [
+                    {label:"Table OID",value:referenceView.reference.record.table_metadata.table_oid || "Not available"},
+                    {label:"Code system OID",value:referenceView.reference.record.table_metadata.code_system_oid || "Not available"},
+                    {label:"Value set OID",value:referenceView.reference.record.table_metadata.value_set_oid || "Not available"},
+                    {label:"Code system URL",value:referenceView.reference.record.table_metadata.code_system_url || "Not available"},
+                    {label:"Code system version",value:referenceView.reference.record.table_metadata.code_system_version || "Not available"},
+                    {label:"Identifier source",value:(referenceView.reference.sources?.find(source=>source.role===referenceView?.reference?.record?.table_metadata?.origin.source)?.file || "Not available")+" · "+referenceView.reference.record.table_metadata.origin.locator},
+                  ] : []),{label:"Source",value:referenceView.reference.record.source||"Not available"}]} /></details> : null}
               {referenceKey.startsWith("table/") ? <>
-                <form className="reader-code-search" onSubmit={(event) => {event.preventDefault();void openReference(referenceKey,0,false,codeQuery);}}><label htmlFor="reference-code-query">Search codes</label><div><input id="reference-code-query" value={codeQuery} maxLength={128} onChange={(event) => setCodeQuery(event.target.value)} /><button type="submit" disabled={referenceLoading || busy}>Search</button></div></form>
-                {referenceView?.reference?.record?.content_state === "available" ? <><p>{referenceView.child_count} matches · {referenceView.total_count} source codes</p><div className="reader-code-scroll"><table className="data-table" aria-label="Reference codes"><thead><tr><th>Code</th><th>Meaning</th></tr></thead><tbody>{referenceView.children.map((code) => <tr key={code.key} className={revealed && inspection.reference?.table_keys?.includes(referenceKey) && inspection.decode_state === "decoded" && code.code === inspection.decoded ? "reader-code-selected" : ""}><td><button type="button" onClick={() => void openReference(code.key)}>{code.code}</button></td><td>{code.definition || "Meaning not available"}</td></tr>)}</tbody></table></div>{referenceView.child_count === 0 ? <p>No codes match this search.</p> : null}<nav className="pager" aria-label="Code pages"><button type="button" disabled={referenceLoading || referenceView.offset === 0} onClick={() => void openReference(referenceKey,Math.max(0,referenceView.offset-100),false,activeQuery)}>Previous codes</button><span>{referenceView.child_count ? referenceView.offset+1 : 0}–{referenceView.offset+referenceView.children.length} of {referenceView.child_count}</span><button type="button" disabled={referenceLoading || referenceView.offset+referenceView.children.length >= referenceView.child_count} onClick={() => void openReference(referenceKey,referenceView.offset+100,false,activeQuery)}>Next codes</button></nav></> : null}
+                {(referenceView?.total_count ?? 0)>10 || codeQuery || activeQuery ? <form className="reader-code-search" onSubmit={(event) => {event.preventDefault();void openReference(referenceKey,0,false,codeQuery);}}><label htmlFor="reference-code-query">Search codes</label><div><input id="reference-code-query" value={codeQuery} maxLength={128} onChange={(event) => setCodeQuery(event.target.value)} /><button type="submit" disabled={referenceLoading || busy}>Search</button></div></form> : null}
+                {referenceView?.reference?.record?.content_state === "available" ? <>{activeQuery ? <p className="reader-code-count">{referenceView.child_count} of {referenceView.total_count} values</p> : null}<div className="reader-code-scroll"><table className="data-table" aria-label="Reference codes"><thead><tr><th>Code</th><th>Description</th></tr></thead><tbody>{referenceView.children.map((code) => <tr key={code.key} className={revealed && inspection.reference?.table_keys?.includes(referenceKey) && inspection.decode_state === "decoded" && code.code === inspection.decoded ? "reader-code-selected" : ""}><td><button type="button" onClick={() => void openReference(code.key)}>{code.code}</button></td><td><strong>{code.name || code.code}</strong>{code.definition && code.definition!==code.name ? <p>{code.definition}</p> : null}{!code.name && !code.definition ? <span>Meaning not available</span> : null}</td></tr>)}</tbody></table></div>{referenceView.child_count === 0 ? <p>No codes match this search.</p> : null}{referenceView.child_count>100 ? <nav className="pager" aria-label="Code pages"><button type="button" disabled={referenceLoading || referenceView.offset === 0} onClick={() => void openReference(referenceKey,Math.max(0,referenceView.offset-100),false,activeQuery)}>Previous codes</button><span>{referenceView.child_count ? referenceView.offset+1 : 0}–{referenceView.offset+referenceView.children.length} of {referenceView.child_count}</span><button type="button" disabled={referenceLoading || referenceView.offset+referenceView.children.length >= referenceView.child_count} onClick={() => void openReference(referenceKey,referenceView.offset+100,false,activeQuery)}>Next codes</button></nav> : null}</> : null}
               </> : null}
               {inspection.reference_values_notice ? <p role="status">{inspection.reference_values_notice}</p> : null}
-              {referenceView?.reference?.record?.kind === "datatype" && referenceView.children?.length ? <ul className="reader-reference-components" aria-label="Datatype components">{referenceView.children.map((component) => {
-                const value=inspection.reference_values?.find((value) => value.key===component.key);
-                const original=value ? value.node.state === "omitted" ? "Omitted" : value.node.state === "present" ? revealed ? value.encoded + (value.truncated ? " · Truncated" : "") : HIDDEN_VALUE : stateText(value.node.state,revealed,"") : "Not available";
-                return <li key={component.key}><button type="button" onClick={() => void openReference(component.key)}>{component.position} · {component.name}</button><p>{attributeText(component.datatype)} · Opt {attributeText(component.optionality)} · Len {attributeText(component.length)}</p><p>Original value: {original}</p>{value ? <code className="selector">{value.node.path}</code> : null}{value && revealed && value.node.state === "present" && (value.decoded !== value.encoded || PROBLEMS.has(value.decode_state)) ? <p>Decoded value: {PROBLEMS.has(value.decode_state) ? decodeStateText(value.decode_state) : value.decoded}</p> : null}</li>;
-              })}</ul> : null}
-              {referenceView?.reference?.record ? <><div className="reader-source-reference"><p>{[...new Set(referenceView.reference.sources?.map(source=>source.publisher) || [])].join(" · ")} · {referenceView.reference.edition}</p><p className="reader-reference-citation">{referenceView.reference.record.source} · §{attributeText(referenceView.reference.record.section)}</p></div><ReferenceOrigins record={referenceView.reference.record} {...(referenceView.reference.sources ? {sources:referenceView.reference.sources} : {})}/></> : null}
+              {referenceView?.reference?.record?.kind === "datatype" && !entityOverview && referenceView.children?.length ? <div className="reader-components"><div className="reader-components-heading"><h4>Components</h4><span>{referenceView.child_count} items</span></div><div className="reader-components-scroll"><table className="data-table" aria-label="Datatype components"><thead><tr><th>#</th><th>Name</th><th>DT</th><th>Opt</th><th>Len</th><th>Original</th></tr></thead><tbody>{referenceView.children.map(component=>{
+                const value=inspection.reference_values?.find(value=>value.key===component.key);
+                const original=value ? value.node.state==="omitted" ? "Omitted" : value.node.state==="present" ? revealed ? value.encoded+(value.truncated ? " · Truncated" : "") : HIDDEN_VALUE : stateText(value.node.state,revealed,"") : "Not available";
+                return <tr key={component.key}><td>{component.position}</td><td><button type="button" className="link" onClick={()=>void openReference(component.key)}>{component.name}</button></td><td><ReferenceBadge attribute={component.datatype}/></td><td><ReferenceBadge attribute={component.optionality}/></td><td>{attributeText(component.length)}</td><td><span title={original}>{original}</span>{value && revealed && value.node.state==="present" && (value.decoded!==value.encoded || PROBLEMS.has(value.decode_state)) ? <details><summary>Decoded value</summary>{PROBLEMS.has(value.decode_state) ? decodeStateText(value.decode_state) : value.decoded}</details> : null}</td></tr>;
+              })}</tbody></table></div></div> : null}
               {referenceView?.reference?.record?.kind === "datatype" && referenceView.child_count > 100 ? <nav aria-label="Datatype component pages"><button type="button" disabled={referenceLoading || referenceView.offset === 0} onClick={() => void openReference(referenceKey, Math.max(0, referenceView.offset-100),false)}>Previous components</button><button type="button" disabled={referenceLoading || referenceView.offset + referenceView.children.length >= referenceView.child_count} onClick={() => void openReference(referenceKey,referenceView.offset+100,false)}>Next components</button></nav> : null}
             </> : <>
-            <p className="selector reader-selected-path" title={selected.path || "Message"} aria-label={selected.path || "Message"}>{readablePath(selected.path) || "Message"}</p>
-            <h4 className="reader-selected-name">{inspection.reference.record?.name || inspection.metadata.label || (selected.kind === "segment" ? inspection.segment_name : selected.path) || "Reference"}</h4>
-            {field ? <><label>Original value</label><pre className="value reader-original-value">{selected.state === "present" ? revealed ? inspection.raw || (inspection.decode_state === "too_large" ? "Truncated" : "Not available") : HIDDEN_VALUE : stateText(selected.state, revealed, "")}</pre>
-              {revealed && selected.state === "present" && inspection.decode_state === "decoded" && inspection.decoded !== inspection.raw ? <><label>Decoded value</label><pre className="value">{inspection.decoded}</pre></> : null}
-            </> : null}
-            {inspection.message_context ? <><section className="reader-message-context" aria-label="Message context"><p>Structure: {inspection.message_context.resolved_structure || "Not available"}</p><p>{inspection.message_context.status === "inferred" ? "Resolved from message code + trigger event" : inspection.message_context.status === "declared" ? "Declared in the original message" : `Reference status: ${inspection.message_context.status}`}</p></section><details className="reader-context-provenance reader-extra-metadata reader-structure-provenance"><summary>Message structure provenance</summary><p>Transmitted MSH-9.3: {inspection.message_context.declared_structure_state === "present" ? inspection.message_context.declared_structure || "Not available" : inspection.message_context.declared_structure_state === "omitted" ? "Omitted" : inspection.message_context.declared_structure_state}</p><p>Reference structure: {inspection.message_context.resolved_structure || "Not available"} · {inspection.message_context.status}</p>{inspection.message_context.reason ? <p role="status">{inspection.message_context.reason}</p> : null}{inspection.message_context.message_key ? <button type="button" disabled={busy} onClick={() => void openReference(inspection.message_context!.message_key)}>Message overview</button> : null}{inspection.message_context.structure_key ? <button type="button" disabled={busy} onClick={() => void openReference(inspection.message_context!.structure_key)}>Structure overview</button> : null}{selected.segment ? <details><summary>Selected occurrence placement</summary><p>{inspection.message_context.placement.state} · {inspection.message_context.placement.reason}</p>{inspection.message_context.placement.state === "known" ? <><p>{inspection.message_context.placement.path}</p><p>Segment placement: {inspection.message_context.placement.segment_min}..{inspection.message_context.placement.segment_max}; occurrence {inspection.message_context.placement.segment_repetition}</p><ul>{inspection.message_context.placement.groups.map((group) => <li key={`${group.name}/${group.occurrence}`}>{group.name}[{group.occurrence}] · {group.min}..{group.max}</li>)}</ul><p>Placement cardinality is separate from field repetition and reusable segment definitions.</p></> : null}</details> : null}</details></> : null}
-
-            <div className="reader-reference-tabs" onKeyDown={referenceKeys} role="tablist" aria-label="Reference views">
-              <button type="button" role="tab" aria-selected="true" onClick={()=>setColumnGuide(false)}>Overview</button>
-              <button type="button" role="tab" aria-selected="false" disabled={busy || !(inspection.reference.datatype_key || inspection.reference.parent_datatype_key)} onClick={()=>void openReference(inspection.reference!.datatype_key || inspection.reference!.parent_datatype_key!)}>{inspection.reference.parent_datatype_key ? "Parent type" : "Components"}</button>
-              <button type="button" role="tab" aria-selected="false" disabled={busy || !(inspection.reference.element_key || inspection.reference.table_keys?.length)} onClick={()=>void openReference(inspection.reference!.element_key || inspection.reference!.table_keys![0]!)}>{inspection.reference.element_key ? "Data element" : "Table"}</button>
-            </div>
-            {inspection.reference.edition && inspection.reference.edition !== inspection.metadata.hl7_version ? <aside className="notice warning" role="status"><p>Selected reference edition differs from the message declaration. Attributes describe the selected reference; source values and evaluation pins are unchanged.</p><button type="button" disabled={busy || catalogReading} onClick={() => void chooseReference(inspection.metadata.hl7_version)}>Return to message edition</button></aside> : null}
+            {referenceTabs()}
+            {inspection.reference.edition && inspection.reference.edition !== inspection.metadata.hl7_version ? <aside className="notice warning" role="status"><p>Reference: HL7 {inspection.reference.edition}<br/>Message declares: HL7 {inspection.metadata.hl7_version || "Not available"}</p><button type="button" disabled={busy || catalogReading} onClick={() => void chooseReference(inspection.metadata.hl7_version)}>Return to message edition</button></aside> : null}
             {inspection.reference.reason ? <p role="status">{inspection.reference.reason}</p> : null}
             {inspection.reference.type_resolution === "unresolved" ? <p>Reference declared datatype: {inspection.reference.declared_datatype || "Not available"}. Contextual resolution: Not available.</p> : null}
-            {inspection.reference.record ? <>
-              <p className="reader-reference-citation">§{attributeText(inspection.reference.record.section)} · {readablePath(selected.path) || "Message"} · {attributeText(inspection.reference.record.datatype)} · {attributeText(inspection.reference.record.item)}</p>
-              {inspection.reference.record.definition ? <div className={`reader-definition ${fullDefinition ? "reader-definition-full" : ""}`}><p>{fullDefinition ? inspection.reference.record.definition : compactDefinition(inspection.reference.record.definition)}</p></div> : <p>Definition not available.</p>}
-              {inspection.reference.record.definition ? <button type="button" className="link" onClick={() => setFullDefinition(!fullDefinition)}>{fullDefinition ? "Collapse definition" : "Expand definition"}</button> : null}
-              {field ? <ValueRows rows={[
-                {label:"Data type",value:inspection.reference.datatype_key ? <button type="button" className="reader-attribute-link" aria-label={`Datatype · ${inspection.reference.record.datatype.value}`} disabled={busy} onClick={()=>void openReference(inspection.reference!.datatype_key!)}>{attributeText(inspection.reference.record.datatype)}</button> : attributeText(inspection.reference.record.datatype)},
-                {label:"Opt / Len",value:<span className="reader-opt-length"><span>{attributeText(inspection.reference.record.optionality)}</span><span aria-hidden="true"> / </span><span>{attributeText(inspection.reference.record.length)}</span></span>},
-                {label:"C-Len",value:attributeText(inspection.reference.record.conformance_length)},
-                {label:"Repetition",value:attributeText(inspection.reference.record.repetition)},
-              ]} /> : <section className="reader-segment-evidence" aria-label="Selected segment evidence"><h5>In this message</h5><ValueRows rows={[{label:"Occurrence",value:selected.path},{label:"Original byte span",value:`${selected.start}–${selected.end}`}]} /><label>Actual segment</label><pre className="value">{revealed ? inspection.raw_window?.selected || inspection.raw || decodeStateText(inspection.decode_state) : HIDDEN_VALUE}</pre>{inspection.grid?.rows.find(row=>row.node.kind==="field" && row.node.field===9 && row.node.segment===selected.segment) ? <button type="button" onClick={()=>go(`${selected.path}-9`)}>Inspect Message Type</button> : null}</section>}
+            {segmentFields ? <div className="reader-components-scroll"><table className="data-table reader-segment-fields" aria-label="Segment fields"><thead><tr><th>Path</th><th>Name</th><th>Type</th><th>Opt</th></tr></thead><tbody>{gridNodes.filter(row=>row.node.kind==="field"&&row.node.segment===selected.segment).map(row=><tr key={row.node.path}><td><button type="button" className="link" onClick={()=>go(row.node.path)}>{readablePath(row.node.path)}</button></td><td>{row.label}</td><td>{attributeText(row.reference?.datatype)}</td><td>{attributeText(row.reference?.optionality)}</td></tr>)}</tbody></table></div> : null}
+            {inspection.reference.record && !segmentFields ? <>
+              <div className="reader-definition-heading"><button type="button" className={`reader-plain-icon${definitionVisible ? "" : " reader-definition-closed"}`} aria-label={definitionVisible ? "Hide definition" : "Show definition"} aria-expanded={definitionVisible} onClick={()=>setDefinitionVisible(shown=>!shown)}><ReaderIcon name="disclosure" /></button><ReaderIcon name="book" /><button type="button" className="link" disabled={busy || !inspection.reference.section_key} onClick={()=>inspection.reference?.section_key && void openReference(inspection.reference.section_key)}>§{attributeText(inspection.reference.record.section)}</button><span>{readablePath(selected.path) || inspection.reference.record.name} {inspection.reference.record.name}</span></div>
+              {inspection.reference.record.definition ? definitionVisible ? <ReferenceDefinition text={inspection.reference.record.definition} compact={compactDefinition(inspection.reference.record.definition)} expanded={fullDefinition} onToggle={()=>setFullDefinition(shown=>!shown)} /> : null : <p>Definition not available.</p>}
+              {field ? <ReferenceAttributes record={inspection.reference.record} datatype={inspection.reference.datatype_key ? ()=>void openReference(inspection.reference!.datatype_key!) : undefined} element={inspection.reference.element_key ? ()=>void openReference(inspection.reference!.element_key!) : undefined} /> : <section className="reader-segment-evidence" aria-label="Selected segment evidence"><ValueRows rows={[{label:"Occurrence",value:selected.path},{label:"Original byte span",value:`${selected.start}–${selected.end}`}]} /><label>Actual segment</label><pre className="value">{revealed ? inspection.raw_window?.selected || inspection.raw || decodeStateText(inspection.decode_state) : HIDDEN_VALUE}</pre>{inspection.grid?.rows.find(row=>row.node.kind==="field" && row.node.field===9 && row.node.segment===selected.segment) ? <button type="button" onClick={()=>go(`${selected.path}-9`)}>Inspect Message Type</button> : null}</section>}
               <div className="reader-reference-links">
                 {onRequirements ? <button type="button" className="link" disabled={busy} onClick={()=>onRequirements(inspection.selector || selected.path)}>Open specification</button> : null}
                 {onFieldValues && field && inspection.selector ? <button type="button" className="link" disabled={busy} onClick={()=>onFieldValues(inspection.selector)}>Field values</button> : null}
                 {inspection.reference.table_keys?.map((key) => <button key={key} type="button" className="link" disabled={busy} onClick={() => void openReference(key)}>Table · {key.slice("table/".length)}</button>)}
-                {inspection.reference.element_key ? <button type="button" className="link" disabled={busy} onClick={() => void openReference(inspection.reference!.element_key!)}>Item# · {inspection.reference.record.item.value}</button> : null}
-                {inspection.reference.section_key ? <button type="button" className="link" disabled={busy} onClick={() => void openReference(inspection.reference!.section_key!)}>Sect · §{inspection.reference.record.section.value}</button> : null}
                 {inspection.reference.parent_datatype_key ? <button type="button" className="link" disabled={busy} onClick={() => void openReference(inspection.reference!.parent_datatype_key!)}>Parent datatype · {inspection.reference.record.container}</button> : null}
               </div>
-              <div className="reader-source-reference"><p>{[...new Set(inspection.reference.sources?.map((source) => source.publisher) ?? [])].join(" · ")} · {inspection.reference.edition}</p><p className="reader-reference-citation">{inspection.reference.record.source} · §{attributeText(inspection.reference.record.section)}</p><p>{referenceOriginText(inspection.reference.record.definition_origin,inspection.reference.sources)}</p></div>
-              <details className="reader-extra-metadata"><summary>Source attributes and provenance</summary><ValueRows rows={referenceRows(inspection.reference.record).slice(5)} /><ReferenceOrigins record={inspection.reference.record} {...(inspection.reference.sources?{sources:inspection.reference.sources}:{})}/>{inspection.reference.record.conformance_length.state === "specified" ? <p>Conformance length describes the receiving application’s storage capacity, not a sending maximum. The source’s permitted lengths and truncation markers remain as printed.</p> : null}</details>
             </> : null}
-            {inspection.reference.parent_field ? <aside className="reader-parent-field"><h5>Parent field notes</h5><p>{inspection.reference.parent_field.segment}-{inspection.reference.parent_field.field} · {inspection.reference.parent_field.name}</p><p>Parent Item#: {attributeText(inspection.reference.parent_field.item)} · Parent repetition: {attributeText(inspection.reference.parent_field.repetition)}</p></aside> : null}
-            <details className="reader-extra-metadata"><summary>Message and reference edition</summary><p>Message edition: {inspection.metadata.hl7_version || "Not available"}</p><p>Reference edition: {inspection.reference.edition || (inspection.reference.status === "not_selected" ? "Not selected" : "Not available")}</p></details>
             {field ? <div className="selected-field-actions">
-              {revealed && selected.state === "present" && (inspection.decoded || inspection.raw) ? <button type="button" className="link" onClick={()=>void navigator.clipboard?.writeText(inspection.decoded || inspection.raw)}>Copy value</button> : null}
+
               {onFilterByField && inspection.selector ? <button type="button" className="link" onClick={()=>onFilterByField(inspection.selector,revealed && selected.state === "present" ? inspection.decoded || null : null,selected.state)}>Filter by this field</button> : null}
             </div> : null}
             </>}
             </>}
             {!validationShown && inspection.reference_overlay ? <section className="reader-profile-overlay" aria-label="Selected profile context"><h4>Selected profile context</h4><p>{inspection.reference_overlay.status} · {inspection.reference_overlay.reason} · Applicability: {inspection.reference_overlay.applicability||"Not established"}</p>{inspection.reference_overlay.profile ? <p>Profile: {inspection.reference_overlay.profile.id} · {inspection.reference_overlay.profile.version} · {inspection.reference_overlay.profile.sha256}</p> : null}{inspection.reference_overlay.pack ? <p>Exact pack: {inspection.reference_overlay.pack.id} · {inspection.reference_overlay.pack.version} · {inspection.reference_overlay.pack.sha256}</p> : null}{inspection.reference_overlay.base ? <p>Authored base: {inspection.reference_overlay.base.hl7_version}/{inspection.reference_overlay.base.family} · {inspection.reference_overlay.base.pack.id}/{inspection.reference_overlay.base.pack.version}</p> : null}{inspection.reference_overlay.field ? <><h5>Local field constraints, separate from base reference</h5><p>Parent field: {selected.segment}-{inspection.reference_overlay.field.position} · Usage {inspection.reference_overlay.field.usage} · Datatype {inspection.reference_overlay.field.type || "Not specified"}</p>{inspection.reference_overlay.field.condition ? <p>Conditional predicate: {inspection.reference_overlay.field.condition.segment}-{inspection.reference_overlay.field.condition.position} · {inspection.reference_overlay.field.condition.operator}. Displayed as authored; not evaluated here.</p> : null}{inspection.reference_overlay.field.cardinality ? <p>Local field cardinality: {inspection.reference_overlay.field.cardinality.min}..{inspection.reference_overlay.field.cardinality.max}</p> : null}</> : null}{inspection.reference_overlay.segment_cardinality ? <p>Local segment cardinality: {inspection.reference_overlay.segment_cardinality.min}..{inspection.reference_overlay.segment_cardinality.max}</p> : null}{inspection.reference_overlay.segment_description ? <p>{inspection.reference_overlay.segment_description}</p> : null}{inspection.reference_overlay.documentation ? <details><summary>{inspection.reference_overlay.documentation.title}</summary><p>{inspection.reference_overlay.documentation.identity}</p><pre className="value">{inspection.reference_overlay.documentation.text}</pre></details> : null}<p>No inspection selection changes historical evaluator pins or establishes a validation/ACK verdict.</p></section> : null}
-            {!validationShown && columnGuide ? <section className="reader-column-guide" aria-label="Reference attributes"><h4>Reference attributes</h4><p>Metadata comes from the selected reference edition. Values come from the original message.</p><ValueRows rows={[
+            {!validationShown && columnGuide ? <section className="reader-column-guide" aria-label="Reference attributes"><h4>Column guide</h4><ValueRows rows={[
               {label:"Type",value:"Declared datatype; components use their own datatype. An unresolved variable type stays unresolved."},
               {label:"Opt",value:"Source usage code. Required, optional, conditional and backward-compatibility codes retain their original notation; profile overrides are separate."},
               {label:"Len",value:"Edition-specific permitted-length notation. Preserve source lists and ranges; storage capacity is not a guessed sender maximum."},
@@ -552,12 +585,9 @@ export function MessageReader({
               {label:"Sect",value:"Source definition section for this entity and edition."},
               {label:"Value",value:"Original evidence. Empty, Null, Omitted, Hidden, Truncated and undecodable remain distinct."},
             ]} /><button type="button" onClick={() => setColumnGuide(false)}>Back to reader</button></section> : null}
-            <p className="reader-reference-coverage">Catalog coverage: {inspection.reference.coverage.segments} segments · {inspection.reference.coverage.fields} fields{inspection.reference.coverage.datatypes ? ` · ${inspection.reference.coverage.datatypes} datatypes · ${inspection.reference.coverage.components ?? 0} components` : ""} · {inspection.reference.coverage.definitions} definitions{inspection.reference.coverage.tables ? ` · ${inspection.reference.coverage.tables} tables · ${inspection.reference.coverage.codes ?? 0} codes · ${inspection.reference.coverage.elements ?? 0} data elements` : ""}{inspection.reference.missing_count ? ` · ${inspection.reference.missing_count} gaps or ambiguities` : ""}</p>
-            {inspection.reference.missing_count ? <details><summary>Coverage gaps</summary><ul>{inspection.reference.coverage.missing.map((gap) => <li key={gap}>{gap}</li>)}</ul>{inspection.reference.missing_count > inspection.reference.coverage.missing.length ? <p>Additional gaps are listed in the extraction receipt.</p> : null}</details> : null}
-            <p className="reader-reference-coverage">Reference metadata does not establish validation or ACK success. Existing findings remain available in their finding detail.</p>{onCreateVariant ? <button type="button" disabled={busy} onClick={onCreateVariant}>Create variant</button> : null}
-          </div></section> : <section className="reader-reference" aria-label="Selected details"><h3 className="reader-pane-heading">Details</h3><div className="reader-reference-scroll"><p className="reader-selected-path">{inspection.selector || selected.path || "Message"}</p><h4 className="reader-selected-name">{inspection.metadata.label || selected.path || "Message"}</h4>{field ? <><label>Original encoded value</label><pre className="value">{selected.state === "present" ? revealed ? inspection.raw || inspection.decoded : HIDDEN_VALUE : stateText(selected.state,revealed,"")}</pre><div className="selected-field-actions">{revealed && selected.state === "present" && (inspection.decoded || inspection.raw) ? <button type="button" onClick={()=>void navigator.clipboard?.writeText(inspection.decoded || inspection.raw)}>Copy value</button> : null}{onFilterByField && inspection.selector ? <button type="button" onClick={()=>onFilterByField(inspection.selector,revealed && selected.state === "present" ? inspection.decoded || null : null,selected.state)}>Filter by this field</button> : null}</div></> : null}</div></section>}
+          </div></section> : <section className="reader-reference" aria-label="Selected details" hidden={!detailsVisible}><div className="reader-pane-heading"><h3>Details</h3><button type="button" className="reader-plain-icon" aria-label="Hide Details panel" onClick={()=>setDetailsVisible(false)}><ReaderIcon name="close" /></button><button type="button" className="reader-plain-icon reader-pane-options" aria-label="Reference information" onClick={()=>setReferenceInfo(true)}><ReaderIcon name="settings" /></button></div><ReaderSelectionHeader inspection={inspection} nodes={gridNodes} busy={busy} onSelect={go} onGoToField={()=>setGoingTo(true)} /><div className="reader-reference-scroll">{field ? <><label>Original encoded value</label><pre className="value">{selected.state === "present" ? revealed ? inspection.raw || decodeStateText(inspection.decode_state) : HIDDEN_VALUE : stateText(selected.state,revealed,"")}</pre><div className="selected-field-actions">{revealed && selected.state === "present" && (inspection.decoded || inspection.raw) ? <button type="button" onClick={()=>void navigator.clipboard?.writeText(inspection.raw)}>Copy value</button> : null}{onFilterByField && inspection.selector ? <button type="button" onClick={()=>onFilterByField(inspection.selector,revealed && selected.state === "present" ? inspection.decoded || null : null,selected.state)}>Filter by this field</button> : null}</div></> : null}</div></section>}
           </div>
-          <div className="reader-status-bar"><span>HL7 {inspection.metadata.hl7_version || "not declared"}</span><span>{title}</span><span>Original bytes</span><span>Reference {inspection.reference?.edition || "not selected"}</span><Reveal revealed={revealed} disabled={busy} onToggle={onReveal} /></div>
+
         </>
       ) : null}
 
@@ -580,6 +610,30 @@ export function MessageReader({
         <label htmlFor="go-to-field">Field path</label>
         <input id="go-to-field" type="text" autoFocus spellCheck={false} value={path} onChange={(event) => setPath(event.target.value)} />
       </FormDialog>
+
+
+      <ReferenceLibrary open={libraryOpen} messageEdition={inspection?.metadata.hl7_version || ""} onClose={()=>setLibraryOpen(false)} onSelect={async entry=>{
+        if(!inspection || !selected)return;
+        setCatalogPath(entry?.path || "");setCatalogIdentity(entry?.identity || "");
+        await onInspect(selected.path,inspection.node_offset,-1,undefined,entry?.path || "",overlaySelection || suppliedSelection,entry?.identity || "");
+      }}/>
+      <Modal open={referenceInfo && Boolean(inspection)} title="Reference information" onClose={()=>setReferenceInfo(false)}>
+        {inspection && !inspection.reference ? <p>No offline reference is selected. Use Reference to select a catalog.</p> : null}
+        {referenceKey && referenceView?.reference?.record ? <section aria-label="Current reference provenance"><h3>{referenceView.reference.record.name}</h3><p>{referenceView.reference.record.source} · {referenceView.reference.edition}</p><ReferenceOrigins record={referenceView.reference.record} {...(referenceView.reference.sources ? {sources:referenceView.reference.sources}: {})}/></section> : null}
+        {inspection?.reference && selected ? <>
+          {field && revealed && inspection.decode_state==="decoded" && inspection.decoded!==inspection.raw ? <><h3>Decoded value</h3><pre className="value">{inspection.decoded}</pre></> : null}
+          {inspection.message_context ? <details className="reader-context-provenance reader-extra-metadata reader-structure-provenance"><summary>Message structure provenance</summary><p>Transmitted MSH-9.3: {inspection.message_context.declared_structure_state === "present" ? inspection.message_context.declared_structure || "Not available" : inspection.message_context.declared_structure_state === "omitted" ? "Omitted" : inspection.message_context.declared_structure_state}</p><p>Reference structure: {inspection.message_context.resolved_structure || "Not available"} · {inspection.message_context.status}</p>{inspection.message_context.reason ? <p role="status">{inspection.message_context.reason}</p> : null}{inspection.message_context.message_key ? <button type="button" disabled={busy} onClick={() => {setReferenceInfo(false);void openReference(inspection.message_context!.message_key);}}>Message overview</button> : null}{inspection.message_context.structure_key ? <button type="button" disabled={busy} onClick={() => {setReferenceInfo(false);void openReference(inspection.message_context!.structure_key);}}>Structure overview</button> : null}{selected.segment ? <details><summary>Selected occurrence placement</summary><p>{inspection.message_context.placement.state} · {inspection.message_context.placement.reason}</p>{inspection.message_context.placement.state === "known" ? <><p>{inspection.message_context.placement.path}</p><p>Segment placement: {inspection.message_context.placement.segment_min}..{inspection.message_context.placement.segment_max}; occurrence {inspection.message_context.placement.segment_repetition}</p><ul>{inspection.message_context.placement.groups.map((group) => <li key={`${group.name}/${group.occurrence}`}>{group.name}[{group.occurrence}] · {group.min}..{group.max}</li>)}</ul><p>Placement cardinality is separate from field repetition and reusable segment definitions.</p></> : null}</details> : null}</details> : null}
+          {inspection.reference.record ? <>              <div className="reader-source-reference"><p>{[...new Set(inspection.reference.sources?.map((source) => source.publisher) ?? [])].join(" · ")} · {inspection.reference.edition}</p><p className="reader-reference-citation">{inspection.reference.record.source} · §{attributeText(inspection.reference.record.section)}</p><p>{referenceOriginText(inspection.reference.record.definition_origin,inspection.reference.sources)}</p></div>
+              <details className="reader-extra-metadata"><summary>Source attributes and provenance</summary><ValueRows rows={referenceRows(inspection.reference.record).slice(5)} /><ReferenceOrigins record={inspection.reference.record} {...(inspection.reference.sources?{sources:inspection.reference.sources}:{})}/>{inspection.reference.record.conformance_length.state === "specified" ? <p>Conformance length describes the receiving application’s storage capacity, not a sending maximum. The source’s permitted lengths and truncation markers remain as printed.</p> : null}</details>
+</> : null}
+                      {inspection.reference.parent_field ? <aside className="reader-parent-field"><h5>Parent field notes</h5><p>{inspection.reference.parent_field.segment}-{inspection.reference.parent_field.field} · {inspection.reference.parent_field.name}</p><p>Parent Item#: {attributeText(inspection.reference.parent_field.item)} · Parent repetition: {attributeText(inspection.reference.parent_field.repetition)}</p></aside> : null}
+            <details className="reader-extra-metadata"><summary>Message and reference edition</summary><p>Message edition: {inspection.metadata.hl7_version || "Not available"}</p><p>Reference edition: {inspection.reference.edition || (inspection.reference.status === "not_selected" ? "Not selected" : "Not available")}</p></details>
+            <p className="reader-reference-coverage">Catalog coverage: {inspection.reference.coverage.segments} segments · {inspection.reference.coverage.fields} fields{inspection.reference.coverage.datatypes ? ` · ${inspection.reference.coverage.datatypes} datatypes · ${inspection.reference.coverage.components ?? 0} components` : ""} · {inspection.reference.coverage.definitions} definitions{inspection.reference.coverage.tables ? ` · ${inspection.reference.coverage.tables} tables · ${inspection.reference.coverage.codes ?? 0} codes · ${inspection.reference.coverage.elements ?? 0} data elements` : ""}{inspection.reference.missing_count ? ` · ${inspection.reference.missing_count} gaps or ambiguities` : ""}</p>
+            {inspection.reference.missing_count ? <details><summary>Coverage gaps</summary><ul>{inspection.reference.coverage.missing.map((gap) => <li key={gap}>{gap}</li>)}</ul>{inspection.reference.missing_count > inspection.reference.coverage.missing.length ? <p>Additional gaps are listed in the extraction receipt.</p> : null}</details> : null}
+            <p className="reader-reference-coverage">Reference metadata does not establish validation or ACK success. Existing findings remain available in their finding detail.</p>
+
+        </> : null}
+      </Modal>
 
       <Modal open={info && Boolean(inspection)} title="Info" onClose={() => setInfo(false)}>
         {inspection ? (
@@ -761,3 +815,7 @@ export function RawText({ window: raw, busy, onPage }: { window: RawWindow; busy
 
 /** The bytes one Raw window holds. */
 const RAW_WINDOW = 4096;
+
+function PHIToggle({masked,disabled,onToggle}:{masked:boolean;disabled:boolean;onToggle:()=>void}) {
+ return <button type="button" className={`reader-phi-toggle${masked ? " active" : ""}`} aria-label={masked ? "Disable PHI masking" : "Enable PHI masking"} aria-pressed={masked} disabled={disabled} onClick={onToggle}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M12 3 20 6v6c0 5-8 9-8 9s-8-4-8-9V6z"/>{masked ? <path d="m8 12 3 3 5-6"/> : <path d="m3 3 18 18"/>}</svg>{masked ? "Hide" : "PHI"}</button>;
+}

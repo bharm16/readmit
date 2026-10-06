@@ -4,7 +4,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import type { Facade } from "../bindings";
 import userEvent from "@testing-library/user-event";
 import { enter, Journey, press } from "../testkit/journey";
-import { details, page, sidebar } from "../testkit/navigation";
+import { details, page, sidebar, expectReferenceEdition } from "../testkit/navigation";
 import { EXPORTED_BOOKING, EXPORTED_RESCHEDULE, importExport, licensedProject } from "./steps";
 
 let journey: Journey;
@@ -21,7 +21,7 @@ const OWNED_REFERENCE = JSON.stringify({
     datatype: { state: "not_applicable", value: "" }, optionality: { state: "not_applicable", value: "" }, length: { state: "not_applicable", value: "" }, conformance_length: { state: "not_applicable", value: "" }, repetition: { state: "not_applicable", value: "" }, item: { state: "not_applicable", value: "" }, table: { state: "not_applicable", value: "" }, section: { state: "specified", value: "0.0.0" }, definition: "Owned navigation reference; no normative content.", source: "owned-navigation.txt" }],
 });
 
-test("reopening restores the retained source, saved view and field selection without reveal, consent or external effects", async () => {
+test("reopening restores the retained source, saved view and field selection with default-visible parser values but no consent or external effects", async () => {
   const user = userEvent.setup();
   journey.writeFile("exports/feed.hl7", EXPORTED_BOOKING + EXPORTED_RESCHEDULE);
   journey.writeFile("reference/navigation.json", OWNED_REFERENCE);
@@ -54,10 +54,10 @@ test("reopening restores the retained source, saved view and field selection wit
   await reader.findAllByText("MSH[1]-9[1].2");
   await journey.settled();
   await journey.chooseFiles([journey.path("reference/navigation.json")], "Open offline HL7 reference catalog");
-  await press(user, reader.getByRole("button", { name: "Reference" }));
-  await reader.findByText("Reference edition: 2.5.1");
-  await press(user, reader.getByRole("button", { name: "Show values" }));
-  await reader.findByRole("button", { name: "Hide values" });
+  await press(user, screen.getByRole("button", { name: "Reference" }));
+  await expectReferenceEdition(user, "2.5.1");
+  await press(user, reader.getByRole("button", { name: "Enable PHI masking" }));
+  await reader.findByRole("button", { name: "Disable PHI masking" });
   const body = document.querySelector<HTMLElement>('.page[data-page="cases"] .page-body')!;
   body.scrollTop = 440;
   body.dispatchEvent(new Event("scroll", { bubbles: true }));
@@ -70,9 +70,9 @@ test("reopening restores the retained source, saved view and field selection wit
   const reopened = within(await screen.findByRole("region", { name: "Messages" }));
   await waitFor(() => expect(reopened.getByRole("table", { name: "Messages" }).querySelectorAll("tbody tr[data-row-id]")).toHaveLength(1));
   await details().findAllByText("MSH[1]-9[1].2");
-  await details().findByText("Reference edition: 2.5.1");
-  expect(details().getByRole("button", { name: "Show values" })).toBeTruthy();
-  expect(details().queryByRole("button", { name: "Hide values" })).toBeNull();
+  await expectReferenceEdition(user, "2.5.1");
+  expect(details().getByRole("button", { name: "Enable PHI masking" })).toBeTruthy();
+  expect(details().queryByRole("button", { name: "Disable PHI masking" })).toBeNull();
   expect(document.querySelector<HTMLElement>('.page[data-page="cases"] .page-body')?.scrollTop).toBe(440);
   const restoredCalls = journey.calls.slice(before);
   const externalActions: (keyof Facade)[] = ["StartCapture", "ExecuteReviewedAction", "StartDurableRun", "ResumeDurableRun", "StartSuiteRun", "PrepareAction"];
@@ -86,7 +86,7 @@ test("reopening restores the retained source, saved view and field selection wit
   await journey.launch();
   await page().findByRole("heading", { level: 1, name: "Scheduling evidence" });
   await screen.findByText("The previous reference catalog changed or is unavailable. Select it again explicitly.");
-  await details().findByText("Reference edition: Not available");
+  await expectReferenceEdition(user, "Not available");
   expect(details().queryByText("Changed navigation segment")).toBeNull();
 });
 
@@ -98,21 +98,23 @@ test("Messages opens and restores a loose file before project setup; changed ret
   await press(user, sidebar().getByRole("button", { name: "Messages" }));
   await journey.chooseFiles([journey.path("exports/standalone.hl7")], "Open HL7 file");
   await press(user, page().getByRole("button", { name: "Open file" }));
-  await screen.findByRole("heading", { level: 1, name: "standalone.hl7" });
-  await screen.findByRole("button", { name: "Show values" });
+  await screen.findByRole("heading", { level: 1, name: "Messages" });
+  await screen.findAllByText("standalone.hl7");
+  await screen.findByRole("button", { name: "Enable PHI masking" });
   const identity = journey.digest("exports/standalone.hl7");
   await journey.settled();
   await waitFor(() => expect(journey.callsTo("RecordView").at(-1)?.args[0]).toMatchObject({ navigation: { source_kind: "file", file: journey.path("exports/standalone.hl7"), file_identity: identity } }));
   await journey.close();
   await journey.launch();
-  await screen.findByRole("heading", { level: 1, name: "standalone.hl7" });
-  expect(screen.getByRole("button", { name: "Show values" })).toBeTruthy();
+  await screen.findByRole("heading", { level: 1, name: "Messages" });
+  await screen.findAllByText("standalone.hl7");
+  expect(screen.getByRole("button", { name: "Enable PHI masking" })).toBeTruthy();
   expect(journey.digest("exports/standalone.hl7")).toBe(identity);
   await journey.close();
   journey.changeFile("exports/standalone.hl7", `${EXPORTED_RESCHEDULE}\r`);
   await journey.launch();
   await screen.findByText("The previous message file changed or is unavailable. Open it explicitly; no selection was rebound.");
-  expect(screen.queryByRole("button", { name: "Hide values" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Disable PHI masking" })).toBeNull();
 });
 
 test("a changed retained capture remains discoverable but does not inherit the previous selection on reopen", async () => {
@@ -123,7 +125,7 @@ test("a changed retained capture remains discoverable but does not inherit the p
   const table = await screen.findByRole("table", { name: "Messages" });
   await waitFor(() => expect(table.querySelectorAll("tbody tr[data-row-id]")).toHaveLength(2));
   await press(user, table.querySelector<HTMLElement>("tbody tr[data-row-id]")!);
-  await screen.findByRole("button", { name: "Show values" });
+  await screen.findByRole("button", { name: "Enable PHI masking" });
   await journey.settled();
   await waitFor(() => expect(journey.callsTo("RecordView").at(-1)?.args[0]).toMatchObject({ case: entry, navigation: { source_kind: "case" } }));
   await journey.close();
@@ -135,6 +137,6 @@ test("a changed retained capture remains discoverable but does not inherit the p
   await journey.launch();
   await screen.findByText("The previous capture changed or is unavailable. Choose a source explicitly; no selection was rebound.");
   expect(page().getByRole("heading", { level: 1, name: "Captures" })).toBeTruthy();
-  expect(screen.queryByRole("button", { name: "Show values" })).toBeNull();
-  expect(screen.queryByRole("button", { name: "Hide values" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Enable PHI masking" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Disable PHI masking" })).toBeNull();
 });

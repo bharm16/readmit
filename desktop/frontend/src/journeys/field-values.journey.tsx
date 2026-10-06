@@ -34,10 +34,10 @@ test("complete large-capture field counts open exact occurrences and return with
  await press(user,aggregate.getByRole("button",{name:"Show values for this scope"}));await journey.settled();
  const revealed=aggregate.getByRole("table",{name:"Field value counts"});const ownedRow=within(revealed).getByText("OWNED_B",{exact:true}).closest("tr")!;expect(within(ownedRow).getByText("280")).toBeTruthy();await press(user,within(ownedRow).getByRole("button",{name:"Show messages"}));await journey.settled();
  const counted=aggregate.getByRole("table",{name:"Counted messages"});expect(aggregate.getByText("280 exact counted occurrences")).toBeTruthy();expect(counted.querySelector('[data-row-id="s0001-e000301"]')).toBeTruthy();expect(counted.querySelector('[data-row-id="s0001-e000001"]')).toBeNull();
- expect(counted.querySelector('[data-row-id="s0001-e000301"]')).toBeTruthy();await press(user,counted.querySelector<HTMLElement>('[data-row-id="s0001-e000301"]')!);await journey.settled();expect(journey.callsTo("InspectOccurrence").at(-1)?.args[0]).toMatchObject({occurrence:"s0001-e000301",path:"ZPD[1]-1[1]",reveal:false});
+ expect(counted.querySelector('[data-row-id="s0001-e000301"]')).toBeTruthy();await press(user,counted.querySelector<HTMLElement>('[data-row-id="s0001-e000301"]')!);await journey.settled();expect(journey.callsTo("InspectOccurrence").at(-1)?.args[0]).toMatchObject({occurrence:"s0001-e000301",path:"ZPD[1]-1[1]",reveal:true});
  await press(user,details().getByRole("button",{name:"Close message details"}));
  expect(aggregate.getByRole("table",{name:"Counted messages"})).toBeTruthy();await press(user,aggregate.getByRole("button",{name:"Back to aggregate"}));await press(user,aggregate.getByRole("button",{name:"Back to reader"}));await journey.settled();
- expect(journey.callsTo("InspectOccurrence").at(-1)?.args[0]).toMatchObject({occurrence:"s0001-e000001",path:"ZPD[1]-1",reveal:false});
+ expect(journey.callsTo("InspectOccurrence").at(-1)?.args[0]).toMatchObject({occurrence:"s0001-e000001",path:"ZPD[1]-1",reveal:true});
  const restored=screen.getByRole("table",{name:"Messages"});for(const id of ["s0001-e000001","s0001-e000002"])expect(restored.querySelector<HTMLInputElement>('[data-row-id="'+id+'"] input[type="checkbox"]')?.checked).toBe(true);
  expect(journey.digest("exports/counts.mllp")).toBe(before);
 });

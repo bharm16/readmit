@@ -1,0 +1,10 @@
+{
+  "schema": "readmit-reference-terminology-source/v1",
+  "name": "hl7.terminology",
+  "version": "7.4.0",
+  "file": "hl7.terminology-7.4.0.tgz",
+  "location": "https://terminology.hl7.org/7.4.0/package.tgz",
+  "sha256": "b321ad4ee1c18798abd8692f45bc86550cffac72ae97413125cfb82f0112c72d",
+  "license": "CC0-1.0",
+  "purpose": "code-system identifiers only; source-edition code lists remain unchanged"
+}

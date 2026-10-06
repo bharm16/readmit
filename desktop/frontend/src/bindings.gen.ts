@@ -4412,6 +4412,7 @@ export interface FileInspectRequest {
   byte_offset: number;
   raw_offset: number;
   reveal: boolean;
+  mask_phi?: boolean;
 }
 
 /** internal/desktop.FileMessage */
@@ -5055,6 +5056,7 @@ export interface Hl7referenceOrigin {
 
 /** internal/hl7reference.Record */
 export interface Hl7referenceRecord {
+  table_metadata?: Hl7referenceTableMetadata;
   message_code?: string;
   event?: string;
   structures?: string[];
@@ -5094,6 +5096,16 @@ export interface Hl7referenceSource {
   file: string;
   sha256: string;
   publisher: string;
+}
+
+/** internal/hl7reference.TableMetadata */
+export interface Hl7referenceTableMetadata {
+  table_oid?: string;
+  code_system_oid?: string;
+  value_set_oid?: string;
+  code_system_url?: string;
+  code_system_version?: string;
+  origin: Hl7referenceOrigin;
 }
 
 /** internal/desktop.HubActivity */
@@ -5697,6 +5709,7 @@ export interface ImportInspectRequest {
   node_offset: number;
   byte_offset: number;
   reveal: boolean;
+  mask_phi?: boolean;
 }
 
 /** internal/desktop.ImportInvestigation */
@@ -6035,6 +6048,7 @@ export interface InspectRequest {
   byte_offset: number;
   raw_offset: number;
   reveal: boolean;
+  mask_phi?: boolean;
 }
 
 /** internal/operation.autoTerminator and the constants declared with it */
@@ -6048,6 +6062,7 @@ export interface Inspection {
   readable_window?: RawWindow;
   reference_values?: HL7ReferenceValue[];
   reference_values_notice?: string;
+  reference_catalog?: string;
   reference?: Hl7referenceAnswer;
   fhir?: FHIRInspection;
   metadata: FieldMetadata;
@@ -6070,6 +6085,7 @@ export interface Inspection {
   child_count: number;
   bytes: HexRow[];
   byte_offset: number;
+  phi_masked?: boolean;
   revealed: boolean;
   raw: string;
   raw_window?: RawWindow;
@@ -6083,6 +6099,7 @@ export interface Inspection {
 export type InspectionPathKind =
   | "file"
   | "reference-catalog"
+  | "reference-library"
   | "reference-profile"
   | "reference-pack"
   | "reference-documentation"
@@ -9207,8 +9224,22 @@ export interface ReferenceCatalogResult {
   reference?: Hl7referenceAnswer;
 }
 
+/** internal/desktop.ReferenceEdition */
+export interface ReferenceEdition {
+  edition: string;
+  path?: string;
+  identity?: string;
+}
+
 /** internal/desktop.ReferenceKind */
 export type ReferenceKind = "acknowledgement" | "link" | "collision" | "unsupported";
+
+/** internal/desktop.ReferenceLibraryResult */
+export interface ReferenceLibraryResult {
+  state: State;
+  reason?: string;
+  editions: ReferenceEdition[];
+}
 
 /** internal/desktop.Referrer */
 export interface Referrer {
@@ -11598,6 +11629,7 @@ export interface ScenarioPreviewInspectRequest {
   node_offset: number;
   byte_offset: number;
   reveal: boolean;
+  mask_phi?: boolean;
 }
 
 /** internal/desktop.ScenarioPreviewMessage */
@@ -14831,6 +14863,8 @@ export interface Facade {
   InspectRunnerJob(configPath: string, jobPath: string): Promise<RunnerJobPreviewResult>;
   InspectScenarioPreview(request: ScenarioPreviewInspectRequest): Promise<InspectionResult>;
   InspectValueMap(request: ValueMapInspectionRequest): Promise<ValueMapInspectionResult>;
+  InstallReferenceCatalog(path: string): Promise<ReferenceLibraryResult>;
+  InstallReferenceLibrary(folder: string): Promise<ReferenceLibraryResult>;
   InstallValidator(request: ValidatorInstallRequest): Promise<ValidatorCheckResult>;
   IssueExchangeRuntimeMarker(request: RequestContext): Promise<ExchangeRuntimeMarkerResult>;
   ItemHistory(request: ItemRequest): Promise<ItemHistoryResult>;
@@ -14959,6 +14993,7 @@ export interface Facade {
   ReadRedactInventory(workspace: string, entry: string): Promise<RedactInventoryResult>;
   ReadRedactPolicy(workspace: string, entry: string): Promise<RedactPolicyResult>;
   ReadReferenceCatalog(path: string): Promise<ReferenceCatalogResult>;
+  ReadReferenceLibrary(): Promise<ReferenceLibraryResult>;
   ReadResetPlan(workspace: string, planFile: string): Promise<ResetPlanResult>;
   ReadRunnerConfig(configPath: string): Promise<RunnerInspectResult>;
   ReadRunnerGrants(path: string, project: string): Promise<RunnerGrantsResult>;

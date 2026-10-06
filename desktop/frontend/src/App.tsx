@@ -146,7 +146,6 @@ import {
   RAIL_BREAKPOINT_REM,
   SIDEBAR_REM,
   READER_COMPACT_WINDOW_REM,
-  READER_COMPACT_SIDEBAR_REM,
   MESSAGE_BROWSER_REM,
   MESSAGE_BROWSER_COMPACT_REM,
   READER_REFERENCE_REM,
@@ -163,6 +162,7 @@ import { DeleteSourceSheet, StorageView } from "./Storage";
 import { useFileReader } from "./RawInspection";
 import chevronsAsset from "./assets/workbench/chevrons.svg";
 import moreAsset from "./assets/workbench/more.svg";
+import { ReaderIcon } from "./ReaderIcon";
 import type { CaptureObservationBinding } from "./bindings";
 import { TaskPanel, TaskTabs } from "./TaskTabs";
 import { IconButton } from "./IconButton";
@@ -278,6 +278,7 @@ export default function App() {
   // Each counts the palette's requests to open that screen in the inspector.
   const [rawRequest, setRawRequest] = useState(0);
   const [readerReferenceRequest,setReaderReferenceRequest]=useState(0);
+  const [readerLibraryRequest,setReaderLibraryRequest]=useState(0);
   const [readerDensityOverride,setReaderDensityOverride]=useState<boolean|null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceResult | null>(null);
   const [evidence, setEvidence] = useState<CaseResult | null>(null);
@@ -322,6 +323,7 @@ export default function App() {
   // comparison of similar findings, which Back returns to.
   const [evidenceFrom, setEvidenceFrom] = useState<"findings" | "similar" | "run">("findings");
   const [revealed, setRevealed] = useState(false);
+  const [phiMasked,setPHIMasked] = useState(false);
   const [filterSeed, setFilterSeed] = useState<FilterSeed | null>(null);
   const [searchSettings, setSearchSettings] = useState<SearchSettings | null | undefined>(undefined);
   // The reviewed send open now (#555): a test, a suite, chosen messages, the
@@ -761,6 +763,7 @@ export default function App() {
     setCheckedMessages(new Set());
     messageSelectionOwner.current = "";
     setRevealed(false);
+    setPHIMasked(false);
     setFilterSeed(null);
     setInspectionResult(null);
     setEvidenceFocus(null);
@@ -938,20 +941,21 @@ export default function App() {
       path: string,
       nodeOffset: number,
       byteOffset: number,
-      targetCase?: { case: string; identity: string },
+      targetCase?: { case: string; identity: string; protocol?: string },
       reveal: boolean = revealed,
       rawOffset = -1,
       catalogPath?: string,
       selection?: HL7ReferenceSelection,
       catalogIdentity?: string,
+      maskPHI = phiMasked,
     ): Promise<InspectionResult | null> => {
       const grid = messages;
       const open =
         targetCase ??
         (grid
-          ? { case: grid.case, identity: grid.identity }
+          ? { case: grid.case, identity: grid.identity, protocol: evidence?.case ? evidence.case.protocol ?? "hl7-v2" : undefined }
           : evidence?.case
-            ? { case: evidence.case.name, identity: evidence.case.identity }
+            ? { case: evidence.case.name, identity: evidence.case.identity, protocol:evidence.case.protocol ?? "hl7-v2" }
             : null);
       if (!root || !open) return null;
       if (catalogPath !== undefined) {
@@ -974,7 +978,8 @@ export default function App() {
           node_offset: nodeOffset,
           byte_offset: byteOffset,
           raw_offset: rawOffset,
-          reveal,
+          reveal: open.protocol && open.protocol !== "fhir-r4" ? true : reveal,
+          ...(open.protocol && open.protocol !== "fhir-r4" && maskPHI ? {mask_phi:true} : {}),
           ...(referenceCatalog.current ? { reference_catalog: referenceCatalog.current } : {}),
           ...(referenceIdentity.current ? { reference_identity: referenceIdentity.current } : {}),
           ...(referenceSelection.current ? { reference_selection: referenceSelection.current } : {}),
@@ -988,7 +993,7 @@ export default function App() {
       });
       return answer;
     },
-    [evidence, messages, revealed, root, run, selectedOccurrence],
+    [evidence, messages, revealed, phiMasked, root, run, selectedOccurrence],
   );
 
   const openFieldValues = (selector: string) => {
@@ -1012,7 +1017,7 @@ export default function App() {
     if (!origin || root !== origin.workspace || verified?.name !== origin.case || verified.identity !== origin.identity) return;
     restoredScroll.current = origin.scrollTop;
     if (origin.occurrence) void inspect(origin.occurrence, origin.path, origin.nodeOffset, origin.byteOffset,
-      { case: origin.case, identity: origin.identity }, false);
+      { case: origin.case, identity: origin.identity, protocol:verified?.protocol ?? "hl7-v2" }, false);
     else { setSelectedOccurrence(null); setInspectionResult(null); }
   };
 
@@ -1034,7 +1039,7 @@ export default function App() {
     if (!origin || root !== origin.workspace || verified?.name !== origin.case || verified.identity !== origin.identity) return;
     restoredScroll.current = origin.scrollTop;
     if (origin.view !== "findings" && origin.originOccurrence) void inspect(origin.originOccurrence, origin.originPath,
-      origin.nodeOffset, origin.byteOffset, { case: origin.case, identity: origin.identity }, false);
+      origin.nodeOffset, origin.byteOffset, { case: origin.case, identity: origin.identity, protocol:verified?.protocol ?? "hl7-v2" }, false);
   };
 
   // One practice run of the demo against its defective or fixed receiver. It
@@ -1204,6 +1209,7 @@ export default function App() {
             await inspect(match.occurrence, match.selector ?? "", 0, -1, {
               case: verified.case.name,
               identity: verified.case.identity,
+              protocol: verified.case.protocol ?? "hl7-v2",
             });
             focusRegion("inspector");
           }
@@ -1510,7 +1516,7 @@ export default function App() {
  if(selection && opened?.case && currentRoute.current.projectId===root) {
   await loadMessages(root,{case:entry,identity:selection.identity},NO_QUERY,null,0);
   setCheckedMessages(new Set(selection.messages));
-  if(selection.selected) await inspect(selection.selected,selection.path??"",selection.node_offset??0,-1,{case:entry,identity:selection.identity},false);
+  if(selection.selected) await inspect(selection.selected,selection.path??"",selection.node_offset??0,-1,{case:entry,identity:selection.identity,protocol:opened?.case?.protocol ?? "hl7-v2"},false);
  }
 }
     },
@@ -2097,7 +2103,7 @@ export default function App() {
     busy,
     onViewMessages: (evidence) => {
       if (!root || !verified) return;
-      const shown = { case: verified.name, identity: verified.identity };
+      const shown = { case: verified.name, identity: verified.identity, protocol:verified.protocol ?? "hl7-v2" };
       setEvidenceFocus(evidence);
       setEvidenceFrom("findings");
       setView("messages");
@@ -2519,7 +2525,7 @@ export default function App() {
     busy,
     onSaved: (saved) => void openObjectRef(saved),
     onOpenMessage: (occurrence) => variantFlow
-      ? void inspect(occurrence, "", 0, -1, { case: variantFlow.source.entry, identity: variantFlow.source.identity })
+      ? void inspect(occurrence, "", 0, -1, { case: variantFlow.source.entry, identity: variantFlow.source.identity, protocol:variantFlow.source.protocol ?? "hl7-v2" })
       : undefined,
   });
   const caseComparison = useCaseComparison({
@@ -2576,7 +2582,9 @@ export default function App() {
   // into the page header, never both gone.
   const [frame, setFrame] = useState<HTMLDivElement | null>(null);
   const { width: frameWidth, rem } = useMeasured(frame);
-  const compact = frameWidth > 0 && frameWidth / rem < RAIL_BREAKPOINT_REM;
+  const readerLayout = detailsShown && (fileSelection || (place === "cases" && caseFlow !== "field-values" && caseView === "messages" && verified?.protocol !== "fhir-r4"));
+  const [readerSidebarExpanded, setReaderSidebarExpanded] = useState(false);
+  const compact = readerLayout ? !readerSidebarExpanded : frameWidth > 0 && frameWidth / rem < RAIL_BREAKPOINT_REM;
   const narrow = frameWidth > 0 && frameWidth / rem < NARROW_WINDOW_REM;
   useEffect(() => {
     document.documentElement.classList.toggle("narrow-window", narrow);
@@ -2598,9 +2606,8 @@ export default function App() {
   // The inspector keeps the width chosen for this project, clamped to the room
   // there is now. When the list beside it would fall below its useful width,
   // the selection is shown on its own with the way back to the list.
-  const readerLayout = detailsShown && (fileSelection || (place === "cases" && caseFlow !== "field-values" && caseView === "messages" && verified?.protocol !== "fhir-r4"));
   const compactReader = readerLayout && (readerDensityOverride ?? (frameWidth > 0 && frameWidth / rem <= READER_COMPACT_WINDOW_REM));
-  const sidebarRem = compact ? ICON_RAIL_REM : compactReader ? READER_COMPACT_SIDEBAR_REM : SIDEBAR_REM;
+  const sidebarRem = readerLayout ? compact ? 4 : SIDEBAR_REM : compact ? ICON_RAIL_REM : SIDEBAR_REM;
   const workareaRem = frameWidth > 0 ? frameWidth / rem - sidebarRem : Number.POSITIVE_INFINITY;
   const preferredInspector = (root !== null ? inspectorWidths[root] : undefined) ?? INSPECTOR_REM;
   const inspectorRem = Math.max(INSPECTOR_MIN_REM, Math.min(preferredInspector, INSPECTOR_MAX_REM, workareaRem - LIST_MIN_REM - 1 / rem));
@@ -2690,7 +2697,7 @@ export default function App() {
             // refusal instead of silently binding replacement bytes.
           }
           referenceSelection.current = selection;
-          if (nav?.occurrence) await inspect(nav.occurrence, nav.field_path ?? "", nav.node_offset ?? 0, -1, { case: opened.case.name, identity: opened.case.identity }, false, -1, catalog, selection, referenceIdentity.current);
+          if (nav?.occurrence) await inspect(nav.occurrence, nav.field_path ?? "", nav.node_offset ?? 0, -1, { case: opened.case.name, identity: opened.case.identity, protocol:opened.case.protocol ?? "hl7-v2" }, false, -1, catalog, selection, referenceIdentity.current);
         } else setSessionNotice("The previous capture changed or is unavailable. Choose a source explicitly; no selection was rebound.");
       }
       if (!stillOwned()) { abandon(); return; }
@@ -2723,7 +2730,7 @@ export default function App() {
         {!readerLayout && (!root || compact) ? <ul className="nav-list">
           <NavItem id="home" label="Projects" current={destination === "home"} onSelect={go} />
         </ul> : null}
-        {readerLayout && !compact ? <div className="sidebar-switcher reader-source-switcher"><Menu className="project-switcher" label={`Source: ${root ? projectName : fileReader.title}`} trigger={<><span className="reader-switcher-caption"><strong>{root ? projectName : fileReader.title}</strong><span>{root ? "Project" : "Local files"}</span></span><img className="workbench-icon" src={chevronsAsset} alt="" /></>} items={[{label:"Projects",onSelect:()=>go("home")},{label:"Open project…",onSelect:()=>perform("open-workspace"),disabled:busy},{label:"New project…",onSelect:()=>perform("new-project"),disabled:busy},{label:"Tools",onSelect:()=>go("tools")},...(root ? [{label:"Project settings",onSelect:()=>perform("open-project")},{label:"Files",onSelect:()=>open({destination:"project-files"})}] : [])]}/></div> : null}
+        {readerLayout ? <div className="sidebar-switcher reader-source-switcher"><Menu className="project-switcher" label={`Source: ${root ? projectName : fileReader.title}`} trigger={<><span className="reader-source-short" aria-hidden="true">HL7</span><span className="reader-switcher-caption"><strong>{root ? projectName : fileReader.title}</strong><span>{root ? "Project" : "Local files"}</span></span><img className="workbench-icon" src={chevronsAsset} alt="" /></>} items={[{label:"Projects",onSelect:()=>go("home")},{label:"Open project…",onSelect:()=>perform("open-workspace"),disabled:busy},{label:"New project…",onSelect:()=>perform("new-project"),disabled:busy},{label:"Tools",onSelect:()=>go("tools")},...(root ? [{label:"Project settings",onSelect:()=>perform("open-project")},{label:"Files",onSelect:()=>open({destination:"project-files"})}] : [])]}/></div> : null}
         {root && !readerLayout && !compact ? <div className="sidebar-switcher">{switcher}</div> : null}
         {!root && !readerLayout ? <ul className="nav-list"><NavItem id="messages" label="Messages" current={destination === "messages"} onSelect={go} /></ul> : null}
         {root || readerLayout ? (
@@ -2867,7 +2874,7 @@ export default function App() {
                     : "Captures"
           }
           actions={
-            readerLayout ? <>{route.origin?.destination==="environments"?<button type="button" disabled={busy} onClick={()=>void returnFromSetup()}>Return to target</button>:null}<span className="reader-toolbar-edition">HL7 {inspectionResult?.inspection?.metadata.hl7_version || "not declared"}</span><button type="button" className="link reader-toolbar-reference" disabled={busy} onClick={()=>setReaderReferenceRequest(count=>count+1)}>Reference</button><span className="reader-toolbar-space"/><button type="button" disabled={busy} onClick={()=>{setSourceKind("file");open({destination:"inspect-file",view:"messages"});setRawRequest(count=>count+1);}}>Open</button><button type="button" disabled={busy || !root} onClick={startCaptureSetup}>Receive</button><button type="button" disabled={busy || !selectedSourceRef || checkedMessages.size!==2} onClick={()=>setSelectedComparison(true)}>Compare</button><button type="button" className="primary" disabled={busy || !selectedSourceRef} onClick={()=>void createTest()}>Create test case</button><Menu className="reader-menu" trigger={<img className="workbench-icon" src={moreAsset} alt="" />} label="More case actions" items={[...caseMenu,{label:"Receive and send selected",onSelect:()=>setExchangeUIRequest(old=>({kind:"setup",serial:(old?.serial??0)+1})),disabled:busy||!selectedSourceRef||checkedMessages.size===0},{label:"Exchange history",onSelect:()=>setExchangeUIRequest(old=>({kind:"history",serial:(old?.serial??0)+1})),disabled:busy||!selectedSourceRef},{label:"Source context",onSelect:()=>{if(selectedSourceRef)setCaptureContextSource(selectedSourceRef);},disabled:busy || !selectedSourceRef},{label:"Export selected",onSelect:()=>setSelectedExportOpen(true),disabled:busy || !selectedSourceRef || checkedMessages.size===0},{label:"Capture exports",onSelect:()=>setSourceExportsOpen(true),disabled:busy || !selectedSourceRef},{label:"Captures",onSelect:backToProject},{label:"Timeline",onSelect:()=>setView("timeline")},{label:"Findings",onSelect:()=>setView("findings")}]}/></> : subpage === "capture" ? (
+            readerLayout ? <>{route.origin?.destination==="environments"?<button type="button" disabled={busy} onClick={()=>void returnFromSetup()}>Return to target</button>:null}<button type="button" className="reader-toolbar-edition" aria-label="HL7 reference version" onClick={()=>setReaderLibraryRequest(count=>count+1)}>HL7 {inspectionResult?.inspection?.reference?.edition || inspectionResult?.inspection?.metadata.hl7_version || "not declared"}</button><button type="button" className="link reader-toolbar-reference" disabled={busy} onClick={()=>setReaderReferenceRequest(count=>count+1)}>Reference</button><span className="reader-toolbar-space"/><button type="button" disabled={busy} onClick={()=>{setSourceKind("file");open({destination:"inspect-file",view:"messages"});setRawRequest(count=>count+1);}}>Open</button><button type="button" disabled={busy || !root} onClick={startCaptureSetup}>Receive</button><button type="button" disabled={busy || !selectedSourceRef || checkedMessages.size!==2} onClick={()=>setSelectedComparison(true)}>Compare</button><button type="button" className="primary" disabled={busy || !selectedSourceRef} onClick={()=>void createTest()}>Create test case</button><Menu className="reader-menu" trigger={<img className="workbench-icon" src={moreAsset} alt="" />} label="More case actions" items={[{label:"Configure target",onSelect:configureTargetFromSource,disabled:busy||!root},{label:"Receive setup",onSelect:()=>setReceivingSetup(true),disabled:busy||!root},...caseMenu,{label:"Receive and send selected",onSelect:()=>setExchangeUIRequest(old=>({kind:"setup",serial:(old?.serial??0)+1})),disabled:busy||!selectedSourceRef||checkedMessages.size===0},{label:"Exchange history",onSelect:()=>setExchangeUIRequest(old=>({kind:"history",serial:(old?.serial??0)+1})),disabled:busy||!selectedSourceRef},{label:"Source context",onSelect:()=>{if(selectedSourceRef)setCaptureContextSource(selectedSourceRef);},disabled:busy || !selectedSourceRef},{label:"Export selected",onSelect:()=>setSelectedExportOpen(true),disabled:busy || !selectedSourceRef || checkedMessages.size===0},{label:"Capture exports",onSelect:()=>setSourceExportsOpen(true),disabled:busy || !selectedSourceRef},{label:"Captures",onSelect:backToProject},{label:"Timeline",onSelect:()=>setView("timeline")},{label:"Findings",onSelect:()=>setView("findings")}]}/></> : subpage === "capture" ? (
               capture.actions
             ) : root && subpage === null && (!verified || captureCollection) ? (
               <>
@@ -3531,7 +3538,7 @@ export default function App() {
           </ul>
         </Page>
 
-        <Page id="inspect-file" shown={place === "inspect-file"} title={readerLayout ? "Messages" : fileReader.title} back={readerLayout ? undefined : <BackLink label={route.view === "messages" ? "Messages" : "Tools"} onBack={route.view === "messages" ? () => open({ destination: "messages" }) : back} />} actions={<>{readerLayout ? <><span className="reader-toolbar-edition">HL7 {fileReader.edition || "not declared"}</span><button type="button" className="link reader-toolbar-reference" disabled={busy} onClick={fileReader.chooseReference}>Reference</button><span className="reader-toolbar-space"/></> : null}{fileReader.actions}{readerLayout ? <><button type="button" disabled={busy || !root} onClick={startCaptureSetup}>Receive</button><button type="button" disabled title="Retain the loose file as a capture to compare messages">Compare</button><button type="button" className="primary" disabled title="Retain the loose file as a capture to create a test case">Create test case</button></> : null}{fileReader.retention ? <button type="button" className={readerLayout ? "link" : "primary"} disabled={busy} onClick={()=>{retentionStarted.current="";setLooseRetention(fileReader.retention);if(!root)go("home");}}>Retain capture</button> : null}</>}>
+        <Page id="inspect-file" shown={place === "inspect-file"} title={readerLayout ? "Messages" : fileReader.title} back={readerLayout ? undefined : <BackLink label={route.view === "messages" ? "Messages" : "Tools"} onBack={route.view === "messages" ? () => open({ destination: "messages" }) : back} />} actions={<>{readerLayout ? <><button type="button" className="reader-toolbar-edition" aria-label="HL7 reference version" onClick={fileReader.chooseReferenceVersion}>HL7 {fileReader.referenceEdition || fileReader.edition || "not declared"}</button><button type="button" className="link reader-toolbar-reference" disabled={busy} onClick={fileReader.chooseReference}>Reference</button><span className="reader-toolbar-space"/></> : null}{fileReader.actions}{readerLayout ? <><button type="button" disabled={busy || !root} onClick={startCaptureSetup}>Receive</button><button type="button" disabled title="Retain the loose file as a capture to compare messages">Compare</button><button type="button" className="primary" disabled title="Retain the loose file as a capture to create a test case">Create test case</button></> : null}{fileReader.retention ? <button type="button" className={readerLayout ? "link" : "primary"} disabled={busy} onClick={()=>{retentionStarted.current="";setLooseRetention(fileReader.retention);if(!root)go("home");}}>Retain capture</button> : null}</>}>
           {fileReader.body}
         </Page>
 
@@ -3747,6 +3754,7 @@ export default function App() {
             onCompactReader={()=>setReaderDensityOverride(!compactReader)}
             toolbarReference={readerLayout && !detailOnly}
             referenceRequest={readerReferenceRequest}
+            referenceLibraryRequest={readerLibraryRequest}
             contextDetails={exchangeDetails?.key===JSON.stringify([selectedSourceRef?.id??"",verified.identity,selectedOccurrence??""])?exchangeDetails.node:undefined}
             contextDetailsTitle="Recorded exchange"
             result={inspectionResult}
@@ -3758,9 +3766,9 @@ export default function App() {
             busy={busy}
             onInspect={(path, nodeOffset, byteOffset, rawOffset, catalogPath?: string, selection?: HL7ReferenceSelection, catalogIdentity?: string) => (selectedOccurrence ? inspect(selectedOccurrence, path, nodeOffset, byteOffset, undefined, revealed, rawOffset, catalogPath, selection, catalogIdentity) : Promise.resolve(null))}
             onReveal={(next) => {
-              setRevealed(next);
               const at = inspectionResult?.inspection;
-              if (selectedOccurrence) void inspect(selectedOccurrence, at?.fhir?.selected?.field.id ?? at?.selected.path ?? "", at?.node_offset ?? 0, at?.byte_offset ?? -1, undefined, next);
+              if(at?.fhir) setRevealed(next); else {setPHIMasked(!next);if(!next)setInspectionResult(null);}
+              if (selectedOccurrence) void inspect(selectedOccurrence, at?.fhir?.selected?.field.id ?? at?.selected.path ?? "", at?.node_offset ?? 0, at?.byte_offset ?? -1, undefined, next, -1, undefined, undefined, undefined, !next);
             }}
             {...(root && verified.protocol !== "fhir-r4" && caseFlow === null ? { onFieldValues: openFieldValues, onValueMaps:(selector:string)=>openRequirements(selectedOccurrence??"",selector,"value-maps"), onRequirements: (selector: string) => openRequirements(selectedOccurrence ?? "", selector) } : {})}
             onFilterByField={(selector: string, value: string | null, state: FieldState) => {
@@ -3901,6 +3909,7 @@ export default function App() {
           <ReturnAnchor.Provider value={returnAnchor}>
           <PaletteActionsContext.Provider value={registerActions}>
               <div className={`${compact ? "app compact" : "app"}${root ? " app-workbench" : ""}${readerLayout ? ` app-reader${compactReader ? " app-reader-compact" : " app-reader-wide"}` : ""}`} style={readerLayout ? { "--sidebar": `${sidebarRem}rem`, "--reader-reference-width": `${compactReader ? READER_REFERENCE_COMPACT_REM : READER_REFERENCE_REM}rem` } as CSSProperties : undefined} ref={setFrame} onScrollCapture={(event) => { if (event.target instanceof HTMLElement && event.target.classList.contains("page-body")) setScrollRevision((revision) => revision + 1); }}>
+        {readerLayout ? <button type="button" className="reader-sidebar-toggle" aria-label={compact ? "Expand navigation" : "Collapse navigation"} aria-expanded={!compact} onClick={() => setReaderSidebarExpanded(shown => !shown)}><ReaderIcon name="expand" /></button> : null}
                 <nav className="sidebar" aria-label="Main">
                   {region("navigation")}
                 </nav>
