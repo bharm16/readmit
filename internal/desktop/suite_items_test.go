@@ -166,6 +166,7 @@ func (p *suiteProject) saveSuite(t *testing.T, intent, item, base, name string, 
 // version beside it, and the earlier one reopens read-only exactly as it was.
 // The compiled suite is the document `readmit suite prepare` prepares.
 func TestASuiteSavesAndReopensWholeAcrossVersions(t *testing.T) {
+	t.Parallel()
 	p := newSuiteProject(t, "127.0.0.1:2575")
 	root := p.context.Project
 	draft := p.smokeSuite()
@@ -252,6 +253,7 @@ func TestASuiteSavesAndReopensWholeAcrossVersions(t *testing.T) {
 // leaves a parameter unbound, a binding with no observation for a test of
 // appointment records, and an exclusion until a time that is not UTC.
 func TestEveryProblemOfASuiteIsTargetedAtItsMember(t *testing.T) {
+	t.Parallel()
 	p := newSuiteProject(t, "127.0.0.1:2575")
 	for _, lane := range []struct {
 		name   string
@@ -325,6 +327,7 @@ func (p *suiteProject) originalSuite(t *testing.T) string {
 // Save publishes the first managed version of the same suite, and the file
 // is never rewritten.
 func TestAnOriginalSuiteOpensAsItIsAndItsFirstSavePublishesVersionOne(t *testing.T) {
+	t.Parallel()
 	p := newSuiteProject(t, "127.0.0.1:2575")
 	root := p.context.Project
 	original := p.originalSuite(t)
@@ -371,6 +374,7 @@ func TestAnOriginalSuiteOpensAsItIsAndItsFirstSavePublishesVersionOne(t *testing
 // project holds is that object, and one the project does not hold stays as
 // the file declares it, a problem at its member. Nothing is saved.
 func TestAnImportedSuiteFillsOneDraftAndKeepsWhatItCannotResolve(t *testing.T) {
+	t.Parallel()
 	p := newSuiteProject(t, "127.0.0.1:2575")
 	root := p.context.Project
 	outside := t.TempDir()
@@ -408,6 +412,7 @@ func TestAnImportedSuiteFillsOneDraftAndKeepsWhatItCannotResolve(t *testing.T) {
 // prepare` writes from that document into a new folder the person names.
 // Neither sends, and neither writes anywhere else.
 func TestExportAndRunConfigurationWriteOnlyWhereThePersonChooses(t *testing.T) {
+	t.Parallel()
 	p := newSuiteProject(t, "127.0.0.1:2575")
 	root := p.context.Project
 	ref := p.saveSuite(t, "create", "", "", "Scheduling smoke", p.smokeSuite())
@@ -454,6 +459,7 @@ func TestExportAndRunConfigurationWriteOnlyWhereThePersonChooses(t *testing.T) {
 // coverage is the engine's assessment of that run, and a later version
 // compares with it by its exact check changes.
 func TestASuiteVersionRunsAndItsHistoryCoverageAndComparisonReadTheRun(t *testing.T) {
+	t.Parallel()
 	peer := newAckingPeer(t, "AA")
 	p := newSuiteProject(t, peer.address)
 	root := p.context.Project
@@ -584,6 +590,7 @@ func approve(t *testing.T, p *suiteProject, request desktop.PrepareActionRequest
 // changes under its review, and reads stale once an environment it bound
 // moves on. A team request is refused without a hub session.
 func TestBaselineAndEnvironmentApprovalsKeepTheirScopesAndActors(t *testing.T) {
+	t.Parallel()
 	p := newSuiteProject(t, "127.0.0.1:2575")
 	root := p.context.Project
 	draft := p.smokeSuite()
@@ -717,6 +724,7 @@ func approvalBytes(t *testing.T, encoded string) []byte {
 // that reviewer approves it, answering the request. Each is recorded in the
 // suite's history under its own scope and actor, beside the local baseline.
 func TestATeamReviewOfASuiteVersionIsTheSignedInReviewers(t *testing.T) {
+	t.Parallel()
 	var mu sync.Mutex
 	events := []hubprotocol.ReviewEvent{}
 	uploaded := map[string][]byte{}
@@ -872,6 +880,7 @@ func approvalAt(t *testing.T, p *suiteProject, revision string) map[string]any {
 // expectation impact` finds affected between the releases the two versions'
 // baselines recorded, each with the checks whose expectation changed.
 func TestAVersionComparisonNamesTheTestsReleaseImpactFinds(t *testing.T) {
+	t.Parallel()
 	p := newSuiteProject(t, "127.0.0.1:2575")
 	root := p.context.Project
 	draft := p.smokeSuite()

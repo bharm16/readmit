@@ -131,6 +131,7 @@ func listed(t *testing.T, app *desktop.App, root string, kind desktop.ItemKind) 
 }
 
 func TestTheCatalogListsEveryKindThroughItsOwnReader(t *testing.T) {
+	t.Parallel()
 	app, root := catalogProject(t)
 	before := bytesUnder(t, filepath.Join(root, "regression"))
 
@@ -258,6 +259,7 @@ func TestTheCatalogListsEveryKindThroughItsOwnReader(t *testing.T) {
 // A missing object stays a named row with a way to find it; locating it
 // keeps its identity, and a name is catalog metadata alone.
 func TestAMovedObjectStaysVisibleAndIsLocatedUnderItsIdentity(t *testing.T) {
+	t.Parallel()
 	app, root := catalogProject(t)
 	tests := listed(t, app, root, desktop.TestItem)
 	original := tests["Rescheduling updates the original appointment"]
@@ -294,6 +296,7 @@ func TestAMovedObjectStaysVisibleAndIsLocatedUnderItsIdentity(t *testing.T) {
 // was cut from, whatever changed on disk meanwhile; a cursor whose snapshot
 // is not held is refused rather than continued against another list.
 func TestAPageContinuesTheSnapshotItWasCutFrom(t *testing.T) {
+	t.Parallel()
 	app := workspaceApp(t)
 	root := t.TempDir()
 	writeProject(t, root, "")
@@ -340,6 +343,7 @@ func TestAPageContinuesTheSnapshotItWasCutFrom(t *testing.T) {
 // never a completed one, and an execution of an earlier version is not one
 // of the version the suite holds now.
 func TestASuiteNamesItsLatestExecutionOfItsCurrentVersion(t *testing.T) {
+	t.Parallel()
 	peer := newAckingPeer(t, "AA")
 	root := ackWorkspace(t, peer.address)
 	writeAckSpec(t, root, "booking.json", "AA")
@@ -425,6 +429,7 @@ func identities(t *testing.T, pages []desktop.CatalogPage) map[string]bool {
 // A folder with more entries than one listing reads is listed in full, one
 // page after another, and never refused for its size.
 func TestAFolderPastTheListingBoundIsContinuedByCursor(t *testing.T) {
+	t.Parallel()
 	app := workspaceApp(t)
 	root := t.TempDir()
 	writeProject(t, root, "")
@@ -459,6 +464,7 @@ func TestAFolderPastTheListingBoundIsContinuedByCursor(t *testing.T) {
 // and why, and claims no total; the cursor continues into the next window,
 // and every object is listed once.
 func TestTheDiscoveryWindowNamesWhatItCut(t *testing.T) {
+	t.Parallel()
 	app := workspaceApp(t)
 	root := t.TempDir()
 	writeProject(t, root, "")
@@ -504,6 +510,7 @@ func TestTheDiscoveryWindowNamesWhatItCut(t *testing.T) {
 // An object of a later discovery window that the catalog has room for is
 // changed and reviewed where it is: its actions are the ones it is offered.
 func TestAnObjectOfALaterWindowIsChangedAndReviewedWhereItIs(t *testing.T) {
+	t.Parallel()
 	app := workspaceApp(t)
 	root := t.TempDir()
 	writeProject(t, root, "")
@@ -542,6 +549,7 @@ func TestAnObjectOfALaterWindowIsChangedAndReviewedWhereItIs(t *testing.T) {
 // explicit open writes it beside the viewer's other documents and never into
 // the project, listing reads it back, and another viewer has none.
 func TestOpeningAnObjectRecordsWhenThisViewerOpenedIt(t *testing.T) {
+	t.Parallel()
 	app, context := namedProject(t)
 	root := context.Project
 	writeDocument(t, root, "lab.json", replayTarget("127.0.0.1:2575", "nonproduction"))
@@ -576,6 +584,7 @@ func TestOpeningAnObjectRecordsWhenThisViewerOpenedIt(t *testing.T) {
 // whether it was reviewed: a sealed packet is not reviewed until a portable
 // review is exported from it, which is itself a sealed report of that case.
 func TestAReportNamesItsCaseAndWhetherItWasReviewed(t *testing.T) {
+	t.Parallel()
 	app := newApp(t, &chooser{})
 	root, spec, baseline, current := packetWorkspace(t, app)
 	writeProject(t, root, "")
@@ -604,6 +613,7 @@ func TestAReportNamesItsCaseAndWhetherItWasReviewed(t *testing.T) {
 // An observation's latest collection is its latest trustworthy completed one:
 // a collection that observed nothing is never chosen.
 func TestAnObservationNamesItsLatestCompletedCollection(t *testing.T) {
+	t.Parallel()
 	app, context := namedProject(t)
 	root := context.Project
 	writeDocument(t, root, "export.csv", "appointment,status\nA1,booked\n")

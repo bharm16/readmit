@@ -60,6 +60,7 @@ func rowIDs(rows []desktop.MessageRow) []string {
 }
 
 func TestReadMessagesListsActualTypesKindsAndFacetsWithoutAnIndex(t *testing.T) {
+	t.Parallel()
 	app, root, state, opened := messagesWorkspace(t)
 	evidence, viewer := bytesUnder(t, root), bytesUnder(t, state)
 
@@ -108,6 +109,7 @@ func TestReadMessagesListsActualTypesKindsAndFacetsWithoutAnIndex(t *testing.T) 
 }
 
 func TestReadMessagesAppliesATransientQueryAndWritesNothing(t *testing.T) {
+	t.Parallel()
 	app, root, state, opened := messagesWorkspace(t)
 	evidence, viewer := bytesUnder(t, root), bytesUnder(t, state)
 
@@ -148,6 +150,7 @@ func TestReadMessagesAppliesATransientQueryAndWritesNothing(t *testing.T) {
 }
 
 func TestReadMessagesSortsByTimeWithUnknownLastAndPagesWithinTheBound(t *testing.T) {
+	t.Parallel()
 	app, root, _, opened := messagesWorkspace(t)
 	sorted := app.ReadMessages(desktop.MessagesRequest{Workspace: root, Case: "incident", Identity: opened.Identity, Sort: grid.TimeDescending})
 	if got := rowIDs(sorted.Rows); !reflect.DeepEqual(got, []string{"s0001-e000002", "s0001-e000001", "s0001-e000003", "s0001-e000004", "s0001-e000005"}) {
@@ -170,6 +173,7 @@ func TestReadMessagesSortsByTimeWithUnknownLastAndPagesWithinTheBound(t *testing
 // Search settings are offered only for the case's own index that has expired
 // or cannot answer the applied query.
 func TestReadMessagesReadsTheSameAnswerWhateverIndexLiesBesideTheCase(t *testing.T) {
+	t.Parallel()
 	query := grid.Query{Fields: []grid.FieldPredicate{{Selector: patientField, Match: index.Equals, Term: "MRN-1^^^READMIT^MR"}}}
 	ended := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
 	for name, arrangement := range map[string]struct {
@@ -226,6 +230,7 @@ func TestReadMessagesReadsTheSameAnswerWhateverIndexLiesBesideTheCase(t *testing
 }
 
 func TestReadMessagesReadsTenThousandOccurrencesInBoundedWindows(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	app := desktop.New(&chooser{}, desktop.ShellDocuments{Folder: t.TempDir()})
 	var wire strings.Builder
@@ -246,6 +251,7 @@ func TestReadMessagesReadsTenThousandOccurrencesInBoundedWindows(t *testing.T) {
 }
 
 func TestReadMessagesReportsACaseThatHoldsNoMessagesAsEmpty(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	app := desktop.New(&chooser{}, desktop.ShellDocuments{Folder: t.TempDir()})
 	started := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
@@ -265,6 +271,7 @@ func TestReadMessagesReportsACaseThatHoldsNoMessagesAsEmpty(t *testing.T) {
 // lists, as every other refusal of a message window does, so the window never
 // reads rows or facets that are not there.
 func TestABusyMessageWindowAnswersEmptyLists(t *testing.T) {
+	t.Parallel()
 	app := windowWith(t, testlicense.New(t))
 	var answer desktop.MessagesResult
 	desktop.RunUnderProfileForTest(app, "CheckTarget", func(context.Context) {

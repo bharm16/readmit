@@ -142,13 +142,17 @@ type scenarioConnectedCase struct {
 // synthetic lifecycles. Saved business times, wire parameters and real seed
 // remain inputs; only generation-variant delays govern connected execution.
 func TestSavedScenarioCasesReachConnectedExecutionForEveryV2Family(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []scenarioConnectedCase{
 		{family: "ADT", scenario: "adt-visit-lifecycle", steps: []string{"register", "admit", "transfer", "update", "cancel-a-discharge-that-never-happened", "discharge", "cancel-an-admission-already-discharged", "cancel-the-discharge", "admit-the-second-visit", "merge-a-patient-into-itself", "merge-the-duplicate-identity", "merge-an-identity-already-merged-away", "update-the-visit-of-a-merged-identity", "merge-into-an-identity-already-merged-away"}, events: []string{"ADT^A04", "ADT^A01", "ADT^A02", "ADT^A08", "ADT^A13", "ADT^A03", "ADT^A11", "ADT^A13", "ADT^A01", "ADT^A40", "ADT^A40", "ADT^A40", "ADT^A08", "ADT^A40"}},
 		{family: "SIU", scenario: "siu-appointment-lifecycle", steps: []string{"cancel-before-anything-was-booked", "book", "book-the-same-appointment-again", "reschedule", "modify", "cancel", "cancel-the-cancellation", "reschedule-after-cancellation", "record-a-no-show-after-cancellation"}, events: []string{"SIU^S15", "SIU^S12", "SIU^S12", "SIU^S13", "SIU^S14", "SIU^S15", "SIU^S15", "SIU^S13", "SIU^S26"}},
 		{family: "ORM", scenario: "orm-lifecycle", steps: []string{"step-1", "step-2", "step-3", "step-4", "step-5", "step-6"}, events: []string{"ORM^O01", "ORM^O01", "ORM^O01", "ORM^O01", "ORM^O01", "ORM^O01"}, orders: []string{"CA", "NW", "XO", "CA", "XO", "NW"}},
 		{family: "ORU", scenario: "oru-lifecycle", steps: []string{"step-1", "step-2", "step-3", "step-4", "step-5", "step-6"}, events: []string{"ORU^R01", "ORU^R01", "ORU^R01", "ORU^R01", "ORU^R01", "ORU^R01"}, results: []string{"C", "P", "P", "F", "P", "C"}},
 	} {
-		t.Run(tc.family, func(t *testing.T) { savedScenarioConnectedCase(t, tc) })
+		t.Run(tc.family, func(t *testing.T) {
+			parallelLifecycleTest(t)
+			savedScenarioConnectedCase(t, tc)
+		})
 	}
 }
 

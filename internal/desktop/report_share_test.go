@@ -65,6 +65,7 @@ func sharedBytes(t *testing.T, file desktop.ShareFile) []byte {
 // `readmit report review` verifies, and a place something is already at is
 // never written.
 func TestAReportShareWritesTheReviewedBytesAndOriginalEvidenceReadmitReviews(t *testing.T) {
+	t.Parallel()
 	app, dialogs, context, runs := reportsProject(t)
 	saved := createReport(t, app, context, "report-1", desktop.ReportDraft{Title: "Reschedule regression", Run: runs["@baseline"].Ref})
 	var lastExport desktop.ReviewedActionResult
@@ -212,6 +213,7 @@ func templateProject(t *testing.T) (*desktop.App, *chooser, desktop.RequestConte
 // text, and reveals examples only when asked. A treatment changed after the
 // preview withdraws it: the final click writes nothing and needs a fresh one.
 func TestATemplateRedactsAShareAndAChangedTreatmentWithdrawsItsPreview(t *testing.T) {
+	t.Parallel()
 	app, dialogs, context, ref, _ := templateProject(t)
 	title := "Shared regression"
 	options := desktop.ReportShareOptions{Format: "markdown", Template: "Clinic A.json", Contents: desktop.ShareContents{Messages: true},
@@ -296,6 +298,7 @@ func TestATemplateRedactsAShareAndAChangedTreatmentWithdrawsItsPreview(t *testin
 // it was chosen at, holds the output, and opens with that control; a control
 // rotated since is refused. A Send without a signed-in team is never ready.
 func TestAnEncryptedShareIsWrittenUnderItsControlAndASendNeedsATeam(t *testing.T) {
+	t.Parallel()
 	app, dialogs, context, ref, _ := templateProject(t)
 	program := keyProgram(t, "test-only-not-a-real-key-7a1b2c3d4e5f6071", "")
 	registered := app.SaveProtectionControl(desktop.ProtectionControlRequest{Workspace: context.Project, Entry: "protection.json", Name: "lab-evidence",
@@ -348,6 +351,7 @@ func TestAnEncryptedShareIsWrittenUnderItsControlAndASendNeedsATeam(t *testing.T
 // reached, and hands a reviewed run to #555; nothing is sent by preparing it,
 // and the share stays blocked until that run is retained.
 func TestATemplatesCheckRunIsARealSeparatelyReviewedRun(t *testing.T) {
+	t.Parallel()
 	app, dialogs, context, ref, _ := templateProject(t)
 	// This retained acceptance fixture uses processing ID T. Permit that
 	// known structural literal so preparation must actually succeed.
@@ -435,6 +439,7 @@ func TestATemplatesCheckRunIsARealSeparatelyReviewedRun(t *testing.T) {
 // A template is saved from a share draft as configuration only, named, and
 // replaced by an edit only while it is the version the edit was made from.
 func TestATemplateIsSavedFromADraftAndEditedOnlyFromItsCurrentVersion(t *testing.T) {
+	t.Parallel()
 	app, _, context, ref, _ := templateProject(t)
 	title := "Shared"
 	saved := app.SaveShareTemplate(desktop.ShareTemplateRequest{Context: context, Name: "Clinic C", Report: &ref, Base: "Clinic A.json",
@@ -479,6 +484,7 @@ func TestATemplateIsSavedFromADraftAndEditedOnlyFromItsCurrentVersion(t *testing
 // policy is set on its own and approves nothing, and a policy that denies
 // support prepares nothing.
 func TestASupportSummaryIsPreviewedAndExportedUnderTheProjectPolicy(t *testing.T) {
+	t.Parallel()
 	app, dialogs, context, ref, _ := templateProject(t)
 	prepare := func(path string) *desktop.ActionReview {
 		t.Helper()
@@ -529,6 +535,7 @@ func TestASupportSummaryIsPreviewedAndExportedUnderTheProjectPolicy(t *testing.T
 // the declared retention unless overridden with a reason, then unlinks only
 // the package's declared files.
 func TestEncryptedPackagesAreListedDecryptedAndDeletedUnderTheirRetention(t *testing.T) {
+	t.Parallel()
 	app, dialogs, context, ref, _ := templateProject(t)
 	program := keyProgram(t, "test-only-not-a-real-key-0f1e2d3c4b5a6978", "")
 	registered := app.SaveProtectionControl(desktop.ProtectionControlRequest{Workspace: context.Project, Entry: "protection.json", Name: "lab-evidence",

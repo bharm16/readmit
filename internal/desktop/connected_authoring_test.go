@@ -308,6 +308,7 @@ func (f *connectedAuthoring) copyEnvironment(t *testing.T, ref desktop.ItemRef, 
 }
 
 func TestConnectedTestsJoinOneSuiteWithTheirApprovedDefinitionsInEveryEnvironmentAndRunInTheConnectedRunner(t *testing.T) {
+	parallelLifecycleTest(t)
 	f := newConnectedAuthoring(t)
 	reschedule := f.save(t, "Reschedule keeps one appointment", "reschedule-create", f.reschedule(), f.v2.ID)
 	booking := f.save(t, "Booking keeps its encounter", "booking-create", f.booking(), f.fhir.ID)
@@ -448,6 +449,7 @@ func TestConnectedTestsJoinOneSuiteWithTheirApprovedDefinitionsInEveryEnvironmen
 }
 
 func TestConnectedSuiteRunsEachDatasetRowWithItsOverridesAndKeepsItsPins(t *testing.T) {
+	parallelLifecycleTest(t)
 	f := newConnectedAuthoring(t)
 	reschedule := f.save(t, "Reschedule keeps one appointment", "reschedule-create", f.reschedule(), f.v2.ID)
 	booking := f.save(t, "Booking keeps its encounter", "booking-create", f.booking(), f.fhir.ID)

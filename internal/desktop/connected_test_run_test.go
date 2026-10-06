@@ -23,6 +23,7 @@ func TestSavedConnectedTestNormalRunReviewsExactRevisionBeforeAnyEffects(t *test
 }
 
 func TestSavedConnectedNormalRunExecutesUnchangedExpectationsAcrossDefectFixRegression(t *testing.T) {
+	parallelLifecycleTest(t)
 	f := newConnectedAuthoring(t)
 	test := f.save(t, "Reschedule observed state", "connected-regression", f.reschedule(), f.v2.ID)
 	request := desktop.PrepareActionRequest{Context: f.context, Action: desktop.RunTestAction, Items: []desktop.ItemRef{test}}
@@ -71,6 +72,7 @@ func TestSavedConnectedNormalRunExecutesUnchangedExpectationsAcrossDefectFixRegr
 }
 
 func TestSavedConnectedNormalFHIRRunRetainsResponsesAndBoundedObservations(t *testing.T) {
+	parallelLifecycleTest(t)
 	f := newConnectedAuthoring(t)
 	test := f.save(t, "FHIR normal run", "individual-fhir", f.booking(), f.fhir.ID)
 	review := prepared(t, f.app, desktop.PrepareActionRequest{Context: f.context, Action: desktop.RunTestAction, Items: []desktop.ItemRef{test}})

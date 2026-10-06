@@ -3,9 +3,11 @@ package connectedtest_test
 import (
 	"bytes"
 	"encoding/json/v2"
+	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/assertion"
 	"github.com/bharm16/readmit/internal/connectedtest"
 	"github.com/bharm16/readmit/internal/testisolation"
@@ -44,6 +46,69 @@ func TestFlowPlanDerivesPinnedPhasesPreservesInputsAndConditions(t *testing.T) {
 	reopened, err := connectedtest.OpenFlowPlan(path)
 	if err != nil || reopened.Identity() != p.Identity() {
 		t.Fatal(err)
+	}
+}
+
+func TestPreparedFlowPlanChecksEveryMemberAgainWithoutRecompiling(t *testing.T) {
+	d, supplied := flowDefinition(t)
+	raw, _ := json.Marshal(d)
+	p, err := connectedtest.CompileFlow(raw, supplied, connectedtest.Generation{BaseTime: "2026-01-01T00:00:00Z"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "original")
+	if err = p.Write(t.Context(), path); err != nil {
+		t.Fatal(err)
+	}
+	if err = p.VerifyUnchanged(path); err != nil {
+		t.Fatal("unchanged plan refused", err)
+	}
+	for _, kind := range []string{"changed-input", "resealed-input", "missing-member", "extra-member", "linked-member"} {
+		t.Run(kind, func(t *testing.T) {
+			copy := filepath.Join(t.TempDir(), "plan")
+			if err := os.CopyFS(copy, os.DirFS(path)); err != nil {
+				t.Fatal(err)
+			}
+			if err := p.VerifyUnchanged(copy); err != nil {
+				t.Fatal("unchanged relocated plan refused", err)
+			}
+			member := filepath.Join(copy, "phases", "first", "inputs", "book.hl7")
+			switch kind {
+			case "changed-input", "resealed-input":
+				if err := os.WriteFile(member, []byte("altered original bytes"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				if kind == "resealed-input" {
+					files := p.Files()
+					files["phases/first/inputs/book.hl7"] = []byte("altered original bytes")
+					phase := artifactdir.Subtree(files, "phases/first")
+					seal := []byte(artifactdir.Identity(p.Phase("first").Document().Schema, phase) + "\n")
+					files["phases/first/identity.sha256"] = seal
+					if err := os.WriteFile(filepath.Join(copy, "phases", "first", "identity.sha256"), seal, 0600); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.WriteFile(filepath.Join(copy, "identity.sha256"), []byte(artifactdir.Identity(p.Document().Schema, files)+"\n"), 0600); err != nil {
+						t.Fatal(err)
+					}
+				}
+			case "missing-member", "linked-member":
+				if err := os.Remove(member); err != nil {
+					t.Fatal(err)
+				}
+				if kind == "linked-member" {
+					if err := os.Symlink(filepath.Join(path, "phases", "first", "inputs", "book.hl7"), member); err != nil {
+						t.Skip("symlinks unavailable")
+					}
+				}
+			case "extra-member":
+				if err := os.WriteFile(filepath.Join(copy, "dependencies", "extra"), nil, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := p.VerifyUnchanged(copy); err == nil {
+				t.Fatal("changed plan accepted")
+			}
+		})
 	}
 }
 func TestFlowPlanRefusesUnsafeCompositionBeforeEffects(t *testing.T) {
