@@ -1620,6 +1620,8 @@ export interface ComparisonRow {
 
 /** internal/desktop.ComparisonSide */
 export interface ComparisonSide {
+  message_code?: string;
+  trigger_event?: string;
   occurrence?: string;
   identity?: string;
   raw_sha256?: string;
@@ -6056,6 +6058,9 @@ export type InspectTerminator = "auto" | "cr" | "lf" | "crlf";
 
 /** internal/desktop.Inspection */
 export interface Inspection {
+  control_id?: string;
+  segments?: InspectorNode[];
+  segment_count?: number;
   grid?: HL7InspectorGrid;
   message_context?: Hl7referenceMessageContext;
   reference_overlay?: HL7ReferenceOverlay;
@@ -8819,8 +8824,26 @@ export interface ProtectionUpdateResult {
   document?: ProtectionDocument;
 }
 
+/** internal/desktop.RawLine */
+export interface RawLine {
+  number: number;
+  tokens: RawToken[];
+}
+
+/** internal/desktop.RawToken */
+export interface RawToken {
+  text: string;
+  path?: string;
+  role?: string;
+  start: number;
+  end: number;
+  selected?: boolean;
+  empty?: boolean;
+}
+
 /** internal/desktop.RawWindow */
 export interface RawWindow {
+  lines?: RawLine[];
   offset: number;
   end: number;
   message_start: number;
@@ -14625,6 +14648,7 @@ export interface View {
 
 /** internal/desktop.ViewNavigation */
 export interface ViewNavigation {
+  phi_masked?: boolean;
   checked_occurrences?: string[];
   file_messages?: number[];
   reference_selection?: HL7ReferenceSelection;

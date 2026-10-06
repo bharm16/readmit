@@ -63,13 +63,14 @@ type InspectRequest struct {
 // window is all Before, when the selection is the whole message, has no bytes
 // or lies outside the window.
 type RawWindow struct {
-	Offset       int    `json:"offset"`
-	End          int    `json:"end"`
-	MessageStart int    `json:"message_start"`
-	MessageEnd   int    `json:"message_end"`
-	Before       string `json:"before"`
-	Selected     string `json:"selected"`
-	After        string `json:"after"`
+	Lines        []RawLine `json:"lines,omitzero"`
+	Offset       int       `json:"offset"`
+	End          int       `json:"end"`
+	MessageStart int       `json:"message_start"`
+	MessageEnd   int       `json:"message_end"`
+	Before       string    `json:"before"`
+	Selected     string    `json:"selected"`
+	After        string    `json:"after"`
 }
 
 // HexRow is one row of original bytes: its offset, up to HexRowBytes bytes as
@@ -126,6 +127,9 @@ const InspectorChildValueLimit = 128
 // Direction the direction the case recorded for it; a standalone file has
 // neither.
 type Inspection struct {
+	ControlID        string                       `json:"control_id,omitzero"`
+	Segments         []InspectorNode              `json:"segments,omitzero"`
+	SegmentCount     int                          `json:"segment_count,omitzero"`
 	Grid             *HL7InspectorGrid            `json:"grid,omitzero"`
 	MessageContext   *hl7reference.MessageContext `json:"message_context,omitzero"`
 	ReferenceOverlay *HL7ReferenceOverlay         `json:"reference_overlay,omitzero"`
@@ -318,6 +322,7 @@ func (a *App) inspectDocument(raw []byte, doc *hl7.Document, message int, window
 			attachReferenceValues(view, doc, message, catalog)
 		}
 		attachInspectorGrid(view, doc, message, labels, catalog)
+		attachInspectorMessage(view, doc, message, labels, catalog)
 		if !window.Reveal {
 			view.Raw, view.Decoded = "", ""
 		}
@@ -344,6 +349,7 @@ func (a *App) inspectDocument(raw []byte, doc *hl7.Document, message int, window
 		}
 		view.RawWindow = shown
 		view.ReadableWindow, _ = readableWindow(raw, bounds, view.Selected, window.RawOffset)
+		attachRawLines(view.ReadableWindow, raw, doc, message, view.Selected, catalog)
 	}
 	if window.MaskPHI && window.Reveal {
 		maskInspectorValues(view, raw)

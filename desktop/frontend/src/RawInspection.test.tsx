@@ -62,6 +62,41 @@ async function openTool(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole("button", { name: "Inspect file" }));
 }
 
+test("raw token and table navigation share canonical paths, preserve the raw page, and retain PHI masking", async () => {
+  const user=userEvent.setup();
+  const first={path:"MSH[1]-9",kind:"field",parent:"MSH[1]",segment:"MSH",field:9,state:"empty" as const,start:4106,end:4106};
+  const left={path:"PID[1]-5[1].1",kind:"component",parent:"PID[1]-5[1]",segment:"PID",field:5,state:"empty" as const,start:4120,end:4120};
+  const right={...left,path:"PID[1]-5[1].2",start:4130,end:4130};
+  const nodes=[first,left,right];
+  const {facade}=await renderApp(handlers({
+    ListFileMessages:request=>listing(1,request),
+    InspectFileMessage:request=>{
+      const selected=nodes.find(node=>node.path===request.path) ?? first;
+      return inspectionResult("",{identity:DIGEST,message:0,occurrence:"",selected,revealed:true,phi_masked:request.mask_phi ?? false,
+        readable_window:{offset:4096,end:4196,message_start:0,message_end:5000,before:"",selected:"",after:"",lines:nodes.map((node,index)=>({number:20+index,tokens:[{text:"",path:node.path,start:node.start,end:node.end,empty:true,selected:node.path===selected.path}]}))},
+        grid:{segment:"PID[1]",offset:0,field_count:3,rows:nodes.map((node,index)=>({node,label:`Position ${index+1}`,selector:node.path,segment_name:"",value:"",truncated:false,depth:2}))},
+      });
+    },
+  }));
+  await openTool(user);
+  const source=await screen.findByRole("region",{name:"Original message"});
+  expect(screen.queryByRole("heading",{name:"Original message"})).toBeNull();
+  expect(screen.queryByRole("button",{name:/^Source:/})).toBeNull();
+  expect(screen.getAllByRole("heading",{name:"Messages"})).toHaveLength(1);
+  await user.click(within(source).getByRole("button",{name:`Inspect ${right.path} (empty)`}));
+  await waitFor(()=>expect(facade.callsTo("InspectFileMessage").at(-1)?.args[0]).toMatchObject({path:right.path,raw_offset:4096,node_offset:0}));
+  const grid=screen.getByRole("region",{name:"Segment grid"});
+  await waitFor(()=>expect(within(grid).getByRole("button",{name:/PID\[1\]-5\[1\]\.2 Position 3/}).getAttribute("aria-current")).toBe("location"));
+  await user.click(within(grid).getByRole("button",{name:/PID\[1\]-5\[1\]\.1 Position 2/}));
+  await waitFor(()=>expect(within(source).getByRole("button",{name:`Inspect ${left.path} (empty)`}).getAttribute("aria-pressed")).toBe("true"));
+  within(source).getByRole("button",{name:`Inspect ${left.path} (empty)`}).focus();
+  await user.keyboard("{ArrowRight}{Enter}");
+  await waitFor(()=>expect(facade.callsTo("InspectFileMessage").at(-1)?.args[0]).toMatchObject({path:right.path,raw_offset:4096}));
+  await user.click(screen.getByRole("button",{name:"Enable PHI masking"}));
+  await waitFor(()=>expect(facade.callsTo("InspectFileMessage").at(-1)?.args[0]).toMatchObject({mask_phi:true}));
+  expect(screen.getByRole("button",{name:"Disable PHI masking"}).getAttribute("aria-pressed")).toBe("true");
+});
+
 test("the standalone file opens natively into the shared reader and a refused parse keeps its bytes", async () => {
   const user = userEvent.setup();
   const { facade } = await renderApp(handlers());
@@ -173,8 +208,11 @@ test("browser metadata search and grouping keep the original checked occurrence"
   await user.click(table.querySelector<HTMLInputElement>('[data-row-id="1"] input[type="checkbox"]')!);
   await user.click(table.querySelector<HTMLElement>('[data-row-id="0"]')!);
   await screen.findByRole("region",{name:"Message details"});
-  await user.click(screen.getByRole("button",{name:"Compact view"}));
-  expect(screen.getByRole("button",{name:"Wide view"})).toBeTruthy();
+  await user.click(screen.getByRole("button",{name:"More file actions"}));
+ await user.click(screen.getByRole("menuitem",{name:"Compact view"}));
+  await user.click(screen.getByRole("button",{name:"More file actions"}));
+  expect(screen.getByRole("menuitem",{name:"Wide view"})).toBeTruthy();
+  await user.keyboard("{Escape}");
   expect(facade.callsTo("InspectFileMessage")).toHaveLength(1);
   await user.click(screen.getByRole("tab",{name:"By type"}));
   expect([...table.querySelectorAll<HTMLElement>('tbody tr[data-row-id]')].map(row=>row.dataset.rowId)).toEqual(["1","0"]);
@@ -182,4 +220,64 @@ test("browser metadata search and grouping keep the original checked occurrence"
   expect([...table.querySelectorAll<HTMLElement>('tbody tr[data-row-id]')].map(row=>row.dataset.rowId)).toEqual(["0"]);
   await user.clear(screen.getByRole("textbox",{name:"Search messages"}));
   expect(table.querySelector<HTMLInputElement>('[data-row-id="1"] input[type="checkbox"]')?.checked).toBe(true);
+});
+
+
+test("explicitly reopening the same file replaces its stale listing and identity", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp(handlers({ ListFileMessages: request => listing(1, request) }));
+  await openTool(user);
+  await screen.findByRole("region", { name: "Message details" });
+  facade.reply({ ListFileMessages: request => ({ ...listing(2, request), sha256: "b".repeat(64), bytes: 713 }) });
+  await user.click(page().getByRole("button", { name: "Open file" }));
+  await waitFor(() => expect(facade.callsTo("ListFileMessages")).toHaveLength(2));
+  const table = await screen.findByRole("table", { name: "Messages in this file" });
+  expect(table.querySelectorAll("tbody tr[data-row-id]")).toHaveLength(2);
+  expect(screen.queryByRole("region", { name: "Message details" })).toBeNull();
+  await user.click(table.querySelector<HTMLElement>('[data-row-id="1"]')!);
+  await waitFor(() => expect(facade.callsTo("InspectFileMessage").at(-1)?.args[0]).toMatchObject({ expect: "b".repeat(64), message: 1 }));
+});
+
+
+test("Settings Back returns to the same loose-file selection without rereading it", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp(handlers({ ListFileMessages: request => listing(1, request) }));
+  await openTool(user);
+  await screen.findByRole("region", { name: "Message details" });
+  const reads = facade.callsTo("InspectFileMessage").length;
+  await goTo(user, "Settings");
+  await user.click(page().getByRole("button", { name: "Back" }));
+  expect(await screen.findByRole("region", { name: "Message details" })).toBeTruthy();
+  expect(facade.callsTo("InspectFileMessage")).toHaveLength(reads);
+});
+
+
+test("PHI masking keeps the active datatype reference and Components tab", async () => {
+  const user=userEvent.setup();
+  const missing={state:"not_specified",value:""};
+  const record={key:"field/MSH/9",kind:"field",segment:"MSH",field:9,name:"Message Type",datatype:{state:"specified",value:"MSG"},optionality:missing,length:missing,conformance_length:missing,repetition:missing,item:missing,table:missing,section:missing,definition:"",source:"owned"};
+  const reference={status:"available",reason:"",identity:"catalog",edition:"2.5.1",coverage:{segments:0,fields:1,definitions:0,missing:[]},missing_count:0,record,datatype_key:"datatype/MSG"};
+  await renderApp(handlers({
+    ListFileMessages:request=>listing(1,request),
+    InspectFileMessage:request=>inspectionResult("",{identity:DIGEST,message:0,occurrence:"",selected:{path:"MSH[1]-9",kind:"field",parent:"MSH[1]",segment:"MSH",field:9,state:"empty",start:10,end:10},revealed:true,phi_masked:request.mask_phi??false,reference}),
+    LookupHL7Reference:()=>({state:"completed",children:[],offset:0,child_count:0,total_count:0,reference:{...reference,record:{...record,kind:"datatype",name:"Message datatype"}}}),
+  }));
+  await openTool(user);
+  await screen.findByRole("region",{name:"Message details"});
+  await user.click(screen.getByRole("button",{name:"Datatype · MSG"}));
+  await screen.findByRole("heading",{name:"Message datatype"});
+  await user.click(screen.getByRole("tab",{name:"Components"}));
+  await user.click(screen.getByRole("button",{name:"Enable PHI masking"}));
+  await screen.findByRole("button",{name:"Disable PHI masking"});
+  expect(screen.getByRole("tab",{name:"Components",selected:true})).toBeTruthy();
+});
+
+
+test("restored Settings hides Back when no return location was retained", async () => {
+  await renderApp(handlers({
+    WorkingSession:()=>({state:"completed",session:{schema:"readmit-desktop-session/v3",view:{workspace:"",case:"",region:"evidence",run:"",navigation:{destination:"settings",source_kind:"file",file:FILE,file_identity:DIGEST}}}}),
+    ListFileMessages:request=>listing(1,request),
+  }));
+  await page().findByRole("heading",{level:1,name:"Settings"});
+  expect(page().queryByRole("button",{name:"Back"})).toBeNull();
 });

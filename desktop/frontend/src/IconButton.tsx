@@ -4,6 +4,12 @@ import searchIcon from "./assets/workbench/search.svg";
 import moreIcon from "./assets/workbench/more.svg";
 import downIcon from "./assets/workbench/down.svg";
 import rightIcon from "./assets/workbench/right.svg";
+import folderIcon from "./assets/workbench/folder-open.svg";
+import compareIcon from "./assets/workbench/columns-2.svg";
+import createTestIcon from "./assets/workbench/file-plus.svg";
+import receiveIcon from "./assets/workbench/captures.svg";
+import helpIcon from "./assets/workbench/help.svg";
+import bookIcon from "./assets/parser/book.svg";
 
 // The icon-only utility button the label review specified for a small set of
 // conventional controls: a close, an undo, pagination chevrons, a help entry
@@ -22,17 +28,18 @@ import rightIcon from "./assets/workbench/right.svg";
 /** The glyphs an icon button can carry. Each is decorative: its meaning is the
  * button's accessible name, so the shape is a second channel, never the only
  * one. */
-export type IconGlyph = "help" | "close" | "undo" | "previous" | "next" | "up" | "down" | "refresh" | "more" | "search" | "filter";
+export type IconGlyph = "help" | "close" | "undo" | "previous" | "next" | "up" | "down" | "refresh" | "more" | "search" | "filter" | "open" | "receive" | "compare" | "create-test" | "book" | "phi-off" | "phi-on";
 
 const glyphs: Record<IconGlyph, ReactElement> = {
+  open: <img className="workbench-icon" src={folderIcon} alt="" />,
+  receive: <img className="workbench-icon" src={receiveIcon} alt="" />,
+  compare: <img className="workbench-icon" src={compareIcon} alt="" />,
+  "create-test": <img className="workbench-icon workbench-icon-on-action" src={createTestIcon} alt="" />,
+  book: <img className="workbench-icon" src={bookIcon} alt="" />,
+  "phi-off": <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3 20 6v6c0 5-8 9-8 9s-8-4-8-9V6z"/><path d="m3 3 18 18"/></svg>,
+  "phi-on": <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3 20 6v6c0 5-8 9-8 9s-8-4-8-9V6z"/><path d="m8 12 3 3 5-6"/></svg>,
   // Circle with a question mark.
-  help: (
-    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
-      <circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
-      <path d="M6 6.2a2 2 0 1 1 2.6 1.9c-.5.2-.6.5-.6 1v.4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-      <circle cx="8" cy="11.6" r="0.9" fill="currentColor" />
-    </svg>
-  ),
+  help: <img className="workbench-icon" src={helpIcon} alt="" />,
   // X (close).
   close: <img className="workbench-icon" src={closeIcon} width="12" height="12" alt="" />,
   // Curved arrow pointing left (undo).
@@ -89,6 +96,7 @@ export function IconButton({
   disabled,
   className,
   expanded,
+  pressed,
 }: {
   label: string;
   icon: IconGlyph;
@@ -96,6 +104,7 @@ export function IconButton({
   disabled?: boolean;
   className?: string;
   expanded?: boolean;
+  pressed?: boolean;
 }) {
   const tooltip = useId();
   return (
@@ -105,6 +114,7 @@ export function IconButton({
         aria-label={label}
         aria-describedby={tooltip}
         aria-expanded={expanded}
+        aria-pressed={pressed}
         disabled={disabled}
         onClick={onClick}
       >

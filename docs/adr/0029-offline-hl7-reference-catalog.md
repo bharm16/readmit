@@ -132,7 +132,8 @@ constraints; a profile without its pack truthfully labels the unverified base.
 Authored conditional predicates are displayed without evaluating them. Local
 field/segment constraints and provenance remain separate from base metadata.
 Documentation is bounded at 64 KiB and rendered as text. Session v3 persists
-only selected paths/hashes, never source values, prose or consent; earlier session
+selected paths/hashes and the protective PHI mask preference, never source
+values, prose or reveal/execution authorization; earlier session
 schemas retain their documented readers. Reopen refuses changed identities.
 
 ## Earlier editions and explicit reference selection (amended 2026-10-03)

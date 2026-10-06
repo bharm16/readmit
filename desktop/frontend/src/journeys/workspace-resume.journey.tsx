@@ -21,7 +21,7 @@ const OWNED_REFERENCE = JSON.stringify({
     datatype: { state: "not_applicable", value: "" }, optionality: { state: "not_applicable", value: "" }, length: { state: "not_applicable", value: "" }, conformance_length: { state: "not_applicable", value: "" }, repetition: { state: "not_applicable", value: "" }, item: { state: "not_applicable", value: "" }, table: { state: "not_applicable", value: "" }, section: { state: "specified", value: "0.0.0" }, definition: "Owned navigation reference; no normative content.", source: "owned-navigation.txt" }],
 });
 
-test("reopening restores the retained source, saved view and field selection with default-visible parser values but no consent or external effects", async () => {
+test("reopening restores the retained source, saved view and field selection with protective masking but no consent or external effects", async () => {
   const user = userEvent.setup();
   journey.writeFile("exports/feed.hl7", EXPORTED_BOOKING + EXPORTED_RESCHEDULE);
   journey.writeFile("reference/navigation.json", OWNED_REFERENCE);
@@ -46,7 +46,7 @@ test("reopening restores the retained source, saved view and field selection wit
   await waitFor(() => expect(table.querySelectorAll("tbody tr[data-row-id]")).toHaveLength(1));
   await press(user, table.querySelector<HTMLElement>("tbody tr[data-row-id]")!);
   const reader = details();
-  await press(user, reader.getByRole("button", { name: "More message actions" }));
+  await press(user, await reader.findByRole("button", { name: "More message actions" }));
   await press(user, screen.getByRole("menuitem", { name: "Go to field…" }));
   const field = within(await screen.findByRole("dialog", { name: "Go to field" }));
   await enter(user, field.getByLabelText("Field path"), "MSH-9.2");
@@ -54,7 +54,8 @@ test("reopening restores the retained source, saved view and field selection wit
   await reader.findAllByText("MSH[1]-9[1].2");
   await journey.settled();
   await journey.chooseFiles([journey.path("reference/navigation.json")], "Open offline HL7 reference catalog");
-  await press(user, screen.getByRole("button", { name: "Reference" }));
+  await press(user, screen.getByRole("button", { name: "HL7 reference version" }));
+  await press(user, screen.getByRole("menuitem", { name: "Use local catalog…" }));
   await expectReferenceEdition(user, "2.5.1");
   await press(user, reader.getByRole("button", { name: "Enable PHI masking" }));
   await reader.findByRole("button", { name: "Disable PHI masking" });
@@ -71,8 +72,8 @@ test("reopening restores the retained source, saved view and field selection wit
   await waitFor(() => expect(reopened.getByRole("table", { name: "Messages" }).querySelectorAll("tbody tr[data-row-id]")).toHaveLength(1));
   await details().findAllByText("MSH[1]-9[1].2");
   await expectReferenceEdition(user, "2.5.1");
-  expect(details().getByRole("button", { name: "Enable PHI masking" })).toBeTruthy();
-  expect(details().queryByRole("button", { name: "Disable PHI masking" })).toBeNull();
+  expect(details().getByRole("button", { name: "Disable PHI masking" })).toBeTruthy();
+  expect(details().queryByRole("button", { name: "Enable PHI masking" })).toBeNull();
   expect(document.querySelector<HTMLElement>('.page[data-page="cases"] .page-body')?.scrollTop).toBe(440);
   const restoredCalls = journey.calls.slice(before);
   const externalActions: (keyof Facade)[] = ["StartCapture", "ExecuteReviewedAction", "StartDurableRun", "ResumeDurableRun", "StartSuiteRun", "PrepareAction"];
@@ -99,7 +100,8 @@ test("Messages opens and restores a loose file before project setup; changed ret
   await journey.chooseFiles([journey.path("exports/standalone.hl7")], "Open HL7 file");
   await press(user, page().getByRole("button", { name: "Open file" }));
   await screen.findByRole("heading", { level: 1, name: "Messages" });
-  await screen.findAllByText("standalone.hl7");
+  await screen.findByRole("region", {name:"Message details"});
+  expect(journey.callsTo("ListFileMessages").at(-1)?.args[0]).toMatchObject({file:journey.path("exports/standalone.hl7")});
   await screen.findByRole("button", { name: "Enable PHI masking" });
   const identity = journey.digest("exports/standalone.hl7");
   await journey.settled();
@@ -107,7 +109,8 @@ test("Messages opens and restores a loose file before project setup; changed ret
   await journey.close();
   await journey.launch();
   await screen.findByRole("heading", { level: 1, name: "Messages" });
-  await screen.findAllByText("standalone.hl7");
+  await screen.findByRole("region", {name:"Message details"});
+  expect(journey.callsTo("ListFileMessages").at(-1)?.args[0]).toMatchObject({file:journey.path("exports/standalone.hl7")});
   expect(screen.getByRole("button", { name: "Enable PHI masking" })).toBeTruthy();
   expect(journey.digest("exports/standalone.hl7")).toBe(identity);
   await journey.close();
@@ -139,4 +142,86 @@ test("a changed retained capture remains discoverable but does not inherit the p
   expect(page().getByRole("heading", { level: 1, name: "Captures" })).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Enable PHI masking" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Disable PHI masking" })).toBeNull();
+});
+
+
+test("cancelling Open file keeps the initiating capture and selected field after a loose file was opened", async () => {
+  const user = userEvent.setup();
+  journey.writeFile("exports/previous-file.hl7", EXPORTED_RESCHEDULE);
+  journey.writeFile("exports/capture.hl7", EXPORTED_BOOKING);
+  await licensedProject(journey, user);
+  await press(user, sidebar().getByRole("button", { name: "Messages" }));
+  await journey.settled();
+  await journey.chooseFiles([journey.path("exports/previous-file.hl7")], "Open HL7 file");
+  await press(user, page().getByRole("button", { name: "Open file" }));
+  await journey.settled();
+  expect(journey.callsTo("ListFileMessages").at(-1)?.result).toMatchObject({state:"completed"});
+  await screen.findByRole("table", { name: "Messages in this file" });
+  await press(user, sidebar().getByRole("button", { name: "Captures" }));
+  await importExport(user, journey, "exports/capture.hl7", "Initiating capture");
+  const table = await screen.findByRole("table", { name: "Messages" });
+  await waitFor(() => expect(table.querySelectorAll("tbody tr[data-row-id]")).toHaveLength(1));
+  await press(user, table.querySelector<HTMLElement>("tbody tr[data-row-id]")!);
+  const reader = details();
+  await press(user, await reader.findByRole("button", { name: "More message actions" }));
+  await press(user, screen.getByRole("menuitem", { name: "Go to field…" }));
+  const field = within(await screen.findByRole("dialog", { name: "Go to field" }));
+  await enter(user, field.getByLabelText("Field path"), "MSH-9.2");
+  await press(user, field.getByRole("button", { name: "Go" }));
+  await reader.findAllByText("MSH[1]-9[1].2");
+  await journey.settled();
+  await journey.dismissDialog("files", "Open HL7 file");
+  await press(user, page().getByRole("button", { name: "Open file" }));
+  await journey.settled();
+  expect(document.querySelector('.page[data-page="cases"]')?.hasAttribute("hidden")).toBe(false);
+  await details().findAllByText("MSH[1]-9[1].2");
+  expect(screen.queryByRole("table", { name: "Messages in this file" })).toBeNull();
+});
+
+
+test("Receive messages from a loose-file reader immediately shows setup without starting a receiver", async () => {
+  const user = userEvent.setup();
+  journey.writeFile("exports/receive-source.hl7", EXPORTED_BOOKING);
+  await licensedProject(journey, user);
+  await press(user, sidebar().getByRole("button", { name: "Messages" }));
+  await journey.settled();
+  await journey.chooseFiles([journey.path("exports/receive-source.hl7")], "Open HL7 file");
+  await press(user, page().getByRole("button", { name: "Open file" }));
+  await screen.findByRole("region", { name:"Message details" });
+  await journey.settled();
+  await press(user, page().getByRole("button", { name:"Receive messages" }));
+  expect(await screen.findByRole("dialog", { name:"New capture" })).toBeTruthy();
+  expect(journey.callsTo("StartCapture")).toHaveLength(0);
+});
+
+
+test("a masked loose-file session restores its deep selection, navigation and protected values", async () => {
+  const user = userEvent.setup();
+  journey.writeFile("exports/masked.hl7", "MSH|^~\\&|A|B|C|D|20260101||SIU^S12|OWN-MASK-1|P|2.5.1\rPV1|1|O|OWN_CLINIC^OWN_ROOM^01^OWN_HOSP||||123^OWN_PROVIDER\r");
+  await journey.launch();
+  await press(user, sidebar().getByRole("button", {name:"Messages"}));
+  await journey.chooseFiles([journey.path("exports/masked.hl7")],"Open HL7 file");
+  await press(user,page().getByRole("button",{name:"Open file"}));
+  await screen.findByRole("region",{name:"Message details"});
+  const reader=details();
+  await press(user,reader.getByRole("button",{name:"More message actions"}));
+  await press(user,screen.getByRole("menuitem",{name:"Go to field…"}));
+  const field=within(await screen.findByRole("dialog",{name:"Go to field"}));
+  await enter(user,field.getByLabelText("Field path"),"PV1-3.4.3");
+  await press(user,field.getByRole("button",{name:"Go"}));
+  await reader.findAllByText("PV1[1]-3[1].4.3");
+  await press(user,reader.getByRole("button",{name:"Enable PHI masking"}));
+  await reader.findByRole("button",{name:"Disable PHI masking"});
+  await journey.settled();
+  await journey.close();
+  await journey.launch();
+  await screen.findByRole("region",{name:"Message details"});
+  const reopened=details();
+  await reopened.findAllByText("PV1[1]-3[1].4.3");
+  expect(reopened.getByRole("button",{name:"Disable PHI masking"})).toBeTruthy();
+  expect(reopened.getByRole("navigation",{name:"Other segments"})).toBeTruthy();
+  expect(reopened.getByRole("region",{name:"Original message"}).textContent).not.toContain("OWN_HOSP");
+  const restored=journey.callsTo("InspectFileMessage").at(-1)?.args[0];
+  expect(restored).toMatchObject({path:"PV1[1]-3[1].4.3",mask_phi:true});
+  expect(journey.callsTo("StartCapture")).toHaveLength(0);
 });

@@ -343,13 +343,11 @@ export function MessageList({
   onSeedUsed,
   busy,
   browser = false,
-  browserSourceName,
  sourceSendableCount,
  selectionReading=false,
  selectionReason,
 }: {
   browser?: boolean;
-  browserSourceName?: string;
   browserSourceKind?: "derived" | "retained";
  sourceSendableCount?:number;
  selectionReading?:boolean;
@@ -575,7 +573,6 @@ export function MessageList({
         </div>
       ) : null}
       {body}
-      {browser ? <footer className="file-browser-footer"><span>Source</span><strong>{browserSourceName || rows.find(row=>row.id===selected)?.source_name || rows.find(row=>row.id===selected)?.source_id || "Retained capture"}</strong></footer> : null}
 
       <ColumnsSheet
         open={columnsOpen}

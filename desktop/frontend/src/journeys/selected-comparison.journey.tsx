@@ -12,10 +12,12 @@ test("selected message comparison preserves explicit sides, reveals exact origin
  const original=journey.digest("exports/pair.hl7");const table=await screen.findByRole("table",{name:"Messages"});await waitFor(()=>expect(table.querySelectorAll('tbody tr[data-row-id]')).toHaveLength(2));
  const rows=table.querySelectorAll<HTMLElement>('tbody tr[data-row-id]');const ids=[rows[1]!.dataset.rowId!,rows[0]!.dataset.rowId!];
  await user.click(rows[1]!.querySelector<HTMLInputElement>('input[type="checkbox"]')!);await user.click(rows[0]!.querySelector<HTMLInputElement>('input[type="checkbox"]')!);
- await press(user,rows[1]!);await press(user,details().getByRole("button",{name:"More message actions"}));await press(user,screen.getByRole("menuitem",{name:"Go to field…"}));
+ await press(user,rows[1]!);await press(user,await details().findByRole("button",{name:"More message actions"}));await press(user,screen.getByRole("menuitem",{name:"Go to field…"}));
  const field=within(await screen.findByRole("dialog",{name:"Go to field"}));await enter(user,field.getByLabelText("Field path"),"MSH-9.2");await press(user,field.getByRole("button",{name:"Go"}));await details().findAllByTitle("MSH[1]-9[1].2");
- await press(user,page().getByRole("button",{name:"Compare"}));const pair=within(await screen.findByRole("dialog",{name:"Compare messages"}));
+ await press(user,page().getByRole("button",{name:"Compare selected messages"}));const pair=within(await screen.findByRole("dialog",{name:"Compare messages"}));
  await pair.findByText(/Explicit occurrence pair/);expect(pair.getByText(ids[0]!)).toBeTruthy();expect(pair.getByText(ids[1]!)).toBeTruthy();
+ expect(pair.getByRole("heading",{level:2,name:`Left · SIU · S13 · ${ids[0]}`})).toBeTruthy();
+ expect(pair.getByRole("heading",{level:2,name:`Right · SIU · S12 · ${ids[1]}`})).toBeTruthy();
  await press(user,pair.getByRole("button",{name:"Show values"}));
  await waitFor(()=>expect(pair.getAllByText(/MSH-7|MSH\[1\]-7/).length).toBeGreaterThan(0));
  const raw=screen.getByRole("dialog",{name:"Compare messages"}).querySelectorAll("pre");expect([...raw].some(panel=>panel.textContent?.includes("OWN-MOVE-1"))).toBe(true);expect([...raw].some(panel=>panel.textContent?.includes("OWN-BOOK-1"))).toBe(true);
@@ -39,7 +41,7 @@ test("selected variant preview publishes separate lineage, opens its derived rea
  const derived=await screen.findByRole("table",{name:"Messages"});await waitFor(()=>expect(derived.querySelectorAll('tbody tr[data-row-id]')).toHaveLength(1));
  await press(user,derived.querySelector<HTMLElement>('tbody tr[data-row-id]')!);await screen.findByRole("region",{name:"Details"});
  for(const witness of witnesses)expect(journey.digest(`${project.slice(journey.path().length+1)}/${entry}/${witness.file}`)).toBe(witness.digest);
- await press(user,page().getByRole("button",{name:"More case actions"}));await press(user,screen.getByRole("menuitem",{name:"Compare"}));
+ await press(user,page().getByRole("button",{name:"More case actions"}));await press(user,screen.getByRole("menuitem",{name:"Compare captures…"}));
  const chooser=within(await screen.findByRole("dialog",{name:"Compare with"}));await user.selectOptions(await chooser.findByLabelText("Case"),await chooser.findByRole("option",{name:"Original capture"}));await press(user,chooser.getByRole("button",{name:"Compare"}));
  await page().findByText(/name the fields that identify one record/);
  await press(user,page().getAllByRole("button",{name:"Comparison options"})[0]!);

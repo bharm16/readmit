@@ -953,7 +953,7 @@
       "implemented": true,
       "gui_test": {
         "file": "desktop/frontend/src/journeys/workspace-resume.journey.tsx",
-        "name": "reopening restores the retained source, saved view and field selection with default-visible parser values but no consent or external effects"
+        "name": "reopening restores the retained source, saved view and field selection with protective masking but no consent or external effects"
       },
       "parity_test": {
         "package": "internal/desktop",

@@ -197,7 +197,8 @@
     "licenses/react-MIT.txt",
     "licenses/wails-MIT.txt",
     "licenses/IBM-Plex-OFL.txt",
-    "licenses/JetBrains-Mono-OFL.txt"
+    "licenses/JetBrains-Mono-OFL.txt",
+    "licenses/lucide-LICENSE.txt"
   ],
   "desktop_legal": [
     "THIRD_PARTY_NOTICES.md",
@@ -229,6 +230,7 @@
     "licenses/react-MIT.txt",
     "licenses/wails-MIT.txt",
     "licenses/IBM-Plex-OFL.txt",
-    "licenses/JetBrains-Mono-OFL.txt"
+    "licenses/JetBrains-Mono-OFL.txt",
+    "licenses/lucide-LICENSE.txt"
   ]
 }

@@ -29,6 +29,12 @@ in `licenses/IBM-Plex-OFL.txt` and `licenses/JetBrains-Mono-OFL.txt`. Fonts
 are served from the bundled application assets; the running app fetches no
 font service.
 
+The desktop parser toolbar includes Lucide folder-open, columns-2 and file-plus
+icons (ISC), exported at 16px from the approved Figma components 2417:5298,
+2417:5302 and 2417:5308. The original paths are unchanged. Lucide and applicable
+Feather notices are retained in `licenses/lucide-LICENSE.txt`; these icons are
+bundled locally and require no runtime request.
+
 GoReleaser, WiX and govulncheck are build/development tools, not application
 runtime dependencies. WiX writes the Windows installer database and
 contributes no code to the application that database installs. GitHub Actions

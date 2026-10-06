@@ -227,7 +227,7 @@ func TestWorkingSessionRestoresNavigationAndReadsV1WithoutRewriting(t *testing.T
 	if err != nil || string(untouched) != legacy {
 		t.Fatal("reading rewrote the legacy session")
 	}
-	nav := &desktop.ViewNavigation{Destination: "cases", SourceIdentity: "sha256:" + strings.Repeat("a", 64), Occurrence: "s0001-e000002", FieldPath: "MSH-9.2", Filter: "Only reschedules", ScrollTop: 440}
+	nav := &desktop.ViewNavigation{PHIMasked: true, Destination: "cases", SourceIdentity: "sha256:" + strings.Repeat("a", 64), Occurrence: "s0001-e000002", FieldPath: "MSH-9.2", Filter: "Only reschedules", ScrollTop: 440}
 	if saved := app.RecordView(desktop.View{Workspace: root, Region: "inspector", Case: "case-1", Navigation: nav}); saved.State != desktop.Completed {
 		t.Fatalf("navigation was not recorded: %+v", saved)
 	}
@@ -239,6 +239,9 @@ func TestWorkingSessionRestoresNavigationAndReadsV1WithoutRewriting(t *testing.T
 
 func TestWorkingSessionRejectsUnknownConsentAndLegacyNavigationWithoutRewriting(t *testing.T) {
 	for _, contents := range []string{
+		`{"schema":"readmit-desktop-session/v2","view":{"workspace":"","region":"","case":"","run":"","navigation":{"destination":"messages","phi_masked":true}}}`,
+		`{"schema":"readmit-desktop-session/v2","view":{"workspace":"","region":"","case":"","run":"","navigation":{"destination":"messages","phi_masked":false}}}`,
+		`{"schema":"readmit-desktop-session/v2","view":{"workspace":"","region":"","case":"","run":"","navigation":{"destination":"messages","phi_masked":null}}}`,
 		`{"schema":"readmit-desktop-session/v1","view":{"workspace":"","region":"","case":"","run":"","navigation":null}}`,
 		`{"schema":"readmit-desktop-session/v2","view":{"workspace":"","region":"","case":"","run":"","navigation":{"destination":"messages","consent":true}}}`,
 		`{"schema":"readmit-desktop-session/v2","view":{"workspace":"","region":"","case":"","run":"","navigation":{"destination":"messages","value":"source text"}}}`,

@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { Inspection, InspectorNode, Hl7referenceAttribute, Hl7referenceRecord } from "./bindings";
 import { FIELD_STATES, HIDDEN_VALUE } from "./display";
 import { ReaderIcon } from "./ReaderIcon";
+import { IconButton } from "./IconButton";
 
 const pathLabel = (path: string) => path.replace(/\[1\]/g, "");
 
@@ -30,7 +31,7 @@ export function ReaderSelectionHeader({ inspection, nodes, busy, onSelect, onGoT
   const at = siblings.findIndex(row => row.node.path === selected.path);
   const previous = at > 0 ? siblings[at - 1] : undefined;
   const next = at >= 0 ? siblings[at + 1] : undefined;
-  const parent = selected.kind === "component" || selected.kind === "subcomponent" || selected.kind === "repetition" ? nodes.find(row => row.node.path === selected.parent) : undefined;
+  const parent = selected.kind === "component" || selected.kind === "subcomponent" || selected.kind === "repetition" ? nodes.find(row => row.node.path === selected.parent) ?? (selected.kind === "component" ? nodes.find(row => row.node.kind === "field" && selected.parent.startsWith(`${row.node.path}[`)) : undefined) : undefined;
   const title = inspection.reference?.record?.name || inspection.metadata.label || inspection.segment_name || selected.segment || "Message";
   return <div className="reader-selection-context">
     {parent ? <div className="reader-parent-context"><code>{pathLabel(parent.node.path)}</code><code className="reader-parent-value">{parent.node.state === "present" ? inspection.revealed ? parent.raw ?? parent.value : HIDDEN_VALUE : FIELD_STATES[parent.node.state as Exclude<keyof typeof FIELD_STATES, "">] ?? parent.node.state}</code><span>{parent.label}</span>{parent.reference ? <ReferenceBadge attribute={parent.reference.datatype} /> : null}</div> : null}
@@ -48,6 +49,6 @@ export function ReaderSelectionHeader({ inspection, nodes, busy, onSelect, onGoT
 export function ReferenceDefinition({ text, expanded, onToggle, compact }: { text: string; expanded: boolean; onToggle: () => void; compact: string }) {
   return <div className={`reader-definition-card${expanded ? " is-expanded" : ""}`}>
     <div className={`reader-definition${expanded ? " reader-definition-full" : ""}`}><p>{expanded ? text : compact}</p></div>
-    <button type="button" className="link reader-definition-toggle" aria-label={expanded ? "Collapse definition" : "Expand definition"} aria-expanded={expanded} onClick={onToggle}><span className={expanded ? "reader-icon-up" : ""}><ReaderIcon name="showMore" /></span>{expanded ? "Show less" : "Show more"}</button>
+    <IconButton className="reader-action reader-definition-toggle" icon={expanded ? "up" : "down"} label={expanded ? "Collapse definition" : "Expand definition"} expanded={expanded} onClick={onToggle} />
   </div>;
 }

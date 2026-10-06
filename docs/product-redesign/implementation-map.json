@@ -2795,10 +2795,10 @@
             },
             "current": {
               "file": "desktop/frontend/src/styles.test.ts",
-              "test": "no colour literal outside the canonical Figma control roles, gradient or fixed shadow colour"
+              "test": "no colour literal outside the canonical Figma palette, gradient or fixed shadow colour"
             },
             "owner": "bharm16/readmit#688",
-            "reason": "The owner explicitly requires exact Figma control fidelity; the new gate pins seven central colour roles and forbids all other literals. Historical acceptance remains unchanged."
+            "reason": "The approved page 12 light and dark Figma previews replace the earlier blue control palette. The gate pins neutral surfaces and the approved semantic syntax colours, and forbids colour literals elsewhere. Historical acceptance remains unchanged."
           }
         ]
       }

@@ -1,10 +1,10 @@
 /* Bundled with the executable. No web fonts, no remote stylesheets, no
    analytics: the shell renders entirely offline.
 
-   Surfaces, text and status roles follow the platform theme. Controls use
-   the exact Figma palette declared below, including white primary text;
-   forced colours restore the platform's paired roles. Rules and selection
-   are mixed from those roles. Nothing is told apart by colour alone.
+   Neutral surfaces, text, selection and controls match the approved light
+   and dark Figma previews. The saved appearance or system preference selects
+   the palette; status colours and forced colours retain platform roles.
+   Nothing is told apart by colour alone.
 
    Every length is in rem, so one root text scale enlarges the whole window;
    only borders, rules and focus outlines stay physical pixels. The shared
@@ -41,20 +41,38 @@
 :root {
   color-scheme: light dark;
 
-  --canvas: Canvas;
-  --text: CanvasText;
-  --muted: GrayText;
+  /* Figma page 12: Codex Light 2388:26677 and Dark 2394:3836. */
+  --canvas: #ffffff;
+  --syntax-type: #751ed9;
+  --syntax-date: #008809;
+  --syntax-code: #bd5800;
+  --syntax-number: #0071ea;
+  --syntax-punctuation: #666666;
+  --text: #1a1c1f;
+  --muted: #5d5d5d;
+  --field: #ffffff;
+  --rail: #f9f9f9;
+  --line: #e4e4e4;
+  --selection: #ededed;
+  --selection-border: #afafaf;
+  --link: #1a1c1f;
+  --hover: #f3f3f3;
+  --interface-color-action-hover: #303030;
+  --interface-color-border: #cdcdcd;
+  --interface-color-on-action: #ffffff;
+
   --control: var(--canvas);
   --control-text: var(--text);
-  --field: Field;
-  --field-text: FieldText;
+  --field-text: var(--text);
+  --code-fill: var(--field);
+  --selection-text: var(--text);
+  --interface-color-action: var(--text);
+  --interface-color-hover: var(--hover);
+  --interface-color-disabled: var(--selection);
+  --interface-color-disabled-text: var(--muted);
   --accent: var(--interface-color-action);
   --accent-text: var(--interface-color-on-action);
-  --line: color-mix(in srgb, CanvasText 16%, Canvas);
-  --rail: color-mix(in srgb, CanvasText 4%, Canvas);
-  --hover: color-mix(in srgb, CanvasText 6%, Canvas);
-  --selection: color-mix(in srgb, var(--accent) 12%, Canvas);
-  --dim: color-mix(in srgb, CanvasText 18%, transparent);
+  --dim: color-mix(in srgb, var(--text) 18%, transparent);
   --danger: CanvasText;
   --warning: CanvasText;
   --success: CanvasText;
@@ -113,7 +131,7 @@
   --text-muted: var(--muted);
   --text-faint: var(--muted);
   --border: var(--line);
-  --border-strong: var(--line);
+  --border-strong: var(--interface-color-border);
   --selected: var(--selection);
   --accent-ink: var(--accent-text);
   --radius-sm: var(--radius-control);
@@ -125,16 +143,6 @@
 
   --text-scale: 1;
   font-family: var(--font);
-}
-
-@supports (color: -apple-system-label) {
-  :root {
-    --text: -apple-system-label;
-    --muted: -apple-system-secondary-label;
-    --canvas: -apple-system-text-background;
-    --rail: -apple-system-window-background;
-    --line: -apple-system-separator;
-  }
 }
 
 @supports (color: -apple-system-red) {
@@ -161,6 +169,47 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
+  --canvas: #181818;
+  --syntax-type: #b06dff;
+  --syntax-date: #85df7b;
+  --syntax-code: #fa994c;
+  --syntax-number: #6dcbf4;
+  --syntax-punctuation: #999999;
+  --text: #dfdfdf;
+  --muted: #afafaf;
+  --field: #282828;
+  --rail: #212121;
+  --line: #343434;
+  --selection: #303030;
+  --selection-border: #5d5d5d;
+  --link: #ededed;
+  --hover: #282828;
+  --interface-color-action-hover: #ededed;
+  --interface-color-border: #414141;
+  --interface-color-on-action: #0d0d0d;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --canvas: #181818;
+    --syntax-type: #b06dff;
+    --syntax-date: #85df7b;
+    --syntax-code: #fa994c;
+    --syntax-number: #6dcbf4;
+    --syntax-punctuation: #999999;
+    --text: #dfdfdf;
+    --muted: #afafaf;
+    --field: #282828;
+    --rail: #212121;
+    --line: #343434;
+    --selection: #303030;
+    --selection-border: #5d5d5d;
+    --link: #ededed;
+    --hover: #282828;
+    --interface-color-action-hover: #ededed;
+    --interface-color-border: #414141;
+    --interface-color-on-action: #0d0d0d;
+  }
 }
 
 /* Text scales from the root, so every length expressed in rem scales with it
@@ -629,7 +678,7 @@ button.operation-label {
 }
 
 .flow-steps > li[aria-current="step"] {
-  color: CanvasText;
+  color: var(--text);
   font-weight: 600;
 }
 
@@ -885,7 +934,7 @@ button.quiet:hover:not(:disabled) {
 }
 
 button.link {
-  color: var(--accent);
+  color: var(--link);
   padding: 0;
 }
 
@@ -910,7 +959,7 @@ a.button {
 }
 
 a.button:hover {
-  background: color-mix(in srgb, var(--control) 94%, CanvasText);
+  background: var(--hover);
 }
 
 /* A destructive action reads as one by its words; the rule and text take the
@@ -3185,13 +3234,14 @@ h2 .count {
   width: 100%;
 }
 
-/* Local Figma outline assets retain their geometry in both system themes. */
+/* Local outline assets keep their geometry and take neutral theme colours. */
+.workbench-icon, .reader-icon img { filter:brightness(0); }
 :root[data-theme="dark"] .workbench-icon {
-  filter: invert(1);
+  filter: brightness(0) invert(.875);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .workbench-icon {
-    filter: invert(1);
+    filter: brightness(0) invert(.875);
   }
 }
 /* Reader-only shell geometry: the browser, byte view and reference each scroll. */
@@ -3233,7 +3283,7 @@ h2 .count {
 .file-browser-search:focus-within { outline:2px solid var(--accent); outline-offset:1px; }
 
 /* The source card and four workspace destinations share the Figma shell. */
-.app-workbench { --header:3.75rem; --rail:color-mix(in srgb,var(--text) 4%,var(--canvas)); }
+.app-workbench { --header:3.75rem; }
 .app-workbench .sidebar { background:var(--rail); }
 .app-workbench .sidebar-switcher { border:0; margin:0 0 1rem; padding:0; }
 .app-workbench .project-switcher > .menu-trigger { border:1px solid var(--line); background:var(--canvas); min-height:3rem; padding:.5rem .75rem; }
@@ -3278,9 +3328,7 @@ h2 .count {
 .workflow-page .task-tabs > button { border: 0; border-radius: var(--radius-control); min-height: 1.75rem; font-size: .75rem; font-weight: 600; padding: .3125rem .75rem; }
 /* Selected workflow tabs keep the same Figma geometry as their sibling views. */
 .workflow-page > .task-tabs > button { min-height: 1.75rem; padding: .3125rem .75rem; font-size: .75rem; font-weight: 600; border-radius: var(--radius-control); }
-.workflow-page > .task-tabs > button[aria-selected="true"] { background: var(--accent); color: var(--accent-text); }
-/* Reader surfaces keep their hierarchy even when macOS WindowBackground is Canvas. */
-.app-reader { --rail:color-mix(in srgb, var(--text) 4%, var(--canvas)); }
+.workflow-page > .task-tabs > button[aria-selected="true"] { background: var(--selection); color: var(--selection-text); }
 .reader-layout .messages .file-browser-tabs { min-width:0; gap:.25rem; }
 .reader-layout .messages .file-browser-tabs > button { min-width:0; flex:1; padding:0 .375rem; }
 .reader-layout .messages .file-browser-tabs > .reader-menu { flex:none; margin-left:0; }
@@ -3290,18 +3338,21 @@ h2 .count {
 .hl7-reader .reader-attribute-link:hover { text-decoration:underline; }
 .reader-layout .messages .file-browser-tabs > .reader-menu .menu-popover { left:auto; right:0; min-width:0; width:calc(var(--message-browser-width, var(--message-browser)) - 1rem); }
 
-/* Exact control roles from Figma Interface / Button, node 2220:3737. */
-:root {
-  --interface-color-action: #005ad9;
-  --interface-color-action-hover: #0046ad;
-  --interface-color-border: #b6becb;
-  --interface-color-hover: #edf2f9;
-  --interface-color-disabled: #d5dbe4;
-  --interface-color-disabled-text: #667181;
-  --interface-color-on-action: #ffffff;
-}
+/* Forced colours restore paired system roles for every palette surface. */
 @media (forced-colors: active) {
-  :root {
+  :root, :root[data-theme] {
+    --canvas: Canvas;
+    --text: CanvasText;
+    --muted: GrayText;
+    --field: Field;
+    --field-text: FieldText;
+    --rail: Canvas;
+    --line: ButtonText;
+    --selection: Highlight;
+    --selection-text: HighlightText;
+    --selection-border: Highlight;
+    --link: LinkText;
+    --hover: Canvas;
     --interface-color-action: Highlight;
     --interface-color-action-hover: Highlight;
     --interface-color-border: ButtonText;
@@ -3317,7 +3368,7 @@ h2 .count {
 .reader-layout .page-actions > button.primary { min-width:8.3rem; }
 .reader-toolbar-reference { min-width:5.325rem; font-weight:600; }
 .file-browser-tabs > button, .hl7-reader .reader-reference-tabs button, .hl7-reader .reader-pane-tabs button { height:1.75rem; min-height:1.75rem; padding:0 .75rem; font-size:.75rem; line-height:1.125rem; font-weight:600; border:0; border-radius:var(--radius-control); color:var(--text); background:var(--canvas); }
-.file-browser-tabs > button[aria-selected="true"], .hl7-reader .reader-reference-tabs button[aria-selected="true"], .hl7-reader .reader-pane-tabs button[aria-selected="true"] { color:var(--interface-color-on-action); background:var(--interface-color-action); }
+.file-browser-tabs > button[aria-selected="true"], .hl7-reader .reader-reference-tabs button[aria-selected="true"], .hl7-reader .reader-pane-tabs button[aria-selected="true"] { color:var(--selection-text); background:var(--selection); }
 .file-browser-tabs > button:disabled, .hl7-reader .reader-reference-tabs button:disabled, .hl7-reader .reader-pane-tabs button:disabled { color:var(--interface-color-disabled-text); }
 .hl7-reader .reader-reference-tabs > button:nth-child(1) { width:5rem; }
 .hl7-reader .reader-reference-tabs > button:nth-child(2) { width:5.875rem; }
@@ -3356,8 +3407,9 @@ h2 .count {
 .workflow-rail-footer > button { min-width:4.9rem; }
 .workflow-step > span, .message-browser-entry > span { font-weight:400; }
 /* Figma focus strokes stay inside the control's measured rectangle. */
-button.primary:focus-visible, .modal button[type="submit"]:focus-visible { outline:2px solid var(--text); outline-offset:-2px; }
+button.primary:focus-visible, .modal button[type="submit"]:focus-visible { outline:2px solid var(--accent-text); outline-offset:-2px; }
 button:not(.primary):focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+button.primary.danger:focus-visible, .modal button[type="submit"].danger:focus-visible { outline-color:var(--text); }
 /* Evidence rows remain regular text; their button semantics are navigation. */
 .hl7-reader .reader-grid-row { font-weight:400; }
 .hl7-reader .reader-grid-row.reader-kind-segment { font-weight:600; }
@@ -3372,7 +3424,7 @@ button:not(.primary):focus-visible { outline:2px solid var(--accent); outline-of
 /* Final parser compositions: Figma page 11, Message parser (2363:6787). */
 .app-reader { position:relative; }
 .app-reader.compact { grid-template-columns:var(--sidebar) minmax(0,1fr); }
-.app-reader .sidebar { position:relative; z-index:3; padding:.75rem; background:var(--canvas); overflow-x:hidden; overflow-y:auto; }
+.app-reader .sidebar { position:relative; z-index:3; padding:.75rem; background:var(--rail); overflow-x:hidden; overflow-y:auto; }
 .app-reader.compact .sidebar { width:4rem; }
 .app-reader .sidebar .nav-list { gap:.25rem; }
 .app-reader.compact .sidebar .nav-list button { width:2.5rem; height:2rem; min-height:2rem; justify-content:center; padding:0; }
@@ -3383,7 +3435,7 @@ button:not(.primary):focus-visible { outline:2px solid var(--accent); outline-of
 .app-reader.compact .reader-source-short { display:block; font-weight:600; font-size:.8125rem; }
 .app-reader.compact .reader-source-switcher .reader-switcher-caption,
 .app-reader.compact .reader-source-switcher .menu-trigger > img { display:none; }
-.app-reader .reader-sidebar-toggle { position:absolute; top:1.5rem; left:calc(var(--sidebar) - .75rem); width:1.5rem; height:1.5rem; min-height:0; padding:0; display:grid; place-items:center; background:var(--canvas); border:1px solid var(--interface-color-border,var(--line)); z-index:4; }
+.app-reader .reader-sidebar-toggle { position:absolute; top:1.5rem; left:calc(var(--sidebar) - .75rem); width:1.5rem; height:1.5rem; min-height:0; padding:0; display:grid; place-items:center; background:transparent; border:0; z-index:4; }
 .reader-sidebar-toggle[aria-expanded="true"] .reader-icon { transform:rotate(180deg); }
 .reader-icon { display:inline-flex; width:1rem; height:1rem; flex:0 0 1rem; align-items:center; justify-content:center; vertical-align:middle; }
 .reader-icon img { display:block; flex:none; }
@@ -3429,12 +3481,11 @@ button:not(.primary):focus-visible { outline:2px solid var(--accent); outline-of
 .reader-structure-strip button.link { min-height:0; padding:0; font-family:var(--mono); font-size:.75rem; }
 .hl7-reader .reader-reference-tabs { border:0; border-radius:var(--radius-control); background:var(--rail); padding:.125rem; margin:0; gap:.25rem; min-height:2rem; box-sizing:border-box; }
 .hl7-reader .reader-reference-tabs > button { display:flex; align-items:center; justify-content:center; gap:.25rem; flex:1; width:auto !important; min-width:0; background:transparent; padding:0 .375rem; height:1.75rem; }
-.hl7-reader .reader-reference-tabs > button[aria-selected="true"] { background:var(--interface-color-action,var(--accent)); color:var(--interface-color-on-action,var(--accent-text)); }
-.reader-reference-tabs button[aria-selected="true"] .reader-icon img { filter:brightness(0) invert(1); }
+.hl7-reader .reader-reference-tabs > button[aria-selected="true"] { background:var(--selection); color:var(--selection-text); }
 .reader-definition-heading { display:flex; align-items:center; gap:.375rem; font-size:.75rem; min-height:1.5rem; }
 .reader-definition-heading > span:last-child { color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .reader-definition-heading button.link { min-height:0; padding:0; flex:none; font-size:.75rem; }
-.reader-definition-card { padding:.75rem; background:var(--rail); border-left:2px solid var(--accent); border-radius:var(--radius-control); }
+.reader-definition-card { padding:.75rem; background:var(--rail); border-left:2px solid var(--interface-color-border); border-radius:var(--radius-control); }
 .hl7-reader .reader-definition { max-height:7.5rem; overflow:hidden; margin:0; }
 .hl7-reader .reader-definition-full { max-height:none; }
 .hl7-reader .reader-definition p { margin:0; font-size:.8125rem; line-height:1.25rem; white-space:pre-wrap; }
@@ -3478,8 +3529,104 @@ button.reference-badge-link { background:var(--selection); color:var(--accent); 
 .app-reader-compact .hl7-reader .reader-grid-columns, .app-reader-compact .hl7-reader .reader-grid-row { grid-template-columns:4.625rem 11rem 2.5rem 2rem 2.75rem 3rem 2rem 3.125rem 2.625rem 4.625rem minmax(14rem,1fr); min-width:52.25rem; }
 .hl7-reader .compact-workbench .reader-reference { margin-bottom:0; }
 @media (prefers-reduced-motion:no-preference) { .reader-sidebar-toggle .reader-icon { transition:transform 120ms; } }
-:root[data-theme="dark"] .reader-icon img { filter:brightness(0) invert(1); }
-@media (prefers-color-scheme:dark) { :root:not([data-theme="light"]) .reader-icon img { filter:brightness(0) invert(1); } }
+:root[data-theme="dark"] .reader-icon img { filter:brightness(0) invert(.875); }
+@media (prefers-color-scheme:dark) { :root:not([data-theme="light"]) .reader-icon img { filter:brightness(0) invert(.875); } }
 
 .reader-definition-closed .reader-icon { transform:rotate(-90deg); }
 .hl7-reader .reader-context > .reveal { margin:0; padding:0; border:0; }
+
+/* Reference links remain recognizable without a saturated accent. */
+.reader-structure-strip button.link,
+.reader-definition-heading button.link {
+  color: var(--link);
+  text-decoration: underline;
+  text-underline-offset: .125rem;
+}
+.file-browser-search { background:var(--field); }
+.app-reader .sidebar .nav-list button:not([aria-current="page"]) { background:transparent; }
+.app-reader .sidebar .nav-list button[aria-current="page"] { border-color:var(--selection-border); }
+
+/* Page 12 linked inspection, in the existing reader's responsive layout. */
+.syntax-type { color:var(--syntax-type); }
+.syntax-date { color:var(--syntax-date); }
+.syntax-code { color:var(--syntax-code); }
+.syntax-number { color:var(--syntax-number); }
+.syntax-punctuation { color:var(--syntax-punctuation); }
+
+.hl7-reader .reader-grid-scroll .reader-grid-columns,
+.hl7-reader .reader-grid .reader-grid-row {
+  grid-template-columns:6.5rem 15.25rem 3.25rem 2.75rem 3.5rem 4rem 2.5rem 4.5rem 3.75rem 5.75rem minmax(20.1875rem,1fr);
+  min-width:71.9375rem;
+}
+.hl7-reader .reader-grid-columns { min-height:2.375rem; font-size:.8125rem; }
+.hl7-reader .reader-grid .reader-grid-row { min-height:2.875rem; height:auto; font-size:.875rem; align-items:stretch; position:relative; border-bottom:1px solid var(--line); }
+.hl7-reader .reader-grid-row > span { display:flex; align-items:center; min-width:0; padding:.5rem .25rem; line-height:1.25rem; }
+.hl7-reader .reader-grid-row > .outline-name { flex-direction:row; justify-content:flex-start; font-weight:500; }
+.hl7-reader .reader-grid .reader-grid-row > .selector { font-size:.875rem; }
+.hl7-reader .reader-grid .reader-kind-segment:not(.reader-grid-selected) > .selector { color:var(--syntax-type); }
+.hl7-reader .reader-grid-row > .outline-name.reader-depth-2,
+.hl7-reader .reader-grid-row > .outline-name.reader-depth-3 { font-weight:400; }
+.hl7-reader .reader-grid-row > .selector,
+.hl7-reader .reader-grid-columns > span:first-child { position:sticky; left:0; z-index:1; background:var(--rail); border-right:1px solid var(--line); }
+.hl7-reader .reader-grid-columns > span:first-child { z-index:2; }
+.hl7-reader .reader-grid .reader-grid-row.reader-grid-selected { background:var(--selection); color:var(--text); }
+.hl7-reader .reader-grid-selected > .selector { box-shadow:inset 3px 0 var(--text); }
+.hl7-reader .reader-grid-selected > span { color:var(--text); }
+.hl7-reader .reader-grid-selected > .outline-name { box-shadow:inset 0 0 0 1px var(--selection-border); }
+.hl7-reader .reader-grid-row .reader-attribute,
+.hl7-reader .reader-grid-row .outline-value { font-size:.8125rem; }
+.hl7-reader .reader-grid-row .outline-name.reader-depth-2 { padding-left:1.25rem; }
+.hl7-reader .reader-grid-row .outline-name.reader-depth-3 { padding-left:2.25rem; }
+.hl7-reader .reader-grid-row .outline-name img { width:.75rem; height:.75rem; margin-right:.5rem; }
+.hl7-reader .reader-grid .reader-kind-segment { min-height:2.625rem; }
+.hl7-reader .reader-kind-segment .outline-name { grid-column:2 / -1; font-size:1rem; padding-left:.75rem; font-weight:600; }
+.hl7-reader .reader-kind-segment .reader-attribute,
+.hl7-reader .reader-kind-segment .outline-value { display:none; }
+.hl7-reader .reader-grid-scroll { position:relative; background:var(--canvas); }
+.hl7-reader .reader-grid-scroll::before { content:""; position:absolute; left:0; top:0; bottom:0; width:6.5rem; background:var(--rail); border-right:1px solid var(--line); pointer-events:none; }
+
+.hl7-reader .reader-original { padding:.5rem; min-height:0; display:flex; flex-direction:column; gap:.25rem; }
+.hl7-reader .reader-original .raw-source { flex:1; }
+.raw-source { min-height:0; max-height:100%; overflow:auto; overscroll-behavior:contain; position:relative; background:var(--canvas); }
+.hl7-reader .reader-original .value.raw,
+.raw-source .value.raw.raw-numbered { font-size:.9375rem; line-height:1.5rem; }
+.raw-source .value.raw.raw-numbered { width:max-content; min-width:100%; max-height:none; overflow:visible; padding:0; margin:0; border:0; background:transparent; }
+.raw-line { display:grid; grid-template-columns:2.25rem minmax(max-content,1fr); min-height:2rem; margin-bottom:.25rem; }
+.raw-line-number { position:sticky; left:0; z-index:2; padding:.25rem .5rem .25rem 0; text-align:right; font-size:.875rem; background:var(--rail); color:var(--muted); border-right:1px solid var(--line); user-select:none; }
+.raw-line-selected .raw-line-number { color:var(--text); box-shadow:inset 2px 0 var(--text); }
+.raw-line-code { padding:.25rem .75rem; white-space:pre; }
+.raw-token[role="button"] { cursor:pointer; }
+.raw-token[aria-disabled="true"] { cursor:default; }
+.raw-token[role="button"]:hover { text-decoration:underline; text-decoration-color:var(--muted); text-underline-offset:3px; }
+.raw-token:focus-visible { outline:2px solid var(--text); outline-offset:2px; border-radius:2px; }
+.raw-token-selected { background:var(--selection); color:var(--text); box-shadow:0 -1px 0 var(--text),0 1px 0 var(--text); }
+.raw-token-selected:not(.raw-token-selected + .raw-token-selected) { border-left:1px solid var(--text); border-radius:2px 0 0 2px; }
+.raw-token-selected:not(:has(+ .raw-token-selected)) { border-right:1px solid var(--text); border-radius:0 2px 2px 0; }
+.raw-token-empty { display:inline-block; min-width:2px; height:1.5rem; vertical-align:bottom; }
+
+.reader-action.icon-button { flex:none; width:2rem; height:2rem; }
+.reader-action.icon-button > button { display:grid; place-items:center; width:2rem; height:2rem; min-width:2rem; min-height:2rem; padding:0; border:1px solid var(--line); background:var(--canvas); color:var(--text); }
+.reader-action.icon-button > button:hover:not(:disabled),
+.reader-action.icon-button > button[aria-pressed="true"] { background:var(--selection); }
+.reader-action.icon-button > button:disabled { background:var(--rail); color:var(--muted); }
+.reader-action.icon-button > button:disabled img { opacity:.4; }
+.reader-action-primary.icon-button > button { background:var(--accent); border-color:var(--accent); color:var(--accent-text); }
+.reader-action-primary.icon-button > button:hover:not(:disabled) { background:var(--accent); opacity:.85; }
+.reader-action-primary .workbench-icon-on-action { filter:brightness(0) invert(1); }
+:root[data-theme="dark"] .reader-action-primary .workbench-icon-on-action { filter:brightness(0); }
+@media (prefers-color-scheme:dark) { :root:not([data-theme="light"]) .reader-action-primary .workbench-icon-on-action { filter:brightness(0); } }
+.reader-action .icon-tooltip { left:auto; right:0; transform:none; }
+.hl7-reader .reader-grid-controls > .reader-action { min-width:2rem; }
+.reader-reference-menu > .menu-trigger { min-height:2rem; padding:0 .75rem; gap:.5rem; font-size:.75rem; }
+.reader-reference-menu > .menu-trigger img { width:.75rem; height:.75rem; }
+.reader-source-label { display:flex; height:3rem; align-items:center; justify-content:center; color:var(--muted); font-size:.8125rem; font-weight:600; }
+.hl7-reader .reader-definition-toggle { margin-top:.25rem; }
+.hl7-reader .reader-phi-toggle { padding:0; margin-left:auto; border:0; background:transparent; }
+.hl7-reader .reader-phi-toggle svg path { stroke-width:1.8; }
+.hl7-reader .reader-original .pager { flex:none; margin:0; }
+.reader-layout .page-header h1 { width:auto; min-width:6rem; }
+.app-reader .page-actions .reader-menu > .menu-trigger { border:1px solid var(--line); background:var(--canvas); }
+
+.raw-source::before { content:""; position:absolute; left:0; top:0; bottom:0; width:2.25rem; background:var(--rail); border-right:1px solid var(--line); pointer-events:none; }
+.hl7-reader .reference-attributes > div:first-child .reference-badge { color:var(--syntax-type); background:var(--canvas); }
+.hl7-reader .reference-attributes > div { column-gap:.5rem; }

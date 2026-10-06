@@ -48,9 +48,9 @@ test("a raw file is inspected and copied in the window exactly as the command li
   // Parser values are visible by default.
   await press(user, table.querySelector<HTMLElement>('[data-row-id="0"]')!);
   const details = within(await screen.findByRole("region", { name: "Message details" }));
-  expect((await details.findAllByText(/EXAMPLE\^CHARLIE/)).length).toBeGreaterThan(0);
+  await waitFor(() => expect(details.getByRole("region", {name:"Original message"}).textContent).toContain("EXAMPLE^CHARLIE"));
   await press(user, details.getByRole("button", { name: /^PID/ }));
-  expect((await details.findAllByText(/EXAMPLE\^CHARLIE/)).length).toBeGreaterThan(0);
+  await waitFor(() => expect(details.getByRole("region", {name:"Original message"}).textContent).toContain("EXAMPLE^CHARLIE"));
 
   // A byte-identical copy goes to a new file the person named.
   await journey.nameNewFolder(journey.path("copies", "window.mllp"), "Save copy");

@@ -1,5 +1,5 @@
-// The stylesheets' own contract: every colour is a system colour or mixed from
-// them, nothing is fetched, and a panel's stylesheet never gives controls or
+// The stylesheets' own contract: colours belong to the approved theme palette
+// or system roles, nothing is fetched, and a panel's stylesheet never gives controls or
 // table cells a geometry of their own. The shared tokens in styles.css are the
 // only place sizes are decided.
 import { readdirSync, readFileSync } from "node:fs";
@@ -36,30 +36,46 @@ test("the stylesheets are found", () => {
   expect(sheets.every((sheet) => sheet.css.length > 0)).toBe(true);
 });
 
-// The owner explicitly requires the Figma control palette. Its exact roles
-// are centralized; arbitrary literals remain forbidden in every other rule.
-const FIGMA_CONTROL_PALETTE: Record<string, string> = {
-  "--interface-color-action": "#005ad9",
-  "--interface-color-action-hover": "#0046ad",
-  "--interface-color-border": "#b6becb",
-  "--interface-color-hover": "#edf2f9",
-  "--interface-color-disabled": "#d5dbe4",
-  "--interface-color-disabled-text": "#667181",
-  "--interface-color-on-action": "#ffffff",
+// Approved Figma page 12 previews: 2388:26677 (Light), 2394:3836 (Dark).
+// Hover and disabled roles use the same neutral scale.
+const FIGMA_PALETTES: Record<string, Record<string, string>> = {
+  light: {
+    "--syntax-type": "#751ed9", "--syntax-date": "#008809", "--syntax-code": "#bd5800", "--syntax-number": "#0071ea", "--syntax-punctuation": "#666666",
+    "--canvas": "#ffffff", "--text": "#1a1c1f", "--muted": "#5d5d5d",
+    "--field": "#ffffff", "--rail": "#f9f9f9", "--line": "#e4e4e4",
+    "--selection": "#ededed", "--selection-border": "#afafaf", "--link": "#1a1c1f",
+    "--hover": "#f3f3f3", "--interface-color-action-hover": "#303030",
+    "--interface-color-border": "#cdcdcd", "--interface-color-on-action": "#ffffff",
+  },
+  dark: {
+    "--syntax-type": "#b06dff", "--syntax-date": "#85df7b", "--syntax-code": "#fa994c", "--syntax-number": "#6dcbf4", "--syntax-punctuation": "#999999",
+    "--canvas": "#181818", "--text": "#dfdfdf", "--muted": "#afafaf",
+    "--field": "#282828", "--rail": "#212121", "--line": "#343434",
+    "--selection": "#303030", "--selection-border": "#5d5d5d", "--link": "#ededed",
+    "--hover": "#282828", "--interface-color-action-hover": "#ededed",
+    "--interface-color-border": "#414141", "--interface-color-on-action": "#0d0d0d",
+  },
 };
-function canonicalControlRole(rule: Rule): boolean {
-  return rule.sheet === "styles.css" && rule.selector === ":root" &&
-    FIGMA_CONTROL_PALETTE[rule.property] === rule.value;
+const THEME_SELECTORS: Record<string, string> = {
+  ":root": "light",
+  ':root[data-theme="dark"]': "dark",
+  ':root:not([data-theme="light"])': "dark",
+};
+function canonicalPaletteRole(rule: Rule): boolean {
+  const palette = FIGMA_PALETTES[THEME_SELECTORS[rule.selector] ?? ""];
+  return rule.sheet === "styles.css" && palette?.[rule.property] === rule.value;
 }
 
-test("Figma control colours are declared once with their exact source values", () => {
-  const declared = rules().filter(canonicalControlRole);
-  expect(declared.map(rule => rule.property).sort()).toEqual(Object.keys(FIGMA_CONTROL_PALETTE).sort());
+test("saved and system themes declare the approved Figma palette", () => {
+  for (const [selector, theme] of Object.entries(THEME_SELECTORS)) {
+    const declared = rules().filter(rule => rule.selector === selector && canonicalPaletteRole(rule));
+    expect(declared.map(rule => rule.property).sort()).toEqual(Object.keys(FIGMA_PALETTES[theme]!).sort());
+  }
 });
 
-test("no colour literal outside the canonical Figma control roles, gradient or fixed shadow colour", () => {
+test("no colour literal outside the canonical Figma palette, gradient or fixed shadow colour", () => {
   const offending = rules().filter(
-    (rule) => !canonicalControlRole(rule) && (
+    (rule) => !canonicalPaletteRole(rule) && (
       /#[0-9a-f]{3,8}\b/i.test(rule.value) ||
       /\b(rgb|rgba|hsl|hsla|hwb|lab|lch|oklab|oklch)\(/i.test(rule.value) ||
       /gradient\(/i.test(rule.value) ||
@@ -134,8 +150,6 @@ test("the shared tokens hold the specified geometry", () => {
   expect(token("--sheet-normal")).toBe("35rem");
   expect(token("--sheet-wide")).toBe("45rem");
   expect(token("--report-column")).toBe("47.5rem");
-  expect(token("--line")).toBe("color-mix(in srgb, CanvasText 16%, Canvas)");
-  expect(token("--selection")).toBe("color-mix(in srgb, var(--accent) 12%, Canvas)");
 });
 
 test("outside the shared tokens, lengths are rem and radii are the shared radii", () => {

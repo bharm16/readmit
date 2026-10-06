@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -167,7 +168,7 @@ func TestInspectFileMessageIsTheCaseInspectorOverOneMessageOfAFile(t *testing.T)
 	// marked as it is in the case.
 	raw := shown.RawWindow
 	if raw == nil || caseView.RawWindow == nil || raw.MessageStart != len(framed(gridAccepted))+1 || raw.MessageEnd != raw.MessageStart+len(gridRebooked) ||
-		raw.Before+raw.Selected+raw.After != escapedText(gridRebooked) || raw.Selected != "ROE" || *raw != shiftedWindow(*caseView.RawWindow, len(framed(gridAccepted))) {
+		raw.Before+raw.Selected+raw.After != escapedText(gridRebooked) || raw.Selected != "ROE" || !reflect.DeepEqual(*raw, shiftedWindow(*caseView.RawWindow, len(framed(gridAccepted)))) {
 		t.Fatalf("the file's Raw window %+v, the case's %+v", raw, caseView.RawWindow)
 	}
 	request.Message = 2

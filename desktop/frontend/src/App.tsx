@@ -1,3 +1,4 @@
+import { ReferenceMenu } from "./ReferenceMenu";
 import type {ReactNode} from "react";
 import type { ValueMapEditorDraft } from "./bindings";
 import { ValueMaps } from "./ValueMaps";
@@ -175,6 +176,7 @@ import {
   Categories,
   EmptyState,
   FrameContext,
+  ValueRows,
   GLOBAL_DESTINATIONS,
   Modal,
   Menu,
@@ -279,6 +281,7 @@ export default function App() {
   const [rawRequest, setRawRequest] = useState(0);
   const [readerReferenceRequest,setReaderReferenceRequest]=useState(0);
   const [readerLibraryRequest,setReaderLibraryRequest]=useState(0);
+  const [readerReferenceResetRequest,setReaderReferenceResetRequest]=useState(0);
   const [readerDensityOverride,setReaderDensityOverride]=useState<boolean|null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceResult | null>(null);
   const [evidence, setEvidence] = useState<CaseResult | null>(null);
@@ -410,6 +413,7 @@ export default function App() {
   // Only the shown destination is mounted; what a page holds unsaved is kept
   // in the view state for this project.
   const { route, dispatch: routeTo } = useRoutes({ destination: "home" });
+  const settingsReturn = useRef<Route | null>(null);
   const place = route.destination;
   const destination = workspaceDestination(route);
   const captureCollection = place === "cases" && route.objectId === undefined;
@@ -621,6 +625,7 @@ export default function App() {
     const projectIdentity = projects.find((project) => project.summary.project?.folder === workspaceRoot)?.ref.id;
     const navigation: import("./bindings.gen").ViewNavigation = {
       destination: route.destination, source_kind: sourceKind,
+      ...(phiMasked ? {phi_masked:true} : {}),
       ...(workspaceRoot && projectIdentity ? { project_identity: projectIdentity } : {}),
       ...(route.objectId ? { object: route.objectId } : {}),
       ...(route.view ? { local_view: route.view } : {}),
@@ -636,7 +641,7 @@ export default function App() {
       ...(sourceKind === "file" && fileNavigation ? fileNavigation : {}),
     };
     return { workspace: workspaceRoot, region: focused, case: workspaceRoot === "" ? "" : selected ?? "", run, navigation };
-  }, [workspaceRoot, focused, selected, route, sourceKind, evidence?.case, selectedOccurrence, inspectionResult, checkedMessages, messageView, messageSort, fileNavigation, scrollRevision, projects, caseFlow, fieldValuesContext, requirementsContext]);
+  }, [workspaceRoot, focused, selected, route, sourceKind, evidence?.case, selectedOccurrence, inspectionResult, checkedMessages, messageView, messageSort, fileNavigation, scrollRevision, projects, caseFlow, fieldValuesContext, requirementsContext, phiMasked]);
 
   const recording = useRef(false);
   const pendingRecord = useRef<ReturnType<typeof view> | null>(null);
@@ -699,8 +704,9 @@ export default function App() {
     busy,
     request: rawRequest,
     onNavigation: setFileNavigation,
-    onCancelled: () => {
-      if (currentRoute.current.destination === "inspect-file") routeTo({ type: "back" });
+    onOpened: () => {
+      setSourceKind("file");
+      if (currentRoute.current.destination !== "inspect-file") open({destination:"inspect-file",view:"messages"});
     },
   });
   const root = workspace?.workspace?.root ?? null;
@@ -1560,6 +1566,7 @@ export default function App() {
     },
   });
   const startCaptureSetup = () => {
+    go("cases");
     setCapturing(true);
     setCaptureSetup((count) => count + 1);
   };
@@ -1597,6 +1604,7 @@ export default function App() {
     (to: Destination) => {
       navigationSerial.current += 1;
       const exit = () => {
+        if (to === "settings" && currentRoute.current.destination !== "settings") settingsReturn.current = { ...currentRoute.current, returnContext: leaving() };
         if (to === "messages") {
           routeTo({ type: "go", to: sourceKind === "case" && evidence?.case ? { destination: "cases", objectId: evidence.case.name, view: "messages" } : fileReader.navigation?.file ? { destination: "inspect-file" } : { destination: "messages" }, leaving: leaving() });
         } else if (to === "cases") {
@@ -1641,6 +1649,7 @@ export default function App() {
     (to: Route) => {
       navigationSerial.current += 1;
       const exit = () => {
+        if (to.destination === "settings" && currentRoute.current.destination !== "settings") settingsReturn.current = {...currentRoute.current,returnContext:leaving()};
         routeTo({ type: "go", to, leaving: leaving() });
         focusRegion("evidence");
       };
@@ -2347,7 +2356,10 @@ export default function App() {
   };
   const backFromReusable = () => {
     if(route.origin && root===route.origin.projectId) routeTo({type:"return"});
-    else back();
+    else if (route.destination === "settings" && settingsReturn.current && settingsReturn.current.projectId === route.projectId) {
+      routeTo({type:"replace",to:settingsReturn.current});
+      focusRegion("evidence");
+    } else back();
   };
 
 
@@ -2446,7 +2458,6 @@ export default function App() {
     "manage-scenarios": () => open({ destination: "library", view: "scenarios" }),
     "manage-assertions": () => open({ destination: "library", view: "checks" }),
     "inspect-raw-file": () => {
-      open({ destination: "inspect-file" });
       setRawRequest((count) => count + 1);
     },
     "performance-corpus": () => open({ destination: "benchmarks" }),
@@ -2633,8 +2644,14 @@ export default function App() {
       onSettings={() => perform("open-project")}
       onFiles={() => open({ destination: "project-files" })}
       onProjects={() => go("home")}
+      onTools={()=>go("tools")}
     />
-  ) : null;
+  ) : readerLayout ? <Menu className="project-switcher" label="Projects" trigger={<><span className="switcher-caption"><span className="switcher-name">Local files</span><span className="switcher-kind">Project</span></span><img className="workbench-icon" src={chevronsAsset} alt="" /></>} items={[
+    {label:"Projects",onSelect:()=>go("home")},
+    {label:"Open project…",onSelect:()=>perform("open-workspace"),disabled:busy},
+    {label:"New project…",onSelect:()=>perform("new-project"),disabled:busy},
+    {label:"Tools",onSelect:()=>go("tools")},
+  ]}/> : null;
 
   // The inspector keeps the width chosen for this project, clamped to the room
   // there is now. When the list beside it would fall below its useful width,
@@ -2730,7 +2747,8 @@ export default function App() {
             // refusal instead of silently binding replacement bytes.
           }
           referenceSelection.current = selection;
-          if (nav?.occurrence) await inspect(nav.occurrence, nav.field_path ?? "", nav.node_offset ?? 0, -1, { case: opened.case.name, identity: opened.case.identity, protocol:opened.case.protocol ?? "hl7-v2" }, false, -1, catalog, selection, referenceIdentity.current);
+          setPHIMasked(nav?.phi_masked ?? false);
+          if (nav?.occurrence) await inspect(nav.occurrence, nav.field_path ?? "", nav.node_offset ?? 0, -1, { case: opened.case.name, identity: opened.case.identity, protocol:opened.case.protocol ?? "hl7-v2" }, false, -1, catalog, selection, referenceIdentity.current, nav.phi_masked ?? false);
         } else setSessionNotice("The previous capture changed or is unavailable. Choose a source explicitly; no selection was rebound.");
       }
       if (!stillOwned()) { abandon(); return; }
@@ -2763,7 +2781,7 @@ export default function App() {
         {!readerLayout && (!root || compact) ? <ul className="nav-list">
           <NavItem id="home" label="Projects" current={destination === "home"} onSelect={go} />
         </ul> : null}
-        {readerLayout ? <div className="sidebar-switcher reader-source-switcher"><Menu className="project-switcher" label={`Source: ${root ? projectName : fileReader.title}`} trigger={<><span className="reader-source-short" aria-hidden="true">HL7</span><span className="reader-switcher-caption"><strong>{root ? projectName : fileReader.title}</strong><span>{root ? "Project" : "Local files"}</span></span><img className="workbench-icon" src={chevronsAsset} alt="" /></>} items={[{label:"Projects",onSelect:()=>go("home")},{label:"Open project…",onSelect:()=>perform("open-workspace"),disabled:busy},{label:"New project…",onSelect:()=>perform("new-project"),disabled:busy},{label:"Tools",onSelect:()=>go("tools")},...(root ? [{label:"Project settings",onSelect:()=>perform("open-project")},{label:"Files",onSelect:()=>open({destination:"project-files"})}] : [])]}/></div> : null}
+        {readerLayout ? <div className="sidebar-switcher reader-source-switcher"><span className="reader-source-label">HL7</span></div> : null}
         {root && !readerLayout && !compact ? <div className="sidebar-switcher">{switcher}</div> : null}
         {!root && !readerLayout ? <ul className="nav-list"><NavItem id="messages" label="Messages" current={destination === "messages"} onSelect={go} /></ul> : null}
         {root || readerLayout ? (
@@ -2885,7 +2903,7 @@ export default function App() {
         <Page
           id="cases"
           shown={place === "cases"}
-          details={verified && !captureCollection && subpage === null && caseFlow === null ? { name: caseTitle, open: () => setFileDetails(true) } : undefined}
+          details={!readerLayout && verified && !captureCollection && subpage === null && caseFlow === null ? { name: caseTitle, open: () => setFileDetails(true) } : undefined}
           back={
             readerLayout ? null : subpage !== null ? (
               <BackLink label="Captures" onBack={leaveSubpage} />
@@ -2907,11 +2925,34 @@ export default function App() {
                     : "Captures"
           }
           actions={
-            readerLayout ? <>{route.origin?.destination==="environments"?<button type="button" disabled={busy} onClick={()=>void returnFromSetup()}>Return to target</button>:null}<button type="button" className="reader-toolbar-edition" aria-label="HL7 reference version" onClick={()=>setReaderLibraryRequest(count=>count+1)}>HL7 {inspectionResult?.inspection?.reference?.edition || inspectionResult?.inspection?.metadata.hl7_version || "not declared"}</button><button type="button" className="link reader-toolbar-reference" disabled={busy} onClick={()=>setReaderReferenceRequest(count=>count+1)}>Reference</button><span className="reader-toolbar-space"/><button type="button" disabled={busy} onClick={()=>{setSourceKind("file");open({destination:"inspect-file",view:"messages"});setRawRequest(count=>count+1);}}>Open</button><button type="button" disabled={busy || !root} onClick={startCaptureSetup}>Receive</button><button type="button" disabled={busy || !selectedSourceRef || checkedMessages.size!==2} onClick={()=>setSelectedComparison(true)}>Compare</button><button type="button" className="primary" disabled={busy || !selectedSourceRef || (checkedMessages.size === 0 && !selectedOccurrence)} onClick={()=>void createTest()}>Create test case</button><Menu className="reader-menu" trigger={<img className="workbench-icon" src={moreAsset} alt="" />} label="More case actions" items={[{label:"Configure target",onSelect:configureTargetFromSource,disabled:busy||!root},{label:"Receive setup",onSelect:()=>setReceivingSetup(true),disabled:busy||!root},...caseMenu,{label:"Receive and send selected",onSelect:()=>setExchangeUIRequest(old=>({kind:"setup",serial:(old?.serial??0)+1})),disabled:busy||!selectedSourceRef||checkedMessages.size===0},{label:"Exchange history",onSelect:()=>setExchangeUIRequest(old=>({kind:"history",serial:(old?.serial??0)+1})),disabled:busy||!selectedSourceRef},{label:"Source context",onSelect:()=>{if(selectedSourceRef)setCaptureContextSource(selectedSourceRef);},disabled:busy || !selectedSourceRef},{label:"Export selected",onSelect:()=>setSelectedExportOpen(true),disabled:busy || !selectedSourceRef || checkedMessages.size===0},{label:"Capture exports",onSelect:()=>setSourceExportsOpen(true),disabled:busy || !selectedSourceRef},{label:"Captures",onSelect:backToProject},{label:"Timeline",onSelect:()=>setView("timeline")},{label:"Findings",onSelect:()=>setView("findings")}]}/></> : subpage === "capture" ? (
+            readerLayout ? <>
+              {route.origin?.destination==="environments" ? <IconButton icon="previous" label="Return to target" className="reader-action" disabled={busy} onClick={()=>void returnFromSetup()} /> : null}
+              <ReferenceMenu edition={inspectionResult?.inspection?.reference?.edition || inspectionResult?.inspection?.metadata.hl7_version || ""} disabled={busy}
+                onAutomatic={()=>setReaderReferenceResetRequest(count=>count+1)} onChoose={()=>setReaderReferenceRequest(count=>count+1)} onLibrary={()=>setReaderLibraryRequest(count=>count+1)} />
+              <span className="reader-toolbar-space"/>
+              <IconButton icon="open" label="Open file" className="reader-action" disabled={busy} onClick={()=>{setRawRequest(count=>count+1);}} />
+              <IconButton icon="receive" label="Receive messages" className="reader-action" disabled={busy || !root} onClick={startCaptureSetup} />
+              <IconButton icon="compare" label={checkedMessages.size===2 ? "Compare selected messages" : "Compare selected messages — select two"} className="reader-action" disabled={busy || !selectedSourceRef || checkedMessages.size!==2} onClick={()=>setSelectedComparison(true)} />
+              <IconButton icon="create-test" label="Create test case" className="reader-action reader-action-primary" disabled={busy || !selectedSourceRef || (checkedMessages.size===0 && !selectedOccurrence)} onClick={()=>void createTest()} />
+              <Menu className="reader-menu" trigger={<img className="workbench-icon" src={moreAsset} alt="" />} label="More case actions" items={[
+                ...caseMenu.filter(item=>item.label!=="Create test" && item.label!=="Close case").map(item=>item.label==="Compare" ? {...item,label:"Compare captures…"} : item),
+                {label:"Export selected messages…",onSelect:()=>setSelectedExportOpen(true),disabled:busy || !selectedSourceRef || checkedMessages.size===0,separated:true},
+                {label:"Capture exports",onSelect:()=>setSourceExportsOpen(true),disabled:busy || !selectedSourceRef},
+                {label:"Exchange history",onSelect:()=>setExchangeUIRequest(old=>({kind:"history",serial:(old?.serial??0)+1})),disabled:busy||!selectedSourceRef},
+                {label:"Source context…",onSelect:()=>{if(selectedSourceRef)setCaptureContextSource(selectedSourceRef);},disabled:busy || !selectedSourceRef},
+                {label:"Configure target…",onSelect:configureTargetFromSource,disabled:busy||!root,separated:true},
+                {label:"Receive configurations…",onSelect:()=>setReceivingSetup(true),disabled:busy||!root},
+                {label:"Receive and send selected…",onSelect:()=>setExchangeUIRequest(old=>({kind:"setup",serial:(old?.serial??0)+1})),disabled:busy||!selectedSourceRef||checkedMessages.size===0},
+                {label:compactReader ? "Wide view" : "Compact view",onSelect:()=>setReaderDensityOverride(!compactReader),separated:true},
+                {label:"Timeline",onSelect:()=>setView("timeline")},
+                {label:"Findings",onSelect:()=>setView("findings")},
+                {label:"Close capture",onSelect:backToProject},
+              ]}/>
+            </> : subpage === "capture" ? (
               capture.actions
             ) : root && subpage === null && (!verified || captureCollection) ? (
               <>
- <button type="button" disabled={busy} onClick={()=>{setSourceKind("file");open({destination:"inspect-file",view:"messages"});setRawRequest(count=>count+1);}}>Open file</button>
+ <button type="button" disabled={busy} onClick={()=>{setRawRequest(count=>count+1);}}>Open file</button>
                 <button type="button" disabled={busy} onClick={startCaptureSetup}>
                   Capture
                 </button>
@@ -3076,7 +3117,6 @@ export default function App() {
                   ) : null}
                   <MessageList
                     browser={readerLayout && !detailOnly}
-                    browserSourceName={caseTitle}
                     {...(selectedSourceRef ? {browserSourceKind:selectedSourceRef.kind === "variant" ? "derived" as const : "retained" as const} : {})}
                     {...(verified?.protocol ? { protocol: verified.protocol } : {})}
                     result={messages?.result ?? null}
@@ -3551,7 +3591,7 @@ export default function App() {
         </Page>
 
         <Page id="messages" shown={place === "messages"} title="Messages">
-          <EmptyState title="No messages open" action={<><button type="button" onClick={() => { open({ destination: "inspect-file", view: "messages" }); setRawRequest((count) => count + 1); }}>Open file</button>{root ? <button type="button" onClick={() => go("cases")}>Open capture</button> : null}</>} />
+          <EmptyState title="No messages open" action={<><button type="button" onClick={() => { setRawRequest((count) => count + 1); }}>Open file</button>{root ? <button type="button" onClick={() => go("cases")}>Open capture</button> : null}</>} />
         </Page>
 
         <Page id="tools" shown={place === "tools"} title="Tools">
@@ -3562,8 +3602,8 @@ export default function App() {
                   type="button"
                   className="launcher-row"
                   onClick={() => {
-                    open({ destination: tool.key });
                     if (tool.key === "inspect-file") setRawRequest((count) => count + 1);
+                    else open({ destination: tool.key });
                   }}
                 >
                   <span>{tool.label}</span>
@@ -3577,11 +3617,23 @@ export default function App() {
         </Page>
 
         <Page id="inspect-file" shown={place === "inspect-file"} title={readerLayout ? "Messages" : fileReader.title} back={readerLayout ? undefined : <BackLink label={route.view === "messages" ? "Messages" : "Tools"} onBack={route.view === "messages" ? () => open({ destination: "messages" }) : back} />} actions={<>
-          {readerLayout ? <><button type="button" className="reader-toolbar-edition" aria-label="HL7 reference version" onClick={fileReader.chooseReferenceVersion}>HL7 {fileReader.referenceEdition || fileReader.edition || "not declared"}</button><button type="button" className="link reader-toolbar-reference" disabled={busy} onClick={fileReader.chooseReference}>Reference</button><span className="reader-toolbar-space"/></> : null}
-          {fileReader.actions}
-          {readerLayout ? <><button type="button" disabled={busy || !root} onClick={startCaptureSetup}>Receive</button><button type="button" disabled title="Retain the loose file as a capture to compare messages">Compare</button></> : null}
-          {fileReader.retention ? <button type="button" className="primary" disabled={busy || (fileReader.retention.messages.length === 0 && fileReader.retention.selected === undefined)} onClick={() => retainLooseFile("test")}>Create test case</button> : null}
-          {fileReader.retention ? <button type="button" className={readerLayout ? "link" : "primary"} disabled={busy} onClick={() => retainLooseFile("capture")}>Retain capture</button> : null}
+          {readerLayout ? <>
+            <ReferenceMenu edition={fileReader.referenceEdition || fileReader.edition} disabled={busy || fileReader.disabled} onAutomatic={fileReader.useMessageReference} onChoose={fileReader.chooseReference} onLibrary={fileReader.chooseReferenceVersion}/>
+            <span className="reader-toolbar-space"/>
+            <IconButton icon="open" label="Open file" className="reader-action" disabled={fileReader.disabled} onClick={fileReader.openFile}/>
+            <IconButton icon="receive" label="Receive messages" className="reader-action" disabled={busy || !root} onClick={startCaptureSetup}/>
+            <IconButton icon="compare" label="Compare selected messages — retain the capture first" className="reader-action" disabled onClick={()=>undefined}/>
+            <IconButton icon="create-test" label="Create test case" className="reader-action reader-action-primary" disabled={busy || !fileReader.retention || (fileReader.retention.messages.length===0 && fileReader.retention.selected===undefined)} onClick={()=>retainLooseFile("test")}/>
+            <Menu className="reader-menu" label="More file actions" trigger={<img className="workbench-icon" src={moreAsset} alt="" />} items={[
+              ...fileReader.fileActions,
+              ...(fileReader.retention ? [{label:"Retain capture…",onSelect:()=>retainLooseFile("capture"),disabled:busy,separated:true}] : []),
+              {label:compactReader ? "Wide view" : "Compact view",onSelect:()=>setReaderDensityOverride(!compactReader)},
+            ]}/>
+          </> : <>
+            {fileReader.actions}
+            {fileReader.retention ? <button type="button" className="primary" disabled={busy || (fileReader.retention.messages.length===0 && fileReader.retention.selected===undefined)} onClick={()=>retainLooseFile("test")}>Create test case</button> : null}
+            {fileReader.retention ? <button type="button" disabled={busy} onClick={()=>retainLooseFile("capture")}>Retain capture</button> : null}
+          </>}
         </>}>
           {fileReader.body}
         </Page>
@@ -3620,7 +3672,7 @@ export default function App() {
           {root ? benchmarks.body : noProject("benchmarks")}
         </Page>
 
-        <Page id="settings" shown={place === "settings"} title="Settings" back={<BackLink label="Back" onBack={backFromReusable}/>} actions={<button type="button" onClick={()=>open({destination:"tools"})}>Tools</button>}>
+        <Page id="settings" shown={place === "settings"} title="Settings" back={route.origin && root === route.origin.projectId || settingsReturn.current && settingsReturn.current.projectId === route.projectId ? <BackLink label="Back" onBack={backFromReusable}/> : undefined} actions={<button type="button" onClick={()=>open({destination:"tools"})}>Tools</button>}>
           <Categories label="Settings categories" categories={SETTINGS_VIEWS} selected={settingsView} onSelect={setView}>
             <TaskPanel tabs="settings-views" tab="general" className="task-panel view-panel" shown={settingsView === "general"}>
               <GeneralView
@@ -3799,9 +3851,11 @@ export default function App() {
             toolbarReference={readerLayout && !detailOnly}
             referenceRequest={readerReferenceRequest}
             referenceLibraryRequest={readerLibraryRequest}
+            referenceResetRequest={readerReferenceResetRequest}
             contextDetails={exchangeDetails?.key===JSON.stringify([selectedSourceRef?.id??"",verified.identity,selectedOccurrence??""])?exchangeDetails.node:undefined}
             contextDetailsTitle="Recorded exchange"
             result={inspectionResult}
+            valuesHidden={phiMasked && !inspectionResult?.inspection?.phi_masked}
             referenceCatalog={referenceCatalog.current}
             referenceIdentity={referenceIdentity.current}
             {...(referenceSelection.current ? { referenceSelection: referenceSelection.current } : {})}
@@ -3811,7 +3865,7 @@ export default function App() {
             onInspect={(path, nodeOffset, byteOffset, rawOffset, catalogPath?: string, selection?: HL7ReferenceSelection, catalogIdentity?: string) => (selectedOccurrence ? inspect(selectedOccurrence, path, nodeOffset, byteOffset, undefined, revealed, rawOffset, catalogPath, selection, catalogIdentity) : Promise.resolve(null))}
             onReveal={(next) => {
               const at = inspectionResult?.inspection;
-              if(at?.fhir) setRevealed(next); else {setPHIMasked(!next);if(!next)setInspectionResult(null);}
+              if(at?.fhir) setRevealed(next); else {setPHIMasked(!next);}
               if (selectedOccurrence) void inspect(selectedOccurrence, at?.fhir?.selected?.field.id ?? at?.selected.path ?? "", at?.node_offset ?? 0, at?.byte_offset ?? -1, undefined, next, -1, undefined, undefined, undefined, !next);
             }}
             {...(root && verified.protocol !== "fhir-r4" && caseFlow === null ? { onFieldValues: openFieldValues, onValueMaps:(selector:string)=>openRequirements(selectedOccurrence??"",selector,"value-maps"), onRequirements: (selector: string) => openRequirements(selectedOccurrence ?? "", selector) } : {})}
@@ -3949,7 +4003,7 @@ export default function App() {
   return (
     <IndicatorsContext.Provider value={indicators}>
       <VocabularyContext.Provider value={described.vocabulary}>
-        <FrameContext.Provider value={{ compact, switcher }}>
+        <FrameContext.Provider value={{ compact: compact || readerLayout, switcher }}>
           <ReturnAnchor.Provider value={returnAnchor}>
           <PaletteActionsContext.Provider value={registerActions}>
               <div className={`${compact ? "app compact" : "app"}${root ? " app-workbench" : ""}${readerLayout ? ` app-reader${compactReader ? " app-reader-compact" : " app-reader-wide"}` : ""}`} style={readerLayout ? { "--sidebar": `${sidebarRem}rem`, "--reader-reference-width": `${compactReader ? READER_REFERENCE_COMPACT_REM : READER_REFERENCE_REM}rem` } as CSSProperties : undefined} ref={setFrame} onScrollCapture={(event) => { if (event.target instanceof HTMLElement && event.target.classList.contains("page-body")) setScrollRevision((revision) => revision + 1); }}>
@@ -3991,10 +4045,10 @@ export default function App() {
         </Modal>
         <Modal open={fileDetails && verified !== null} title="File details" onClose={() => setFileDetails(false)}>
           {verified ? (
-            <dl className="facts">
+            <><dl className="facts">
               <div className="fact">
-                <dt>Case</dt>
-                <dd>{verified.name}</dd>
+                <dt>Capture</dt>
+                <dd>{caseTitle}</dd>
               </div>
               <div className="fact">
                 <dt>Origin</dt>
@@ -4021,15 +4075,10 @@ export default function App() {
                 <dt>Sources</dt>
                 <dd>{verified.sources}</dd>
               </div>
-              <div className="fact">
-                <dt>Format</dt>
-                <dd>{verified.schema}</dd>
-              </div>
-              <div className="fact">
-                <dt>SHA-256</dt>
-                <dd className="identity">{verified.identity}</dd>
-              </div>
             </dl>
+            <details className="file-technical-details"><summary>Technical details</summary>
+              <ValueRows rows={[{label:"Format",value:verified.schema},{label:"SHA-256",value:<code>{verified.identity}</code>}]}/>
+            </details></>
           ) : null}
         </Modal>
 

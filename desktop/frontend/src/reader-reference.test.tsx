@@ -20,7 +20,7 @@ test("the reader keeps eleven columns reachable and distinguishes absent referen
   expect(within(grid).getByText("Empty")).toBeTruthy();
   expect(grid.classList.contains("reader-grid-scroll")).toBe(true);
   expect(screen.getByRole("region",{name:"Reference details"})).toBeTruthy();
-  expect(screen.getByRole("button",{name:"Reference"})).toBeTruthy();
+  expect(screen.getByRole("button",{name:"HL7 reference version"})).toBeTruthy();
 });
 
 test("the reference details distinguish catalog failure without removing raw or hex views", async () => {
@@ -47,12 +47,13 @@ test("a delayed catalog summary cannot repopulate a changed source or reveal con
   const inspect=vi.fn(async()=>null);
   const first=inspectionResult(undefined,{reference:{status:"not_selected",reason:"Select an offline reference catalog.",identity:"",edition:"",coverage:{segments:0,fields:0,definitions:0,missing:[]},missing_count:0}});
   const {rerender}=render(<MessageReader result={first} loading={false} busy={false} onInspect={inspect} onReveal={()=>undefined} />);
-  await user.click(screen.getByRole("button",{name:"Reference"}));
+  await user.click(screen.getByRole("button",{name:"HL7 reference version"}));
+  await user.click(screen.getByRole("menuitem",{name:"Use local catalog…"}));
   await waitFor(()=>expect(facade.callsTo("ReadReferenceCatalog")).toHaveLength(1));
   const second=inspectionResult(undefined,{...first.inspection,identity:CASE_IDENTITY+"-new",revealed:true});
   rerender(<MessageReader result={second} loading={false} busy={false} onInspect={inspect} onReveal={()=>undefined} />);
   resolveSummary?.({state:"completed",reference:{status:"available",reason:"",identity:"old-catalog",edition:"2.5.1",coverage:{segments:1,fields:1,definitions:1,missing:[]},missing_count:0}});
-  await waitFor(()=>expect((screen.getByRole("button",{name:"Reference"}) as HTMLButtonElement).disabled).toBe(false));
+  await waitFor(()=>expect((screen.getByRole("button",{name:"HL7 reference version"}) as HTMLButtonElement).disabled).toBe(false));
   expect(inspect).not.toHaveBeenCalled();
   expect(screen.queryByText("old-catalog")).toBeNull();
 });
@@ -126,11 +127,12 @@ test("a new field intent cancels a pending catalog selection before the host rep
  const inspect=vi.fn(async()=>null);
  const result=inspectionResult(undefined,{children:[{node:{path:"MSH[1]",kind:"segment",parent:"",segment:"MSH",field:0,state:"present",start:0,end:100},label:"",selector:"",segment_name:"",value:"",truncated:false}],reference:{status:"not_selected",reason:"",identity:"",edition:"",coverage:{segments:0,fields:0,definitions:0,missing:[]},missing_count:0}});
  render(<MessageReader result={result} loading={false} busy={false} onInspect={inspect} onReveal={()=>undefined}/>);
- await user.click(screen.getByRole("button",{name:"Reference"}));await waitFor(()=>expect(facade.callsTo("ReadReferenceCatalog")).toHaveLength(1));
+ await user.click(screen.getByRole("button",{name:"HL7 reference version"}));
+  await user.click(screen.getByRole("menuitem",{name:"Use local catalog…"}));await waitFor(()=>expect(facade.callsTo("ReadReferenceCatalog")).toHaveLength(1));
  await user.click(screen.getByRole("button",{name:/^MSH\[1\]/}));
  expect(inspect).toHaveBeenCalledTimes(1);
  await act(async()=>{reply?.({state:"completed",reference:{status:"available",reason:"",identity:"old",edition:"2.4",coverage:{segments:1,fields:1,definitions:1,missing:[]},missing_count:0}});});
- await waitFor(()=>expect((screen.getByRole("button",{name:"Reference"}) as HTMLButtonElement).disabled).toBe(false));
+ await waitFor(()=>expect((screen.getByRole("button",{name:"HL7 reference version"}) as HTMLButtonElement).disabled).toBe(false));
  expect(inspect).toHaveBeenCalledTimes(1);
 });
 
@@ -215,4 +217,45 @@ test("a primitive field retains Overview without an empty Components tab",()=>{
  expect(screen.getByRole("tab",{name:"Overview"})).toBeTruthy();
  expect(screen.queryByRole("tab",{name:"Components"})).toBeNull();
  expect(screen.getByRole("button",{name:"Datatype · ST"})).toBeTruthy();
+});
+
+
+test("the selected segment disclosure collapses and expands its field rows", async () => {
+  const user = userEvent.setup();
+  const segment = { path:"PV1[1]", kind:"segment", parent:"", segment:"PV1", field:0, state:"present" as const, start:0, end:30 };
+  const result = inspectionResult(undefined, { selected:segment, grid:{ segment:segment.path, offset:0, field_count:1, rows:[
+    { node:segment, label:"", selector:"", segment_name:"Patient Visit", value:"", truncated:false },
+    { node:{...segment,path:"PV1[1]-2",kind:"field",field:2,parent:segment.path}, label:"Patient Class", selector:"PV1-2", segment_name:"", value:"", truncated:false, depth:1 },
+  ]} });
+  render(<MessageReader result={result} loading={false} busy={false} onInspect={async()=>result} onReveal={()=>undefined}/>);
+  const grid = within(screen.getByRole("region", {name:"Segment grid"}));
+  const disclosure = grid.getByRole("button", {name:/PV1\[1\] Patient Visit/});
+  expect(disclosure.getAttribute("aria-expanded")).toBe("true");
+  await user.click(disclosure);
+  expect(disclosure.getAttribute("aria-expanded")).toBe("false");
+  expect(grid.queryByText("Patient Class")).toBeNull();
+  await user.click(disclosure);
+  expect(disclosure.getAttribute("aria-expanded")).toBe("true");
+  expect(grid.getByText("Patient Class")).toBeTruthy();
+});
+
+
+test("a nested composite offers its direct Subcomponents view", async () => {
+  const user = userEvent.setup();
+  const selected:HL7Node = {path:"PV1[1]-3[1].4",kind:"component",parent:"PV1[1]-3[1]",segment:"PV1",field:3,state:"empty",start:10,end:10};
+  const reference = {status:"available",reason:"",identity:"catalog",edition:"2.5.1",coverage:{segments:0,fields:1,definitions:0,missing:[]},missing_count:0,record:{...ownedFieldReference(),name:"Facility",datatype:{state:"specified",value:"HD"}},datatype_key:"datatype/HD"};
+  const result = inspectionResult(undefined,{selected,reference,reference_values:[1,2,3].map(position=>({key:`component/HD/${position}`,node:{...selected,kind:"subcomponent",parent:selected.path,path:`${selected.path}.${position}`,state:"omitted" as const,start:0,end:0},encoded:"",decoded:"",decode_state:"omitted",truncated:false}))});
+  const facade=installFacade({LookupHL7Reference:()=>({state:"completed",children:[],offset:0,child_count:0,total_count:0,reference:{...reference,record:{...reference.record,kind:"datatype",name:"HD"}}})});
+  render(<MessageReader result={result} loading={false} busy={false} onInspect={async()=>result} onReveal={()=>undefined}/>);
+  await user.click(screen.getByRole("tab",{name:"Subcomponents"}));
+  expect(screen.getByRole("tab",{name:"Subcomponents",selected:true})).toBeTruthy();
+  expect(facade.callsTo("LookupHL7Reference")[0]?.args[0]).toMatchObject({key:"datatype/HD",identity:"catalog"});
+});
+
+test("component Details keeps its single-repetition parent field context", () => {
+  const selected:HL7Node={path:"PV1[1]-3[1].4",kind:"component",parent:"PV1[1]-3[1]",segment:"PV1",field:3,state:"empty",start:10,end:10};
+  const field={...selected,path:"PV1[1]-3",kind:"field",parent:"PV1[1]"};
+  const result=inspectionResult(undefined,{selected,reference:{status:"available",reason:"",identity:"catalog",edition:"2.5.1",coverage:{segments:0,fields:1,definitions:0,missing:[]},missing_count:0,record:{...ownedFieldReference(),name:"Facility"}},grid:{segment:"PV1[1]",offset:0,field_count:1,rows:[{node:field,label:"Assigned Patient Location",selector:"PV1-3",segment_name:"",value:"",truncated:false},{node:selected,label:"Facility",selector:selected.path,segment_name:"",value:"",truncated:false}]}});
+  render(<MessageReader result={result} loading={false} busy={false} onInspect={async()=>result} onReveal={()=>undefined}/>);
+  expect(screen.getByRole("region",{name:"Reference details"}).querySelector(".reader-parent-context")?.textContent).toContain("Assigned Patient Location");
 });
