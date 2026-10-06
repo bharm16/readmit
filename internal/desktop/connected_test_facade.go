@@ -624,6 +624,10 @@ func (c *loadedCatalog) newConnectedFromEvidence(result ItemDraftResult, ref Ite
 		result.refuse(Failed, "the retained R4 evidence cannot be verified as complete and unmodified")
 		return result
 	}
+	if origin.Identity != "" && origin.Identity != opened.Identity {
+		result.refuse(Failed, "the selected source evidence changed; inspect it again before creating a test")
+		return result
+	}
 	d := ConnectedTestDraft{Schema: ConnectedTestSchema, Boundary: ApplicationBoundary, Generation: connectedtest.Generation{Seed: 1, BaseTime: "2026-01-01T00:00:00Z"}, Variables: []ConnectedVariable{}, Steps: []ConnectedStep{}, Phases: []ConnectedPhase{}}
 	declared := connectedRequestOf(opened)
 	selected := map[string]bool{}

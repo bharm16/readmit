@@ -354,7 +354,11 @@ export default function App() {
   const [drafts, setDrafts] = useState<EditorDraft[] | null>(null);
   const [capturing, setCapturing] = useState(false);
   const [importing, setImporting] = useState(false);
- const [looseRetention,setLooseRetention]=useState<import("./bindings").ImportInvestigation | null>(null);
+  const [looseRetention, setLooseRetention] = useState<{
+    source: import("./bindings").ImportInvestigation;
+    purpose: "capture" | "test";
+    project: string | null;
+  } | null>(null);
  const retentionStarted=useRef("");
  const [captureContextSource,setCaptureContextSource]=useState<ItemRef|null>(null);
  const [receivingSetup,setReceivingSetup]=useState(false);
@@ -1508,17 +1512,26 @@ export default function App() {
   // Messages, once the project lists it.
   const openImportedCase = useCallback(
     async (ref: ItemRef, selection?: import("./bindings").RetainedImportSelection) => {
+      const navigation = navigationSerial.current;
+      const current = () => viewRoot.current === root && navigationSerial.current === navigation;
       await leaveImport();
+      if (!current()) return false;
       await refreshCases();
+      if (!current()) return false;
       const entry = listedCases.current.find((item) => item.ref.id === ref.id)?.summary.case?.entry;
-      if (root && entry && currentRoute.current.projectId===root) {
- const opened=await verifyCase(root,entry,selection ? {skipAutoGrid:true,expectedIdentity:selection.identity} : undefined);
- if(selection && opened?.case && currentRoute.current.projectId===root) {
-  await loadMessages(root,{case:entry,identity:selection.identity},NO_QUERY,null,0);
-  setCheckedMessages(new Set(selection.messages));
-  if(selection.selected) await inspect(selection.selected,selection.path??"",selection.node_offset??0,-1,{case:entry,identity:selection.identity,protocol:opened?.case?.protocol ?? "hl7-v2"},false);
- }
-}
+      if (!root || !entry || currentRoute.current.projectId !== root) return false;
+      const opened = await verifyCase(root, entry, {
+        navigationOwner: navigation,
+        ...(selection ? { skipAutoGrid: true, expectedIdentity: selection.identity } : {}),
+      });
+      if (!opened?.case || !current()) return false;
+      if (selection) {
+        await loadMessages(root, { case: entry, identity: selection.identity }, NO_QUERY, null, 0);
+        if (!current()) return false;
+        setCheckedMessages(new Set(selection.messages));
+        if (selection.selected) await inspect(selection.selected, selection.path ?? "", selection.node_offset ?? 0, -1, { case: entry, identity: selection.identity, protocol: opened.case.protocol ?? "hl7-v2" }, false);
+      }
+      return current();
     },
     [leaveImport, refreshCases, root, verifyCase, loadMessages,inspect],
   );
@@ -1597,9 +1610,30 @@ export default function App() {
     [evidence?.case, sourceKind, fileReader.navigation?.file, focusRegion, leaving, routeTo],
   );
 
-  useEffect(()=>{
- if(root && looseRetention && retentionStarted.current!==root) {retentionStarted.current=root;go("cases");setImporting(true);}
- },[root,looseRetention,go]);
+  useEffect(() => {
+    if (!looseRetention) return;
+    const owner = looseRetention.project ?? retentionStarted.current;
+    if (owner && owner !== root) {
+      setLooseRetention(null);
+      setImporting(false);
+      return;
+    }
+    if (root && retentionStarted.current !== root) {
+      retentionStarted.current = root;
+      go("cases");
+      setImporting(true);
+    }
+  }, [root, looseRetention, go]);
+
+  const retainLooseFile = (purpose: "capture" | "test") => {
+    const source = fileReader.retention;
+    if (!source) return;
+    const messages = source.messages.length > 0 ? source.messages : source.selected === undefined ? [] : [source.selected];
+    if (purpose === "test" && messages.length === 0) return;
+    retentionStarted.current = "";
+    setLooseRetention({ source: purpose === "test" ? { ...source, messages } : source, purpose, project: root });
+    if (!root) go("home");
+  };
 
   // Opens a place reached from inside another: a child destination, or a
   // destination at one of its views.
@@ -1673,7 +1707,7 @@ export default function App() {
         ? { kind: "edit", id: testRoute.objectId }
         : place === "tests" && route.objectId
           ? { kind: "test", id: route.objectId, view: isTestWorkspaceView(route.view) ? route.view : "setup" }
-          : { kind: "list" };
+          : { kind: "list", category: route.view === "drafts" ? "drafts" : "all" };
   const openPromotedExchange = async (provenance: ExchangeTestProvenance) => {
     if (!root) return;
     const project = root;
@@ -1734,7 +1768,7 @@ export default function App() {
     go: (to) => {
       switch (to.kind) {
         case "list":
-          open({ destination: "tests" });
+          open({ destination: "tests", view: to.category ?? "all" });
           return;
         case "new":
           open({ destination: "new-test" });
@@ -2025,8 +2059,7 @@ export default function App() {
   const packages = useEncryptedPackages({ root: place === "encrypted-packages" ? root : null, projectId: currentProject?.ref.id ?? "", shown: place === "encrypted-packages" });
   const shareTemplates = useShareTemplates({ root: place === "share-templates" ? root : null, projectId: currentProject?.ref.id ?? "", shown: place === "share-templates" });
 
-  /** Create test: the case open now and its chosen messages (all of them
-   * when none is chosen) go to the one test editor. */
+  /** Create test preserves checked order, or uses the message being inspected. */
   // The project object the open case is, read again whenever another case
   // opens.
   useEffect(() => {
@@ -2066,28 +2099,28 @@ export default function App() {
     return listed ? { ref: listed, variant: false } : null;
   };
   const createTest = async () => {
+    const chosen = checkedMessages.size > 0 ? [...checkedMessages] : selectedOccurrence ? [selectedOccurrence] : [];
+    if (chosen.length === 0) return;
+    const navigation = navigationSerial.current;
     const origin = await openCaseObject();
-    if (!origin) {
-      void tests.startNew();
-      return;
-    }
-    // With nothing chosen, the facade selects every message of the case a test can send.
-    const chosen = [...checkedMessages];
-    void tests.startNew({ case: origin.ref, messages: chosen, ...(origin.variant ? { source: { kind: "variant", variant: origin.ref } } : {}) });
+    if (!origin || viewRoot.current !== root || navigationSerial.current !== navigation) return;
+    void tests.startNew({ case: origin.ref, identity: verified?.identity ?? "", messages: chosen, ...(origin.variant ? { source: { kind: "variant", variant: origin.ref } } : {}) });
   };
 
   // A confirmed finding opens the same editor with the review's messages and
   // its expectations as proposals, each undecided until the person decides.
   const promoteFinding = async (status: FindingStatus, reviewEntry: string, reportSHA256: string, title?: string) => {
     const promotion = status.promotion;
+    const navigation = navigationSerial.current;
     const origin = await openCaseObject();
-    if (!promotion || !origin) return;
+    if (!origin || viewRoot.current !== root || navigationSerial.current !== navigation) return;
     void tests.startNew({
       case: origin.ref,
-      messages: promotion.messages,
+      identity: verified?.identity ?? "",
+      messages: promotion?.messages ?? [],
       ...(title ? { title } : {}),
       source: { kind: "finding", finding: status.finding, report_sha256: reportSHA256, ...(reviewEntry ? { review: reviewEntry } : {}) },
-      proposals: promotion.expectations.map((check: TestExpectation, index: number) => ({ id: `finding-${index + 1}`, source: "finding", check })),
+      proposals: (promotion?.expectations ?? []).map((check: TestExpectation, index: number) => ({ id: `finding-${index + 1}`, source: "finding", check })),
     });
   };
 
@@ -2505,7 +2538,7 @@ export default function App() {
   // changes.
   const parentCase = openObject?.parent ?? null;
   const caseMenu: MenuItem[] = [
-    ...(verified?.protocol === "fhir-r4" ? [] : [{ label: "Create test", onSelect: () => void createTest() }]),
+    ...(verified?.protocol === "fhir-r4" ? [] : [{ label: "Create test", onSelect: () => void createTest(), disabled: busy || (checkedMessages.size === 0 && !selectedOccurrence) }]),
     { label: "Create variant", onSelect: () => verified && void startVariant(verified.name, verified.identity, [], verified.protocol) },
     { label: "Compare", onSelect: () => verified && void startCompare(verified.name, verified.identity, null) },
     ...(parentCase
@@ -2874,7 +2907,7 @@ export default function App() {
                     : "Captures"
           }
           actions={
-            readerLayout ? <>{route.origin?.destination==="environments"?<button type="button" disabled={busy} onClick={()=>void returnFromSetup()}>Return to target</button>:null}<button type="button" className="reader-toolbar-edition" aria-label="HL7 reference version" onClick={()=>setReaderLibraryRequest(count=>count+1)}>HL7 {inspectionResult?.inspection?.reference?.edition || inspectionResult?.inspection?.metadata.hl7_version || "not declared"}</button><button type="button" className="link reader-toolbar-reference" disabled={busy} onClick={()=>setReaderReferenceRequest(count=>count+1)}>Reference</button><span className="reader-toolbar-space"/><button type="button" disabled={busy} onClick={()=>{setSourceKind("file");open({destination:"inspect-file",view:"messages"});setRawRequest(count=>count+1);}}>Open</button><button type="button" disabled={busy || !root} onClick={startCaptureSetup}>Receive</button><button type="button" disabled={busy || !selectedSourceRef || checkedMessages.size!==2} onClick={()=>setSelectedComparison(true)}>Compare</button><button type="button" className="primary" disabled={busy || !selectedSourceRef} onClick={()=>void createTest()}>Create test case</button><Menu className="reader-menu" trigger={<img className="workbench-icon" src={moreAsset} alt="" />} label="More case actions" items={[{label:"Configure target",onSelect:configureTargetFromSource,disabled:busy||!root},{label:"Receive setup",onSelect:()=>setReceivingSetup(true),disabled:busy||!root},...caseMenu,{label:"Receive and send selected",onSelect:()=>setExchangeUIRequest(old=>({kind:"setup",serial:(old?.serial??0)+1})),disabled:busy||!selectedSourceRef||checkedMessages.size===0},{label:"Exchange history",onSelect:()=>setExchangeUIRequest(old=>({kind:"history",serial:(old?.serial??0)+1})),disabled:busy||!selectedSourceRef},{label:"Source context",onSelect:()=>{if(selectedSourceRef)setCaptureContextSource(selectedSourceRef);},disabled:busy || !selectedSourceRef},{label:"Export selected",onSelect:()=>setSelectedExportOpen(true),disabled:busy || !selectedSourceRef || checkedMessages.size===0},{label:"Capture exports",onSelect:()=>setSourceExportsOpen(true),disabled:busy || !selectedSourceRef},{label:"Captures",onSelect:backToProject},{label:"Timeline",onSelect:()=>setView("timeline")},{label:"Findings",onSelect:()=>setView("findings")}]}/></> : subpage === "capture" ? (
+            readerLayout ? <>{route.origin?.destination==="environments"?<button type="button" disabled={busy} onClick={()=>void returnFromSetup()}>Return to target</button>:null}<button type="button" className="reader-toolbar-edition" aria-label="HL7 reference version" onClick={()=>setReaderLibraryRequest(count=>count+1)}>HL7 {inspectionResult?.inspection?.reference?.edition || inspectionResult?.inspection?.metadata.hl7_version || "not declared"}</button><button type="button" className="link reader-toolbar-reference" disabled={busy} onClick={()=>setReaderReferenceRequest(count=>count+1)}>Reference</button><span className="reader-toolbar-space"/><button type="button" disabled={busy} onClick={()=>{setSourceKind("file");open({destination:"inspect-file",view:"messages"});setRawRequest(count=>count+1);}}>Open</button><button type="button" disabled={busy || !root} onClick={startCaptureSetup}>Receive</button><button type="button" disabled={busy || !selectedSourceRef || checkedMessages.size!==2} onClick={()=>setSelectedComparison(true)}>Compare</button><button type="button" className="primary" disabled={busy || !selectedSourceRef || (checkedMessages.size === 0 && !selectedOccurrence)} onClick={()=>void createTest()}>Create test case</button><Menu className="reader-menu" trigger={<img className="workbench-icon" src={moreAsset} alt="" />} label="More case actions" items={[{label:"Configure target",onSelect:configureTargetFromSource,disabled:busy||!root},{label:"Receive setup",onSelect:()=>setReceivingSetup(true),disabled:busy||!root},...caseMenu,{label:"Receive and send selected",onSelect:()=>setExchangeUIRequest(old=>({kind:"setup",serial:(old?.serial??0)+1})),disabled:busy||!selectedSourceRef||checkedMessages.size===0},{label:"Exchange history",onSelect:()=>setExchangeUIRequest(old=>({kind:"history",serial:(old?.serial??0)+1})),disabled:busy||!selectedSourceRef},{label:"Source context",onSelect:()=>{if(selectedSourceRef)setCaptureContextSource(selectedSourceRef);},disabled:busy || !selectedSourceRef},{label:"Export selected",onSelect:()=>setSelectedExportOpen(true),disabled:busy || !selectedSourceRef || checkedMessages.size===0},{label:"Capture exports",onSelect:()=>setSourceExportsOpen(true),disabled:busy || !selectedSourceRef},{label:"Captures",onSelect:backToProject},{label:"Timeline",onSelect:()=>setView("timeline")},{label:"Findings",onSelect:()=>setView("findings")}]}/></> : subpage === "capture" ? (
               capture.actions
             ) : root && subpage === null && (!verified || captureCollection) ? (
               <>
@@ -2907,7 +2940,7 @@ export default function App() {
           {root ? (
             <ImportFlow
               open={importing}
-              seed={looseRetention}
+              seed={looseRetention?.source ?? null}
               root={root}
               context={importContext}
               drafts={drafts}
@@ -2918,8 +2951,13 @@ export default function App() {
                 void leaveImport();
               }}
               onImported={(ref,selection) => {
-                setImporting(false);setLooseRetention(null);
-                void openImportedCase(ref,selection);
+                const intent = looseRetention;
+                setImporting(false);
+                setLooseRetention(null);
+                void (async () => {
+                  const opened = await openImportedCase(ref, selection);
+                  if (opened && intent?.purpose === "test" && selection?.messages.length) await tests.startNew({ case: ref, identity: selection.identity, messages: selection.messages });
+                })();
               }}
             />
           ) : null}
@@ -3538,7 +3576,13 @@ export default function App() {
           </ul>
         </Page>
 
-        <Page id="inspect-file" shown={place === "inspect-file"} title={readerLayout ? "Messages" : fileReader.title} back={readerLayout ? undefined : <BackLink label={route.view === "messages" ? "Messages" : "Tools"} onBack={route.view === "messages" ? () => open({ destination: "messages" }) : back} />} actions={<>{readerLayout ? <><button type="button" className="reader-toolbar-edition" aria-label="HL7 reference version" onClick={fileReader.chooseReferenceVersion}>HL7 {fileReader.referenceEdition || fileReader.edition || "not declared"}</button><button type="button" className="link reader-toolbar-reference" disabled={busy} onClick={fileReader.chooseReference}>Reference</button><span className="reader-toolbar-space"/></> : null}{fileReader.actions}{readerLayout ? <><button type="button" disabled={busy || !root} onClick={startCaptureSetup}>Receive</button><button type="button" disabled title="Retain the loose file as a capture to compare messages">Compare</button><button type="button" className="primary" disabled title="Retain the loose file as a capture to create a test case">Create test case</button></> : null}{fileReader.retention ? <button type="button" className={readerLayout ? "link" : "primary"} disabled={busy} onClick={()=>{retentionStarted.current="";setLooseRetention(fileReader.retention);if(!root)go("home");}}>Retain capture</button> : null}</>}>
+        <Page id="inspect-file" shown={place === "inspect-file"} title={readerLayout ? "Messages" : fileReader.title} back={readerLayout ? undefined : <BackLink label={route.view === "messages" ? "Messages" : "Tools"} onBack={route.view === "messages" ? () => open({ destination: "messages" }) : back} />} actions={<>
+          {readerLayout ? <><button type="button" className="reader-toolbar-edition" aria-label="HL7 reference version" onClick={fileReader.chooseReferenceVersion}>HL7 {fileReader.referenceEdition || fileReader.edition || "not declared"}</button><button type="button" className="link reader-toolbar-reference" disabled={busy} onClick={fileReader.chooseReference}>Reference</button><span className="reader-toolbar-space"/></> : null}
+          {fileReader.actions}
+          {readerLayout ? <><button type="button" disabled={busy || !root} onClick={startCaptureSetup}>Receive</button><button type="button" disabled title="Retain the loose file as a capture to compare messages">Compare</button></> : null}
+          {fileReader.retention ? <button type="button" className="primary" disabled={busy || (fileReader.retention.messages.length === 0 && fileReader.retention.selected === undefined)} onClick={() => retainLooseFile("test")}>Create test case</button> : null}
+          {fileReader.retention ? <button type="button" className={readerLayout ? "link" : "primary"} disabled={busy} onClick={() => retainLooseFile("capture")}>Retain capture</button> : null}
+        </>}>
           {fileReader.body}
         </Page>
 

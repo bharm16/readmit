@@ -452,7 +452,7 @@ export function useFindings({ root, caseRef, caseName, caseEntry, identity, show
         {status?.verdict === "confirmed" && onCreateTest && analysis ? (
           <button
             type="button"
-            disabled={busy || running || !status.promotion}
+            disabled={busy || running || !analysis.current}
             onClick={() => onCreateTest(status, review?.review?.id ?? "", analysis.report_sha256, ruleName(finding.rule_id))}
           >
             Create test
