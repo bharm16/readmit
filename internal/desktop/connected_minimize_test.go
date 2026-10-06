@@ -346,6 +346,7 @@ func writeFixtureJSON(t *testing.T, root, entry string, value any) {
 }
 
 func TestApprovedConnectedLifecycleMinimizesTheFailedRunThroughTheProductionFacade(t *testing.T) {
+	parallelLifecycleTest(t)
 	app, context, run, receiver, fixture := connectedMinimizeProject(t)
 	before := receiver.connections()
 	setup := app.MinimizeSetup(desktop.RunRequest{Context: context, Run: run})
@@ -396,6 +397,7 @@ func TestApprovedConnectedLifecycleMinimizesTheFailedRunThroughTheProductionFaca
 }
 
 func TestConnectedMinimizationStopsForCleanupUncertaintyOrAChangedFailure(t *testing.T) {
+	parallelLifecycleTest(t)
 	for _, failure := range []string{"cleanup", "signature"} {
 		t.Run(failure, func(t *testing.T) {
 			app, context, run, receiver, fixture := connectedMinimizeProject(t)

@@ -24,6 +24,12 @@ test-focused:
 # and each variant asserts the same contract.
 # Start the long packages first; Go de-duplicates them from ./... so each
 # still runs once, overlapping the short packages instead of trailing them.
+# Full lifecycle runs produce gigabyte-scale file-access logs for Go's result
+# cache. Re-hashing them can take minutes after the tests finish. Keep compiler
+# caches and focused-test results, but always execute the full gate freshly.
+# A target-specific export also reaches the three recursive boundary/lab gates
+# without changing the command inventory the independent CI runner verifies.
+test: export GOFLAGS := $(GOFLAGS) -count=1
 test:
 	CGO_ENABLED=1 go test -race -short -tags readmit_nosync ./internal/connectedrun ./tests ./internal/desktop ./...
 	$(MAKE) test-boundary

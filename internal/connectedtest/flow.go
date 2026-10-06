@@ -1,6 +1,7 @@
 package connectedtest
 
 import (
+	"bytes"
 	"context"
 	"encoding/json/v2"
 	"errors"
@@ -490,6 +491,29 @@ func verifyFlowPlan(files map[string][]byte) (*FlowPlan, error) {
 		return nil, invalid
 	}
 	return rebuilt, nil
+}
+
+// VerifyUnchanged reads the complete bounded tree again and compares it with
+// this already validated plan. Identical bytes need no second compilation;
+// no disk contents are cached across checks and no changed member is accepted.
+func (p *FlowPlan) VerifyUnchanged(path string) error {
+	if p == nil {
+		return invalid
+	}
+	files, err := artifactdir.Read(path, flowFamily.Layout)
+	if err != nil {
+		return err
+	}
+	if !sealed(p.document.Schema, files) || len(files) != len(p.files)+1 {
+		return invalid
+	}
+	for name, expected := range p.files {
+		current, present := files[name]
+		if !present || !bytes.Equal(current, expected) {
+			return invalid
+		}
+	}
+	return nil
 }
 
 func validateWireReferences(w WireChecks, set assertion.Set, steps []Step) error {

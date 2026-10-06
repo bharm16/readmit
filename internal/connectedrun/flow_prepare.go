@@ -58,11 +58,16 @@ func PrepareFlow(planPath, configPath, instance string) (*PreparedFlow, error) {
 	if err != nil {
 		return nil, err
 	}
-	if plan.Document().Schema == connectedtest.FHIRFlowPlanSchema {
+	return prepareFlow(plan, planPath, configPath, instance, raw)
+}
+
+func prepareFlow(plan *connectedtest.FlowPlan, planPath, configPath, instance string, raw []byte) (*PreparedFlow, error) {
+	document := plan.Document()
+	if document.Schema == connectedtest.FHIRFlowPlanSchema {
 		return prepareFHIRFlow(plan, planPath, configPath, instance, raw)
 	}
 	var c FlowConfig
-	if json.Unmarshal(raw, &c, json.RejectUnknownMembers(true)) != nil || c.Schema != FlowConfigSchema || len(c.Phases) != len(plan.Document().Test.Phases) {
+	if json.Unmarshal(raw, &c, json.RejectUnknownMembers(true)) != nil || c.Schema != FlowConfigSchema || len(c.Phases) != len(document.Test.Phases) {
 		return nil, invalid
 	}
 	root, err := filepath.Abs(filepath.Dir(configPath))
@@ -91,7 +96,7 @@ func PrepareFlow(planPath, configPath, instance string) (*PreparedFlow, error) {
 	if err = p.prepareTransitions(); err != nil {
 		return nil, err
 	}
-	for _, phase := range plan.Document().Test.Phases {
+	for _, phase := range document.Test.Phases {
 		config, ok := c.Phases[phase.ID]
 		if !ok {
 			return nil, invalid
@@ -105,7 +110,7 @@ func PrepareFlow(planPath, configPath, instance string) (*PreparedFlow, error) {
 		child.store = p.store
 		p.phases[phase.ID] = child
 	}
-	if plan.Document().Test.Boundary == "application-state" {
+	if document.Test.Boundary == "application-state" {
 		business := false
 		for _, child := range p.phases {
 			for _, source := range child.sources {
@@ -203,8 +208,11 @@ func (p *PreparedFlow) unchanged() error {
 	if err != nil || !bytes.Equal(raw, p.raw) {
 		return invalid
 	}
-	fresh, err := PrepareFlow(p.planPath, p.configPath, p.instance)
-	if err != nil || fresh.plan.Identity() != p.plan.Identity() || fresh.isolation.Identity() != p.isolation.Identity() {
+	if p.plan.VerifyUnchanged(p.planPath) != nil {
+		return invalid
+	}
+	fresh, err := prepareFlow(p.plan, p.planPath, p.configPath, p.instance, raw)
+	if err != nil || fresh.isolation.Identity() != p.isolation.Identity() {
 		return invalid
 	}
 	a, _ := json.Marshal(p.Bindings(), json.Deterministic(true))

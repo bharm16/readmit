@@ -11,6 +11,7 @@ import (
 )
 
 func TestConnectedReportAssemblesActualRunAndPreservesEvidenceIdentity(t *testing.T) {
+	parallelLifecycleTest(t)
 	f := newConnectedAuthoring(t)
 	f.engine.SetMode("fixed")
 	test := f.save(t, "Actual connected report", "actual-connected-report", f.reschedule(), f.v2.ID)
@@ -109,6 +110,7 @@ func TestConnectedReportAssemblesActualRunAndPreservesEvidenceIdentity(t *testin
 }
 
 func TestConnectedReportSummaryPinsActualTestAndLeavesCopiedRunUnlinked(t *testing.T) {
+	parallelLifecycleTest(t)
 	f := newConnectedAuthoring(t)
 	f.engine.SetMode("fixed")
 	test := f.save(t, "Exact report association", "report-association-test", f.reschedule(), f.v2.ID)

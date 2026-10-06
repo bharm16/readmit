@@ -27,6 +27,7 @@ func connectedHandoff(output string) desktop.CIHandoffRequest {
 }
 
 func TestConnectedCompletionErrorRemainsIncompleteInCoverageAndRunDetail(t *testing.T) {
+	parallelLifecycleTest(t)
 	h, document := desktopConnectedFixture(t)
 	path, output := filepath.Join(h.Root, "suite.json"), filepath.Join(h.Root, "completion-error")
 	connectedlab.WriteJSON(t, path, document)
@@ -105,6 +106,7 @@ func TestConnectedReviewFixHostedGatedHandoffsUseYAMLSpaces(t *testing.T) {
 }
 
 func TestConnectedGateFacadeReverifiesActualSnapshotOffline(t *testing.T) {
+	parallelLifecycleTest(t)
 	h, document := desktopConnectedFixture(t)
 	path := filepath.Join(h.Root, "suite.json")
 	connectedlab.WriteJSON(t, path, document)

@@ -12,6 +12,7 @@ import (
 )
 
 func TestConnectedHistoryComparesExplicitRetainedRolesOffline(t *testing.T) {
+	parallelLifecycleTest(t)
 	f := newConnectedAuthoring(t)
 	test := f.save(t, "Actual connected history", "connected-history", f.reschedule(), f.v2.ID)
 	runs := []desktop.ItemRef{}
@@ -145,6 +146,7 @@ func TestLegacyNormalRunSummaryPinsOriginalAndCopiedResultRemainsUnlinked(t *tes
 }
 
 func TestConnectedRunOriginKeepsLegacyMembershipAndRefusesUnboundSourcePins(t *testing.T) {
+	parallelLifecycleTest(t)
 	f := newConnectedAuthoring(t)
 	f.engine.SetMode("fixed")
 	test := f.save(t, "Versioned history origin", "origin-versions", f.reschedule(), f.v2.ID)

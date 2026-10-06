@@ -107,6 +107,7 @@ func TestSavedReceivedHL7TestCompilesOnlyExplicitSupportedRuntimeScope(t *testin
 }
 
 func TestSavedReceivedHL7NormalRunArmsBeforeStimulusAndRetainsActualScopedChecks(t *testing.T) {
+	parallelLifecycleTest(t)
 	f := newConnectedAuthoring(t)
 	sink, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

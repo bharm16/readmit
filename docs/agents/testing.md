@@ -10,7 +10,14 @@ the other change's contracts, fixtures and registrations during integration.
 Run `make test-focused PKGS='./internal/example ./internal/caller' ARGS='-run TestName'`
 at the affected behavior and its callers. Widen the selection when a shared
 contract changes. Go test compilation checks types; `make check` verifies the
-compiler, formatting and vet. Keep successful local test caches available.
+compiler, formatting and vet. Keep compiler caches and successful focused-test
+result caches available. The full `make test` gate sets `GOFLAGS=-count=1`
+(after any existing flags) to avoid recording and hashing lifecycle file-access
+logs that can exceed a gigabyte. It still runs every package and boundary/lab
+gate; `make test-focused` retains normal result caching.
+For the complete desktop package on its own, use
+`make test-focused PKGS='./internal/desktop' ARGS='-count=1'` to avoid the same
+large result-cache log. A narrow `-run TestName` selection can keep its cache.
 `make test` and `make test-focused` build with the `readmit_nosync` tag, which
 skips `internal/artifactdir`'s device flush of real files; a hand-run
 `go test` without it is correct but much slower. A release never carries it.
@@ -250,6 +257,22 @@ invocation keeps its own state and files. The independent gate, schedule,
 scenario-library and collector tests can run in parallel; tests that change
 process globals or measure process-wide allocation remain serial.
 
+The expensive desktop lifecycle, report and scenario tests use
+`parallelLifecycleTest`: Go schedules them in parallel, with at most four
+holding fixture resources at once. Each owns its project, app state, listeners
+and providers, and releases its slot after fixture cleanup. The scenario parent
+holds no slot; its family subtests each take one. Tight deadline tests and the
+database acquisition tests stay serial. Independent catalog, message-window,
+report-share and saved-suite tests also run in parallel over private fixtures.
+CI's existing `-parallel=2` remains the stricter limit there. Do not increase
+acquisition deadlines to accommodate more test workers.
+
+Connected execution checks every retained plan member and its seal again at
+each unchanged-input boundary. Once those bytes match the already compiled
+plan, it reuses that compilation while rebuilding runtime configuration from
+fresh reads. This avoids repeated parsing without caching disk validity or
+authority across checks.
+
 The secret-provider test helpers re-execute the race-instrumented test binary.
 Their locators set `GORACE=atexit_sleep_ms=0` for child processes (preserving
 other options), because these synchronous helpers have no background work to
@@ -369,7 +392,7 @@ admits four other race packages with two parallel tests each. The full lab
 pass admits two packages with two parallel tests each. This bounds contention
 around real acquisition deadlines without serializing the remaining short
 packages or changing deadlines and assertions. Local `make test`
-stays whole and retains its existing test-result cache. CI uses `-count=1`
+stays whole and, like CI, disables test-result caching. CI uses `-count=1`
 to avoid recording and re-hashing the lifecycle tests' large file-access logs
 for result caching; compiler/build caches remain enabled.
 
