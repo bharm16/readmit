@@ -26,7 +26,7 @@ type FlowAnalysis struct {
 // verdict. The fixed-version readers preserve original operator semantics; an
 // unsupported or inconsistent historical artifact is refused, never rewritten.
 func ReanalyzeFlow(ctx context.Context, path string) (FlowAnalysis, error) {
-	files, err := artifactdir.Read(path, flowResultFamily.Layout)
+	files, err := readFlowFiles(path)
 	if err != nil {
 		return FlowAnalysis{}, err
 	}

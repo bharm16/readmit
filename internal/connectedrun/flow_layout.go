@@ -24,6 +24,10 @@ const (
 	AreaSetup Area = "setup"
 	// AreaPhase is phases/<id>/..., refined by Sub.
 	AreaPhase Area = "phase"
+	// AreaRuntimeInputs is originals/<id>/... or derivations/<id>/....
+	// Reproducer manifests also contain old and new HL7 field bytes, so this
+	// entire area needs the same disclosure treatment as retained HL7 bytes.
+	AreaRuntimeInputs Area = "runtime-inputs"
 	// AreaOther is anything else.
 	AreaOther Area = "other"
 )
@@ -50,7 +54,7 @@ const (
 // subdirectories; each consumer combines them with Sub for its own answer.
 type Location struct {
 	Area Area
-	// Phase is the phase id when Area is AreaPhase.
+	// Phase is the phase id when Area is AreaPhase or AreaRuntimeInputs.
 	Phase string
 	// Sub refines the phase directory when Area is AreaPhase.
 	Sub PhaseArea
@@ -66,7 +70,26 @@ type Location struct {
 
 // Locate maps a lifecycle-relative path to its retained location.
 func Locate(rel string) Location {
+	// The versioned runtime envelope owns one ordinary child lifecycle. Its
+	// nested paths keep the existing classification after removing that root.
+	rel = strings.TrimPrefix(rel, "execution/")
+	if strings.HasPrefix(rel, "template/") {
+		rel = "plan/" + strings.TrimPrefix(rel, "template/")
+	}
+	for _, prefix := range []string{"originals/", "derivations/"} {
+		if strings.HasPrefix(rel, prefix) {
+			phase, rest, found := strings.Cut(strings.TrimPrefix(rel, prefix), "/")
+			if !found || phase == "" || rest == "" {
+				return Location{Area: AreaOther}
+			}
+			return Location{Area: AreaRuntimeInputs, Phase: phase, Binary: strings.HasSuffix(rest, ".bin")}
+		}
+	}
 	switch {
+	case rel == "configuration.json" || rel == "execution-configuration.json" || rel == "input.json" || rel == "execution-input.json" || rel == "actions.json" || rel == "derivation.json":
+		return Location{Area: AreaPlan}
+	case rel == "registry.json":
+		return Location{Area: AreaSetup}
 	case rel == "identity.sha256":
 		return Location{Area: AreaSeal}
 	case rel == "manifest.json" || rel == "started.json" || strings.HasPrefix(rel, "phase-") || strings.HasPrefix(rel, "intents/"):

@@ -62,7 +62,7 @@ type ValidatorRun struct {
 // OpenFlowEvidence verifies a retained lifecycle exactly as OpenFlow does and
 // then answers the evidence behind its verdicts. It never repeats a request.
 func OpenFlowEvidence(ctx context.Context, path string) (FlowEvidence, error) {
-	files, err := artifactdir.Read(path, flowResultFamily.Layout)
+	files, err := readFlowFiles(path)
 	if err != nil {
 		return FlowEvidence{}, err
 	}
@@ -72,13 +72,26 @@ func OpenFlowEvidence(ctx context.Context, path string) (FlowEvidence, error) {
 // VerifyFlowEvidence owns one captured lifecycle snapshot. Its plans, phases,
 // evaluations and final tables are verified without reopening any directory.
 func VerifyFlowEvidence(ctx context.Context, captured map[string][]byte) (FlowEvidence, error) {
-	files, err := artifactdir.Snapshot(captured, flowResultFamily.Layout)
+	files, err := artifactdir.Snapshot(captured, runtimeLayout(captured))
 	if err != nil {
 		return FlowEvidence{}, err
 	}
 	return verifyFlowEvidence(ctx, "retained-lifecycle", files)
 }
 func verifyFlowEvidence(ctx context.Context, path string, files map[string][]byte) (FlowEvidence, error) {
+	if runtimeHeader(files["started.json"]) {
+		result, err := openRuntimeFlowFiles(ctx, path, files, false)
+		if err != nil {
+			return FlowEvidence{}, err
+		}
+		evidence, err := verifyFlowEvidence(ctx, filepath.Join(path, "execution"), artifactdir.Subtree(files, "execution"))
+		if err != nil {
+			return FlowEvidence{}, err
+		}
+		evidence.Result, evidence.Identity = result, artifactdir.Identity(RuntimeFlowSchema, files)
+		evidence.Plan, err = connectedtest.VerifyFlowPlan(artifactdir.Subtree(files, "template"))
+		return evidence, err
+	}
 	r, err := openFlowFiles(ctx, path, files)
 	if err != nil {
 		return FlowEvidence{}, err

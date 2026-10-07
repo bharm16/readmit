@@ -297,6 +297,16 @@ export function SendReview({
   const transport = run?.lifecycle?.transport;
   const transportLabel = transport === "mtls" ? "MLLP · Mutual TLS" : transport === "tls" ? "MLLP · TLS" : transport === "plain" ? "MLLP · Plain" : null;
   if (transportLabel) rows.push({ label: "Transport", value: transportLabel });
+  for (const collector of run?.lifecycle?.collectors ?? []) {
+    const capture = collector.capture;
+    if (!capture) continue;
+    const mode = capture.transport === "mutual-tls" ? "Mutual TLS" : capture.transport === "tls" ? "TLS" : "Plain MLLP";
+    rows.push({ label: "Receive listener", value: <span>
+      <span>{capture.name} · v{capture.revision} · {collector.address}</span><br />
+      <span>{mode} · {capture.remote ? "Remote bind approved" : "Loopback only"}</span><br />
+      <span>{collector.credential ? `Key credential: ${collector.credential} · v${collector.generation} · ` : ""}Full interval: {collector.horizon_ms.toLocaleString()} ms</span>
+    </span> });
+  }
   const sent = messageRow();
   if (sent) rows.push(sent);
   if (run?.kind === "suite") {

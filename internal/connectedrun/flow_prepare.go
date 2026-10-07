@@ -8,6 +8,7 @@ import (
 	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/connectedtest"
+	"github.com/bharm16/readmit/internal/connectedtransport"
 	"github.com/bharm16/readmit/internal/networkaction"
 	"github.com/bharm16/readmit/internal/testisolation"
 )
@@ -32,6 +33,7 @@ type FlowConfig struct {
 	Seed          uint64              `json:"seed"`
 }
 type PreparedFlow struct {
+	runtime                        *runtimeFlow
 	store                          *RecoveryStore
 	transitions                    *testisolation.TransitionPrepared
 	plan                           *connectedtest.FlowPlan
@@ -62,6 +64,13 @@ func PrepareFlow(planPath, configPath, instance string) (*PreparedFlow, error) {
 }
 
 func prepareFlow(plan *connectedtest.FlowPlan, planPath, configPath, instance string, raw []byte) (*PreparedFlow, error) {
+	if plan.RuntimeScoped() {
+		return prepareRuntimeFlow(plan, planPath, configPath, instance, raw)
+	}
+	return prepareFlowSelection(plan, planPath, configPath, instance, raw, nil)
+}
+
+func prepareFlowSelection(plan *connectedtest.FlowPlan, planPath, configPath, instance string, raw []byte, transports map[string]*connectedtransport.Prepared) (*PreparedFlow, error) {
 	document := plan.Document()
 	if document.Schema == connectedtest.FHIRFlowPlanSchema {
 		return prepareFHIRFlow(plan, planPath, configPath, instance, raw)
@@ -102,7 +111,7 @@ func prepareFlow(plan *connectedtest.FlowPlan, planPath, configPath, instance st
 			return nil, invalid
 		}
 		childRaw, _ := json.Marshal(config, json.Deterministic(true))
-		child, err := prepareIntervalMode(filepath.Join(planPath, "phases", phase.ID), configPath, plan.Phase(phase.ID), childRaw, true, plan.Schedule(phase.ID))
+		child, err := prepareIntervalTransport(filepath.Join(planPath, "phases", phase.ID), configPath, plan.Phase(phase.ID), childRaw, true, plan.Schedule(phase.ID), transports[phase.ID])
 		if err != nil {
 			return nil, err
 		}
@@ -204,6 +213,9 @@ func (p *PreparedFlow) authorities() testisolation.Authorities {
 	return testisolation.Authorities{Read: storeAuthority{p.selection.Read.authority(), p.store}, Setup: storeAuthority{p.selection.Setup.authority(), p.store}, Cleanup: storeAuthority{p.selection.Cleanup.authority(), p.store}}
 }
 func (p *PreparedFlow) unchanged() error {
+	if p.runtime != nil {
+		return p.runtime.unchanged(p)
+	}
 	raw, err := (artifactdir.Document{MaxBytes: 2 << 20}).Read(p.configPath)
 	if err != nil || !bytes.Equal(raw, p.raw) {
 		return invalid

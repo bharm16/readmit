@@ -107,9 +107,13 @@ It does not establish external system or release qualification for #589/#593.
 
 ## Received HL7 in a connected v2 test
 
-A live received-HL7 observation selects an exact saved plain loopback MLLP
-listener, a typed HL7 projection, an after-phase stream and full-horizon
-completion. Its marker selector must equal the explicitly selected
+A live received-HL7 observation selects an exact saved MLLP listener, a typed
+HL7 projection, an after-phase stream and full-horizon completion. Plain MLLP,
+verified TLS and mutual TLS use the same capture executor. A remote listener
+requires the Source editor's explicit **Allow remote connections** approval and
+one concrete IP address and fixed port; wildcard and DNS binds are not compiled
+by this saved-test path. Its exact bind rule has the separate `capture-listen`
+purpose. Outbound environment approval alone cannot open it. Its marker selector must equal the explicitly selected
 `runtime_marker_selector` of every v2 stimulus in that phase. The input and output occurrence identity selectors are separately authored.
 Compilation reads the exact unique identities of each phase's intended inputs.
 Output must carry one of those identities; duplicate outputs make scope ambiguous.
@@ -134,8 +138,24 @@ completion and isolation cleanup. The explicit
 identity and the retained stimulus-started IO checkpoint. Pre-stimulus output,
 wrong markers, unreadable keys and duplicate output identities cannot satisfy
 an assertion. Original excluded occurrences remain in the supporting capture.
-Version 1 source interpretation remains unchanged. A fresh local marker is a
+New remote/TLS selections use `readmit-live-capture-source/v3`. It retains the
+selected listener/responder revision files, public certificate/trust identities
+and the selected purpose/address-scoped key reference and generation. Preparation
+and every capture effect recheck these public inputs; only the capture executor
+resolves the private key after admission. Unrelated registered credentials do not
+change the selected reference. Public certificate fields reject private-key PEM
+before an observation is saved. Offline readers never follow original host paths.
+Versions 1 and 2 retain their original interpretation. A fresh local marker is a
 scope contract, not external authentication or proof of unique causation.
+
+The Run review separates the receive listener from outbound transport, showing
+its saved name/revision, actual bind address, TLS mode, remote-bind approval,
+key reference/generation and full interval. Named runner suites use the
+[versioned runtime-capture contract](connected-runtime-capture.md): an approved
+immutable template derives only the selected marker field for the runner's
+owned occurrence/job identity, through the same reproducer and lifecycle.
+The original inputs, derived bytes and actual child execution remain independently
+verifiable; another occurrence cannot borrow that derivation.
 
 The existing run result shows actual check values and scope/completion reasons.
 View retained observation pages the verified projected records and their

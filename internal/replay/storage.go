@@ -140,7 +140,7 @@ func checkDestination(plan *Plan, path string) (string, error) {
 		return "", err
 	}
 	source, err := bundle.Open(plan.sourcePath)
-	if err != nil || source.Identity != plan.sourceIdentity {
+	if err != nil || source.Identity != plan.sourceDiskIdentity {
 		return "", errors.New("source bundle changed after replay preparation")
 	}
 	return resolved, nil

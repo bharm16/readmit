@@ -42,6 +42,7 @@ services:
       - ${LAB_STATE:?generated lab state required}/secrets/engine:/run/lab:ro
       - ${LAB_STATE}/channels:/lab-channels
       - engine:/opt/engine/appdata
+      - ${LAB_STATE}/session-evidence:/session-evidence
     ports:
       - 127.0.0.1::6661
       - 127.0.0.1::6662

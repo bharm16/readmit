@@ -88,6 +88,20 @@ The identifiers inside are fictional: `APPT-EXAMPLE-1` and the lab systems
 
 Change any imported value afterwards through the object's own Edit sheet.
 
+The shipped v2-capture example explicitly selects TLS for both the engine input
+and the return listener. Those are independent transports: the owned OIE lab
+session uses an approved **plain loopback** engine input and may use a private
+TLS or mutual-TLS return listener. Reconcile the saved environment with the
+session's actual `connection.json.mllp` values; do not treat the template's TLS
+input as compatible with that plain input. Edit the named source to the selected
+return transport and its actual certificate/client trust configuration, then
+select that source in the saved connected test's received-HL7 observation.
+The legacy example's `observation.json` still describes a previously captured
+case; it does not itself arm a live listener. The saved-test path owns arming,
+receive authority, full intervals and retained engine-output evaluation. See
+[the recorded private OIE return path](independent-integration-lab.md#return-actual-oie-output-to-a-saved-capture-listener).
+
+
 ### Where the examples are executed
 
 | Example | Executed by | Against |
@@ -165,8 +179,11 @@ The actual qualification matrix is finite:
 - Databases: the exact PostgreSQL 16.15, 17.11, 18.6 and SQL Server 2019, 2022
   and 2025 cells in the [support matrix](support-matrix.md). Oracle 26ai Free
   and 19c remain unqualified; a driver compiling is not certification.
-- Engines: the finite source-only Mirth Connect 4.5.2 and Open Integration
-  Engine 4.6.0 export subset. No live engine connection is made.
+- Engine import: the finite source-only Mirth Connect 4.5.2 and Open Integration
+  Engine 4.6.0 export subset; the importer makes no live engine connection.
+  Separate opt-in owned reference sessions exercise actual OIE channel execution
+  at the explicitly documented v2/FHIR and private capture boundaries. These
+  finite local routes do not qualify arbitrary customer engine configurations.
 - Local validator: one cell, linux/arm64 Docker Engine 29.8 (see below).
 
 ## The optional local validator

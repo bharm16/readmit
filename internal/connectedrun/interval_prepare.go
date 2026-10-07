@@ -31,6 +31,10 @@ func prepareInterval(planPath, configPath string, plan *connectedtest.Plan, raw 
 // prepareIntervalMode prepares a standalone interval plan or, with sequence, a
 // lifecycle phase; schedule is a scheduled lifecycle phase's delays.
 func prepareIntervalMode(planPath, configPath string, plan *connectedtest.Plan, raw []byte, sequence bool, schedule []time.Duration) (*Prepared, error) {
+	return prepareIntervalTransport(planPath, configPath, plan, raw, sequence, schedule, nil)
+}
+
+func prepareIntervalTransport(planPath, configPath string, plan *connectedtest.Plan, raw []byte, sequence bool, schedule []time.Duration, derived *connectedtransport.Prepared) (*Prepared, error) {
 	var c ConfigV2
 	schema := connectedtest.PlanSchemaV3
 	if sequence {
@@ -53,7 +57,12 @@ func prepareIntervalMode(planPath, configPath string, plan *connectedtest.Plan, 
 	config.Send.Path = anchor(config.Send.Path)
 	selection := connectedtransport.Selection{Case: anchor(config.Case), Target: anchor(config.Target), Policy: anchor(config.Policy), Credential: anchor(config.Credential)}
 	var transport *connectedtransport.Prepared
-	if sequence && schedule != nil {
+	if derived != nil {
+		if !sequence || schedule != nil {
+			return nil, invalid
+		}
+		transport = derived
+	} else if sequence && schedule != nil {
 		transport, err = connectedtransport.PrepareScheduled(plan, selection, schedule)
 	} else if sequence {
 		transport, err = connectedtransport.PrepareSequence(plan, selection)
@@ -98,7 +107,7 @@ func prepareIntervalMode(planPath, configPath string, plan *connectedtest.Plan, 
 			return nil, invalid
 		}
 		var item sourcePlan
-		if head.Schema == observeinterval.CaptureSourceSchema || head.Schema == observeinterval.CaptureSourceSchemaV2 {
+		if head.Schema == observeinterval.CaptureSourceSchema || head.Schema == observeinterval.CaptureSourceSchemaV2 || head.Schema == observeinterval.CaptureSourceSchemaV3 {
 			if d.Phase != "after" || projection.Format != "hl7" || definition.Mode != "stream" || dataset.Digest(sourceRaw) != d.Source || selected.Grant == nil || selected.CredentialGeneration != "" {
 				return nil, invalid
 			}

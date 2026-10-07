@@ -49,7 +49,7 @@ def initialize(path):
     run(["docker", "build", "-f", str(LAB / "Dockerfile.fixture"), "-t", "readmit-lab-fixture:1", str(LAB)])
     run(["docker", "run", "--rm", "--network", "none", "-v", str(HERE) + ":/lab:ro", "-v", str(path) + ":/state", "readmit-lab-fixture:1", "python", "-c", "from independent_lab.security import provision; provision('/state/secrets')"])
     root = path / "secrets"
-    subsets = {"engine": ["ca.pem", "engine.p12", "keystore-password", "engine-client-key.pem"], "fixture": ["ca.pem", "fixture.pem", "fixture-key.pem", "issuer-key.pem", "issuer-public.pem", "clients.json"], "clients": ["ca.pem", "setup-key.pem", "observer-key.pem", "tls-client.pem", "tls-client-key.pem", "engine-admin-password"]}
+    subsets = {"engine": ["ca.pem", "engine.p12", "keystore-password", "engine-client-key.pem", "return-client.p12"], "fixture": ["ca.pem", "fixture.pem", "fixture-key.pem", "issuer-key.pem", "issuer-public.pem", "clients.json"], "clients": ["ca.pem", "setup-key.pem", "observer-key.pem", "tls-client.pem", "tls-client-key.pem", "engine-admin-password", "return-server.pem", "return-server-key.pem", "return-client.pem", "return-client-key.pem"]}
     for group, names in subsets.items():
         destination = root / group
         destination.mkdir(mode=0o700)
@@ -125,6 +125,11 @@ def main():
     parser.add_argument("state", type=Path)
     parser.add_argument("--generation")
     parser.add_argument("--mode", choices=["positive", "defective", "corrected", "reintroduced"], default="positive")
+    parser.add_argument("--route", choices=["v2fhir", "v2v2"])
+    parser.add_argument("--defect", choices=["duplicate", "field"])
+    parser.add_argument("--return-host")
+    parser.add_argument("--return-port", type=int)
+    parser.add_argument("--return-transport", choices=["plain", "tls", "mutual-tls"])
     args = parser.parse_args()
     if args.action == "session-verify":
         session.verify_export(args.state.resolve())
@@ -132,7 +137,7 @@ def main():
         return
     if args.action.startswith("session-"):
         import sys
-        return session.host(args.action[8:], args.state, args.generation, args.mode, sys.modules[__name__])
+        return session.host(args.action[8:], args.state, args.generation, args.mode, sys.modules[__name__], route=args.route, defect=args.defect, return_host=args.return_host, return_port=args.return_port, return_transport=args.return_transport)
     if args.action in ("up", "qualify", "down"):
         state, _ = owner(args.state)
         with session.controller(state):

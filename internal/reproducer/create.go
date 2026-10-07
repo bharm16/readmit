@@ -1,11 +1,11 @@
 package reproducer
 
 import (
+	"context"
 	"encoding/json/v2"
 	"errors"
 	"os"
 	"path/filepath"
-	"slices"
 
 	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
@@ -44,12 +44,9 @@ var family = artifactdir.Family{
 // behind by an interrupted write has no manifest and is refused rather than
 // read as a finished reproducer.
 func Create(source *bundle.Bundle, casePath string, plan Plan, output string) (*Manifest, error) {
-	resolved, err := resolve(source, plan)
+	prepared, err := prepareSource(source, plan)
 	if err != nil {
 		return nil, err
-	}
-	if len(resolved.retained) == 0 {
-		return nil, errors.New("a reproducer retains at least one occurrence")
 	}
 	original, err := os.Stat(casePath)
 	if err != nil {
@@ -62,52 +59,9 @@ func Create(source *bundle.Bundle, casePath string, plan Plan, output string) (*
 	if _, err := os.Lstat(destination); !os.IsNotExist(err) {
 		return nil, errors.New("reproducer destination must be new")
 	}
-	inputs, err := inputsFor(source, resolved)
-	if err != nil {
+	if err := prepared.Write(context.Background(), destination); err != nil {
 		return nil, err
 	}
-	written, err := artifactdir.Create(destination, family, artifactdir.Durable)
-	if err != nil {
-		return nil, err
-	}
-	defer written.Close()
-	derived, err := bundle.Write(filepath.Join(destination, CaseName), inputs, bundle.Provenance{Mode: bundle.Derived, Derivation: Derivation})
-	if err != nil {
-		return nil, err
-	}
-	if len(derived.Events) != len(resolved.retained) {
-		return nil, errors.New("the derived case does not hold the occurrences this reproducer retained")
-	}
-	manifest := Manifest{
-		Schema:      ManifestSchema,
-		Parent:      Artifact{Schema: source.Manifest.Schema, Identity: source.Identity},
-		Derived:     Artifact{Schema: derived.Manifest.Schema, Identity: derived.Identity},
-		Plan:        plan,
-		Occurrences: slices.Clone(resolved.resolution.Occurrences),
-		Edits:       slices.Clone(resolved.resolution.Edits),
-		Unresolved:  resolved.resolution.Unresolved,
-	}
-	assigned := make(map[string]string, len(resolved.retained))
-	for i, parent := range resolved.retained {
-		assigned[parent] = derived.Events[i].ID
-		manifest.Occurrences[i].Derived = derived.Events[i].ID
-	}
-	for i := range manifest.Edits {
-		manifest.Edits[i].Derived = assigned[manifest.Edits[i].Parent]
-	}
-	document, err := encode(manifest)
-	if err != nil {
-		return nil, errors.New("cannot record this transformation")
-	}
-	// The case synced its own entry here. The manifest's entry and the
-	// reproducer's own entry in the folder holding it are synced before it is
-	// reported; every file is by then, so a failure leaves a reproducer that
-	// may open and says so.
-	if _, err := written.Seal(document); err != nil {
-		return nil, err
-	}
-	// The reproducer is reported from what was actually written, so a manifest
-	// this release cannot read back is a failed build rather than a result.
 	return Open(destination)
 }
 

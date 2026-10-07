@@ -68,3 +68,32 @@ func TestLocateMapsEveryPartOfTheRetainedLayout(t *testing.T) {
 		t.Errorf("validation dir: %q", got)
 	}
 }
+
+func TestLocateMapsRuntimeEvidenceWithoutLosingOriginalHL7Disclosure(t *testing.T) {
+	for rel, want := range map[string]connectedrun.Location{
+		"execution/identity.sha256":                                              {Area: connectedrun.AreaSeal},
+		"execution/phases/book/transport/run/payloads/o000001-sent.bin":          {Area: connectedrun.AreaPhase, Phase: "book", Sub: connectedrun.PhaseTransport, Binary: true},
+		"execution/phases/book/intervals/received/samples/one/dataset/rows.json": {Area: connectedrun.AreaPhase, Phase: "book", Sub: connectedrun.PhaseIntervals, Samples: true, Dataset: true},
+		"template/test.json":                               {Area: connectedrun.AreaPlan},
+		"template/dependencies/checks":                     {Area: connectedrun.AreaPlanDeps},
+		"configuration.json":                               {Area: connectedrun.AreaPlan},
+		"execution-configuration.json":                     {Area: connectedrun.AreaPlan},
+		"input.json":                                       {Area: connectedrun.AreaPlan},
+		"execution-input.json":                             {Area: connectedrun.AreaPlan},
+		"actions.json":                                     {Area: connectedrun.AreaPlan},
+		"derivation.json":                                  {Area: connectedrun.AreaPlan},
+		"registry.json":                                    {Area: connectedrun.AreaSetup},
+		"originals/book/payloads/s0001-e000001.bin":        {Area: connectedrun.Area("runtime-inputs"), Phase: "book", Binary: true},
+		"originals/book/events.jsonl":                      {Area: connectedrun.Area("runtime-inputs"), Phase: "book"},
+		"derivations/book/manifest.json":                   {Area: connectedrun.Area("runtime-inputs"), Phase: "book"},
+		"derivations/book/case/payloads/s0001-e000001.bin": {Area: connectedrun.Area("runtime-inputs"), Phase: "book", Binary: true},
+		"execution":                                        {Area: connectedrun.AreaOther},
+		"template":                                         {Area: connectedrun.AreaOther},
+		"originals/book":                                   {Area: connectedrun.AreaOther},
+		"derivations":                                      {Area: connectedrun.AreaOther},
+	} {
+		if got := connectedrun.Locate(rel); !reflect.DeepEqual(got, want) {
+			t.Errorf("%s: %+v, want %+v", rel, got, want)
+		}
+	}
+}

@@ -1,0 +1,17 @@
+{
+  "schema": "readmit-remote-capture-archive/v1",
+  "archive": "remote-capture-20261007.tar.gz",
+  "bytes": 2254324,
+  "sha256": "699889fda21a51fd2939fe47b42adbfb44e4c286db959351ead13bbfb71c2b72",
+  "members": 7213,
+  "unique_regular_files": 1061,
+  "no_symlinks": true,
+  "hardlinks_target_prior_regular_members": true,
+  "byte_manifests_verified_after_extraction": true,
+  "credential_scan_passed": true,
+  "original_session_members_unchanged_after_report_test": true,
+  "authoritative_six_flow_reports_from_extracted_hardlinked_archive": "passed",
+  "report_test": "TestSavedConnectedCaptureRetainedReports",
+  "report_log_sha256": "45f83c2a20dbe97ab674582c24e83059b75361f0265e54a4e32f98b5c5430033",
+  "public_certificates_only_in_verifier_state": true
+}

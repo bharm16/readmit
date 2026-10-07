@@ -16,13 +16,16 @@ import (
 // OpenFlow replays only retained readers and the existing evaluators. Nothing
 // in a stored run is live authority, setup consent, or permission to resume.
 func OpenFlow(ctx context.Context, path string) (FlowResult, error) {
-	files, err := artifactdir.Read(path, flowResultFamily.Layout)
+	files, err := readFlowFiles(path)
 	if err != nil {
 		return FlowResult{}, err
 	}
 	return openFlowFiles(ctx, path, files)
 }
 func openFlowFiles(ctx context.Context, path string, files map[string][]byte) (FlowResult, error) {
+	if runtimeHeader(files["started.json"]) {
+		return openRuntimeFlowFiles(ctx, path, files, false)
+	}
 	var err error
 	var r, start FlowResult
 	if json.Unmarshal(files["manifest.json"], &r, json.RejectUnknownMembers(true)) != nil || json.Unmarshal(files["started.json"], &start, json.RejectUnknownMembers(true)) != nil || r.Schema != FlowSchema && r.Schema != FlowSchemaV4 || !safeID(r.Instance) || r.StartedAt.IsZero() || r.CompletedAt.Before(r.StartedAt) {

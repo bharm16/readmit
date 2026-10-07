@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
+	"net"
 	"os"
 	"path/filepath"
 	"slices"
@@ -24,14 +25,21 @@ type ConnectedDerivedInputReview struct {
 	Value    string `json:"value"`
 }
 type ConnectedRunCollectorReview struct {
-	Phase      string `json:"phase"`
-	Dataset    string `json:"dataset"`
-	Kind       string `json:"kind"`
-	Address    string `json:"address,omitzero"`
-	Credential string `json:"credential,omitzero"`
-	Generation string `json:"generation,omitzero"`
-	HorizonMS  int64  `json:"horizon_ms"`
-	Meaning    string `json:"meaning"`
+	Capture    *ConnectedCaptureReview `json:"capture,omitzero"`
+	Phase      string                  `json:"phase"`
+	Dataset    string                  `json:"dataset"`
+	Kind       string                  `json:"kind"`
+	Address    string                  `json:"address,omitzero"`
+	Credential string                  `json:"credential,omitzero"`
+	Generation string                  `json:"generation,omitzero"`
+	HorizonMS  int64                   `json:"horizon_ms"`
+	Meaning    string                  `json:"meaning"`
+}
+type ConnectedCaptureReview struct {
+	Name      string            `json:"name"`
+	Revision  string            `json:"revision"`
+	Transport ListenerTransport `json:"transport"`
+	Remote    bool              `json:"remote"`
 }
 type ConnectedRunReview struct {
 	Transport             string                        `json:"transport,omitzero"`
@@ -164,6 +172,27 @@ func bindConnectedTestRun(a *App, ctx context.Context, request PrepareActionRequ
 		for _, observation := range phase.Observations {
 			if read, err := loaded.connectedObservation(observation.Observation.ID, observation.Observation.Revision); err == nil {
 				view := ConnectedRunCollectorReview{Phase: phase.ID, Dataset: observation.Dataset, Kind: read.kind, HorizonMS: read.definition.HorizonMS, Meaning: "Observed samples over the declared horizon; this does not establish upstream freshness"}
+				if capture := read.capture; capture != nil {
+					index := loaded.document.Find(read.setup.Capture.Source.ID)
+					name := loaded.read(loaded.document.Items[index]).Name
+					host, _, _ := net.SplitHostPort(capture.Address)
+					transport := PlainTransport
+					if capture.PrivateKey != nil {
+						transport = TLSTransport
+						view.Generation = capture.PrivateKey.Generation
+					}
+					if len(capture.Authorities) > 0 {
+						transport = MutualTLSTransport
+					}
+					for _, input := range capture.Inputs {
+						if input.Role == "credential" {
+							view.Credential = input.Credential
+						}
+					}
+					view.Address = capture.Address
+					view.Capture = &ConnectedCaptureReview{Name: name, Revision: read.setup.Capture.Source.Revision, Transport: transport, Remote: !net.ParseIP(host).IsLoopback()}
+					view.Meaning = "Received engine output over the full declared interval; bind authority is separate from outbound send authority"
+				}
 				if read.typed != nil && read.typed.Database != nil {
 					view.Kind = "database-query"
 					view.Address = read.typed.Database.Address
@@ -392,8 +421,16 @@ func executeConnectedIndividual(a *App, ctx context.Context, bound *boundAction,
 }
 
 func connectedIndividualArtifact(path string) bool {
-	return declares(filepath.Join(path, "manifest.json"), connectedrun.FlowSchema) || declares(filepath.Join(path, "manifest.json"), connectedrun.FlowSchemaV4) || declares(filepath.Join(path, "started.json"), connectedrun.FlowSchema) || declares(filepath.Join(path, "started.json"), connectedrun.FlowSchemaV4)
+	for _, file := range []string{"manifest.json", "started.json"} {
+		for _, schema := range []string{connectedrun.FlowSchema, connectedrun.FlowSchemaV4, connectedrun.RuntimeFlowSchema} {
+			if declares(filepath.Join(path, file), schema) {
+				return true
+			}
+		}
+	}
+	return false
 }
+
 func connectedIndividualResult(r connectedrun.FlowResult) RunResult {
 	if r.State == "uncertain" || r.State != "complete" || r.Cleanup != "complete" {
 		return RunIncomplete
