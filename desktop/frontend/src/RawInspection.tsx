@@ -1,3 +1,5 @@
+import { initialMessageGrid, useReaderNavigation } from "./readerNavigation";
+import type { InspectionGridRequest } from "./bindings";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import searchAsset from "./assets/workbench/search.svg";
 import moreAsset from "./assets/workbench/more.svg";
@@ -90,6 +92,7 @@ export function useFileReader({ busy, request, onCancelled, onOpened, onNavigati
   const [chosen, setChosen] = useState<string | null>(null);
   const { running, run } = useLifecycle<"choosing" | "reading" | "inspecting" | "copying">({ window: true });
   const disabled = busy || running !== null;
+  const readerNavigation = useReaderNavigation();
   const where = useRef({ path: "", nodeOffset: 0, byteOffset: -1 });
   const referenceCatalog = useRef("");
   const referenceIdentity = useRef("");
@@ -131,7 +134,7 @@ export function useFileReader({ busy, request, onCancelled, onOpened, onNavigati
         if (!current()) return;
         if (checked.state !== "completed" || checked.overlay?.status === "not_available") setChosen("A previous profile or documentation file changed or is unavailable. Select it again explicitly; the source stays inspectable.");
       }
-      const result = await inspectFileMessage({ file: saved.file!, format, terminator: ending, expect: answer.sha256, message: saved.file_message ?? 0, path: saved.field_path ?? "", node_offset: saved.node_offset ?? 0, byte_offset: -1, raw_offset: -1, reveal: true, ...(saved.phi_masked ? {mask_phi:true} : {}), ...(catalog ? { reference_catalog: catalog, reference_identity: saved.reference_identity ?? "" } : {}), ...(selection ? { reference_selection: selection } : {}) });
+      const result = await inspectFileMessage({ grid: initialMessageGrid(), file: saved.file!, format, terminator: ending, expect: answer.sha256, message: saved.file_message ?? 0, path: saved.field_path ?? "", node_offset: saved.node_offset ?? 0, byte_offset: -1, raw_offset: -1, reveal: true, ...(saved.phi_masked ? {mask_phi:true} : {}), ...(catalog ? { reference_catalog: catalog, reference_identity: saved.reference_identity ?? "" } : {}), ...(selection ? { reference_selection: selection } : {}) });
       if (!current()) return;
       restoredFile.current = saved.file!;
       referenceCatalog.current = catalog;
@@ -169,7 +172,7 @@ export function useFileReader({ busy, request, onCancelled, onOpened, onNavigati
   );
 
   const inspect = useCallback(
-    async (message: number, path: string, nodeOffset: number, byteOffset: number, reveal: boolean, rawOffset = -1, catalogPath?: string, selection?: HL7ReferenceSelection, catalogIdentity?: string): Promise<InspectionResult | null> => {
+    async (message: number, path: string, nodeOffset: number, byteOffset: number, reveal: boolean, rawOffset = -1, catalogPath?: string, selection?: HL7ReferenceSelection, catalogIdentity?: string, grid?: InspectionGridRequest): Promise<InspectionResult | null> => {
       if (!listing?.sha256) return null;
       if (catalogPath !== undefined) {
         if (catalogPath !== referenceCatalog.current) referenceIdentity.current = catalogIdentity ?? "";
@@ -177,6 +180,8 @@ export function useFileReader({ busy, request, onCancelled, onOpened, onNavigati
       }
       if (catalogIdentity !== undefined) referenceIdentity.current = catalogIdentity;
       if (selection !== undefined) referenceSelection.current = selection;
+      const sourceKey = JSON.stringify([file, framing, terminator, listing.sha256]);
+      const position = readerNavigation.request(sourceKey, message, path, grid,{nodeOffset,byteOffset,rawOffset});
       let answer: InspectionResult | null = null;
       await run("inspecting", async (current) => {
         const result = await inspectFileMessage({
@@ -185,10 +190,11 @@ export function useFileReader({ busy, request, onCancelled, onOpened, onNavigati
           terminator,
           expect: listing.sha256,
           message,
-          path,
-          node_offset: nodeOffset,
-          byte_offset: byteOffset,
-          raw_offset: rawOffset,
+          path: position.path,
+          grid: position.grid,
+          node_offset: position.nodeOffset,
+          byte_offset: position.byteOffset,
+          raw_offset: position.rawOffset,
           reveal: true,
           ...(!reveal ? {mask_phi:true} : {}),
           ...(referenceCatalog.current ? { reference_catalog: referenceCatalog.current } : {}),
@@ -200,6 +206,7 @@ export function useFileReader({ busy, request, onCancelled, onOpened, onNavigati
         // A field that is not there leaves the message as it was.
         if (result.state === "completed" || path === "") {
           if (!referenceIdentity.current && result.inspection?.reference?.identity) referenceIdentity.current = result.inspection.reference.identity;
+          readerNavigation.accept(sourceKey, message, result);
           setInspection(result);
           where.current = { path: result.inspection?.selected.path ?? path, nodeOffset, byteOffset };
         }
@@ -328,7 +335,7 @@ export function useFileReader({ busy, request, onCancelled, onOpened, onNavigati
       valuesHidden={!revealed && !inspection?.inspection?.phi_masked}
       loading={running === "inspecting"}
       busy={disabled}
-      onInspect={(path, nodeOffset, byteOffset, rawOffset, catalogPath?: string, selection?: HL7ReferenceSelection, catalogIdentity?: string) => (selected === null ? Promise.resolve(null) : inspect(selected, path, nodeOffset, byteOffset, revealed, rawOffset, catalogPath, selection, catalogIdentity))}
+      onInspect={(path, nodeOffset, byteOffset, rawOffset, catalogPath?: string, selection?: HL7ReferenceSelection, catalogIdentity?: string, grid?: InspectionGridRequest) => (selected === null ? Promise.resolve(null) : inspect(selected, path, nodeOffset, byteOffset, revealed, rawOffset, catalogPath, selection, catalogIdentity, grid))}
       onReveal={reveal}
       onClose={() => { setSelected(null); setInspection(null); }}
     />
@@ -406,6 +413,7 @@ export function useFileReader({ busy, request, onCancelled, onOpened, onNavigati
           const index = Number(id);
           if (index === selected) return;
           setSelected(index);
+          setInspection(null);
           void inspect(index, "", 0, -1, revealed);
         }}
         onOpen={() => undefined}
@@ -470,7 +478,7 @@ export function useFileReader({ busy, request, onCancelled, onOpened, onNavigati
           }}
           onClose={() => setFormatting(false)}
         />
-        <Modal open={info && listing !== null} title="Info" onClose={() => setInfo(false)}>
+        <Modal open={info && listing !== null} title="File details" onClose={() => setInfo(false)}>
           {listing ? (
             <ValueRows
               rows={[

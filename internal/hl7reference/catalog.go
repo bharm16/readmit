@@ -391,6 +391,23 @@ func (c *Catalog) Lookup(version, segment string, field int) Answer {
 func (c *Catalog) Edition() string { return c.document.Edition }
 func (c *Catalog) Schema() string  { return c.document.Schema }
 
+// FieldPositions names only the fields this exact reference edition defines.
+// Catalog validation bounds positions to 1..999. These numbers do not claim
+// that a field was transmitted; the lossless parser owns that state.
+func (c *Catalog) FieldPositions(version, segment string) []int {
+	if version != c.document.Edition {
+		return nil
+	}
+	positions := []int{}
+	for _, record := range c.records {
+		if record.Kind == "field" && record.Segment == segment {
+			positions = append(positions, record.Field)
+		}
+	}
+	slices.Sort(positions)
+	return positions
+}
+
 // LookupValue follows declared composition only; repetition/segment occurrence
 // address evidence, while component records belong to the declared datatype.
 // Variable or missing declarations never borrow a conveniently named type.

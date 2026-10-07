@@ -4,15 +4,16 @@ import type { RawLine, RawToken } from "./bindings";
 const tokenKey = (token: RawToken) => `${token.start}:${token.end}:${token.path || ""}`;
 
 /** Only renders Go's source projection. Paths never come from displayed text. */
-export function MessageText({ lines, busy, onSelect }: { lines: RawLine[]; busy: boolean; onSelect?: ((path: string) => void) | undefined }) {
+export function MessageText({ lines, busy, onSelect, followSelection = true }: { lines: RawLine[]; busy: boolean; followSelection?: boolean; onSelect?: ((path: string) => void) | undefined }) {
   const container = useRef<HTMLDivElement>(null);
   const [focused, setFocused] = useState("");
   const tokens = lines.flatMap(line => line.tokens).filter(token => token.path);
   const active = tokens.find(token => tokenKey(token) === focused) ?? tokens.find(token => token.selected) ?? tokens[0];
   const selection = tokens.filter(token => token.selected).map(tokenKey).join("/");
   useEffect(() => {
+    if (!followSelection) return;
     container.current?.querySelector<HTMLElement>(".raw-token-selected")?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
-  }, [selection]);
+  }, [selection,followSelection]);
   const keyDown = (event: KeyboardEvent<HTMLSpanElement>, token: RawToken) => {
     if (busy || !onSelect || !token.path) return;
     if (event.key === "Enter" || event.key === " ") {

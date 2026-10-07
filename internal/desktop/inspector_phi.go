@@ -111,6 +111,9 @@ func maskInspectorValues(view *Inspection, raw []byte) {
 	for i := range view.Children {
 		row(&view.Children[i])
 	}
+	for i := range view.Parents {
+		row(&view.Parents[i])
+	}
 	if view.Grid != nil {
 		for i := range view.Grid.Rows {
 			row(&view.Grid.Rows[i])

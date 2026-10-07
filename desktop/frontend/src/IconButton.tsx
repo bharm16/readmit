@@ -9,6 +9,7 @@ import compareIcon from "./assets/workbench/columns-2.svg";
 import createTestIcon from "./assets/workbench/file-plus.svg";
 import receiveIcon from "./assets/workbench/captures.svg";
 import helpIcon from "./assets/workbench/help.svg";
+import targetIcon from "./assets/workbench/targets.svg";
 import bookIcon from "./assets/parser/book.svg";
 
 // The icon-only utility button the label review specified for a small set of
@@ -28,9 +29,10 @@ import bookIcon from "./assets/parser/book.svg";
 /** The glyphs an icon button can carry. Each is decorative: its meaning is the
  * button's accessible name, so the shape is a second channel, never the only
  * one. */
-export type IconGlyph = "help" | "close" | "undo" | "previous" | "next" | "up" | "down" | "refresh" | "more" | "search" | "filter" | "open" | "receive" | "compare" | "create-test" | "book" | "phi-off" | "phi-on";
+export type IconGlyph = "help" | "close" | "undo" | "previous" | "next" | "up" | "down" | "refresh" | "more" | "search" | "filter" | "open" | "receive" | "compare" | "create-test" | "book" | "target" | "phi-off" | "phi-on";
 
 const glyphs: Record<IconGlyph, ReactElement> = {
+  target: <img className="workbench-icon" src={targetIcon} alt="" />,
   open: <img className="workbench-icon" src={folderIcon} alt="" />,
   receive: <img className="workbench-icon" src={receiveIcon} alt="" />,
   compare: <img className="workbench-icon" src={compareIcon} alt="" />,

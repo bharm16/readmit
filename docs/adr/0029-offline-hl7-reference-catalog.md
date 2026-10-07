@@ -245,3 +245,35 @@ URL and code-system version with a separate declared source origin. The pinned
 HL7 Terminology publication enriches identifiers only. Its current concepts never
 replace the selected edition's codes or field definitions. V1–v5 reject these
 new members by presence; v6 retains v5's 32 MiB bound and attribute origins.
+
+## Whole-message inspection (amended 2026-10-06)
+
+An optional `InspectionGridRequest` replaces the selected-segment projection
+with a source-ordered message tree. Go owns the hierarchy, canonical paths,
+folding of a single repetition, and display labels. Multiple segments can stay
+expanded. A request holds at most 128 expanded canonical positions and returns
+at most 100 visible rows, with the selected node's ancestor context supplied
+separately. Older callers without the request retain the bounded segment view.
+
+An optional reference-position view includes only positions described by the
+selected exact-edition catalog. The parser still determines Empty, Null, and
+Omitted; reference-only omissions have no source span, value or Copy action.
+A directly addressed omission is kept beside its siblings even when the optional
+view is off. Display labels omit a first occurrence/repetition index only when
+unambiguous within that message; canonical identities remain on every request.
+
+The desktop retains at most 64 message navigation entries per current source:
+selected path, expanded positions and row window. Reference tabs and scroll
+coordinates are separate presentation state, with reference lookup pinned and
+reread on return. No message values or reveal authorization are cached for this
+restoration. A changed source identity discards the positions. Checked messages
+remain independent of the inspected message. Layout choices are process-local.
+
+The grid supports row and branch keyboard navigation, optional metadata columns,
+independent Name/Value widths, source Fit/Wrap/height, and a separate Details
+width. These controls change presentation only. A linked standalone table
+caption separates the introductory definition from its source excerpt; the
+existing pinned Table view supplies structured values, and Expand retains the
+complete original definition including any subsequent prose. No table rows are
+parsed or invented by the webview. Short complete definitions have no expansion
+control; actual overflow or additional source text exposes it.

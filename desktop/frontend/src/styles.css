@@ -3630,3 +3630,7 @@ button.reference-badge-link { background:var(--selection); color:var(--accent); 
 .raw-source::before { content:""; position:absolute; left:0; top:0; bottom:0; width:2.25rem; background:var(--rail); border-right:1px solid var(--line); pointer-events:none; }
 .hl7-reader .reference-attributes > div:first-child .reference-badge { color:var(--syntax-type); background:var(--canvas); }
 .hl7-reader .reference-attributes > div { column-gap:.5rem; }
+
+/* Shared control geometry for the page 13 reader. */
+.hl7-reader .reader-source-controls button, .reader-columns-control > button { min-height:2rem; font-size:.75rem; padding:.25rem .5rem; }
+.message-grid-name > button:not(.message-grid-disclosure) { display:block; border:0; background:transparent; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; color:inherit; padding:0; font:inherit; }

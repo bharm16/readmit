@@ -11,7 +11,7 @@ import userEvent from "@testing-library/user-event";
 import { ImportFlow, importDrop } from "./Import";
 import { VocabularyContext } from "./vocabulary";
 import { installFacade, type FacadeHandlers } from "./testkit/wails";
-import { WORKSPACE_ROOT, caseCatalogItem, caseResult, folderChosen, messagesResult, projectOverviewResult, vocabularyFixture } from "./testkit/fixtures";
+import { WORKSPACE_ROOT, inspectionResult, caseCatalogItem, caseResult, folderChosen, messagesResult, projectOverviewResult, vocabularyFixture } from "./testkit/fixtures";
 import { renderApp } from "./testkit/app";
 import { page, sidebar } from "./testkit/navigation";
 import type {
@@ -524,4 +524,34 @@ test("Stop cancels an import while it writes its case, and the flow keeps its se
   expect(await flow().findByText("the operation was cancelled")).toBeTruthy();
   expect(flow().queryByRole("button", { name: "Stop" })).toBeNull();
   expect(onImported).not.toHaveBeenCalled();
+});
+
+
+test("preview messages keep explicit reference choices without pinning an automatic edition",async()=>{
+ const user=userEvent.setup();
+ const catalog=WORKSPACE_ROOT+"/owned-catalog.json",profile=WORKSPACE_ROOT+"/owned-profile.json";
+ const selection={profile,profile_identity:"owned-profile-identity"};
+ const ref={status:"available",reason:"",identity:"manual-catalog",edition:"2.5.1",coverage:{segments:0,fields:0,definitions:0,missing:[]},missing_count:0};
+ const {facade}=renderFlow({
+  InspectImportPreview:request=>inspectionResult("",{identity:request.preview_token,occurrence:"",message:request.row,revealed:true,phi_masked:request.mask_phi??false,reference_catalog:request.reference_catalog || WORKSPACE_ROOT+"/automatic-"+request.row,reference:{...ref,identity:request.reference_identity || "automatic-"+request.row,edition:request.row===0?"2.5.1":"2.7.1"}}),
+  ChooseInspectionPath:kind=>({state:"completed",kind,path:kind==="reference-catalog"?catalog:profile}),
+  ReadReferenceCatalog:()=>({state:"completed",reference:ref}),
+  ReadHL7ReferenceSelection:()=>({state:"completed",overlay:{status:"profile_selected",reason:"",selection}}),
+ });
+ await chooseFiles(user,facade,[WORKSPACE_ROOT+"/feed.hl7"]);
+ await user.click(flow().getByRole("button",{name:"Next"}));
+ await user.click(await flow().findByRole("row",{name:"SIU^S12 1"}));
+ await user.click(await flow().findByRole("button",{name:"More message actions"}));
+ await user.click(screen.getByRole("menuitem",{name:"Choose local profile…"}));
+ await waitFor(()=>expect(facade.callsTo("InspectImportPreview").at(-1)?.args[0]).toMatchObject({reference_selection:selection}));
+ await user.click(flow().getByRole("row",{name:"SIU^S14 2"}));
+ await waitFor(()=>expect(facade.callsTo("InspectImportPreview").at(-1)?.args[0]).toMatchObject({row:1,reference_selection:selection}));
+ expect(facade.callsTo("InspectImportPreview").at(-1)?.args[0]).not.toHaveProperty("reference_catalog");
+ await user.click(flow().getByRole("button",{name:"Enable PHI masking"}));
+ await waitFor(()=>expect(facade.callsTo("InspectImportPreview").at(-1)?.args[0]).toMatchObject({mask_phi:true,reference_selection:selection}));
+ await user.click(flow().getByRole("button",{name:"HL7 reference version"}));
+ await user.click(screen.getByRole("menuitem",{name:"Use local catalog…"}));
+ await waitFor(()=>expect(facade.callsTo("InspectImportPreview").at(-1)?.args[0]).toMatchObject({reference_catalog:catalog,reference_identity:"manual-catalog"}));
+ await user.click(flow().getByRole("row",{name:"SIU^S12 1"}));
+ await waitFor(()=>expect(facade.callsTo("InspectImportPreview").at(-1)?.args[0]).toMatchObject({row:0,reference_catalog:catalog,reference_identity:"manual-catalog",reference_selection:selection}));
 });

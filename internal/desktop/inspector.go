@@ -38,6 +38,7 @@ const HexRowBytes = 16
 // the hex rows; without it, the inspection carries positions, states, labels
 // and hex but no value text.
 type InspectRequest struct {
+	Grid               *InspectionGridRequest `json:"grid,omitzero"`
 	ReferenceSelection *HL7ReferenceSelection `json:"reference_selection,omitzero"`
 	ReferenceIdentity  string                 `json:"reference_identity,omitzero"`
 	ReferenceCatalog   string                 `json:"reference_catalog,omitzero"`
@@ -96,6 +97,10 @@ type FieldMetadata struct {
 // field label where the bundled labels name it, the canonical selector a field
 // filter names it by (empty for a segment), and a segment's readable name.
 type InspectorNode struct {
+	DisplayPath     string               `json:"display_path,omitzero"`
+	HasChildren     bool                 `json:"has_children,omitzero"`
+	Expanded        bool                 `json:"expanded,omitzero"`
+	GridParent      string               `json:"grid_parent,omitzero"`
 	Depth           int                  `json:"depth,omitzero"`
 	Reference       *hl7reference.Record `json:"reference,omitzero"`
 	ReferenceStatus string               `json:"reference_status,omitzero"`
@@ -127,6 +132,8 @@ const InspectorChildValueLimit = 128
 // Direction the direction the case recorded for it; a standalone file has
 // neither.
 type Inspection struct {
+	DisplayPath      string                       `json:"display_path,omitzero"`
+	Parents          []InspectorNode              `json:"parents,omitzero"`
 	ControlID        string                       `json:"control_id,omitzero"`
 	Segments         []InspectorNode              `json:"segments,omitzero"`
 	SegmentCount     int                          `json:"segment_count,omitzero"`
@@ -194,7 +201,7 @@ func (a *App) inspectOccurrence(request InspectRequest) InspectionResult {
 		if root == "" {
 			return InspectionResult{State: declined.state, Reason: declined.reason}
 		}
-		return inspectFHIR(context.Background(), source.Identity, request.Occurrence, source.Manifest.Declaration, source.Raw(), source.Document, inspectorWindow{Path: request.Path, NodeOffset: request.NodeOffset, ByteOffset: request.ByteOffset, RawOffset: request.RawOffset, Reveal: request.Reveal, MaskPHI: request.MaskPHI, ReferenceCatalog: request.ReferenceCatalog, ReferenceIdentity: request.ReferenceIdentity, ReferenceSelection: request.ReferenceSelection})
+		return inspectFHIR(context.Background(), source.Identity, request.Occurrence, source.Manifest.Declaration, source.Raw(), source.Document, inspectorWindow{Path: request.Path, NodeOffset: request.NodeOffset, ByteOffset: request.ByteOffset, RawOffset: request.RawOffset, Reveal: request.Reveal, MaskPHI: request.MaskPHI, ReferenceCatalog: request.ReferenceCatalog, ReferenceIdentity: request.ReferenceIdentity, ReferenceSelection: request.ReferenceSelection, Grid: request.Grid})
 	}
 	fail := func(reason string) InspectionResult { return InspectionResult{State: Failed, Reason: reason} }
 	if request.NodeOffset < 0 || request.ByteOffset < -1 || request.RawOffset < -1 {
@@ -232,7 +239,7 @@ func (a *App) inspectOccurrence(request InspectRequest) InspectionResult {
 		}
 	}
 	view, reason := a.inspectDocument(raw, doc, 0, inspectorWindow{Path: request.Path, NodeOffset: request.NodeOffset, ByteOffset: request.ByteOffset,
-		RawOffset: request.RawOffset, Reveal: request.Reveal, MaskPHI: request.MaskPHI, ReferenceCatalog: request.ReferenceCatalog, ReferenceIdentity: request.ReferenceIdentity, ReferenceSelection: request.ReferenceSelection})
+		RawOffset: request.RawOffset, Reveal: request.Reveal, MaskPHI: request.MaskPHI, ReferenceCatalog: request.ReferenceCatalog, ReferenceIdentity: request.ReferenceIdentity, ReferenceSelection: request.ReferenceSelection, Grid: request.Grid})
 	if view == nil {
 		return fail(reason)
 	}
@@ -246,6 +253,7 @@ func (a *App) inspectOccurrence(request InspectRequest) InspectionResult {
 // one parsed message: the tree path, the child, byte and Raw windows, and
 // whether values are revealed.
 type inspectorWindow struct {
+	Grid               *InspectionGridRequest
 	ReferenceSelection *HL7ReferenceSelection
 	ReferenceIdentity  string
 	ReferenceCatalog   string
@@ -321,7 +329,13 @@ func (a *App) inspectDocument(raw []byte, doc *hl7.Document, message int, window
 		if catalog != nil {
 			attachReferenceValues(view, doc, message, catalog)
 		}
-		attachInspectorGrid(view, doc, message, labels, catalog)
+		if window.Grid != nil {
+			if reason := attachMessageGrid(view, doc, message, labels, catalog, *window.Grid); reason != "" {
+				return nil, reason
+			}
+		} else {
+			attachInspectorGrid(view, doc, message, labels, catalog)
+		}
 		attachInspectorMessage(view, doc, message, labels, catalog)
 		if !window.Reveal {
 			view.Raw, view.Decoded = "", ""

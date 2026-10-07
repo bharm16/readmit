@@ -1,0 +1,3 @@
+- Inspect several HL7 segments in one expandable message grid, use keyboard navigation, and optionally show catalog-defined fields that are not present. Returning to a message restores its position and reference view while changed source identities reset navigation.
+- Adjust source Fit, Wrap and height, choose reference columns, and resize Name, Value and Details independently. Repeated positions retain unambiguous labels, short definitions avoid empty expansion controls, and linked table excerpts lead to structured reference values with full source text retained.
+- Use desktop-specific parse recovery guidance, consistently named File details, labelled action icons, and address labels for unnamed targets. Original bytes, masking and reference provenance remain intact.

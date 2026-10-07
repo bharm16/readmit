@@ -4401,6 +4401,7 @@ export interface FileBytesResult {
 
 /** internal/desktop.FileInspectRequest */
 export interface FileInspectRequest {
+  grid?: InspectionGridRequest;
   reference_selection?: HL7ReferenceSelection;
   reference_identity?: string;
   reference_catalog?: string;
@@ -4831,6 +4832,14 @@ export type GuideTrialId = "baseline" | "post-fix";
 
 /** internal/desktop.HL7InspectorGrid */
 export interface HL7InspectorGrid {
+  follow_selection?: boolean;
+  mode?: string;
+  expanded?: string[];
+  ancestors?: string[];
+  show_omitted?: boolean;
+  row_count?: number;
+  selected_offset?: number;
+  selected_parent?: string;
   segment: string;
   rows: InspectorNode[];
   offset: number;
@@ -5703,6 +5712,11 @@ export type ImportHeader = "present" | "absent";
 
 /** internal/desktop.ImportInspectRequest */
 export interface ImportInspectRequest {
+  raw_offset?: number;
+  reference_catalog?: string;
+  reference_identity?: string;
+  reference_selection?: HL7ReferenceSelection;
+  grid?: InspectionGridRequest;
   context?: RequestContext;
   source: ImportRequest;
   preview_token: string;
@@ -6038,6 +6052,7 @@ export type InspectFormat = "auto" | "raw" | "mllp";
 
 /** internal/desktop.InspectRequest */
 export interface InspectRequest {
+  grid?: InspectionGridRequest;
   reference_selection?: HL7ReferenceSelection;
   reference_identity?: string;
   reference_catalog?: string;
@@ -6058,6 +6073,8 @@ export type InspectTerminator = "auto" | "cr" | "lf" | "crlf";
 
 /** internal/desktop.Inspection */
 export interface Inspection {
+  display_path?: string;
+  parents?: InspectorNode[];
   control_id?: string;
   segments?: InspectorNode[];
   segment_count?: number;
@@ -6100,6 +6117,14 @@ export interface Inspection {
   notice: string;
 }
 
+/** internal/desktop.InspectionGridRequest */
+export interface InspectionGridRequest {
+  expanded: string[];
+  show_omitted: boolean;
+  offset: number;
+  follow_selection: boolean;
+}
+
 /** internal/desktop.inspectionFile and the constants declared with it */
 export type InspectionPathKind =
   | "file"
@@ -6127,6 +6152,10 @@ export interface InspectionResult {
 
 /** internal/desktop.InspectorNode */
 export interface InspectorNode {
+  display_path?: string;
+  has_children?: boolean;
+  expanded?: boolean;
+  grid_parent?: string;
   depth?: number;
   reference?: Hl7referenceRecord;
   reference_status?: string;
@@ -11646,6 +11675,11 @@ export interface ScenarioPlanPreviewResult {
 
 /** internal/desktop.ScenarioPreviewInspectRequest */
 export interface ScenarioPreviewInspectRequest {
+  raw_offset?: number;
+  reference_catalog?: string;
+  reference_identity?: string;
+  reference_selection?: HL7ReferenceSelection;
+  grid?: InspectionGridRequest;
   preview_id: string;
   message: number;
   path: string;

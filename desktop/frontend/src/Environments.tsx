@@ -174,6 +174,10 @@ export function wholeNumber(text: string): number | null {
   return /^\d+$/.test(trimmed) ? Number(trimmed) : null;
 }
 
+function targetLabel(item: CatalogItem): string {
+  return item.name.trim() || summaryOf(item)?.address || "Unnamed target";
+}
+
 function summaryOf(item: CatalogItem | null | undefined): EnvironmentSummary | undefined {
   return item?.summary.environment;
 }
@@ -313,7 +317,7 @@ const [captureFailure,setCaptureFailure]=useState<string|null>(null);
 
   if (place.kind === "observation") return { ...observation, palette:null, back: <BackLink label={observation.backLabel} onBack={back} /> };
   if (place.kind === "environment" || place.kind === "credentials") {
-    return { ...detail, actions: place.kind==="credentials" || selected?.summary.environment?.protocol==="fhir-r4" ? detail.actions : <><button type="button" className="primary" disabled={busy} onClick={()=>go("", "add")}>New target</button>{"palette" in detail && detail.palette ? <Menu label="More environment actions" items={detail.palette.items}/>:null}</>, back: <BackLink label={place.kind === "credentials" ? (selected?.name ?? "Environment") : "Environments"} onBack={back} />, body: place.kind==="credentials" ? detail.body : selected?.summary.environment?.classification==="production" ? <div className="workflow-page workflow-content workflow-production-reference"><h2>{selected.name}</h2><div className="workflow-connection-fields"><ValueRows rows={[{label:"Name",value:selected.name},{label:"Classification",value:"Production"},{label:"Address",value:selected.summary.environment.address||"Not configured"}]}/></div><h3>Imported evidence</h3><p>Use this target as a reference when inspecting imported messages.</p><button type="button" disabled={!onChooseCapture || busy} onClick={chooseProductionCapture}>Choose a capture</button><p className="workflow-caption">Test sends are unavailable for a production target.</p><details><summary>Target details and reviews</summary>{detail.body}</details>{capturePicker}</div> : <div className="workflow-page workflow-workspace workflow-targets"><aside className="workflow-rail" aria-label="Saved targets"><h2>Targets</h2>{items?.map(item=><button key={item.ref.id} className="workflow-step" type="button" aria-current={item.ref.id===place.id?"page":undefined} onClick={()=>go(item.ref.id)}><strong>{item.name}</strong><span>{classificationText(summaryOf(item)?.classification)} · {summaryOf(item)?.address||"Not configured"}</span></button>)}</aside><div className="workflow-content workflow-target-detail">{detail.body}</div></div> };
+    return { ...detail, actions: place.kind==="credentials" || selected?.summary.environment?.protocol==="fhir-r4" ? detail.actions : <><button type="button" className="primary" disabled={busy} onClick={()=>go("", "add")}>New target</button>{"palette" in detail && detail.palette ? <Menu label="More environment actions" items={detail.palette.items}/>:null}</>, back: <BackLink label={place.kind === "credentials" ? (selected?.name ?? "Environment") : "Environments"} onBack={back} />, body: place.kind==="credentials" ? detail.body : selected?.summary.environment?.classification==="production" ? <div className="workflow-page workflow-content workflow-production-reference"><h2>{targetLabel(selected)}</h2><div className="workflow-connection-fields"><ValueRows rows={[{label:"Name",value:selected.name},{label:"Classification",value:"Production"},{label:"Address",value:selected.summary.environment.address||"Not configured"}]}/></div><h3>Imported evidence</h3><p>Use this target as a reference when inspecting imported messages.</p><button type="button" disabled={!onChooseCapture || busy} onClick={chooseProductionCapture}>Choose a capture</button><p className="workflow-caption">Test sends are unavailable for a production target.</p><details><summary>Target details and reviews</summary>{detail.body}</details>{capturePicker}</div> : <div className="workflow-page workflow-workspace workflow-targets"><aside className="workflow-rail" aria-label="Saved targets"><h2>Targets</h2>{items?.map(item=><button key={item.ref.id} className="workflow-step" type="button" aria-current={item.ref.id===place.id?"page":undefined} onClick={()=>go(item.ref.id)}><strong>{targetLabel(item)}</strong><span>{classificationText(summaryOf(item)?.classification)} · {summaryOf(item)?.address||"Not configured"}</span></button>)}</aside><div className="workflow-content workflow-target-detail">{detail.body}</div></div> };
   }
 
   const columns: Column<CatalogItem>[] = [
@@ -325,7 +329,7 @@ const [captureFailure,setCaptureFailure]=useState<string|null>(null);
       flex: true,
       render: (item) => (
         <span className="case-name">
-          <span title={item.name}>{item.name}</span>
+          <span title={targetLabel(item)}>{targetLabel(item)}</span>
           {item.availability === "available" ? null : <span className="row-reason">{item.reason ?? "Cannot be read"}</span>}
           {item.availability === "missing" ? (
             <button type="button" disabled={busy} onClick={(event) => { event.stopPropagation(); void locateItem({ context: context(), ref: item.ref }).then(refresh); }}>
@@ -356,7 +360,7 @@ const [captureFailure,setCaptureFailure]=useState<string|null>(null);
     },
   ];
 
-  const sorted = [...(items ?? [])].sort((a, b) => a.name.localeCompare(b.name) || a.ref.id.localeCompare(b.ref.id));
+  const sorted = [...(items ?? [])].sort((a, b) => targetLabel(a).localeCompare(targetLabel(b)) || a.ref.id.localeCompare(b.ref.id));
   let body: ReactNode;
   if (listFailure) {
     body = (
@@ -385,9 +389,9 @@ const [captureFailure,setCaptureFailure]=useState<string|null>(null);
       <DataTable
         label="Environments"
         className="page-table values-table"
-        rows={sorted.filter(item=>item.name.toLowerCase().includes(search.toLowerCase()) || summaryOf(item)?.address?.toLowerCase().includes(search.toLowerCase()))}
+        rows={sorted.filter(item=>targetLabel(item).toLowerCase().includes(search.toLowerCase()) || summaryOf(item)?.address?.toLowerCase().includes(search.toLowerCase()))}
         rowId={(item) => item.ref.id}
-        rowLabel={(item) => item.name}
+        rowLabel={targetLabel}
         columns={[columns[0]!,columns[2]!,columns[3]!,columns[1]!,...columns.slice(4)]}
         selected={listSelected}
         onSelect={setListSelected}
@@ -1274,7 +1278,7 @@ const [targetTab,setTargetTab]=useState("connection");
 
   const unusable = busy || !draft || item.availability !== "available";
   return {
-    title: item.name,
+    title: targetLabel(item),
     // What the palette lists for this environment: its page's actions, each
     // opening the same sheet or review its button does.
     palette: {
