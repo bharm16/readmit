@@ -30,11 +30,23 @@ RESETTING = True
 RESET_VERIFIED = False
 
 
-def upstream(method, path, body=None):
+def public_token_endpoint(host):
+    path = CONTROL / "connection.json"
+    if path.exists():
+        endpoint = json.loads(path.read_text())["token_endpoint"]
+        if urllib.parse.urlsplit(endpoint).netloc == host:
+            return endpoint
+    return security.AUDIENCE
+
+
+def upstream(method, path, body=None, public_host=None):
     # The only target is the private Compose service; never accept an origin URL.
     if not path.startswith("/") or path.startswith("//") or ".." in path:
         raise ValueError("invalid target path")
-    request = urllib.request.Request("http://hapi:8080/fhir" + path, data=body, method=method, headers={"Content-Type": "application/fhir+json", "Accept": "application/fhir+json", "Cache-Control": "no-cache"})
+    headers={"Content-Type": "application/fhir+json", "Accept": "application/fhir+json", "Cache-Control": "no-cache"}
+    if public_host and public_token_endpoint(public_host) != security.AUDIENCE:
+        headers.update({"X-Forwarded-Host":public_host,"X-Forwarded-Proto":"https"})
+    request = urllib.request.Request("http://hapi:8080/fhir" + path, data=body, method=method, headers=headers)
     try:
         with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(request, timeout=20) as response:
             return response.status, response.read(8 * 1024 * 1024)
@@ -117,7 +129,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if self.path == "/health":
                 return self.respond(200, {"fixture": "readmit-independent-target/v1", "code_sha256":SOURCE_HASHES})
             if self.path == "/.well-known/smart-configuration":
-                return self.respond(200, {"token_endpoint": security.AUDIENCE, "token_endpoint_auth_methods_supported": ["private_key_jwt"], "token_endpoint_auth_signing_alg_values_supported": ["RS384"], "capabilities": ["client-confidential-asymmetric", "permission-v2"], "scopes_supported": ["system/*.rs", "system/*.crus", "system/*.cruds"]})
+                return self.respond(200, {"token_endpoint": public_token_endpoint(self.headers.get("Host", "")), "token_endpoint_auth_methods_supported": ["private_key_jwt"], "token_endpoint_auth_signing_alg_values_supported": ["RS384"], "capabilities": ["client-confidential-asymmetric", "permission-v2"], "scopes_supported": ["system/*.rs", "system/*.crus", "system/*.cruds"]})
             if self.path == "/token" and self.command == "POST":
                 return self.token(body)
             authorization = self.headers.get("Authorization", "")
@@ -140,7 +152,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             path = self.path.split("/", 2)[2]
             resource = path.split("/", 1)[0].split("?", 1)[0]
             if resource == "metadata" and self.command == "GET":
-                return self.respond(*upstream("GET", "/metadata"))
+                return self.respond(*upstream("GET", "/metadata", public_host=self.headers.get("Host")))
             search = "/" not in path.split("?", 1)[0]
             if not security.permitted(claims.get("scope", ""), self.command, resource, search):
                 return self.respond(403, {"error": "insufficient scope"})
@@ -162,7 +174,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self.respond(*result)
             if self.path.startswith("/native/"):
                 return self.respond(*native(self.command, "/" + path, body))
-            return self.respond(*upstream(self.command, "/" + path, body if body else None))
+            return self.respond(*upstream(self.command, "/" + path, body if body else None, public_host=self.headers.get("Host")))
         except Exception:
             self.respond(401, {"error": "request refused"})
 
@@ -175,7 +187,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         issuer = json.loads(security.unb64(token.split(".")[1])).get("iss")
         if issuer not in CLIENTS:
             return self.respond(401, {"error": "unknown client"})
-        claims = security.verify(token, CLIENTS[issuer]["public_key"].encode(), security.AUDIENCE)
+        audience = json.loads(security.unb64(token.split(".")[1])).get("aud")
+        allowed = {security.AUDIENCE, public_token_endpoint(self.headers.get("Host", ""))}
+        if audience not in allowed:
+            return self.respond(401, {"error":"invalid audience"})
+        claims = security.verify(token, CLIENTS[issuer]["public_key"].encode(), audience)
         if claims.get("sub") != issuer or not isinstance(claims.get("jti"), str):
             return self.respond(401, {"error": "invalid assertion"})
         scope = form.get("scope", [""])[0]
@@ -195,7 +211,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def admin(self, body):
         global RESETTING,RESET_VERIFIED
+        if self.path == "/admin/state" and self.command == "GET":
+            with LOCK:
+                return self.respond(200, dict(STATE, resetting=RESETTING))
         if self.path == "/admin/reset" and self.command == "POST":
+            expected = json.loads(body).get("generation")
+            if expected is not None and expected != STATE["generation"]:
+                return self.respond(409, {"error":"stale session generation"})
             with LOCK:
                 generation = STATE["generation"]
                 RESETTING=True

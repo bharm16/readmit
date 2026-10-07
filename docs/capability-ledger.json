@@ -1072,15 +1072,15 @@
       "id": "tooling.tools.integration-lab",
       "source": "tools/integration_lab.py",
       "kind": "tooling",
-      "capability": "Qualify isolated independent OIE and HAPI routes against synthetic defect fixtures",
-      "owner": "bharm16/readmit#590",
+      "capability": "Qualify isolated OIE/HAPI routes and retain owned target sessions for production saved connected tests",
+      "owner": "bharm16/readmit#698",
       "inputs": [],
       "outputs": [],
       "prerequisites": [],
       "implemented": false,
       "disposition": {
         "kind": "developer-tooling",
-        "reason": "opt-in independent reference lab; creates scoped local containers and exports credential-checked synthetic evidence"
+        "reason": "opt-in independent reference lab and tools/labsessionverify production CLI driver; private generation-fenced sessions, read-only witnesses and credential-checked synthetic evidence; no required CI expansion"
       }
     },
     {
