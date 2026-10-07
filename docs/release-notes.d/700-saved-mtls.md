@@ -1,0 +1,1 @@
+- Saved HL7 connected tests can use an existing mutual TLS environment. Compilation binds its client certificate and endpoint-scoped key reference without resolving the key; normal execution and the connected runner retain the existing transport evidence and authority checks.

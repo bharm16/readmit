@@ -294,6 +294,9 @@ export function SendReview({
   }
   const environment = environmentRow();
   if (environment) rows.push(environment);
+  const transport = run?.lifecycle?.transport;
+  const transportLabel = transport === "mtls" ? "MLLP · Mutual TLS" : transport === "tls" ? "MLLP · TLS" : transport === "plain" ? "MLLP · Plain" : null;
+  if (transportLabel) rows.push({ label: "Transport", value: transportLabel });
   const sent = messageRow();
   if (sent) rows.push(sent);
   if (run?.kind === "suite") {

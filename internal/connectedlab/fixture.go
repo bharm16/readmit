@@ -25,11 +25,18 @@ type Fixture struct {
 	resource *testisolation.Resource
 	version  int
 	created  func()
+	project  string
 }
 
 func StartFixture(t testing.TB, created func()) *Fixture {
 	t.Helper()
-	f := &Fixture{created: created}
+	return StartFixtureForProject(t, "lab", created)
+}
+
+// StartFixtureForProject installs the same fixture protocol for a saved project.
+func StartFixtureForProject(t testing.TB, project string, created func()) *Fixture {
+	t.Helper()
+	f := &Fixture{created: created, project: project}
 	f.s = httptest.NewTLSServer(http.HandlerFunc(f.serve))
 	t.Cleanup(f.s.Close)
 	return f
@@ -65,7 +72,7 @@ func (f *Fixture) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		scope = request.Scope
 	}
-	if scope.Project != "lab" || scope.Environment != "test" || scope.Revision != "1" || scope.AdapterRevision != "1" || scope.Tenant != "lab-tenant" || scope.Namespace != "lab-data" || scope.Owner == "" || scope.LeaseKey == "" {
+	if scope.Project != f.project || scope.Environment != "test" || scope.Revision != "1" || scope.AdapterRevision != "1" || scope.Tenant != "lab-tenant" || scope.Namespace != "lab-data" || scope.Owner == "" || scope.LeaseKey == "" {
 		http.Error(w, "wrong deployment", 409)
 		return
 	}

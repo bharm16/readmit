@@ -34,6 +34,7 @@ type ConnectedRunCollectorReview struct {
 	Meaning    string `json:"meaning"`
 }
 type ConnectedRunReview struct {
+	Transport             string                        `json:"transport,omitzero"`
 	Collectors            []ConnectedRunCollectorReview `json:"collectors,omitzero"`
 	DerivedInputs         []ConnectedDerivedInputReview `json:"derived_inputs,omitzero"`
 	RuntimeMarkerRequired bool                          `json:"runtime_marker_required,omitzero"`
@@ -153,6 +154,9 @@ func bindConnectedTestRun(a *App, ctx context.Context, request PrepareActionRequ
 			}
 			review.Lifecycle.DerivedInputs = append(review.Lifecycle.DerivedInputs, ConnectedDerivedInputReview{Step: step.ID, Selector: step.V2.RuntimeMarkerSelector, Value: value})
 		}
+	}
+	if selected.members.fhir == nil {
+		review.Lifecycle.Transport = compiled.flow.Environment.TLS.Mode
 	}
 	bindings := prepared.Bindings()
 	addresses := map[string]string{}

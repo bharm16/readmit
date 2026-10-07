@@ -180,7 +180,12 @@ func verifyEvidence(files map[string][]byte) (Evidence, error) {
 			return Evidence{}, refused
 		}
 		if target.Transport == "tls" {
-			if !transport.Verified || transport.Version < tls.VersionTLS12 || transport.ServerName != target.ServerName || len(transport.PeerCertificates) == 0 {
+			// TLS omits SNI for IP literals. The configured verification name is
+			// still retained in target.json and the bound environment; an empty
+			// negotiated SNI is valid only for that explicitly configured IP.
+			_, ipNameError := netip.ParseAddr(target.ServerName)
+			matchesName := transport.ServerName == target.ServerName || transport.ServerName == "" && ipNameError == nil
+			if !transport.Verified || transport.Version < tls.VersionTLS12 || !matchesName || len(transport.PeerCertificates) == 0 {
 				return Evidence{}, refused
 			}
 			for _, der := range transport.PeerCertificates {
