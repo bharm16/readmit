@@ -287,7 +287,7 @@ func (c *loadedCatalog) planConnectedSuite(draft SuiteDraft) (*connectedSuitePla
 			if binding.Server != nil {
 				server = binding.Server.ID
 			}
-			lifecycle, found := c.compileConnected(job.draft, job.id, job.revision, connectedEnvironments{environment: binding.Target.ID, server: server, promoted: true})
+			lifecycle, found := c.compileConnected(job.draft, job.id, job.revision, connectedEnvironments{environment: binding.Target.ID, server: server, promoted: true, runtimeTemplate: true})
 			for _, problem := range found {
 				add(field+"."+strconv.Itoa(at), job.name+": "+problem.Problem)
 			}
@@ -395,7 +395,11 @@ func (c *loadedCatalog) connectedDocument(draft SuiteDraft, plan *connectedSuite
 			lifecycle := plan.compiled[n][j]
 			name := path.Join(connectedFolder, "plans", lifecycle.plan.Identity())
 			out.plans[name] = lifecycle.plan
-			compiled.Bindings = append(compiled.Bindings, suite.ConnectedBinding{Test: job.id, Plan: name, PlanIdentity: lifecycle.plan.Identity(), Config: c.layoutSelection(lifecycle, out)})
+			config, err := c.layoutSelection(lifecycle, out)
+			if err != nil {
+				return document, nil, err
+			}
+			compiled.Bindings = append(compiled.Bindings, suite.ConnectedBinding{Test: job.id, Plan: name, PlanIdentity: lifecycle.plan.Identity(), Config: config})
 		}
 		document.Environments = append(document.Environments, compiled)
 	}
@@ -410,7 +414,7 @@ func (c *loadedCatalog) connectedDocument(draft SuiteDraft, plan *connectedSuite
 // project's connected folder, named by its content, and answers the path of
 // its config.json. Files of the project it reads in place are named from its
 // folder, which is at the same depth whatever its name.
-func (c *loadedCatalog) layoutSelection(compiled *connectedCompiled, out *connectedSuiteFiles) string {
+func (c *loadedCatalog) layoutSelection(compiled *connectedCompiled, out *connectedSuiteFiles) (string, error) {
 	placeholder := filepath.Join(c.root, connectedFolder, "selections", "selection")
 	place := func(target string) string {
 		if relative, err := filepath.Rel(placeholder, target); err == nil {
@@ -420,7 +424,14 @@ func (c *loadedCatalog) layoutSelection(compiled *connectedCompiled, out *connec
 		}
 		return target
 	}
-	config, _ := encodeMember(compiled.config(place))
+	selected, err := compiled.selection(place)
+	if err != nil {
+		return "", err
+	}
+	config, err := encodeMember(selected)
+	if err != nil {
+		return "", err
+	}
 	files := map[string][]byte{"config.json": config}
 	for name, data := range compiled.files {
 		files[name] = data
@@ -435,7 +446,7 @@ func (c *loadedCatalog) layoutSelection(compiled *connectedCompiled, out *connec
 		out.files[path.Join(folder, name)] = data
 	}
 	out.dirs = append(out.dirs, path.Join(folder, "grants"))
-	return path.Join(folder, "config.json")
+	return path.Join(folder, "config.json"), nil
 }
 
 // write places every file under the project, once: a file the project

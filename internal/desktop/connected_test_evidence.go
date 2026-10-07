@@ -346,6 +346,11 @@ func (a *App) OpenConnectedCapture(request ConnectedCaptureRequest) RetainedCapt
 			result.refuse(Failed, "choose the exact supporting capture of this verified dataset")
 			return result
 		}
+		path, err = connectedrun.ExecutionRoot(path)
+		if err != nil {
+			result.refuse(Failed, "the retained lifecycle cannot be verified")
+			return result
+		}
 		for _, part := range []string{"phases", request.Phase, "intervals", request.Dataset, "capture"} {
 			next, err := artifactpath.Child(path, part)
 			if err != nil {

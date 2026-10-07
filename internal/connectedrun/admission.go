@@ -12,6 +12,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
+	"github.com/bharm16/readmit/internal/connectedtest"
 	"github.com/bharm16/readmit/internal/engine"
 	"github.com/bharm16/readmit/internal/fhirobserve"
 	"github.com/bharm16/readmit/internal/fhirrest"
@@ -52,6 +53,9 @@ func (p *PreparedFlow) RegistrySnapshot() ([]byte, error) {
 func (p *PreparedFlow) InputSnapshot() ([]byte, error) {
 	if p == nil || p.unchanged() != nil {
 		return nil, invalid
+	}
+	if p.runtime != nil {
+		return runtimeInputSnapshot(p)
 	}
 	metadata, err := PrepareFlow(p.planPath, p.configPath, "input-metadata")
 	if err != nil {
@@ -110,6 +114,14 @@ func (p *PreparedFlow) Capabilities() (runnerprotocol.Capabilities, error) {
 	contract(d.Schema)
 	contract(d.Test.Schema)
 	contract(flowSchemaFor(p.plan))
+	if p.runtime != nil {
+		contract(connectedtest.RuntimeFlowPlanSchema)
+		contract(connectedtest.RuntimeFlowTestSchema)
+		contract(RuntimeFlowConfigSchema)
+		contract(RuntimeFlowSchema)
+		contract(runtimeInputSchema)
+		contract(runtimeDerivationSchema)
+	}
 	contract(d.Test.Isolation.Schema)
 	contract(testisolation.RegistrySchema)
 	contract(testisolation.ProtocolSchema)

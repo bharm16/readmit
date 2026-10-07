@@ -1718,6 +1718,14 @@ export interface ConnectedCaptureRequest {
   identity: string;
 }
 
+/** internal/desktop.ConnectedCaptureReview */
+export interface ConnectedCaptureReview {
+  name: string;
+  revision: string;
+  transport: ListenerTransport;
+  remote: boolean;
+}
+
 /** internal/desktop.ConnectedCheck */
 export interface ConnectedCheck {
   name: string;
@@ -2013,6 +2021,7 @@ export interface ConnectedResponseCheck {
 
 /** internal/desktop.ConnectedRunCollectorReview */
 export interface ConnectedRunCollectorReview {
+  capture?: ConnectedCaptureReview;
   phase: string;
   dataset: string;
   kind: string;

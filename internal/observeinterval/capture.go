@@ -2,6 +2,7 @@ package observeinterval
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"github.com/bharm16/readmit/internal/bundle"
@@ -15,11 +16,23 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 )
 
 const CaptureSourceSchema = "readmit-live-capture-source/v1"
 const CaptureSourceSchemaV2 = "readmit-live-capture-source/v2"
+
+// V3 pins the live public inputs selected for a saved listener. Historical
+// sources have no such declaration and retain their existing interpretation.
+const CaptureSourceSchemaV3 = "readmit-live-capture-source/v3"
+
+type CaptureInput struct {
+	Role       string `json:"role"`
+	Path       string `json:"path"`
+	SHA256     string `json:"sha256"`
+	Credential string `json:"credential,omitzero"`
+}
 
 type ScopeFilter struct {
 	Selector string `json:"selector"`
@@ -30,6 +43,7 @@ type ScopeFilter struct {
 // RunSelector proves which runtime owns an incoming message; Include filters
 // are declared before arming, and all excluded occurrences remain in the case.
 type CaptureSource struct {
+	Inputs            []CaptureInput            `json:"inputs,omitzero"`
 	PhaseKeys         []string                  `json:"phase_keys,omitzero"`
 	OutputKeySelector string                    `json:"output_key_selector,omitzero"`
 	Schema            string                    `json:"schema"`
@@ -50,13 +64,49 @@ type CaptureSource struct {
 
 func DecodeCapture(raw []byte) (CaptureSource, error) {
 	var s CaptureSource
-	if len(raw) > 3<<20 || json.Unmarshal(raw, &s, json.RejectUnknownMembers(true)) != nil || (s.Schema != CaptureSourceSchema && s.Schema != CaptureSourceSchemaV2) || len(s.Include) > 16 {
+	if len(raw) > 3<<20 || json.Unmarshal(raw, &s, json.RejectUnknownMembers(true)) != nil || (s.Schema != CaptureSourceSchema && s.Schema != CaptureSourceSchemaV2 && s.Schema != CaptureSourceSchemaV3) || len(s.Include) > 16 {
 		return s, invalid
 	}
 	if _, err := hl7.ParseSelector(s.RunSelector); err != nil {
 		return s, invalid
 	}
-	if s.Schema == CaptureSourceSchemaV2 {
+	var members map[string]jsontext.Value
+	if json.Unmarshal(raw, &members) != nil {
+		return s, invalid
+	}
+	if s.Schema == CaptureSourceSchemaV3 {
+		if len(s.Inputs) < 2 || len(s.Inputs) > 5 {
+			return s, invalid
+		}
+		seen := map[string]bool{}
+		for _, input := range s.Inputs {
+			if input.Path == "" || len(input.Path) > 4096 || strings.ContainsRune(input.Path, 0) || seen[input.Role] || len(input.SHA256) != 64 {
+				return s, invalid
+			}
+			if _, err := hex.DecodeString(input.SHA256); err != nil {
+				return s, invalid
+			}
+			switch input.Role {
+			case "listener", "responder", "certificate", "client-authorities":
+				if input.Credential != "" {
+					return s, invalid
+				}
+			case "credential":
+				if input.Credential == "" || len(input.Credential) > 128 {
+					return s, invalid
+				}
+			default:
+				return s, invalid
+			}
+			seen[input.Role] = true
+		}
+		if !seen["listener"] || !seen["responder"] || seen["credential"] != (s.PrivateKey != nil) || seen["certificate"] != (len(s.Certificate) > 0) || seen["client-authorities"] != (len(s.Authorities) > 0) {
+			return s, invalid
+		}
+	} else if _, present := members["inputs"]; present {
+		return s, invalid
+	}
+	if s.Schema != CaptureSourceSchema {
 		if _, err := hl7.ParseSelector(s.OutputKeySelector); err != nil {
 			return s, invalid
 		}
@@ -71,10 +121,6 @@ func DecodeCapture(raw []byte) (CaptureSource, error) {
 			seen[key] = true
 		}
 	} else {
-		var members map[string]jsontext.Value
-		if json.Unmarshal(raw, &members) != nil {
-			return s, invalid
-		}
 		for _, member := range []string{"output_key_selector", "phase_keys"} {
 			if _, extended := members[member]; extended {
 				return s, invalid
@@ -93,8 +139,11 @@ func PrepareCapture(raw, policy []byte, scope networkaction.Binding) (*networkac
 	if err != nil {
 		return nil, err
 	}
-	if s.Schema == CaptureSourceSchemaV2 && len(s.PhaseKeys) == 0 {
+	if s.Schema != CaptureSourceSchema && len(s.PhaseKeys) == 0 {
 		return nil, invalid
+	}
+	if err := verifyCaptureInputs(s); err != nil {
+		return nil, err
 	}
 	v := networkaction.CaptureSpecV2{Schema: networkaction.CaptureActionSchemaV2, MaxConnections: s.MaxConnections, MaxSessions: s.MaxSessions, Definition: networkaction.CaptureSpec{Schema: networkaction.CaptureActionSchema, Plan: scope.Plan, Source: dataset.Digest(raw), Project: scope.Project, Environment: scope.Environment, Revision: scope.Revision, Endpoint: scope.Endpoint, Classification: "nonproduction", Address: s.Address, Policy: s.ReceiverPolicy, Certificate: s.Certificate, Authorities: s.Authorities, PrivateKey: s.PrivateKey, TimeoutMS: s.TimeoutMS, MaxFrameBytes: s.MaxFrameBytes, MaxBytes: s.MaxBytes, MaxMessages: s.MaxMessages}}
 	encoded, _ := json.Marshal(v, json.Deterministic(true))
@@ -118,7 +167,10 @@ func ArmCapture(ctx context.Context, raw []byte, p *networkaction.CapturePlan, a
 	if err != nil || p == nil || p.Binding().Source != dataset.Digest(raw) || binding.Source != dataset.Digest(raw) || projection.Format != "hl7" || projection.Validate() != nil {
 		return nil, invalid
 	}
-	session, err := p.Start(ctx, authority, output, resolve)
+	if authority == nil {
+		return nil, invalid
+	}
+	session, err := p.Start(ctx, captureInputAuthority{authority: authority, source: s}, output, resolve)
 	if err != nil {
 		return nil, err
 	}
@@ -179,7 +231,7 @@ func (c *Capture) Finalize(ctx context.Context) (Observation, error) {
 		o.Status = "safety-limit"
 	}
 	snapshot, err := dataset.Build(ctx, c.binding, c.projection, dataset.Acquisition{Kind: "capture", Status: "complete", StartedAt: finalizing, Facts: &dataset.AcquisitionFacts{ObservedFrom: func() time.Time {
-		if c.source.Schema == CaptureSourceSchemaV2 {
+		if c.source.Schema != CaptureSourceSchema {
 			return c.scopeFrom
 		}
 		return c.started
@@ -224,7 +276,7 @@ func captureMaterialAfter(captured *bundle.Bundle, source CaptureSource, binding
 			status = "lost-coverage"
 			continue
 		}
-		if source.Schema == CaptureSourceSchemaV2 && (after.IsZero() || event.ObservedAt == nil || !event.ObservedAt.After(after)) {
+		if source.Schema != CaptureSourceSchema && (after.IsZero() || event.ObservedAt == nil || !event.ObservedAt.After(after)) {
 			excluded[event.ID] = "pre-stimulus-or-unavailable-time"
 			continue
 		}
@@ -263,7 +315,7 @@ func captureMaterialAfter(captured *bundle.Bundle, source CaptureSource, binding
 			excluded[event.ID] = exclusion
 			continue
 		}
-		if source.Schema == CaptureSourceSchemaV2 {
+		if source.Schema != CaptureSourceSchema {
 			selector, _ := hl7.ParseSelector(source.OutputKeySelector)
 			key, err := doc.Read(0, selector, hl7.EnforceMSH18)
 			if err != nil || key.State != hl7.Present || key.Reason != "" || len(key.Decoded) == 0 {

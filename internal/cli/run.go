@@ -63,7 +63,7 @@ func runCommand() *cobra.Command {
 		if err != nil {
 			raw, err = (artifactdir.Document{MaxBytes: 4 << 20}).Read(filepath.Join(args[0], "started.json"))
 		}
-		if err == nil && json.Unmarshal(raw, &head) == nil && (head.Schema == connectedrun.FlowSchema || head.Schema == connectedrun.FlowSchemaV4) {
+		if err == nil && json.Unmarshal(raw, &head) == nil && (head.Schema == connectedrun.FlowSchema || head.Schema == connectedrun.FlowSchemaV4 || head.Schema == connectedrun.RuntimeFlowSchema) {
 			if reanalysis {
 				analysis, err := connectedrun.ReanalyzeFlow(cmd.Context(), args[0])
 				if err != nil {

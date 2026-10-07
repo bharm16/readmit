@@ -412,7 +412,7 @@ func EvidenceSurface(rel string) string {
 		return "lifecycle record (verdicts, intents and times)"
 	case connectedrun.AreaPlanDeps:
 		return "pinned dependency (check set, profile, capability, projection or completion policy)"
-	case connectedrun.AreaPlan:
+	case connectedrun.AreaPlan, connectedrun.AreaRuntimeInputs:
 		return "compiled plan (definitions, inputs, environment and policy pins)"
 	case connectedrun.AreaSetup:
 		return "setup and cleanup evidence"

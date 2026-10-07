@@ -18,6 +18,10 @@ function later(work) {
     globalChannelMap.get('lab-scheduler').schedule(task, 1200, java.util.concurrent.TimeUnit.MILLISECONDS);
 }
 function transmit(message) {
+    if (cfg.return_transport) {
+        Packages.lab.LabMllp.transmit(message,cfg.generation,cfg.return_transport,cfg.return_host,cfg.return_port);
+        return;
+    }
     var socket = new java.net.Socket('fixture', 7000);
     socket.setSoTimeout(5000);
     try {

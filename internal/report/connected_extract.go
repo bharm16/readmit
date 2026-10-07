@@ -140,6 +140,10 @@ func surfacesOf(name string, data []byte) []string {
 	}
 	fhir := fhirSurfaces(data)
 	switch loc := connectedrun.Locate(rel); loc.Area {
+	case connectedrun.AreaRuntimeInputs:
+		// Original/derived bytes and transformation manifests may contain the
+		// same HL7 values; none may escape the existing transport disclosure rule.
+		return append(surfaces, SurfaceHL7Transport)
 	case connectedrun.AreaSetup:
 		return append(surfaces, SurfaceSetup)
 	case connectedrun.AreaPlan, connectedrun.AreaPlanDeps:

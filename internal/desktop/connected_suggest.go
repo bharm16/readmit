@@ -142,7 +142,11 @@ func (c *loadedCatalog) eligibleFlows(ctx context.Context, definition expectatio
 				continue
 			}
 			flow := filepath.Join(path, "runs", job.ID)
-			review, err := expectation.ReviewConnected(filepath.Join(flow, "plan"))
+			planFolder := "plan"
+			if job.Flow.Schema == connectedrun.RuntimeFlowSchema {
+				planFolder = "template"
+			}
+			review, err := expectation.ReviewConnected(filepath.Join(flow, planFolder))
 			if err != nil || review != definition {
 				continue
 			}

@@ -17,6 +17,12 @@ func TestConnectedSurfacesClassifyEveryRetainedEvidenceKind(t *testing.T) {
 		data []byte
 		want []string
 	}{
+		{"current/originals/book/payloads/m1.bin", []byte("MSH|"), []string{SurfaceHL7Transport}},
+		{"current/originals/book/events.jsonl", []byte(`{"value":"original"}`), []string{SurfaceHL7Transport}},
+		{"current/derivations/book/reproducer.json", []byte(`{"before":"original","after":"runtime"}`), []string{SurfaceHL7Transport}},
+		{"current/derivations/book/case/payloads/m1.bin", []byte("MSH|"), []string{SurfaceHL7Transport}},
+		{"current/execution/phases/book/transport/run/payloads/m1.bin", []byte("MSH|"), []string{SurfaceHL7Transport}},
+		{"current/template/test.json", []byte(`{}`), []string{SurfacePlan}},
 		{"current/phases/p/validations/v/worker.json", []byte(`{"diagnostics":"x"}`), []string{SurfaceValidator}},
 		{"current/phases/p/observations/orders-0001/dataset/rows.json", []byte(`{}`), []string{SurfaceTypedDataset}},
 		{"current/phases/p/evaluation/datasets/orders/manifest.json", []byte(`{}`), []string{SurfaceTypedDataset}},

@@ -75,6 +75,13 @@ func (p *PreparedFlow) IsolationIdentity() string { return p.isolation.Identity(
 // ExecuteFlow is the single lifecycle service call. Preparation is not a
 // verdict; every phase is acquired and executed here under live authority.
 func ExecuteFlow(ctx context.Context, p *PreparedFlow, output string, confirmation testisolation.Confirmation, observers ...func(FlowPhaseResult)) (FlowResult, error) {
+	if p != nil && p.runtime != nil {
+		return executeRuntimeFlow(ctx, p, output, confirmation, observers...)
+	}
+	return executeConcreteFlow(ctx, p, output, confirmation, observers...)
+}
+
+func executeConcreteFlow(ctx context.Context, p *PreparedFlow, output string, confirmation testisolation.Confirmation, observers ...func(FlowPhaseResult)) (FlowResult, error) {
 	if p == nil || len(observers) > 1 || p.unchanged() != nil {
 		return FlowResult{}, invalid
 	}

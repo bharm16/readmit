@@ -44,8 +44,12 @@ def read(state):
     return value
 
 
-def host(action, state, generation, mode, lab):
+def host(action, state, generation, mode, lab, *, route=None, defect=None, return_host=None, return_port=None, return_transport=None):
     state, info = lab.owner(state)
+    selected_return=None
+    if any(value is not None for value in (return_host,return_port,return_transport)):
+        from .return_path import validate
+        selected_return=validate(return_host,return_port,return_transport)
     with controller(state):
         current = read(state) if (state / 'control/session.json').exists() else None
         if current is None and (state/'control/session-intent.json').exists():
@@ -71,6 +75,12 @@ def host(action, state, generation, mode, lab):
         lab.verify_configuration()
         if info.get('config_root') != str(lab.LAB):
             raise ValueError('lab configuration owner differs')
+        if action in ('status','witness') and current.get('route')=='v2v2':
+            from . import tunnel
+            try:tunnel.check(state)
+            except Exception:
+                current['status']='interrupted';write(state/'control/session.json',current)
+                raise
         if action == 'teardown':
             from . import tunnel
             tunnel.stop(state)
@@ -90,22 +100,44 @@ def host(action, state, generation, mode, lab):
         if action in ('start', 'revision'):
             if current and current['status'] == 'stopped':
                 raise ValueError('stopped session cannot be restarted; initialize a fresh lab')
+            route=route or (current or {}).get('route','v2fhir')
+            defect=defect or (current or {}).get('defect','duplicate')
+            if route=='v2v2':
+                if selected_return is None and (state/'control/return-path.json').exists():
+                    selected_return=json.loads((state/'control/return-path.json').read_text())
+                if selected_return is None:raise ValueError('v2v2 session requires an explicit private return path')
+                selected_return={key:value for key,value in selected_return.items() if key!='generation'}
+            elif selected_return is not None:raise ValueError('return path requires the v2v2 route')
             next_generation = 'lab-' + secrets.token_hex(12)
             write(state/'control/session-intent.json', {'action':action,'previous':generation,'generation':next_generation,'mode':mode,'started_at_ns':time.time_ns()})
             lab.record_runtime(state)
             from . import tunnel
             if action == 'revision':
                 tunnel.stop(state)
+            if selected_return:
+                write(state/'control/return-path.json',dict(selected_return,generation=next_generation))
+            else:(state/'control/return-path.json').unlink(missing_ok=True)
             ports = tunnel.start(state, info['project'])
             base = 'https://127.0.0.1:' + str(ports['fixture'])
-            connection = {'schema':'readmit-lab-connection/v1', 'mllp':{'host':'127.0.0.1','port':ports['engine'],'tls':False}, 'fhir':{'base':base+'/fhir','token_endpoint':base+'/token','discovery':base+'/.well-known/smart-configuration','authorities':str(state/'secrets/clients/ca.pem'),'server_name':'localhost','client_id':'observer','private_key':str(state/'secrets/clients/observer-key.pem'),'scopes':['system/*.rs']}}
+            connection = {'schema':'readmit-lab-connection/v1', 'mllp':{'host':'127.0.0.1','port':ports['engine-v2v2'] if route=='v2v2' else ports['engine'],'tls':False}, 'fhir':{'base':base+'/fhir','token_endpoint':base+'/token','discovery':base+'/.well-known/smart-configuration','authorities':str(state/'secrets/clients/ca.pem'),'server_name':'localhost','client_id':'observer','private_key':str(state/'secrets/clients/observer-key.pem'),'scopes':['system/*.rs']}}
+            if selected_return:
+                credentials=state/'secrets/clients'
+                connection['return_listener']=dict(selected_return,authorities=str(credentials/'ca.pem'),certificate=str(credentials/'return-server.pem'),private_key=str(credentials/'return-server-key.pem'),client_certificate=str(credentials/'return-client.pem'),client_private_key=str(credentials/'return-client-key.pem'))
             write(state/'connection.json', connection)
             write(state/'control/connection.json', {'token_endpoint':base+'/token'})
-            lab.compose(state, 'run', '--rm', 'qualifier', 'python', '-m', 'independent_lab.session', 'prepare', next_generation, '--mode', mode)
+            lab.compose(state, 'run', '--rm', 'qualifier', 'python', '-m', 'independent_lab.session', 'prepare', next_generation, '--mode', mode, '--route', route, '--defect', defect)
             lab.compose(state, 'exec', '-T', 'engine', 'bash', '-c', 'java -cp "/opt/lab:$(cat /opt/lab/classpath)" ChannelFactory --all /lab-channels')
-            lab.compose(state, 'run', '--rm', 'qualifier', 'python', '-m', 'independent_lab.session', action, next_generation, '--mode', mode, '--previous', generation or '')
+            lab.compose(state, 'run', '--rm', 'qualifier', 'python', '-m', 'independent_lab.session', action, next_generation, '--mode', mode, '--previous', generation or '', '--route', route, '--defect', defect)
             public_connection={'schema':'readmit-lab-connection-evidence/v1','mllp':connection['mllp'],'fhir':{key:value for key,value in connection['fhir'].items() if key not in ('private_key','authorities')}}
             public_connection['fhir']['ca_sha256']=hashlib.sha256((state/'secrets/clients/ca.pem').read_bytes()).hexdigest()
+            if selected_return:
+                import ssl
+                public_connection['return_listener']={key:value for key,value in selected_return.items() if key!='generation'}
+                for name,label in [('ca.pem','ca'),('return-server.pem','server_certificate'),('return-client.pem','client_certificate')]:
+                    certificate=ssl.PEM_cert_to_DER_cert((state/'secrets/clients'/name).read_text())
+                    public_connection['return_listener'][label+'_sha256']=hashlib.sha256(certificate).hexdigest()
+                tunnel.check(state)
+                write(state/'session-evidence'/next_generation/'return-path.json',json.loads((state/'control/return-ready.json').read_text()))
             write(state/'session-evidence'/next_generation/'connection.json', public_connection)
             (state/'control/session-intent.json').unlink()
         else:
@@ -128,19 +160,24 @@ def host(action, state, generation, mode, lab):
         print(json.dumps(read(state), indent=2))
 
 
-def worker(action, generation, mode, previous):
+def worker(action, generation, mode, previous, route="v2fhir", defect="duplicate"):
     from . import qualify as q
     if not re.fullmatch(r'lab-[a-z0-9-]{1,48}', generation):
         raise ValueError('invalid session generation')
     root = Path('/session-evidence')
     control = Path('/control/session.json')
     directory = root/generation
-    identifier = q.IDS['v2fhir']
+    if control.exists() and action not in ('prepare','start','revision'):
+        route=json.loads(control.read_text()).get('route','v2fhir')
+    identifier = q.IDS[route]
     if action == 'prepare':
         directory.mkdir(mode=0o700)
-        cfg = {'name':'session','mode':mode,'defect':'duplicate','generation':generation,'route':'v2fhir'}
+        cfg = {'name':'session','mode':mode,'defect':defect,'generation':generation,'route':route}
+        if route=='v2v2':
+            target=json.loads((q.CONTROL/'return-path.json').read_text())
+            cfg.update(return_transport=target['transport'],return_host=target['host'],return_port=target['port'])
         source = (Path(__file__).parent/'channel.js').read_text()
-        (q.CHANNELS/'v2fhir-session.js').write_text(source.replace('__LAB_CONFIGURATION__', json.dumps(cfg, sort_keys=True)))
+        (q.CHANNELS/(route+'-session.js')).write_text(source.replace('__LAB_CONFIGURATION__', json.dumps(cfg, sort_keys=True)))
         return
     deadline = time.monotonic()+180
     while True:
@@ -173,7 +210,7 @@ def worker(action, generation, mode, previous):
         if current:
             write(root/expected/('reset-'+str(time.time_ns())+'.json'), reset)
             write(root/expected/'closed.json', dict(current,status='reset',reset=reset))
-        cfg = {'name':'session','mode':mode,'defect':'duplicate','generation':generation}
+        cfg = {'name':'session','mode':mode,'defect':defect,'generation':generation,'route':route}
         q.api('/admin/revision','POST',cfg)
         current = dict(cfg,schema=SCHEMA,status='preparing',started_at_ns=time.time_ns())
         write(control,current)
@@ -182,6 +219,7 @@ def worker(action, generation, mode, previous):
         prerequisites = [item for item in baseline if item['resourceType'] in ('Practitioner','Location')]
         prerequisites.append({'resourceType':'Patient','id':'lab-patient-01','identifier':[{'system':'urn:readmit:lab:patient','value':'lab-patient-01'}],'name':[{'family':'Lark','given':['Fictional']}]})
         receipts=[]
+        if route=='v2v2':prerequisites=[]
         for obj in prerequisites:
             obj['meta']={'tag':[{'system':'urn:readmit:independent-lab','code':generation}]}
             q.api('/fhir/'+obj['resourceType']+'/'+obj['id'],'PUT',obj,retain=receipts)
@@ -189,12 +227,12 @@ def worker(action, generation, mode, previous):
         baseline=q.snapshot(generation)
         if q.resources(baseline,'Appointment'):
             raise ValueError('session target state was populated before product execution')
-        for kind, identifier_value in [('Patient','lab-patient-01'),('Practitioner','lab-practitioner-01'),('Location','lab-location-01')]:
+        for kind, identifier_value in ([('Patient','lab-patient-01'),('Practitioner','lab-practitioner-01'),('Location','lab-location-01')] if route=='v2fhir' else []):
             values=q.resources(baseline,kind)
             if len(values)!=1 or values[0].get('id')!=identifier_value or not values[0].get('meta',{}).get('versionId'):
                 raise ValueError('declared prerequisite state was not observed')
         write(directory/'baseline.json',baseline)
-        xml=(q.CHANNELS/'v2fhir-session.xml').read_bytes()
+        xml=(q.CHANNELS/(route+'-session.xml')).read_bytes()
         q.engine(client,'/channels/'+identifier+'?override=true','PUT',xml,accept='text/plain')
         q.engine(client,'/channels/'+identifier+'/_deploy?returnErrors=true','POST')
         deadline=time.monotonic()+30
@@ -205,7 +243,7 @@ def worker(action, generation, mode, previous):
         # Read back the exact deployed mapping; OIE may add serializer metadata.
         tree=ET.fromstring(exported)
         script=tree.findtext('.//destinationConnectors/connector/properties/script')
-        if script != (q.CHANNELS/'v2fhir-session.js').read_text():
+        if script != (q.CHANNELS/(route+'-session.js')).read_text():
             raise ValueError('deployed channel script differs from selected revision')
         (directory/'channel.xml').write_bytes(exported)
         write(directory/'capability.json',metadata)
@@ -298,5 +336,6 @@ def verify_export(directory):
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action');parser.add_argument('generation');parser.add_argument('--mode',default='positive');parser.add_argument('--previous',default='')
+    parser.add_argument('--route',default='v2fhir',choices=['v2fhir','v2v2']);parser.add_argument('--defect',default='duplicate',choices=['duplicate','field'])
     args=parser.parse_args()
-    worker(args.action,args.generation,args.mode,args.previous)
+    worker(args.action,args.generation,args.mode,args.previous,args.route,args.defect)

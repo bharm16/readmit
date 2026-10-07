@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
-	"path/filepath"
 	"strings"
 
 	"github.com/bharm16/readmit/internal/artifactdir"
@@ -30,6 +29,43 @@ type flowInputSnapshot struct {
 	Validation    string                           `json:"validation"`
 }
 
+// VerifyFlowInputSnapshot checks an immutable preparation's retained input
+// contract without opening any referenced path. Execution separately proves
+// that its actual evidence instantiates these pins.
+func VerifyFlowInputSnapshot(plan *connectedtest.FlowPlan, snapshot, configuration, registry []byte) error {
+	if plan == nil || len(snapshot) > 1<<20 || len(configuration) > 2<<20 || len(registry) > 1<<20 {
+		return ErrFlowInput
+	}
+	var input flowInputSnapshot
+	if plan.RuntimeScoped() {
+		var runtime runtimeInput
+		var config FlowConfig
+		metadata, err := plan.BindRuntime("input-metadata")
+		if err != nil || json.Unmarshal(snapshot, &runtime, json.RejectUnknownMembers(true)) != nil || runtime.Schema != runtimeInputSchema || runtime.Template != plan.Identity() || runtime.Configuration != networkaction.Digest(configuration) || len(runtime.Originals) != len(plan.Document().Test.Phases) ||
+			json.Unmarshal(configuration, &config, json.RejectUnknownMembers(true)) != nil || config.Schema != RuntimeFlowConfigSchema || config.RecoveryStore != "" {
+			return ErrFlowInput
+		}
+		for _, phase := range plan.Document().Test.Phases {
+			if !networkaction.ValidDigest(runtime.Originals[phase.ID]) {
+				return ErrFlowInput
+			}
+		}
+		config.Schema = FlowConfigSchema
+		input = runtime.Metadata
+		if input.Plan != metadata.Identity() || input.Configuration != networkaction.Digest(canonicalFlow(config)) {
+			return ErrFlowInput
+		}
+	} else {
+		if runnerprotocol.Exact(snapshot, "plan", "configuration", "bindings", "sources", "isolation_registry", "isolation_policy", "validation") != nil || json.Unmarshal(snapshot, &input, json.RejectUnknownMembers(true)) != nil || input.Plan != plan.Identity() || input.Configuration != networkaction.Digest(configuration) {
+			return ErrFlowInput
+		}
+	}
+	if !networkaction.ValidDigest(input.Registry) || !networkaction.ValidDigest(input.Policy) || input.Validation != "" && !networkaction.ValidDigest(input.Validation) || len(input.Bindings) == 0 || input.Sources == nil || input.Registry != networkaction.Digest(registry) {
+		return ErrFlowInput
+	}
+	return nil
+}
+
 // VerifyFlowInput verifies actual retained lifecycle facts against the exact
 // approved inputs. Registry bytes are separately retained approved input, whose
 // digest is checked and whose decoded contents must match the genuine child
@@ -37,24 +73,34 @@ type flowInputSnapshot struct {
 // child consumed a particular whitespace encoding. Original paths, providers,
 // worker engines and network destinations are never opened.
 func VerifyFlowInput(ctx context.Context, path string, snapshot, configRaw []byte, expectedInstance string, registryRaw ...[]byte) error {
+	var header struct {
+		Schema string `json:"schema"`
+	}
+	if json.Unmarshal(snapshot, &header) == nil && header.Schema == runtimeInputSchema {
+		return verifyRuntimeFlowInput(ctx, path, snapshot, configRaw, expectedInstance, registryRaw...)
+	}
+	files, err := artifactdir.Read(path, flowResultFamily.Layout)
+	if err != nil {
+		return ErrFlowInput
+	}
+	return verifyFlowInputFiles(ctx, path, files, snapshot, configRaw, expectedInstance, registryRaw...)
+}
+
+func verifyFlowInputFiles(ctx context.Context, path string, files map[string][]byte, snapshot, configRaw []byte, expectedInstance string, registryRaw ...[]byte) error {
 	var input flowInputSnapshot
 	if len(snapshot) > 1<<20 || len(configRaw) > 2<<20 || len(registryRaw) != 1 || len(registryRaw[0]) > 1<<20 ||
 		runnerprotocol.Exact(snapshot, "plan", "configuration", "bindings", "sources", "isolation_registry", "isolation_policy", "validation") != nil ||
 		json.Unmarshal(snapshot, &input, json.RejectUnknownMembers(true)) != nil || input.Configuration != networkaction.Digest(configRaw) || input.Registry != networkaction.Digest(registryRaw[0]) || len(input.Bindings) == 0 || input.Sources == nil {
 		return ErrFlowInput
 	}
-	actual, err := OpenFlow(ctx, path)
+	actual, err := openFlowFiles(ctx, path, files)
 	if err != nil {
-		actual, err = InspectFlow(ctx, path)
+		actual, err = inspectFlowFiles(ctx, path, files)
 	}
 	if err != nil || actual.Instance != expectedInstance || actual.Plan != input.Plan || actual.Previous != "" {
 		return ErrFlowInput
 	}
-	files, err := artifactdir.Read(path, flowResultFamily.Layout)
-	if err != nil {
-		return ErrFlowInput
-	}
-	plan, err := connectedtest.OpenFlowPlan(filepath.Join(path, "plan"))
+	plan, err := connectedtest.VerifyFlowPlan(artifactdir.Subtree(files, "plan"))
 	if err != nil {
 		return ErrFlowInput
 	}

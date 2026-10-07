@@ -1,18 +1,25 @@
 package desktop
 
 import (
+	"bytes"
 	"context"
+	"crypto/x509"
 	"encoding/json/v2"
+	"encoding/pem"
 	"errors"
 	"net"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/catalog"
 	"github.com/bharm16/readmit/internal/dataset"
 	"github.com/bharm16/readmit/internal/hl7"
+	"github.com/bharm16/readmit/internal/networkaction"
 	"github.com/bharm16/readmit/internal/observeinterval"
+	"github.com/bharm16/readmit/internal/secret"
+	"github.com/bharm16/readmit/internal/sendpolicy"
 )
 
 // ConnectedCaptureObservation explicitly selects the saved listener and the
@@ -26,7 +33,7 @@ type ConnectedCaptureObservation struct {
 }
 
 func (c *loadedCatalog) connectedCaptureSource(ref ItemRef, completion observeinterval.Definition, selector, outputKey string, include []observeinterval.ScopeFilter) (observeinterval.CaptureSource, ItemRef, error) {
-	invalid := errors.New("choose the exact saved plain loopback MLLP listener; remote/TLS capture combinations are not admitted by this connected editor")
+	invalid := errors.New("Choose an approved saved MLLP listener with a fixed port and valid transport settings.")
 	i := c.document.Find(ref.ID)
 	if i < 0 || ref.Kind != SourceItem || c.removed(c.document.Items[i]) {
 		return observeinterval.CaptureSource{}, ref, invalid
@@ -45,7 +52,7 @@ func (c *loadedCatalog) connectedCaptureSource(ref ItemRef, completion observein
 	}
 	listener := source.Listener
 	ip := net.ParseIP(listener.BindAddress)
-	if listener.Transport != PlainTransport || ip == nil || !ip.IsLoopback() || listener.Port < 1 {
+	if ip == nil || ip.IsUnspecified() || ip.IsMulticast() || !ip.IsLoopback() && !listener.AllowRemote || listener.Port < 1 {
 		return observeinterval.CaptureSource{}, ref, invalid
 	}
 	if _, err := hl7.ParseSelector(selector); err != nil {
@@ -61,12 +68,93 @@ func (c *loadedCatalog) connectedCaptureSource(ref ItemRef, completion observein
 		maximum = completion.MaxRecords
 	}
 	maxFrame := min(64<<10, completion.MaxBytes-(16<<10))
-	raw := observeinterval.CaptureSource{Schema: observeinterval.CaptureSourceSchemaV2, OutputKeySelector: outputKey, Address: listener.Address(), ReceiverPolicy: *source.Responder, TimeoutMS: max(completion.HorizonMS+30000, idle.Milliseconds()), MaxFrameBytes: maxFrame, MaxBytes: completion.MaxBytes, MaxMessages: min(maximum, completion.MaxRecords), MaxConnections: listener.ConnectionLimit, MaxSessions: 128, RunSelector: selector, Include: include}
+	raw := observeinterval.CaptureSource{Schema: observeinterval.CaptureSourceSchemaV2, OutputKeySelector: outputKey, Address: listener.Address(), ReceiverPolicy: *source.Responder, TimeoutMS: max(completion.HorizonMS+30000, idle.Milliseconds()), MaxFrameBytes: maxFrame, MaxBytes: completion.MaxBytes, MaxMessages: min(maximum, completion.MaxRecords), MaxConnections: max(1, listener.ConnectionLimit), MaxSessions: 128, RunSelector: selector, Include: include}
+	if listener.Transport != PlainTransport || !ip.IsLoopback() {
+		raw.Schema = observeinterval.CaptureSourceSchemaV3
+		for _, role := range []string{"listener", "responder"} {
+			data, err := savedFile.Read(paths[role])
+			if err != nil {
+				return raw, ref, err
+			}
+			raw.Inputs = append(raw.Inputs, observeinterval.CaptureInput{Role: role, Path: paths[role], SHA256: dataset.Digest(data)})
+		}
+	}
+	if listener.Transport != PlainTransport {
+		// Read public material and the registered locator only. The shared
+		// executor resolves the private key after separate capture admission.
+		read := func(name, role string) ([]byte, error) {
+			path, err := artifactpath.File(c.root, name)
+			if err != nil {
+				return nil, err
+			}
+			data, err := savedFile.Read(path)
+			if err == nil && !captureCertificates(data) {
+				return nil, invalid
+			}
+			if err == nil {
+				raw.Inputs = append(raw.Inputs, observeinterval.CaptureInput{Role: role, Path: path, SHA256: dataset.Digest(data)})
+			}
+			return data, err
+		}
+		if raw.Certificate, err = read(listener.TLSCertificate, "certificate"); err != nil {
+			return raw, ref, err
+		}
+		if listener.Transport == MutualTLSTransport {
+			if raw.Authorities, err = read(listener.ClientCA, "client-authorities"); err != nil {
+				return raw, ref, err
+			}
+		}
+		path, err := artifactpath.File(c.root, listener.SecretsFile)
+		if err != nil {
+			return raw, ref, err
+		}
+		store, err := savedFile.Read(path)
+		if err != nil {
+			return raw, ref, err
+		}
+		document, err := secret.Decode(store)
+		if err != nil {
+			return raw, ref, err
+		}
+		credential, err := secret.Bind(document, listener.TLSKeyReference, secret.MLLPEndpoint, listener.Address())
+		if err != nil {
+			return raw, ref, err
+		}
+		if credential.Generation < 1 || credential.Rotation(time.Now()) == secret.RotationOverdue {
+			return raw, ref, invalid
+		}
+		registered, _ := json.Marshal(credential, json.Deterministic(true))
+		raw.Inputs = append(raw.Inputs, observeinterval.CaptureInput{Role: "credential", Path: path, Credential: credential.Name, SHA256: dataset.Digest(registered)})
+		raw.PrivateKey = &networkaction.Credential{Endpoint: listener.Address(), Purpose: sendpolicy.CaptureListen, Generation: strconv.Itoa(credential.Generation), Locator: networkaction.Provider{Command: credential.Command, Arguments: append([]string(nil), credential.Arguments...)}}
+	}
 	encoded, _ := encodeMember(raw)
 	if _, err := observeinterval.DecodeCapture(encoded); err != nil {
 		return raw, ref, err
 	}
 	return raw, ItemRef{Kind: SourceItem, ID: item.ID, Revision: item.RevisionLabel()}, nil
+}
+
+// Only public certificate PEM blocks may enter retained source definitions.
+// A misplaced private-key file must never become an observation dependency.
+func captureCertificates(raw []byte) bool {
+	remaining := bytes.TrimSpace(raw)
+	if len(remaining) == 0 {
+		return false
+	}
+	for len(remaining) > 0 {
+		if !bytes.HasPrefix(remaining, []byte("-----BEGIN CERTIFICATE-----")) {
+			return false
+		}
+		block, rest := pem.Decode(remaining)
+		if block == nil || block.Type != "CERTIFICATE" || len(block.Headers) != 0 {
+			return false
+		}
+		if _, err := x509.ParseCertificate(block.Bytes); err != nil {
+			return false
+		}
+		remaining = bytes.TrimSpace(rest)
+	}
+	return true
 }
 func validateConnectedCapture(scope draftScope, setup *ConnectedObservation) ([]catalog.Staged, string, []FieldProblem) {
 	fail := func(reason string) ([]catalog.Staged, string, []FieldProblem) {

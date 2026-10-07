@@ -202,22 +202,7 @@ func openConnectedPreparation(path string) (map[string][]byte, connectedPreparat
 			return nil, manifest, doc, queue, fail
 		}
 		inputRaw := files["inputs/"+test.ID+".json"]
-		var input struct {
-			Plan          string                           `json:"plan"`
-			Configuration string                           `json:"configuration"`
-			Bindings      map[string]networkaction.Binding `json:"bindings"`
-			Sources       map[string]string                `json:"sources"`
-			Registry      string                           `json:"isolation_registry"`
-			Policy        string                           `json:"isolation_policy"`
-			Validation    string                           `json:"validation"`
-		}
-		if runnerprotocol.Exact(inputRaw, "plan", "configuration", "bindings", "sources", "isolation_registry", "isolation_policy", "validation") != nil ||
-			json.Unmarshal(inputRaw, &input, json.RejectUnknownMembers(true)) != nil || networkaction.Digest(inputRaw) != job.Input || input.Plan != job.PlanIdentity ||
-			input.Configuration != networkaction.Digest(files["configurations/"+test.ID+".json"]) || !validDigest(input.Registry) || !validDigest(input.Policy) ||
-			input.Validation != "" && !validDigest(input.Validation) || len(input.Bindings) == 0 || input.Sources == nil {
-			return nil, manifest, doc, queue, fail
-		}
-		if input.Registry != networkaction.Digest(files["registries/"+test.ID+".json"]) {
+		if networkaction.Digest(inputRaw) != job.Input || connectedrun.VerifyFlowInputSnapshot(plan, inputRaw, files["configurations/"+test.ID+".json"], files["registries/"+test.ID+".json"]) != nil {
 			return nil, manifest, doc, queue, fail
 		}
 	}

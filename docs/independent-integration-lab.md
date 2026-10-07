@@ -178,8 +178,8 @@ Use the actual random generation returned by the previous command. The modes
 are `positive`, `defective`, `corrected` and `reintroduced`, selecting the
 existing duplicate-Appointment transformation. Revision resets the previous
 owned generation and creates a new one. The controller never sends a stimulus
-or creates an Appointment. It prepares only the SIU's Patient, Practitioner and
-Location, verifies an empty Appointment baseline, and verifies actual OIE/HAPI
+or creates an Appointment. The default v2-to-FHIR route prepares only the SIU's
+Patient, Practitioner and Location, verifies an empty Appointment baseline, and verifies actual OIE/HAPI
 versions and the deployed channel script before reporting `ready`.
 
 `connection.json` is private operator configuration. It names the real loopback
@@ -282,3 +282,75 @@ retains the real CLI fail/pass/fail cycle, independent 2/1/2 Appointment state,
 six positive AA ACKs, offline readback after teardown, and a fresh passing
 original 24-revision reference run. Its bounded compressed package is reopened
 by the default offline tooling tests.
+
+## Return actual OIE output to a saved capture listener
+
+A `v2v2` session selects the existing field-mapping revision and a separately
+approved private return destination. The listener remains owned and armed by
+Readmit's saved connected test; the lab does not start a substitute receiver.
+Create a fresh lab, then select its concrete private host address and fixed port:
+
+```sh
+python3 tools/integration_lab.py session-start /absolute/new-lab-state \
+  --route v2v2 --defect field --mode positive \
+  --return-host PRIVATE_HOST_IPV4 --return-port FIXED_PORT \
+  --return-transport mutual-tls
+```
+
+Only one literal RFC1918 IPv4 destination and a port from 1024–65535 are
+accepted. A public address, wildcard, hostname or loopback return address is
+refused before target effects. `plain`, verified `tls` and `mutual-tls` are
+explicit choices, never fallbacks. Normal `session-revision` commands preserve
+the selected route, defect and return configuration while changing the generation.
+Use positive → defective → corrected for the field regression; the same
+`siu-s13.hl7` works without a prior booking because this boundary is engine
+output. The correct SCH-11.4 is `20300102100000+0000`; the existing field defect
+maps it to `20300102094500+0000`. The lab never imports those expected assertions.
+
+Private `connection.json.return_listener` names the exact bind address, port,
+transport, CA, `localhost` certificate name, server certificate and key paths,
+and the separate client certificate/key. Register the server key through the
+existing credential-reference flow with purpose **MLLP endpoint**, scoped to
+that exact bind address. Save the named source with explicit remote-bind
+approval and select it as the connected test's received-HL7 observation.
+The product's outbound engine-input environment uses `connection.json.mllp`;
+its explicitly approved plain loopback input is separate from the receive
+listener's TLS or mutual-TLS transport.
+
+The approved return path is recorded, not added as blanket container egress:
+OIE connects to only `fixture:7001` inside the isolated network. An owned
+`docker exec` process carries bounded, multiplexed **opaque bytes** to exactly
+the declared private host/port. The host has no additional inbound listener for
+this return relay. OIE performs the TLS handshake directly with the product's
+listener, verifies the CA and exact `localhost` certificate name, and in
+mutual-TLS mode presents the separately provisioned `return-client` certificate.
+The relay neither terminates TLS nor modifies an HL7 frame or ACK. Session
+readiness records the relay's actual internal listener and destination;
+`session-status` and `session-witness` also require the owned relay process to
+remain alive. The product listener and its peer handshake are checked when the
+saved test arms and executes, not claimed ready before the product binds it.
+
+For each actual OIE send, `return-receipts/` in that generation's evidence holds
+a separate intent and acquired receipt: framed intended/transmitted bytes,
+full returned ACK, actual send/acquisition times, endpoint declaration,
+TLS protocol/cipher and peer/client certificate DER SHA-256 identities. A
+correlated full AA acknowledgement is required for `acknowledged`. A failed
+handshake is `refused`; a write without a complete accepted ACK remains
+`uncertain`. Nothing promotes partial transport to success. Certificates and
+public fingerprints may be exported; private keys and credential material may
+not. The exported channel binds the selected return transport and destination.
+
+The `ZLG` lab-generation marker remains distinct from the product's fresh
+runtime marker. Use the explicitly reviewed MSH-4 field for the runtime marker:
+the v2-to-v2 mapping changes MSH-3 to `OIE-LAB` but preserves MSH-4 and the MSH-10
+phase identity. Original source bytes and both reviewed derivations remain
+inspectable. The native and production-runner qualification compare these
+independent sender acquisitions with the product's retained capture, under
+unchanged assertions. A broad customer integration or EHR qualification is not
+implied by this finite reference route.
+
+The [October 7 remote-capture qualification](../testdata/integration-lab/qualification/remote-capture-20261007.md)
+records native and production-runner pass/fail/pass, actual end-to-end mutual
+TLS and byte/ACK agreement, the separately preserved initial failures, and
+post-teardown packet/report/reanalysis checks. Producer limitations and the
+fresh original 24-revision regression are explicit.

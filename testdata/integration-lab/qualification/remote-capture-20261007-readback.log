@@ -1,0 +1,24 @@
+=== RUN   TestSavedConnectedCaptureRetainedReports
+=== RUN   TestSavedConnectedCaptureRetainedReports/positive
+=== RUN   TestSavedConnectedCaptureRetainedReports/positive/native
+=== RUN   TestSavedConnectedCaptureRetainedReports/positive/runner
+=== RUN   TestSavedConnectedCaptureRetainedReports/defective
+=== RUN   TestSavedConnectedCaptureRetainedReports/defective/native
+=== RUN   TestSavedConnectedCaptureRetainedReports/defective/runner
+=== RUN   TestSavedConnectedCaptureRetainedReports/corrected
+=== RUN   TestSavedConnectedCaptureRetainedReports/corrected/native
+=== RUN   TestSavedConnectedCaptureRetainedReports/corrected/runner
+=== NAME  TestSavedConnectedCaptureRetainedReports
+    runner_connected_capture_test.go:653: independent retained qualification receipt: /private/tmp/readmit-699-archive-readback/session/qualification/verified-all-4068660665/receipt.json
+--- PASS: TestSavedConnectedCaptureRetainedReports (24.05s)
+    --- PASS: TestSavedConnectedCaptureRetainedReports/positive (7.98s)
+        --- PASS: TestSavedConnectedCaptureRetainedReports/positive/native (2.22s)
+        --- PASS: TestSavedConnectedCaptureRetainedReports/positive/runner (5.75s)
+    --- PASS: TestSavedConnectedCaptureRetainedReports/defective (7.96s)
+        --- PASS: TestSavedConnectedCaptureRetainedReports/defective/native (2.19s)
+        --- PASS: TestSavedConnectedCaptureRetainedReports/defective/runner (5.77s)
+    --- PASS: TestSavedConnectedCaptureRetainedReports/corrected (8.11s)
+        --- PASS: TestSavedConnectedCaptureRetainedReports/corrected/native (2.22s)
+        --- PASS: TestSavedConnectedCaptureRetainedReports/corrected/runner (5.89s)
+PASS
+ok  	github.com/bharm16/readmit/hub	26.098s

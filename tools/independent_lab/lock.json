@@ -45,12 +45,12 @@
     "testdata/integration-lab/siu-s12.hl7": "7325965926d2bac80e0042813fd67ba5d7944c11dc1c764598e0d5dbce6db255",
     "testdata/integration-lab/siu-s13.hl7": "5c3467c44f7320e5325da3cb3757747b2a32e34b9dea2b7f621f0f8bd03f9e2d",
     "tools/independent_lab/ChannelFactory.java": "1e73e7efdfd620df85f0935d5013b8b4693ff3a778d599c9fdad1655b5612dd0",
-    "tools/independent_lab/Dockerfile.engine": "3d54139e0221ae799a6bf4e2a070e8963cbe785ef476063a532c0300fc4620a2",
+    "tools/independent_lab/Dockerfile.engine": "24dff1c0efa3ecbc1ba06bf4f54ebab32e65711ca730626f4dd09ce17bfd47e4",
     "tools/independent_lab/Dockerfile.fixture": "d5cd9d58809fd95fab9afe4414af38ce3b88246f6d6ac452b8a890212e33cf87",
     "tools/independent_lab/LabHttp.java": "f4c3caa2a2e6261e3c652322f2db9232a16899afdc5f965ea4ab8d9a87b576cc",
     "tools/independent_lab/__init__.py": "bdf242822bd11c60fcb1a1e8eaf100116be09bb8b2e77ccd9089efb1bdd76330",
-    "tools/independent_lab/channel.js": "2d0e8d677f12cfe3159c5bbd0168981ceaef106e9c310326db3ce109dcd0f54c",
-    "tools/independent_lab/compose.yaml": "b870d7c85f97320f23768dae961840fe18cf3a2c0cb6cd1081ce7c1ed50573c3",
+    "tools/independent_lab/channel.js": "44972ce4f7027a368ea26c797228128657c98dc5524b9acb313dc81729e5de15",
+    "tools/independent_lab/compose.yaml": "57d125b52c59a9bc11b18a2366ce196a2069594b1ab8a3f17d3f76cd1b529937",
     "tools/independent_lab/engine-entrypoint.sh": "5ef9998d1994dc7b8a6c913ccbc6a2e096093c21f0050dd3631298b0da2912b2",
     "tools/independent_lab/evidence.py": "eac1a4132b4d96e4f4fdc957578414736f5949cb3a02d0d75f4f65669da497c5",
     "tools/independent_lab/licenses/HAPI-Apache-2.0.txt": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
@@ -59,9 +59,11 @@
     "tools/independent_lab/qualify.py": "30cc417e743c2231d3cec35fd277c14f8f8365d7417c8397f8b6744574b2930e",
     "tools/independent_lab/requirements.lock": "e2b5c3a01e4295324b0214b0dbe3c4364619c92879189be8ada3d9ccac8f6fec",
     "tools/independent_lab/runtime.py": "9b2e579cede6ba95ee9a59e03aa125cbbb19ff9b76cb693c6141e829445904b5",
-    "tools/independent_lab/security.py": "b612a5f3e635df04fa5e612b968b8748758930018934fc24c1412daf0dc9c2d4",
-    "tools/integration_lab.py": "5a32f0cd930ee8baff9e1630ed35e9ffee8d7c32e07cc8f37e9a4bcc031cc80d",
-    "tools/independent_lab/session.py": "867c75ef3a7e814627539604cf305d7f990f602b24cc7b47085bb4f7f2d7dca0",
-    "tools/independent_lab/tunnel.py": "06e9ed8a47071c714e4d8d3f7b6839d67b2239ac65c130c9deb890a9b9ef8432"
+    "tools/independent_lab/security.py": "86bbb0963ee3a99e139aabe6b04295fc87bcdab0374e7a4b9cfababafdaace5b",
+    "tools/integration_lab.py": "15529bc88e1de761deb9c95698e962fc79c1bb629c3ffdb9c239c4c81c8603dd",
+    "tools/independent_lab/session.py": "a92573ebac2fe7601da5904b2697a1f4009bdcbb0cbb2384fe0a6e7213d2bd33",
+    "tools/independent_lab/tunnel.py": "99d384ca498ed25c7fb570c11a9604499ce71e46c593a51af76adfa7807c3de2",
+    "tools/independent_lab/LabMllp.java": "c67b87dca4cd88b188da7f8a2162410f7f2d5c9acf9b567260777c22429d333e",
+    "tools/independent_lab/return_path.py": "d058dcfbd4add5f6f09e5bb09c47d65ee499aebd4ffa96b6f01aba48a52a3564"
   }
 }

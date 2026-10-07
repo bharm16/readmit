@@ -331,6 +331,9 @@ func BuildConnectedReport(p *ConnectedPacket) (ConnectedReport, error) {
 
 func reportPhase(section string, e connectedrun.FlowEvidence, phase connectedrun.FlowPhaseResult) ReportPhase {
 	base := section + "/phases/" + phase.ID + "/"
+	if e.Result.Schema == connectedrun.RuntimeFlowSchema {
+		base = section + "/execution/phases/" + phase.ID + "/"
+	}
 	pe := e.Phases[phase.ID]
 	fhir := e.Result.Schema == connectedrun.FlowSchemaV4
 	rp := ReportPhase{ID: phase.ID, State: phase.State, Verdict: string(phase.Verdict), Checks: []ReportCheck{}, Steps: []ReportStep{}, Observations: []ReportObservation{}, Bindings: []ReportBinding{}}

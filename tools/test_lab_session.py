@@ -98,6 +98,9 @@ class SessionControllerTests(unittest.TestCase):
                     if time.monotonic()>deadline:self.fail('tunnel did not start')
                     time.sleep(.01)
                 port=json.loads((state/'control/tunnel.json').read_text())['ports']['engine']
+                from independent_lab import tunnel
+                tunnel.check(state)
+                self.assertIsNone(process.poll())
                 with socket.create_connection(('127.0.0.1',port),timeout=5) as client:
                     client.sendall(b'original stream bytes');self.assertEqual(client.recv(100),b'original stream bytes')
                     with socket.socket(socket.AF_UNIX) as control:control.connect(str(state/'control/tunnel.sock'))

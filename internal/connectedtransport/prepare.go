@@ -14,6 +14,7 @@ import (
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/mllp"
 	"github.com/bharm16/readmit/internal/replay"
+	"github.com/bharm16/readmit/internal/reproducer"
 
 	"github.com/bharm16/readmit/internal/secret"
 	"github.com/bharm16/readmit/internal/sendpolicy"
@@ -43,6 +44,7 @@ type Prepared struct {
 	credential *Credential
 	retained   map[string][]byte
 	selected   map[string]string
+	derivation *reproducer.Prepared
 }
 
 func (p *Prepared) Binding() Binding { return p.binding }
@@ -51,13 +53,13 @@ func (p *Prepared) Binding() Binding { return p.binding }
 // network dependency is accepted. A source case must contain the exact compiled
 // stimuli in order; transport does not quietly regenerate or transform them.
 func Prepare(plan *connectedtest.Plan, s Selection) (*Prepared, error) {
-	return prepare(plan, s, false, nil)
+	return prepare(plan, s, false, nil, nil)
 }
 
 // PrepareSequence is selected only by the v4 and v5 lifecycles' phase plans,
 // never old standalone plans.
 func PrepareSequence(plan *connectedtest.Plan, s Selection) (*Prepared, error) {
-	return prepare(plan, s, true, nil)
+	return prepare(plan, s, true, nil, nil)
 }
 
 // PrepareScheduled is PrepareSequence for a phase of a scheduled lifecycle:
@@ -73,14 +75,23 @@ func PrepareScheduled(plan *connectedtest.Plan, s Selection, schedule []time.Dur
 			return nil, refused
 		}
 	}
-	return prepare(plan, s, true, slices.Clone(schedule))
+	return prepare(plan, s, true, slices.Clone(schedule), nil)
 }
-func prepare(plan *connectedtest.Plan, s Selection, sequence bool, schedule []time.Duration) (*Prepared, error) {
+
+// PrepareDerivedSequence prepares already-bound concrete phase inputs against
+// the ordinary derived case. It writes nothing and never grants authority.
+func PrepareDerivedSequence(plan *connectedtest.Plan, s Selection, derivation *reproducer.Prepared) (*Prepared, error) {
+	if derivation == nil || derivation.VerifyUnchanged() != nil {
+		return nil, refused
+	}
+	return prepare(plan, s, true, nil, derivation)
+}
+func prepare(plan *connectedtest.Plan, s Selection, sequence bool, schedule []time.Duration, derivation *reproducer.Prepared) (*Prepared, error) {
 	phase := plan != nil && (plan.Document().Schema == connectedtest.PhasePlanSchema || plan.Document().Schema == connectedtest.PhasePlanSchemaV2)
 	if plan == nil || sequence != phase {
 		return nil, refused
 	}
-	p := &Prepared{sequence: sequence, schedule: schedule, plan: plan, retained: map[string][]byte{}, selected: map[string]string{}}
+	p := &Prepared{derivation: derivation, sequence: sequence, schedule: schedule, plan: plan, retained: map[string][]byte{}, selected: map[string]string{}}
 	read := func(name, path string) ([]byte, error) {
 		absolute, err := filepath.Abs(path)
 		if err != nil {
@@ -131,7 +142,9 @@ func prepare(plan *connectedtest.Plan, s Selection, sequence bool, schedule []ti
 		}
 		ids = append(ids, step.V2.Occurrence)
 	}
-	if sequence {
+	if derivation != nil {
+		p.replay, err = replay.PrepareScopedDerivedSequence(s.Case, target, replay.Options{Occurrences: ids}, derivation)
+	} else if sequence {
 		p.replay, err = replay.PrepareScopedSequence(s.Case, target, replay.Options{Occurrences: ids})
 	} else {
 		p.replay, err = replay.PrepareScoped(s.Case, target, replay.Options{Occurrences: ids})
@@ -241,6 +254,9 @@ func frame(b []byte) []byte {
 	return b
 }
 func (p *Prepared) unchanged() error {
+	if p.derivation != nil && p.derivation.VerifyUnchanged() != nil {
+		return refused
+	}
 	for name, path := range p.selected {
 		b, err := (artifactdir.Document{MaxBytes: 64 << 10}).Read(path)
 		if err != nil || !bytes.Equal(b, p.retained[name]) {

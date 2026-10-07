@@ -17,9 +17,16 @@ import (
 // InspectFlow reports an interrupted writer without turning an intent into a
 // successful attempt or reconstructing permission to continue it.
 func InspectFlow(ctx context.Context, path string) (FlowResult, error) {
-	files, err := artifactdir.Read(path, flowResultFamily.Layout)
+	files, err := readFlowFiles(path)
 	if err != nil {
 		return FlowResult{}, err
+	}
+	return inspectFlowFiles(ctx, path, files)
+}
+
+func inspectFlowFiles(ctx context.Context, path string, files map[string][]byte) (FlowResult, error) {
+	if runtimeHeader(files["started.json"]) {
+		return openRuntimeFlowFiles(ctx, path, files, true)
 	}
 	if _, ok := files["identity.sha256"]; ok {
 		return openFlowFiles(ctx, path, files)

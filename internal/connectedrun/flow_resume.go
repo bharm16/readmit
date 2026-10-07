@@ -27,7 +27,7 @@ type FlowResume struct {
 func PrepareFlowResume(p *PreparedFlow, previous string) (*FlowResume, error) {
 	// A v5 lifecycle is inspection-only after a stop: response-bound identities
 	// and FHIR effects are never continued from retained evidence.
-	if p == nil || p.fhir != nil || p.unchanged() != nil {
+	if p == nil || p.fhir != nil || p.runtime != nil || p.unchanged() != nil {
 		return nil, invalid
 	}
 	files, err := artifactdir.Read(previous, flowResultFamily.Layout)

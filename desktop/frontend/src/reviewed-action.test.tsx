@@ -139,3 +139,24 @@ test.each([
   expect(screen.getByText("Transport")).toBeTruthy();
   expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
 });
+
+test.each([
+  ["mutual-tls", "Mutual TLS"], ["tls", "TLS"], ["plain", "Plain MLLP"],
+] as const)("Run review separates the %s receive listener from outbound transport", async (transport, label) => {
+  const facade = installFacade({
+    ListCatalog: request => ({state:"completed", context:request.context, page:{items:[],total:0,snapshot:"s",recorded:true,incomplete:[]}}),
+    PrepareAction: request => ({state:"completed",context:request.context,review:{
+      action:"run.test",token:"receive-review",ready:true,requirements:[],consent:"send",items:[],destination:{name:"Engine input"},
+      run:{kind:"test",name:"Mapped output",environment_name:"Engine input",environment:{kind:"environment",id:"engine"},message_count:1,environments:[],targets:[],jobs:[],resets:[],setup:[],messages:[],
+        lifecycle:{transport:"plain",plan:"plan",input:"input",instance:"instance",boundary:"engine-output",phases:[],effects:[],endpoints:[],
+          collectors:[{phase:"mapped",dataset:"received",kind:"capture",address:"Listener address",credential:transport==="plain"?"":"return-key",generation:transport==="plain"?"":"2",horizon_ms:3000,meaning:"Received engine output",capture:{name:"Engine output",revision:"4",transport,remote:true}}]}}}}),
+    WithdrawReview:()=>({state:"completed",context:{project:"",generation:0}}),
+  });
+  render(<SendReview request={{kind:"test",test:{kind:"test",id:"saved"}}} context={()=>({project:"/owned",generation:1})} onClose={()=>{}} onStarted={()=>{}} onEditEnvironment={()=>{}} onActivate={()=>{}} />);
+  expect(await screen.findByText("Receive listener")).toBeTruthy();
+  expect(screen.getByText("Engine output · v4 · Listener address")).toBeTruthy();
+  expect(screen.getByText(`${label} · Remote bind approved`)).toBeTruthy();
+  expect(screen.getByText("MLLP · Plain")).toBeTruthy();
+  expect(screen.getByText(transport==="plain"?"Full interval: 3,000 ms":"Key credential: return-key · v2 · Full interval: 3,000 ms")).toBeTruthy();
+  expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
+});

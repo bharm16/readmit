@@ -121,6 +121,10 @@ func PrepareCapture(raw, policyRaw []byte) (*CapturePlan, error) {
 }
 func (p *CapturePlan) Binding() Binding { return p.binding }
 
+// DeclarationBytes returns the exact value-free action declaration whose
+// digest the binding pins. The caller owns the returned bytes.
+func (p *CapturePlan) DeclarationBytes() []byte { return bytes.Clone(p.raw) }
+
 type CaptureSession struct {
 	progress func() receiver.CaptureProgress
 	done     chan struct{}

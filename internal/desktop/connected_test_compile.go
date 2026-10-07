@@ -74,8 +74,9 @@ type connectedEnvironments struct {
 	server      string
 	// promoted says a suite binds the test to environments in place of its
 	// own: its FHIR observations then reach the bound FHIR server.
-	promoted      bool
-	runtimeMarker string
+	promoted        bool
+	runtimeMarker   string
+	runtimeTemplate bool
 }
 
 // connectedCompiled is one connected test compiled against its environments:
@@ -502,7 +503,13 @@ func (c *loadedCatalog) compileConnected(d ConnectedTestDraft, id, revision stri
 		}
 		flow.Schema = connectedtest.FlowTestSchema
 		flow.Servers = nil
-		flow.Variables = append(flow.Variables, connectedtest.Variable{ID: "readmit-runtime-marker", Kind: "literal", Value: marker})
+		runtime := connectedtest.Variable{ID: "readmit-runtime-marker", Kind: "literal", Value: marker}
+		if bind.runtimeTemplate {
+			flow.Schema = connectedtest.RuntimeFlowTestSchema
+			runtime.Kind = "runtime-instance"
+			runtime.Value = ""
+		}
+		flow.Variables = append(flow.Variables, runtime)
 	}
 	cases := map[string]string{}
 	runtimeEdits := map[string][]reproducer.Step{}
@@ -530,7 +537,9 @@ func (c *loadedCatalog) compileConnected(d ConnectedTestDraft, id, revision stri
 					add(field, "explicitly choose the derived runtime marker field for every v2 stimulus")
 				} else {
 					step.V2.Assignments = []connectedtest.Assignment{{Selector: s.V2.RuntimeMarkerSelector, Variable: "readmit-runtime-marker"}}
-					runtimeEdits[read.path] = append(runtimeEdits[read.path], reproducer.Step{Operator: reproducer.SetField, Occurrence: s.Source.Occurrence, Selector: s.V2.RuntimeMarkerSelector, Value: marker})
+					if !bind.runtimeTemplate {
+						runtimeEdits[read.path] = append(runtimeEdits[read.path], reproducer.Step{Operator: reproducer.SetField, Occurrence: s.Source.Occurrence, Selector: s.V2.RuntimeMarkerSelector, Value: marker})
+					}
 				}
 			} else if s.V2.RuntimeMarkerSelector != "" {
 				add(field, "runtime marker derivation requires a scoped live HL7 capture")
@@ -705,7 +714,15 @@ func (c *loadedCatalog) compileConnected(d ConnectedTestDraft, id, revision stri
 				projection := ref(name, dataset.ProjectionSchema, "observations/"+name+".json", read.member)
 				ds.Kind, ds.Projection = "typed-rows", &projection
 				sources[phase.ID][observed.Dataset] = read.paths["source"]
-				allow(field, observed.Dataset, read.capture.Address, &sendpolicy.Policy{ApprovedDestinations: []string{"127.0.0.1/32", "::1/128"}}, sendpolicy.CaptureListen)
+				// The saved source separately approves this exact concrete bind.
+				// Outbound environment approvals cannot grant CaptureListen.
+				bindHost, _, _ := net.SplitHostPort(read.capture.Address)
+				bindHost = net.ParseIP(bindHost).String()
+				bits := 128
+				if net.ParseIP(bindHost).To4() != nil {
+					bits = 32
+				}
+				allow(field, observed.Dataset, read.capture.Address, &sendpolicy.Policy{ApprovedDestinations: []string{bindHost + "/" + strconv.Itoa(bits)}}, sendpolicy.CaptureListen)
 			} else if read.typed.Database != nil && read.typed.Observes.Kind == observesource.DatabaseQuery {
 				if read.typed.Database.Classification != "nonproduction" || read.credentialGeneration == "" {
 					add(field, "choose a nonproduction database observation with a current registered reference")
@@ -1105,7 +1122,7 @@ func (compiled *connectedCompiled) write(ctx context.Context, folder, root strin
 		}
 		derivedPaths[path] = filepath.Join("runtime-input-"+binding(path)[:16], reproducer.CaseName)
 	}
-	selection := compiled.config(func(path string) string {
+	selected, err := compiled.selection(func(path string) string {
 		if derived, ok := derivedPaths[path]; ok {
 			return derived
 		}
@@ -1116,16 +1133,8 @@ func (compiled *connectedCompiled) write(ctx context.Context, folder, root strin
 		}
 		return path
 	})
-	var selected any = selection
-	if compiled.flow.Schema == connectedtest.FlowTestSchema {
-		legacy := connectedrun.FlowConfig{Schema: connectedrun.FlowConfigSchema, Isolation: selection.Isolation, Seed: selection.Seed, Phases: map[string]connectedrun.ConfigV2{}}
-		for id, phase := range selection.Phases {
-			if phase.Send == nil {
-				return "", "", errors.New("capture phase needs a v2 stimulus")
-			}
-			legacy.Phases[id] = connectedrun.ConfigV2{Schema: connectedrun.ConfigSchemaV2, Definition: connectedrun.Config{Schema: connectedrun.ConfigSchema, Case: phase.Case, Target: phase.Target, Credential: phase.Credential, Send: *phase.Send, Policy: selection.Policy, Sources: phase.Sources}, Barriers: phase.Barriers}
-		}
-		selected = legacy
+	if err != nil {
+		return "", "", err
 	}
 	raw, err := encodeMember(selected)
 	if err != nil {
@@ -1136,6 +1145,26 @@ func (compiled *connectedCompiled) write(ctx context.Context, folder, root strin
 		return "", "", err
 	}
 	return plan, path, nil
+}
+
+// selection shares the exact execution-config shape between individual tests
+// and named suites; runtime capture keeps original cases until instantiation.
+func (compiled *connectedCompiled) selection(place func(string) string) (any, error) {
+	selection := compiled.config(place)
+	schema := connectedrun.FlowConfigSchema
+	if compiled.plan.RuntimeScoped() {
+		schema = connectedrun.RuntimeFlowConfigSchema
+	} else if compiled.flow.Schema != connectedtest.FlowTestSchema {
+		return selection, nil
+	}
+	config := connectedrun.FlowConfig{Schema: schema, Isolation: selection.Isolation, Seed: selection.Seed, Phases: map[string]connectedrun.ConfigV2{}}
+	for id, phase := range selection.Phases {
+		if phase.Send == nil {
+			return nil, errors.New("capture phase needs a v2 stimulus")
+		}
+		config.Phases[id] = connectedrun.ConfigV2{Schema: connectedrun.ConfigSchemaV2, Definition: connectedrun.Config{Schema: connectedrun.ConfigSchema, Case: phase.Case, Target: phase.Target, Credential: phase.Credential, Send: *phase.Send, Policy: selection.Policy, Sources: phase.Sources}, Barriers: phase.Barriers}
+	}
+	return config, nil
 }
 
 // prepareConnected proves a compiled test prepares exactly as the connected

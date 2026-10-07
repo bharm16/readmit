@@ -1,0 +1,1 @@
+- Saved connected HL7 tests can receive engine output through explicitly approved remote plain, TLS or mutual-TLS listeners. Run review identifies the receive listener and its separate bind authority; named runner suites derive and retain a fresh runtime marker for each owned occurrence, with original bytes and offline-verifiable derivation evidence.

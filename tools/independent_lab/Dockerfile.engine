@@ -4,7 +4,7 @@ RUN mkdir /opt/engine && tar -xzf /tmp/oie.tar.gz --strip-components=1 -C /opt/e
 WORKDIR /opt/engine
 COPY ChannelFactory.java /opt/lab/ChannelFactory.java
 RUN find /opt/engine -name '*.jar' -printf '%p:' > /opt/lab/classpath && javac -cp "$(cat /opt/lab/classpath)" /opt/lab/ChannelFactory.java
-COPY LabHttp.java /opt/lab/LabHttp.java
-RUN mkdir /opt/lab/classes && javac -d /opt/lab/classes /opt/lab/LabHttp.java && jar cf /opt/engine/server-lib/lab-http.jar -C /opt/lab/classes .
+COPY LabHttp.java LabMllp.java /opt/lab/
+RUN mkdir /opt/lab/classes && javac -d /opt/lab/classes /opt/lab/LabHttp.java /opt/lab/LabMllp.java && jar cf /opt/engine/server-lib/lab-http.jar -C /opt/lab/classes .
 COPY engine-entrypoint.sh /opt/lab/engine-entrypoint.sh
 ENTRYPOINT ["bash", "/opt/lab/engine-entrypoint.sh"]

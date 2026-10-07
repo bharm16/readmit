@@ -16,7 +16,7 @@ func runConnectedTest(cmd *cobra.Command, plan, config, instance, output string,
 	var head struct {
 		Schema string `json:"schema"`
 	}
-	if readErr == nil && json.Unmarshal(raw, &head) == nil && (head.Schema == connectedrun.FlowConfigSchema || head.Schema == connectedrun.FHIRFlowConfigSchema) {
+	if readErr == nil && json.Unmarshal(raw, &head) == nil && (head.Schema == connectedrun.FlowConfigSchema || head.Schema == connectedrun.FHIRFlowConfigSchema || head.Schema == connectedrun.RuntimeFlowConfigSchema) {
 		return runConnectedFlow(cmd, plan, config, instance, output, send)
 	}
 	prepared, err := connectedrun.Prepare(plan, config)

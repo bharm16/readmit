@@ -78,3 +78,24 @@ without upgrading uncertainty to absence or permission to resend.
 
 The versioned APIs are available to the existing desktop owner. This change does
 not add desktop bindings or a competing navigation/review/save workflow.
+
+## Reusable runtime templates
+
+Saved received-HL7 suites select `readmit-connected-test/v7` and
+`readmit-execution-plan/v7` for an explicitly declared `runtime-instance`
+variable. The approved template is immutable; an occurrence derives an ordinary
+v4 plan and reproducer case through the shared compiler. Existing literal
+variables do not acquire runtime meaning. Preparation remains local and passive,
+and instance ownership remains with the existing native marker reservation or
+customer runner occurrence claim.
+
+`readmit-connected-run-config/v5` selects original cases, while
+`readmit-connected-run/v5` retains the template, original snapshots,
+deterministic derivation proof and actual v4 execution. The outer approved input
+identity stays stable across occurrences; per-effect bindings name the exact
+instantiated plan and source. Offline readers recompute the allowed derivation
+before accepting the ordinary child's evidence. Neither approval nor reader
+verification may silently rewrite the template. This version is inspection-only
+after a stop and adds no scheduler, evaluator or sender. See
+[runtime capture derivation](../connected-runtime-capture.md) for its retained
+contracts and supported combinations.

@@ -144,7 +144,7 @@ func verifyFiles(ctx context.Context, files map[string][]byte, sealed bool, open
 				if err != nil {
 					return err
 				}
-				if source.Schema == CaptureSourceSchemaV2 && (stimulusAt.IsZero() || doc.Acquisition.Facts == nil || !doc.Acquisition.Facts.ObservedFrom.Equal(stimulusAt)) {
+				if source.Schema != CaptureSourceSchema && (stimulusAt.IsZero() || doc.Acquisition.Facts == nil || !doc.Acquisition.Facts.ObservedFrom.Equal(stimulusAt)) {
 					return invalid
 				}
 				material, excluded, status, err := captureMaterialAfter(capture, source, binding, stimulusAt)

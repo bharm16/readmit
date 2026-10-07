@@ -94,14 +94,14 @@ def provision(directory):
     write("ca-key.pem", private(ca_key))
     password = secrets.token_hex(24)
     write("keystore-password", password.encode())
-    for name, client in [("engine", False), ("fixture", False), ("tls-client", True)]:
+    for name, client in [("engine", False), ("fixture", False), ("tls-client", True), ("return-server", False), ("return-client", True)]:
         key = rsa.generate_private_key(public_exponent=65537, key_size=3072)
         subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, name)])
         cert = x509.CertificateBuilder().subject_name(subject).issuer_name(ca_name).public_key(key.public_key()).serial_number(x509.random_serial_number()).not_valid_before(now - datetime.timedelta(minutes=5)).not_valid_after(now + datetime.timedelta(days=2)).add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True).add_extension(x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_key.public_key()), critical=False).add_extension(x509.SubjectKeyIdentifier.from_public_key(key.public_key()), critical=False).add_extension(x509.KeyUsage(digital_signature=True, content_commitment=False, key_encipherment=True, data_encipherment=False, key_agreement=False, key_cert_sign=False, crl_sign=False, encipher_only=False, decipher_only=False), critical=True).add_extension(x509.SubjectAlternativeName([x509.DNSName(name), x509.DNSName("localhost"), x509.IPAddress(ipaddress.ip_address("127.0.0.1"))]), critical=False).add_extension(x509.ExtendedKeyUsage([ExtendedKeyUsageOID.CLIENT_AUTH if client else ExtendedKeyUsageOID.SERVER_AUTH]), critical=False).sign(ca_key, hashes.SHA384())
         write(name + "-key.pem", private(key))
         write(name + ".pem", cert.public_bytes(serialization.Encoding.PEM))
-        if name == "engine":
-            write("engine.p12", pkcs12.serialize_key_and_certificates(b"mirthconnect", key, cert, [ca], serialization.BestAvailableEncryption(password.encode())))
+        if name in ("engine", "return-client"):
+            write(name + ".p12", pkcs12.serialize_key_and_certificates(b"mirthconnect", key, cert, [ca], serialization.BestAvailableEncryption(password.encode())))
     clients = {}
     for client, scope in [("setup", "system/*.cruds"), ("observer", "system/*.rs"), ("engine-client", "system/*.crus")]:
         key = rsa.generate_private_key(public_exponent=65537, key_size=3072)

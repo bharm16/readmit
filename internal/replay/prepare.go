@@ -20,13 +20,13 @@ import (
 // sockets, TLS handshakes, output writes, or mutation of source evidence. Empty
 // selection means all message events; ACKs/unparsed evidence are never sent.
 func Prepare(sourcePath string, target Target, options Options) (*Plan, error) {
-	return prepareLocal(sourcePath, target, options, false, false)
+	return prepareLocal(sourcePath, target, options, false, false, nil)
 }
 
 // PrepareScoped validates an explicitly selected connected target offline.
 // Only SendScoped can present its separately authorized client identity.
 func PrepareScoped(sourcePath string, target Target, options Options) (*Plan, error) {
-	return prepareLocal(sourcePath, target, options, true, false)
+	return prepareLocal(sourcePath, target, options, true, false, nil)
 }
 
 // PrepareScopedSequence preserves the explicitly authored selection order and
@@ -36,9 +36,28 @@ func PrepareScopedSequence(sourcePath string, target Target, options Options) (*
 	if len(options.Occurrences) < 1 || len(options.Occurrences) > MaxMessages {
 		return nil, errors.New("sequence requires a bounded explicit selection")
 	}
-	return prepareLocal(sourcePath, target, options, true, true)
+	return prepareLocal(sourcePath, target, options, true, true, nil)
 }
-func prepareLocal(sourcePath string, target Target, options Options, scoped, sequence bool) (*Plan, error) {
+
+// DerivedCase is the narrow immutable case/guard boundary supplied by the
+// reproducer owner. Replay keeps no dependency on higher-level test revisions.
+// Implementations must perform only bounded local reads in these methods.
+type DerivedCase interface {
+	Case() (*bundle.Bundle, error)
+	SourceIdentity() string
+	SourcePath() string
+	VerifyUnchanged() error
+}
+
+// PrepareScopedDerivedSequence uses a frozen derived case while preserving its
+// original physical source guard. A detached offline derivation cannot send.
+func PrepareScopedDerivedSequence(sourcePath string, target Target, options Options, derivation DerivedCase) (*Plan, error) {
+	if derivation == nil || len(options.Occurrences) < 1 || len(options.Occurrences) > MaxMessages {
+		return nil, errors.New("derived sequence requires a live derivation and bounded selection")
+	}
+	return prepareLocal(sourcePath, target, options, true, true, derivation)
+}
+func prepareLocal(sourcePath string, target Target, options Options, scoped, sequence bool, derivation DerivedCase) (*Plan, error) {
 	resolved, err := filepath.EvalSymlinks(sourcePath)
 	if err != nil {
 		return nil, errors.New("cannot resolve source bundle directory")
@@ -56,6 +75,20 @@ func prepareLocal(sourcePath string, target Target, options Options, scoped, seq
 		return nil, err
 	}
 	generated := source.Manifest.Provenance.Scheduled()
+	originalIdentity := source.Identity
+	if derivation != nil {
+		if err := derivation.VerifyUnchanged(); err != nil {
+			return nil, err
+		}
+		if resolved != derivation.SourcePath() || source.Identity != derivation.SourceIdentity() {
+			return nil, errors.New("derivation names another original source")
+		}
+		source, err = derivation.Case()
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	if options.IgnoreScenarioTiming && (scoped || !generated) {
 		return nil, errors.New("only a raw replay of a generated case can ignore scenario timing; nothing else declares any")
 	}
@@ -94,7 +127,7 @@ func prepareLocal(sourcePath string, target Target, options Options, scoped, seq
 		}
 		selected[id] = true
 	}
-	p := &Plan{sequence: sequence, scoped: scoped, generated: generated, sourcePath: resolved, sourceInfo: info, sourceIdentity: source.Identity, target: target, ca: ca, options: Options{Transformations: slices.Clone(options.Transformations), IgnoreScenarioTiming: options.IgnoreScenarioTiming, Durability: options.Durability}, changes: []Change{}}
+	p := &Plan{sequence: sequence, scoped: scoped, generated: generated, sourcePath: resolved, sourceInfo: info, sourceIdentity: source.Identity, sourceDiskIdentity: originalIdentity, target: target, ca: ca, options: Options{Transformations: slices.Clone(options.Transformations), IgnoreScenarioTiming: options.IgnoreScenarioTiming, Durability: options.Durability}, changes: []Change{}}
 	rebases := make(map[string][]byte)
 	total := 0
 	events := source.Events
