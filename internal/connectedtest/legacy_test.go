@@ -72,6 +72,8 @@ func testLegacy(t *testing.T, cancelled bool) {
 		t.Fatal(err)
 	}
 	done := make(chan error, 1)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 	go func() {
 		conn, err := listener.Accept()
 		if err != nil {
@@ -86,8 +88,12 @@ func testLegacy(t *testing.T, cancelled bool) {
 			err = os.ErrInvalid
 		}
 		if cancelled {
-			time.Sleep(250 * time.Millisecond)
-			done <- nil
+			// Cancel after the independent target receives the exact stimulus.
+			// A wall-clock timeout can fire before dialing on a loaded machine,
+			// leaving the fixture waiting forever in Accept instead of testing
+			// cancellation while an acknowledgement is outstanding.
+			cancel()
+			done <- err
 			return
 		}
 		if err == nil {
@@ -95,14 +101,10 @@ func testLegacy(t *testing.T, cancelled bool) {
 		}
 		done <- err
 	}()
-	deadline := 5 * time.Second
-	if cancelled {
-		deadline = 100 * time.Millisecond
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), deadline)
-	defer cancel()
 	out := filepath.Join(dir, "execution")
 	result, err := connectedtest.ExecuteLegacy(ctx, p, specPath, "run-one", out)
+	// Also release Accept if a failed execution never reached the target.
+	_ = listener.Close()
 	if err != nil {
 		t.Fatal(err)
 	}

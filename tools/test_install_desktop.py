@@ -1,6 +1,8 @@
 """Local refresh preserves existing apps and refuses unrelated destinations."""
 
 from pathlib import Path
+import hashlib
+import json
 import plistlib
 import subprocess
 import tempfile
@@ -161,6 +163,78 @@ class InstallTests(unittest.TestCase):
         retained = list(self.applications.glob(".readmit-install-*/previous.app/Contents/MacOS/readmit-desktop"))
         self.assertEqual(len(retained), 1)
         self.assertEqual(retained[0].read_bytes(), b"old")
+
+
+class ReferenceBuildInputTests(unittest.TestCase):
+    def test_local_refresh_uses_pinned_retained_content_without_a_customer_step(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(installer.os.environ, {}, clear=True):
+            root = Path(directory)
+            registry = root / "Library/Application Support/readmit/reference-library.json"
+            registry.parent.mkdir(parents=True)
+            entries = []
+            for index in range(14):
+                path = root / f"source-{index}.json"
+                raw = f"owned-{index}".encode()
+                path.write_bytes(raw)
+                entries.append({"edition": str(index), "path": str(path), "identity": "sha256:" + hashlib.sha256(raw).hexdigest()})
+            registry.write_text(json.dumps({"schema": "readmit-hl7-reference-library/v1", "editions": entries}))
+            with patch.object(installer.Path, "home", return_value=root):
+                with installer.retained_reference_library() as folder:
+                    manifest = json.loads((folder / "library.json").read_bytes())
+                    self.assertEqual(len(manifest["catalogs"]), 14)
+                    self.assertEqual((folder / "catalog-7.json").read_bytes(), b"owned-7")
+                self.assertFalse(folder.exists())
+                Path(entries[0]["path"]).write_bytes(b"changed")
+                with self.assertRaises(packaging.Refused):
+                    with installer.retained_reference_library():
+                        self.fail("changed source accepted")
+
+    def test_staging_cleanup_preserves_preexisting_archives(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = root / "desktop/reference-assets/library.zip"
+            archive.parent.mkdir(parents=True)
+            archive.write_bytes(b"previous staging input")
+            with patch.object(installer, "ROOT", root), self.assertRaises(packaging.Refused):
+                with installer.embedded_reference_library(root):
+                    self.fail("existing staging archive overwritten")
+            self.assertEqual(archive.read_bytes(), b"previous staging input")
+
+    def test_competing_staging_archive_is_never_removed_and_helper_uses_host_environment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = root / "desktop/reference-assets/library.zip"
+            archive.parent.mkdir(parents=True)
+            environment = {"CGO_ENABLED": "1"}
+
+            def competing_writer(command, **kwargs):
+                self.assertIs(kwargs["env"], environment)
+                Path(command[-1]).write_bytes(b"this build")
+                archive.write_bytes(b"other build")
+
+            with patch.object(installer, "ROOT", root), patch.object(installer, "run", side_effect=competing_writer), self.assertRaises(packaging.Refused):
+                with installer.embedded_reference_library(root, environment):
+                    self.fail("competing archive overwritten")
+            self.assertEqual(archive.read_bytes(), b"other build")
+
+    def test_only_this_invocations_archive_is_cleaned_after_compilation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = root / "desktop/reference-assets/library.zip"
+            archive.parent.mkdir(parents=True)
+
+            def writer(command, **kwargs):
+                self.assertNotEqual(Path(command[-1]).parent.parent, archive.parent)
+                Path(command[-1]).write_bytes(b"owned archive")
+
+            with patch.object(installer, "ROOT", root), patch.object(installer, "run", side_effect=writer):
+                with installer.embedded_reference_library(root, {}):
+                    self.assertEqual(archive.read_bytes(), b"owned archive")
+                self.assertFalse(archive.exists())
+                with installer.embedded_reference_library(root, {}):
+                    archive.unlink()
+                    archive.write_bytes(b"replacement")
+                self.assertEqual(archive.read_bytes(), b"replacement")
 
 
 if __name__ == "__main__":

@@ -68,6 +68,7 @@ The workbench bundles IBM Plex Sans (regular, medium and semibold) and JetBrains
 - Semantic support starts with one named profile: HL7 v2.5.1 SIU fixture profile, version 1. That is a readmit-supported profile, not a claim of v2.5.1 conformance.
 - Existing Go HL7 libraries (for example `kardianos/hl7`) are not used as the message model. Their lossless and malformed-input behaviour has not been verified against readmit's requirements.
 - Dictionary provenance and redistribution rights must be confirmed before bundling externally sourced definitions.
+- Standard reference definitions are desktop application content: the maintainer build embeds all 14 exact-edition catalogs, and first launch requires no user sourcing or installation. Custom catalogs are optional. The owner-local build uses retained sources; public redistribution of those exact bytes remains under #627. Reference coverage and evaluator qualification stay separate.
 - Selected expansion: packs for 2.3.1 through 2.8.2 built from HL7's own
   published schemas and normative chapters for each version, read once at
   development time with poppler's `pdftotext` (26.07.0 produced the recorded

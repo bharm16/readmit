@@ -2,7 +2,7 @@ import { expect, test, vi } from "vitest";
 import { render, screen, within, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MessageReader } from "./Inspector";
-import type { ReferenceCatalogResult, HL7ReferenceResult, HL7Node } from "./bindings";
+import type { ReferenceCatalogResult, HL7ReferenceResult, HL7Node, ReferenceLibraryResult } from "./bindings";
 import { installFacade } from "./testkit/wails";
 import { CASE_IDENTITY, WORKSPACE_ROOT, inspectionResult } from "./testkit/fixtures";
 
@@ -20,7 +20,7 @@ test("the reader keeps eleven columns reachable and distinguishes absent referen
   expect(within(grid).getByText("Empty")).toBeTruthy();
   expect(grid.classList.contains("reader-grid-scroll")).toBe(true);
   expect(screen.getByRole("region",{name:"Reference details"})).toBeTruthy();
-  expect(screen.getByRole("button",{name:"HL7 reference version"})).toBeTruthy();
+  expect(screen.getByRole("button",{name:"HL7 version"})).toBeTruthy();
 });
 
 test("the reference details distinguish catalog failure without removing raw or hex views", async () => {
@@ -47,13 +47,13 @@ test("a delayed catalog summary cannot repopulate a changed source or reveal con
   const inspect=vi.fn(async()=>null);
   const first=inspectionResult(undefined,{reference:{status:"not_selected",reason:"Select an offline reference catalog.",identity:"",edition:"",coverage:{segments:0,fields:0,definitions:0,missing:[]},missing_count:0}});
   const {rerender}=render(<MessageReader result={first} loading={false} busy={false} onInspect={inspect} onReveal={()=>undefined} />);
-  await user.click(screen.getByRole("button",{name:"HL7 reference version"}));
-  await user.click(screen.getByRole("menuitem",{name:"Use local catalog…"}));
+  await user.click(screen.getByRole("button",{name:"HL7 version"}));
+  await user.click(screen.getByRole("menuitem",{name:"Use custom definitions…"}));
   await waitFor(()=>expect(facade.callsTo("ReadReferenceCatalog")).toHaveLength(1));
   const second=inspectionResult(undefined,{...first.inspection,identity:CASE_IDENTITY+"-new",revealed:true});
   rerender(<MessageReader result={second} loading={false} busy={false} onInspect={inspect} onReveal={()=>undefined} />);
   resolveSummary?.({state:"completed",reference:{status:"available",reason:"",identity:"old-catalog",edition:"2.5.1",coverage:{segments:1,fields:1,definitions:1,missing:[]},missing_count:0}});
-  await waitFor(()=>expect((screen.getByRole("button",{name:"HL7 reference version"}) as HTMLButtonElement).disabled).toBe(false));
+  await waitFor(()=>expect((screen.getByRole("button",{name:"HL7 version"}) as HTMLButtonElement).disabled).toBe(false));
   expect(inspect).not.toHaveBeenCalled();
   expect(screen.queryByText("old-catalog")).toBeNull();
 });
@@ -127,25 +127,42 @@ test("a new field intent cancels a pending catalog selection before the host rep
  const inspect=vi.fn(async()=>null);
  const result=inspectionResult(undefined,{children:[{node:{path:"MSH[1]",kind:"segment",parent:"",segment:"MSH",field:0,state:"present",start:0,end:100},label:"",selector:"",segment_name:"",value:"",truncated:false}],reference:{status:"not_selected",reason:"",identity:"",edition:"",coverage:{segments:0,fields:0,definitions:0,missing:[]},missing_count:0}});
  render(<MessageReader result={result} loading={false} busy={false} onInspect={inspect} onReveal={()=>undefined}/>);
- await user.click(screen.getByRole("button",{name:"HL7 reference version"}));
-  await user.click(screen.getByRole("menuitem",{name:"Use local catalog…"}));await waitFor(()=>expect(facade.callsTo("ReadReferenceCatalog")).toHaveLength(1));
+ await user.click(screen.getByRole("button",{name:"HL7 version"}));
+  await user.click(screen.getByRole("menuitem",{name:"Use custom definitions…"}));await waitFor(()=>expect(facade.callsTo("ReadReferenceCatalog")).toHaveLength(1));
  await user.click(screen.getByRole("button",{name:/^MSH\[1\]/}));
  expect(inspect).toHaveBeenCalledTimes(1);
  await act(async()=>{reply?.({state:"completed",reference:{status:"available",reason:"",identity:"old",edition:"2.4",coverage:{segments:1,fields:1,definitions:1,missing:[]},missing_count:0}});});
- await waitFor(()=>expect((screen.getByRole("button",{name:"HL7 reference version"}) as HTMLButtonElement).disabled).toBe(false));
+ await waitFor(()=>expect((screen.getByRole("button",{name:"HL7 version"}) as HTMLButtonElement).disabled).toBe(false));
  expect(inspect).toHaveBeenCalledTimes(1);
 });
 
-test("return to the declared edition requires an explicitly chosen matching local catalog",async()=>{
- const user=userEvent.setup();let edition="2.7.1";
- installFacade({ChooseInspectionPath:()=>({state:"completed",kind:"reference-catalog",path:WORKSPACE_ROOT}),ReadReferenceCatalog:()=>({state:"completed",reference:{status:"available",reason:"",identity:"catalog",edition,coverage:{segments:1,fields:1,definitions:1,missing:[]},missing_count:0}})});
+test("return to the message edition restores built-in matching without a file picker",async()=>{
+ const user=userEvent.setup();
+ const facade=installFacade({ReadReferenceLibrary:()=>({state:"completed",editions:[]})});
  const inspect=vi.fn(async()=>null);
  const result=inspectionResult(undefined,{reference:{status:"available",reason:"",identity:"old",edition:"2.7.1",coverage:{segments:1,fields:1,definitions:1,missing:[]},missing_count:0}});
  render(<MessageReader result={result} loading={false} busy={false} onInspect={inspect} onReveal={()=>undefined}/>);
  await user.click(screen.getByRole("button",{name:"Return to message edition"}));
- expect((await screen.findByRole("alert")).textContent).toContain("Choose a catalog for the declared edition 2.5.1.");expect(inspect).not.toHaveBeenCalled();
- edition="2.5.1";await user.click(screen.getByRole("button",{name:"Return to message edition"}));await waitFor(()=>expect(inspect).toHaveBeenCalledTimes(1));
- expect(inspect).toHaveBeenCalledWith("",0,-1,undefined,WORKSPACE_ROOT,undefined,"catalog");
+ expect(inspect).toHaveBeenCalledWith("",0,-1,undefined,"",undefined,"");
+ expect(facade.callsTo("ChooseInspectionPath")).toHaveLength(0);
+});
+
+test("the toolbar lists every built-in edition and selects directly without opening a dialog",async()=>{
+ const user=userEvent.setup();
+ const versions=["2.9","2.8.2","2.8.1","2.8","2.7.1","2.7","2.6","2.5.1","2.5","2.4","2.3.1","2.3","2.2","2.1"];
+ const editions=versions.map(edition=>({edition,path:WORKSPACE_ROOT+"/"+edition,identity:CASE_IDENTITY}));
+ const facade=installFacade({ReadReferenceLibrary:()=>({state:"completed",editions})});
+ const inspect=vi.fn(async()=>null);
+ const result=inspectionResult(undefined,{reference:{status:"available",reason:"",identity:"old",edition:"2.5.1",coverage:{segments:1,fields:1,definitions:1,missing:[]},missing_count:0}});
+ render(<MessageReader result={result} loading={false} busy={false} onInspect={inspect} onReveal={()=>undefined}/>);
+ await user.click(screen.getByRole("button",{name:"HL7 version"}));
+ await screen.findByRole("menuitem",{name:"2.9"});
+ for(const version of versions)expect(screen.getByRole("menuitem",{name:version})).toBeTruthy();
+ expect(screen.getByRole("menuitem",{name:"2.5.1"}).getAttribute("aria-current")).toBe("true");
+ await user.click(screen.getByRole("menuitem",{name:"2.9"}));
+ expect(inspect).toHaveBeenCalledWith("",0,-1,undefined,editions[0]!.path,undefined,CASE_IDENTITY);
+ expect(screen.queryByRole("dialog")).toBeNull();
+ expect(facade.callsTo("ChooseInspectionPath")).toHaveLength(0);
 });
 
 test("catalog refusal with the held hash clears an earlier entity pane",async()=>{
@@ -317,4 +334,22 @@ test("returning to a datatype restores its Overview rather than changing to Comp
  rerender(<MessageReader {...props} result={first}/>);
  await screen.findByRole("heading",{name:"Datatype reference"});
  expect(screen.getByRole("tab",{name:"Overview"}).getAttribute("aria-selected")).toBe("true");
+});
+
+
+test("a delayed version list preserves keyboard focus in the open dropdown",async()=>{
+ const user=userEvent.setup();
+ let answer:((value:ReferenceLibraryResult)=>void)|undefined;
+ installFacade({ReadReferenceLibrary:()=>new Promise<ReferenceLibraryResult>(resolve=>{answer=resolve;})});
+ const result=inspectionResult();
+ render(<MessageReader result={result} loading={false} busy={false} onInspect={async()=>null} onReveal={()=>undefined}/>);
+ await user.click(screen.getByRole("button",{name:"HL7 version"}));
+ const automatic=screen.getByRole("menuitem",{name:"Use message version"});
+ expect(document.activeElement).toBe(automatic);
+ await act(async()=>{answer?.({state:"completed",editions:[{edition:"2.9",path:WORKSPACE_ROOT,identity:CASE_IDENTITY}]});});
+ expect(document.activeElement).toBe(automatic);
+ await user.keyboard("{ArrowUp}");
+ expect(document.activeElement).toBe(screen.getByRole("menuitem",{name:"2.9"}));
+ await user.keyboard("{Escape}");
+ expect(document.activeElement).toBe(screen.getByRole("button",{name:"HL7 version"}));
 });

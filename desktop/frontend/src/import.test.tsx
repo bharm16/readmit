@@ -549,8 +549,8 @@ test("preview messages keep explicit reference choices without pinning an automa
  expect(facade.callsTo("InspectImportPreview").at(-1)?.args[0]).not.toHaveProperty("reference_catalog");
  await user.click(flow().getByRole("button",{name:"Enable PHI masking"}));
  await waitFor(()=>expect(facade.callsTo("InspectImportPreview").at(-1)?.args[0]).toMatchObject({mask_phi:true,reference_selection:selection}));
- await user.click(flow().getByRole("button",{name:"HL7 reference version"}));
- await user.click(screen.getByRole("menuitem",{name:"Use local catalog…"}));
+ await user.click(flow().getByRole("button",{name:"HL7 version"}));
+ await user.click(screen.getByRole("menuitem",{name:"Use custom definitions…"}));
  await waitFor(()=>expect(facade.callsTo("InspectImportPreview").at(-1)?.args[0]).toMatchObject({reference_catalog:catalog,reference_identity:"manual-catalog"}));
  await user.click(flow().getByRole("row",{name:"SIU^S12 1"}));
  await waitFor(()=>expect(facade.callsTo("InspectImportPreview").at(-1)?.args[0]).toMatchObject({row:0,reference_catalog:catalog,reference_identity:"manual-catalog",reference_selection:selection}));

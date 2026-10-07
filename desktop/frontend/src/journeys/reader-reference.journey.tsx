@@ -36,7 +36,7 @@ test("real reader selection keeps original spans, all metadata columns and expli
   const details=within(await screen.findByRole("region",{name:"Message details"}));
   expect(await details.findByText(/Select an offline reference catalog/)).toBeTruthy();
   await journey.chooseFiles([catalog],"Open offline HL7 reference catalog");
-  await press(user,screen.getByRole("button",{name:"HL7 reference version"}));await press(user,screen.getByRole("menuitem",{name:"Use local catalog…"}));
+  await press(user,screen.getByRole("button",{name:"HL7 version"}));await press(user,screen.getByRole("menuitem",{name:"Use custom definitions…"}));
   await journey.settled();
   await waitFor(()=>expect(journey.callsTo("ReadReferenceCatalog")[0]?.result).toMatchObject({state:"completed",reference:{coverage:{segments:1,fields:1}}}));
   await press(user,await details.findByRole("button",{name:/^MSH\[1\].*Owned message header/}));
@@ -126,7 +126,7 @@ test("real datatype drilldown and component inspection keep original repeated cu
   await press(user,list.querySelector<HTMLElement>('[data-row-id="0"]')!);
   const details=within(await screen.findByRole("region",{name:"Message details"}));
   await journey.chooseFiles([catalog],"Open offline HL7 reference catalog");
-  await press(user,screen.getByRole("button",{name:"HL7 reference version"}));await press(user,screen.getByRole("menuitem",{name:"Use local catalog…"}));
+  await press(user,screen.getByRole("button",{name:"HL7 version"}));await press(user,screen.getByRole("menuitem",{name:"Use custom definitions…"}));
   await journey.settled();
   await waitFor(()=>expect(journey.callsTo("ReadReferenceCatalog")[0]?.result).toMatchObject({state:"completed"}));
   await selectReaderPath(user,"MSH[1]-9");
@@ -200,7 +200,7 @@ test("real offline table search, element and section drilldowns preserve context
   await press(user,list.querySelector<HTMLElement>('[data-row-id="0"]')!);
   const details=within(await screen.findByRole("region",{name:"Message details"}));
   await journey.chooseFiles([catalog],"Open offline HL7 reference catalog");
-  await press(user,screen.getByRole("button",{name:"HL7 reference version"}));await press(user,screen.getByRole("menuitem",{name:"Use local catalog…"}));
+  await press(user,screen.getByRole("button",{name:"HL7 version"}));await press(user,screen.getByRole("menuitem",{name:"Use custom definitions…"}));
   await journey.settled();
   await waitFor(()=>expect(journey.callsTo("ReadReferenceCatalog")[0]?.result).toMatchObject({state:"completed"}));
   await selectReaderPath(user,"MSH[1]-9[1].2");
@@ -283,7 +283,7 @@ test("real message context keeps source structure omitted and selected profile d
   await press(user,list.querySelector<HTMLElement>('[data-row-id="0"]')!);
   let details=within(await screen.findByRole("region",{name:"Message details"}));
   await journey.chooseFiles([catalog],"Open offline HL7 reference catalog");
-  await press(user,screen.getByRole("button",{name:"HL7 reference version"}));await press(user,screen.getByRole("menuitem",{name:"Use local catalog…"}));
+  await press(user,screen.getByRole("button",{name:"HL7 version"}));await press(user,screen.getByRole("menuitem",{name:"Use custom definitions…"}));
   await journey.settled();
   await waitFor(()=>expect(journey.callsTo("ReadReferenceCatalog")[0]?.result).toMatchObject({state:"completed"}));
   expect(details.getByRole("button",{name:"SIU_S12"})).toBeTruthy();
@@ -352,7 +352,7 @@ test("real reader selects each earlier local edition while retaining the declare
  const list=await screen.findByRole("table",{name:"Messages in this file"});await press(user,list.querySelector<HTMLElement>('[data-row-id="0"]')!);
  const details=within(await screen.findByRole("region",{name:"Message details"}));
  for(let i=0;i<paths.length;i++) {
-  await journey.chooseFiles([paths[i]!],"Open offline HL7 reference catalog");await press(user,screen.getByRole("button",{name:"HL7 reference version"}));await press(user,screen.getByRole("menuitem",{name:"Use local catalog…"}));
+  await journey.chooseFiles([paths[i]!],"Open offline HL7 reference catalog");await press(user,screen.getByRole("button",{name:"HL7 version"}));await press(user,screen.getByRole("menuitem",{name:"Use custom definitions…"}));
   await journey.settled();
   await waitFor(()=>expect(journey.callsTo("ReadReferenceCatalog")).toHaveLength(i+1));
   await selectReaderPath(user,"MSH[1]-9");
@@ -381,7 +381,7 @@ test.skipIf(!process.env.READMIT_HL7_REFERENCE_DIRECTORY)("supplied official ear
  const list=await screen.findByRole("table",{name:"Messages in this file"});await press(user,list.querySelector<HTMLElement>('[data-row-id="0"]')!);
  const details=within(await screen.findByRole("region",{name:"Message details"}));
  for(const [edition,slug,length] of [["2.3.1","v231","7"],["2.4","v24","13"],["2.5","v25","15"]]) {
-  await journey.chooseFiles([dir+"/hl7-"+slug+"-qualification.json"],"Open offline HL7 reference catalog");await press(user,screen.getByRole("button",{name:"HL7 reference version"}));await press(user,screen.getByRole("menuitem",{name:"Use local catalog…"}));
+  await journey.chooseFiles([dir+"/hl7-"+slug+"-qualification.json"],"Open offline HL7 reference catalog");await press(user,screen.getByRole("button",{name:"HL7 version"}));await press(user,screen.getByRole("menuitem",{name:"Use custom definitions…"}));
   await journey.settled();
   await selectReaderPath(user,"MSH[1]-9");
   let reference=within(details.getByRole("region",{name:"Reference details"}));
@@ -417,15 +417,21 @@ test.skipIf(!process.env.READMIT_HL7_LATER_REFERENCE_DIRECTORY)("supplied later 
  await journey.launch();await journey.chooseFiles([file],"Open HL7 file");await user.keyboard("{Control>}k{/Control}");await user.type(screen.getByLabelText("Search commands"),"Inspect file{Enter}");
  const list=await screen.findByRole("table",{name:"Messages in this file"});await press(user,list.querySelector<HTMLElement>('[data-row-id="0"]')!);
  const details=within(await screen.findByRole("region",{name:"Message details"}));
+ await press(user,screen.getByRole("button",{name:"HL7 version"}));await press(user,screen.getByRole("menuitem",{name:"Manage custom definitions…"}));
+ const library=within(await screen.findByRole("dialog",{name:"HL7 versions"}));
+ await user.click(library.getByText("Custom definitions",{selector:"summary"}));
+ await journey.chooseFiles([returned],"Open offline HL7 reference catalog");await press(user,library.getByRole("button",{name:"Open custom catalog…"}));
+ await library.findByRole("option",{name:"HL7 2.5.1"});await press(user,library.getByRole("button",{name:"Use version"}));
+
  for(const [edition,slug] of [["2.6","v26"],["2.7.1","v271"],["2.8.2","v282"]]) {
-  await journey.chooseFiles([dir+"/hl7-"+slug+"-qualification.json"],"Open offline HL7 reference catalog");await press(user,screen.getByRole("button",{name:"HL7 reference version"}));await press(user,screen.getByRole("menuitem",{name:"Use local catalog…"}));await journey.settled();
+  await journey.chooseFiles([dir+"/hl7-"+slug+"-qualification.json"],"Open offline HL7 reference catalog");await press(user,screen.getByRole("button",{name:"HL7 version"}));await press(user,screen.getByRole("menuitem",{name:"Use custom definitions…"}));await journey.settled();
   for(const [field,expected] of [[2,edition==="2.6"?"4":"4..5"],[7,"DTM"],[8,edition==="2.6"?"40":"40="],[10,edition==="2.6"?"199":"1..199"]] as const) {
    await selectReaderPath(user,"MSH[1]-"+field);
    let reference=within(details.getByRole("region",{name:"Reference details"}));
    expect(reference.getByText(/Message declares: HL7 2.5.1/)).toBeTruthy();await expectReferenceEdition(user,edition!);expect(reference.getByText(expected,{exact:true})).toBeTruthy();
    if(field===10&&edition!=="2.6") {expect(reference.getByText("=",{exact:true})).toBeTruthy();const information=await referenceInformation(user);await press(user,information.getByText("Source attributes and provenance",{selector:"summary"}));expect(information.getByText(/receiving application’s storage capacity/)).toBeTruthy();await closeReferenceInformation(user);}
   }
-  await journey.chooseFiles([returned],"Open offline HL7 reference catalog");await press(user,details.getByRole("button",{name:"Return to message edition"}));await journey.settled();
+  await press(user,details.getByRole("button",{name:"Return to message edition"}));await journey.settled();
   await expectReferenceEdition(user,"2.5.1");expect(details.queryByRole("button",{name:"Return to message edition"})).toBeNull();
  }
  expect(journey.digest("later-edition-source.mllp")).toBe(baseline);
@@ -438,7 +444,7 @@ test("real catalog identity is held across changed-file reads and close/reopen w
  await journey.launch();await journey.chooseFiles([file],"Open HL7 file");await user.keyboard("{Control>}k{/Control}");await user.type(screen.getByLabelText("Search commands"),"Inspect file{Enter}");
  const list=await screen.findByRole("table",{name:"Messages in this file"});await press(user,list.querySelector<HTMLElement>('[data-row-id="0"]')!);
  let details=within(await screen.findByRole("region",{name:"Message details"}));
- await journey.chooseFiles([catalog],"Open offline HL7 reference catalog");await press(user,screen.getByRole("button",{name:"HL7 reference version"}));await press(user,screen.getByRole("menuitem",{name:"Use local catalog…"}));await journey.settled();await selectReaderPath(user,"MSH[1]-9");
+ await journey.chooseFiles([catalog],"Open offline HL7 reference catalog");await press(user,screen.getByRole("button",{name:"HL7 version"}));await press(user,screen.getByRole("menuitem",{name:"Use custom definitions…"}));await journey.settled();await selectReaderPath(user,"MSH[1]-9");
  expect(details.getByText("Owned reference definition for the message code and trigger.")).toBeTruthy();
  const chosenIdentity="sha256:"+journey.digest("catalog-pin.json");
  expect(journey.callsTo("InspectFileMessage").at(-1)?.args[0]).toMatchObject({reference_identity:chosenIdentity});
@@ -466,7 +472,7 @@ test("real reader exposes independent v5 attribute origins and unknown-edition p
  for(const record of data.records){record.name_origin={kind:"normative",source:"standard",locator:"owned-chapter.pdf"};record.definition_origin=record.definition?{kind:"normative",source:"standard",locator:"owned-chapter.pdf"}:{kind:"not_available"};for(const key of ["datatype","optionality","length","conformance_length","repetition","item","table","section"]){const a=record[key];a.origin=["not_applicable","not_available"].includes(a.state)?{kind:a.state}:{kind:"normative",source:"standard",locator:"owned-chapter.pdf#"+key};}}
  const field=data.records.find((record:Hl7referenceRecord)=>record.key==="field/MSH/9");field.datatype.origin={kind:"schema",source:"schemas",locator:"fields.xsd#MSH.9.Type"};field.item.origin={kind:"schema",source:"schemas",locator:"fields.xsd#MSH.9.Item"};field.name_origin={kind:"schema",source:"schemas",locator:"fields.xsd#MSH.9.LongName"};field.definition="";field.definition_origin={kind:"not_available"};data.coverage.definitions--;
  const catalog=journey.writeFile("owned-origin-reference.json",JSON.stringify(data));const profile=(family:string)=>journey.writeFile("owned-profile-"+family+".json",JSON.stringify({schema:"readmit-local-profile/v1",profile:{id:"owned-"+family.toLowerCase(),version:"1"},base:{pack:{id:"owned-pack",version:"1"},hl7_version:"2.5.1",family},segments:[{id:"MSH",fields:[{position:9,usage:"R"}]}]}));const adt=profile("ADT"),siu=profile("SIU");
- await journey.launch();await journey.chooseFiles([file],"Open HL7 file");await user.keyboard("{Control>}k{/Control}");await user.type(screen.getByLabelText("Search commands"),"Inspect file{Enter}");await press(user,(await screen.findByRole("table",{name:"Messages in this file"})).querySelector<HTMLElement>('[data-row-id="0"]')!);const details=within(await screen.findByRole("region",{name:"Message details"}));await journey.chooseFiles([catalog],"Open offline HL7 reference catalog");await press(user,screen.getByRole("button",{name:"HL7 reference version"}));await press(user,screen.getByRole("menuitem",{name:"Use local catalog…"}));await journey.settled();await selectReaderPath(user,"MSH[1]-9");const reference=within(details.getByRole("region",{name:"Reference details"}));const information=await referenceInformation(user);await press(user,information.getByText("Source attributes and provenance",{selector:"summary"}));await press(user,information.getByText("Attribute origins",{selector:"summary"}));expect(information.getByText("Messaging schema · owned-fields.xsd · fields.xsd#MSH.9.Type")).toBeTruthy();expect(information.getByText("Messaging schema · owned-fields.xsd · fields.xsd#MSH.9.Item")).toBeTruthy();expect(information.getByText(/Normative chapter.*owned-chapter.pdf#length/)).toBeTruthy();await closeReferenceInformation(user);expect(reference.getByText("Definition not available.")).toBeTruthy();
+ await journey.launch();await journey.chooseFiles([file],"Open HL7 file");await user.keyboard("{Control>}k{/Control}");await user.type(screen.getByLabelText("Search commands"),"Inspect file{Enter}");await press(user,(await screen.findByRole("table",{name:"Messages in this file"})).querySelector<HTMLElement>('[data-row-id="0"]')!);const details=within(await screen.findByRole("region",{name:"Message details"}));await journey.chooseFiles([catalog],"Open offline HL7 reference catalog");await press(user,screen.getByRole("button",{name:"HL7 version"}));await press(user,screen.getByRole("menuitem",{name:"Use custom definitions…"}));await journey.settled();await selectReaderPath(user,"MSH[1]-9");const reference=within(details.getByRole("region",{name:"Reference details"}));const information=await referenceInformation(user);await press(user,information.getByText("Source attributes and provenance",{selector:"summary"}));await press(user,information.getByText("Attribute origins",{selector:"summary"}));expect(information.getByText("Messaging schema · owned-fields.xsd · fields.xsd#MSH.9.Type")).toBeTruthy();expect(information.getByText("Messaging schema · owned-fields.xsd · fields.xsd#MSH.9.Item")).toBeTruthy();expect(information.getByText(/Normative chapter.*owned-chapter.pdf#length/)).toBeTruthy();await closeReferenceInformation(user);expect(reference.getByText("Definition not available.")).toBeTruthy();
  for(const [path,status,applicability]of [[adt,"not_available","incompatible"],[siu,"profile_selected","unknown_edition"]]){await journey.chooseFiles([path!],"Open local HL7 profile");await press(user,details.getByRole("button",{name:"More message actions"}));await press(user,screen.getByRole("menuitem",{name:"Choose local profile…"}));await journey.settled();expect(journey.callsTo("ReadHL7ReferenceSelection").at(-1)?.result).toMatchObject({state:"completed"});expect(journey.callsTo("InspectFileMessage").at(-1)?.result).toMatchObject({state:"completed",inspection:{metadata:{hl7_version:""},reference_overlay:{status,applicability}}});expect(details.queryByText(/Usage R · Datatype/)).toBeNull();}
  expect(journey.digest("origin-reader.mllp")).toBe(before);
 });

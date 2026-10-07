@@ -278,13 +278,22 @@ func (a *App) inspectDocument(raw []byte, doc *hl7.Document, message int, window
 		Notice: "The occurrence could not be parsed; original bytes remain available."}
 	referencePath, referenceIdentity := window.ReferenceCatalog, window.ReferenceIdentity
 	var libraryErr error
+	messageEdition := ""
 	if referencePath == "" && doc != nil && message >= 0 && message < len(doc.Messages) {
-		referencePath, referenceIdentity, libraryErr = a.installedReference(fieldMetadata(doc, message, hl7.Node{}).HL7Version)
+		messageEdition = fieldMetadata(doc, message, hl7.Node{}).HL7Version
+		referencePath, referenceIdentity, libraryErr = a.installedReference(messageEdition)
 	}
 	catalog, reference := inspectionReference(referencePath, referenceIdentity)
+	if referencePath == "" {
+		if messageEdition == "" {
+			reference.Reason = "This message does not declare an HL7 version. Choose HL7 version in the toolbar to view definitions."
+		} else {
+			reference.Reason = "Definitions for the declared HL7 version are unavailable in this build. Choose HL7 version in the toolbar to browse another edition."
+		}
+	}
 	if libraryErr != nil {
 		catalog = nil
-		reference = hl7reference.Answer{Status: "not_available", Reason: "The installed reference library is unavailable."}
+		reference = hl7reference.Answer{Status: "not_available", Reason: "The app’s HL7 definitions are unavailable. Original message inspection remains available."}
 	}
 	view.ReferenceCatalog = referencePath
 	view.Reference = &reference

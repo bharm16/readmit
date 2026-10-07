@@ -37,9 +37,11 @@ test("the stylesheets are found", () => {
 });
 
 // Approved Figma page 12 previews: 2388:26677 (Light), 2394:3836 (Dark).
-// Hover and disabled roles use the same neutral scale.
+// Hover and disabled roles use the same neutral scale. Page 14 adds the
+// existing Readmit/Sheet shadow colour for contextual reference cards.
 const FIGMA_PALETTES: Record<string, Record<string, string>> = {
   light: {
+    "--reference-hover-shadow-color": "#0000002e",
     "--syntax-type": "#751ed9", "--syntax-date": "#008809", "--syntax-code": "#bd5800", "--syntax-number": "#0071ea", "--syntax-punctuation": "#666666",
     "--canvas": "#ffffff", "--text": "#1a1c1f", "--muted": "#5d5d5d",
     "--field": "#ffffff", "--rail": "#f9f9f9", "--line": "#e4e4e4",
@@ -48,6 +50,7 @@ const FIGMA_PALETTES: Record<string, Record<string, string>> = {
     "--interface-color-border": "#cdcdcd", "--interface-color-on-action": "#ffffff",
   },
   dark: {
+    "--reference-hover-shadow-color": "#0000002e",
     "--syntax-type": "#b06dff", "--syntax-date": "#85df7b", "--syntax-code": "#fa994c", "--syntax-number": "#6dcbf4", "--syntax-punctuation": "#999999",
     "--canvas": "#181818", "--text": "#dfdfdf", "--muted": "#afafaf",
     "--field": "#282828", "--rail": "#212121", "--line": "#343434",

@@ -29,7 +29,7 @@ type ReferenceCatalogResult struct {
 
 func inspectionReference(path string, identity string) (*hl7reference.Catalog, hl7reference.Answer) {
 	if path == "" {
-		return nil, hl7reference.Answer{Status: "not_selected", Reason: "Select an offline reference catalog. Raw evidence remains inspectable."}
+		return nil, hl7reference.Answer{Status: "not_selected", Reason: "Choose an HL7 version to view definitions. Original message inspection remains available."}
 	}
 	c, err := hl7reference.Read(path)
 	if err != nil {
@@ -73,13 +73,14 @@ func (r *ReferenceCatalogResult) refuse(state State, reason string) {
 // HL7ReferenceRequest binds a bounded drilldown to the exact catalog bytes the
 // inspector showed. The frontend retains the evidence/selection Back context.
 type HL7ReferenceRequest struct {
-	Catalog  string `json:"catalog"`
-	Identity string `json:"identity"`
-	Edition  string `json:"edition"`
-	Key      string `json:"key"`
-	Offset   int    `json:"offset"`
-	Limit    int    `json:"limit"`
-	Query    string `json:"query,omitzero"`
+	Catalog   string                        `json:"catalog"`
+	Identity  string                        `json:"identity"`
+	Edition   string                        `json:"edition"`
+	Key       string                        `json:"key"`
+	Offset    int                           `json:"offset"`
+	Limit     int                           `json:"limit"`
+	Query     string                        `json:"query,omitzero"`
+	Attribute hl7reference.PreviewAttribute `json:"attribute,omitzero"`
 }
 type HL7ReferenceResult struct {
 	State      State                 `json:"state"`
@@ -89,6 +90,7 @@ type HL7ReferenceResult struct {
 	Offset     int                   `json:"offset"`
 	ChildCount int                   `json:"child_count"`
 	TotalCount int                   `json:"total_count"`
+	Preview    *hl7reference.Preview `json:"preview,omitzero"`
 }
 
 func (r *HL7ReferenceResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
@@ -107,6 +109,13 @@ func (a *App) LookupHL7Reference(request HL7ReferenceRequest) HL7ReferenceResult
 		limit := request.Limit
 		if limit == 0 {
 			limit = 100
+		}
+		if request.Attribute != "" {
+			preview, answer, children, count, total, err := catalog.AttributePreview(request.Edition, request.Key, request.Attribute, request.Offset, limit, request.Query)
+			if err != nil {
+				return HL7ReferenceResult{State: Failed, Reason: err.Error()}
+			}
+			return HL7ReferenceResult{State: Completed, Reference: &answer, Preview: &preview, Children: children, Offset: request.Offset, ChildCount: count, TotalCount: total}
 		}
 		answer, children, count, total, err := catalog.EntitySearch(request.Edition, request.Key, request.Offset, limit, request.Query)
 		if err != nil {

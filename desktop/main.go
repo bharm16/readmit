@@ -24,6 +24,7 @@ import (
 	"github.com/bharm16/readmit/desktop/hubadmin"
 	"github.com/bharm16/readmit/internal/desktop"
 	"github.com/bharm16/readmit/internal/engine"
+	"github.com/bharm16/readmit/internal/hl7reference"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/logger"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -38,6 +39,13 @@ import (
 //
 //go:embed all:frontend/dist
 var assets embed.FS
+
+// Build-time resource, independent of web assets and never served to the webview.
+// The README keeps source-only test builds compilable; packaging refuses those
+// builds until the complete library has been staged and embedded.
+//
+//go:embed reference-assets
+var referenceAssets embed.FS
 
 // dialog presents the host's native folder, file and save dialogs. Wails
 // supplies the application context after startup, so it is installed then and
@@ -191,6 +199,25 @@ func runShell(arguments []string) error {
 		fmt.Printf("readmit-desktop version %s\n", engine.Version())
 		return nil
 	}
+	if len(arguments) == 1 && arguments[0] == "--check-hl7-library" {
+		entries, err := referenceAssets.ReadDir("reference-assets")
+		if err != nil || len(entries) != 2 || entries[0].Name() != "README.md" || entries[1].Name() != "library.zip" || entries[0].IsDir() || entries[1].IsDir() {
+			return errors.New("readmit: this build does not contain exactly the declared HL7 resources")
+		}
+		raw, err := referenceAssets.ReadFile("reference-assets/library.zip")
+		if err != nil {
+			return errors.New("readmit: this build is missing its standard HL7 definitions")
+		}
+		bundle, err := hl7reference.OpenBundle(raw)
+		if err != nil {
+			return err
+		}
+		if err := bundle.Verify(); err != nil {
+			return err
+		}
+		fmt.Println("readmit-desktop HL7 definitions ready: 14 editions")
+		return nil
+	}
 	// Eight local shell documents hold no evidence: saved filters, the
 	// working session, editor drafts, remembered projects, remembered
 	// storage, and the selected paths of the operation policy, commercial
@@ -217,6 +244,7 @@ func runShell(arguments []string) error {
 		}
 	}
 	folders := &dialog{}
+	referenceArchive, _ := referenceAssets.ReadFile("reference-assets/library.zip")
 	// Wails has created its window by the time it starts the application.
 	var guarded atomic.Bool
 	started := make(chan struct{})
@@ -233,7 +261,7 @@ func runShell(arguments []string) error {
 		MinHeight:   480,
 		AssetServer: &assetserver.Options{Assets: assets},
 		OnStartup:   startup,
-		Bind:        []any{desktop.NewWithInstalledLicense(folders, documents, license), new(hubadmin.Admin)},
+		Bind:        []any{desktop.NewWithBundledReferences(folders, documents, license, referenceArchive), new(hubadmin.Admin)},
 		// Files dropped on the window reach it as their paths, through the
 		// runtime's OnFileDrop, and the window hands them to the facade's
 		// ClassifyDroppedSources, as it hands the picker's choices on. Once

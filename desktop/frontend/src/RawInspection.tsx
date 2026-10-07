@@ -1,5 +1,6 @@
 import { initialMessageGrid, useReaderNavigation } from "./readerNavigation";
-import type { InspectionGridRequest } from "./bindings";
+import type { ReferenceChoice } from "./ReferenceMenu";
+import type { InspectionGridRequest, ReferenceEdition } from "./bindings";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import searchAsset from "./assets/workbench/search.svg";
 import moreAsset from "./assets/workbench/more.svg";
@@ -80,6 +81,7 @@ export function useFileReader({ busy, request, onCancelled, onOpened, onNavigati
   const [messageGrouping,setMessageGrouping]=useState<"all"|"type">("all");
   const [referenceRequest,setReferenceRequest]=useState(0);
   const [referenceLibraryRequest,setReferenceLibraryRequest]=useState(0);
+  const [referenceChoice,setReferenceChoice]=useState<ReferenceChoice|null>(null);
   const [referenceResetRequest,setReferenceResetRequest]=useState(0);
   const [selected, setSelected] = useState<number | null>(null);
  const [checked,setChecked]=useState<Set<string>>(new Set());
@@ -330,6 +332,7 @@ export function useFileReader({ busy, request, onCancelled, onOpened, onNavigati
       toolbarReference
       referenceRequest={referenceRequest}
       referenceLibraryRequest={referenceLibraryRequest}
+      referenceChoice={referenceChoice}
       referenceResetRequest={referenceResetRequest}
       result={inspection}
       valuesHidden={!revealed && !inspection?.inspection?.phi_masked}
@@ -445,6 +448,7 @@ export function useFileReader({ busy, request, onCancelled, onOpened, onNavigati
     referenceEdition:inspection?.inspection?.reference?.edition || "",
     chooseReference:()=>setReferenceRequest(count=>count+1),
     chooseReferenceVersion:()=>setReferenceLibraryRequest(count=>count+1),
+    selectReferenceVersion:(entry:ReferenceEdition)=>setReferenceChoice(previous=>({entry,serial:(previous?.serial??0)+1})),
     title: file ? (listing?.name || fileName(file)) : "Inspect file",
     actions: (
       <>

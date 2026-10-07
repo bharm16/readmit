@@ -822,12 +822,15 @@ export function StepDialog({
 }
 
 export type MenuItem = {
+  id?: string;
   label: string;
   onSelect: () => void;
   disabled?: boolean | undefined;
   tone?: "danger";
   /** Drawn after a divider from the items before it. */
   separated?: boolean;
+  /** The value currently used by a direct-selection menu. */
+  current?: boolean;
 };
 
 /** A menu of text items behind one button. Arrow keys, Home and End move
@@ -851,7 +854,7 @@ export function Menu({
   const entries = () => Array.from(box.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not([disabled])') ?? []);
   useEffect(() => {
     if (!open) return;
-    entries()[0]?.focus();
+    (entries().find(entry => entry.getAttribute("aria-current") === "true") || entries()[0])?.focus();
     const outside = (event: MouseEvent) => {
       if (box.current && !box.current.contains(event.target as Node)) setOpen(false);
     };
@@ -892,9 +895,10 @@ export function Menu({
         <div className="menu-popover" role="menu" aria-label={label}>
           {items.map((item, index) => (
             <button
-              key={`${index}:${item.label}`}
+              key={item.id || `${index}:${item.label}`}
               type="button"
               role="menuitem"
+              aria-current={item.current ? "true" : undefined}
               tabIndex={-1}
               disabled={item.disabled}
               className={[item.tone === "danger" ? "danger" : "", item.separated ? "separated" : ""].join(" ").trim() || undefined}

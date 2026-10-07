@@ -1,6 +1,6 @@
 import { useReaderNavigation } from "./readerNavigation";
 import type { InspectionGridRequest } from "./bindings";
-import { ReferenceMenu } from "./ReferenceMenu";
+import { ReferenceMenu, type ReferenceChoice } from "./ReferenceMenu";
 import type {ReactNode} from "react";
 import type { ValueMapEditorDraft } from "./bindings";
 import { ValueMaps } from "./ValueMaps";
@@ -283,6 +283,7 @@ export default function App() {
   const [rawRequest, setRawRequest] = useState(0);
   const [readerReferenceRequest,setReaderReferenceRequest]=useState(0);
   const [readerLibraryRequest,setReaderLibraryRequest]=useState(0);
+  const [readerReferenceChoice,setReaderReferenceChoice]=useState<ReferenceChoice|null>(null);
   const [readerReferenceResetRequest,setReaderReferenceResetRequest]=useState(0);
   const [readerDensityOverride,setReaderDensityOverride]=useState<boolean|null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceResult | null>(null);
@@ -2936,7 +2937,7 @@ export default function App() {
             readerLayout ? <>
               {route.origin?.destination==="environments" ? <IconButton icon="previous" label="Return to target" className="reader-action" disabled={busy} onClick={()=>void returnFromSetup()} /> : null}
               <ReferenceMenu edition={inspectionResult?.inspection?.reference?.edition || inspectionResult?.inspection?.metadata.hl7_version || ""} disabled={busy}
-                onAutomatic={()=>setReaderReferenceResetRequest(count=>count+1)} onChoose={()=>setReaderReferenceRequest(count=>count+1)} onLibrary={()=>setReaderLibraryRequest(count=>count+1)} />
+                onAutomatic={()=>setReaderReferenceResetRequest(count=>count+1)} onChoose={()=>setReaderReferenceRequest(count=>count+1)} onLibrary={()=>setReaderLibraryRequest(count=>count+1)} onSelect={entry=>setReaderReferenceChoice(previous=>({entry,serial:(previous?.serial??0)+1}))} />
               <span className="reader-toolbar-space"/>
               <IconButton icon="open" label="Open file" className="reader-action" disabled={busy} onClick={()=>{setRawRequest(count=>count+1);}} />
               <IconButton icon="receive" label="Receive messages" className="reader-action" disabled={busy || !root} onClick={startCaptureSetup} />
@@ -3626,7 +3627,7 @@ export default function App() {
 
         <Page id="inspect-file" shown={place === "inspect-file"} title={readerLayout ? "Messages" : fileReader.title} back={readerLayout ? undefined : <BackLink label={route.view === "messages" ? "Messages" : "Tools"} onBack={route.view === "messages" ? () => open({ destination: "messages" }) : back} />} actions={<>
           {readerLayout ? <>
-            <ReferenceMenu edition={fileReader.referenceEdition || fileReader.edition} disabled={busy || fileReader.disabled} onAutomatic={fileReader.useMessageReference} onChoose={fileReader.chooseReference} onLibrary={fileReader.chooseReferenceVersion}/>
+            <ReferenceMenu edition={fileReader.referenceEdition || fileReader.edition} disabled={busy || fileReader.disabled} onAutomatic={fileReader.useMessageReference} onChoose={fileReader.chooseReference} onLibrary={fileReader.chooseReferenceVersion} onSelect={fileReader.selectReferenceVersion}/>
             <span className="reader-toolbar-space"/>
             <IconButton icon="open" label="Open file" className="reader-action" disabled={fileReader.disabled} onClick={fileReader.openFile}/>
             <IconButton icon="receive" label="Receive messages" className="reader-action" disabled={busy || !root} onClick={startCaptureSetup}/>
@@ -3859,6 +3860,7 @@ export default function App() {
             toolbarReference={readerLayout && !detailOnly}
             referenceRequest={readerReferenceRequest}
             referenceLibraryRequest={readerLibraryRequest}
+            referenceChoice={readerReferenceChoice}
             referenceResetRequest={readerReferenceResetRequest}
             contextDetails={exchangeDetails?.key===JSON.stringify([selectedSourceRef?.id??"",verified.identity,selectedOccurrence??""])?exchangeDetails.node:undefined}
             contextDetailsTitle="Recorded exchange"

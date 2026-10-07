@@ -27,6 +27,17 @@ func checkVersionMembers(raw []byte, schema string) error {
 		}
 	}
 	for _, record := range members.Records {
+		if rank < 7 && record["table_metadata"] != nil {
+			var metadata map[string]jsontext.Value
+			if err := json.Unmarshal(record["table_metadata"], &metadata); err != nil {
+				return err
+			}
+			for _, name := range []string{"description", "binding"} {
+				if _, present := metadata[name]; present {
+					return fmt.Errorf("terminology %s requires catalog v7", name)
+				}
+			}
+		}
 		if rank < 5 {
 			for _, name := range []string{"datatype", "optionality", "length", "conformance_length", "repetition", "item", "table", "section"} {
 				var attribute map[string]jsontext.Value
@@ -48,5 +59,5 @@ func checkVersionMembers(raw []byte, schema string) error {
 }
 
 func schemaRank(schema string) int {
-	return map[string]int{Schema: 1, SchemaV2: 2, SchemaV3: 3, SchemaV4: 4, SchemaV5: 5, SchemaV6: 6}[schema]
+	return map[string]int{Schema: 1, SchemaV2: 2, SchemaV3: 3, SchemaV4: 4, SchemaV5: 5, SchemaV6: 6, SchemaV7: 7}[schema]
 }

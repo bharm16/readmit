@@ -37,6 +37,19 @@ class PackagingTests(unittest.TestCase):
         self.work = Path(directory.name)
         self.binary = self.work / "readmit-desktop"
         self.binary.write_bytes(b"not a real shell, but the bytes a package carries\n")
+        # Format tests carry opaque executable bytes; the executable's separate
+        # library admission check is exercised below before any output is made.
+        library_check = patch.object(packaging, "verify_reference_library")
+        self.library_check = library_check.start()
+        self.addCleanup(library_check.stop)
+
+    def test_a_package_without_built_in_definitions_is_refused_before_output(self):
+        self.library_check.side_effect = packaging.Refused("missing HL7 definitions")
+        output = self.work / "incomplete"
+        with self.assertRaisesRegex(packaging.Refused, "missing HL7"):
+            packaging.build(self.declaration, self.binary, "1.2.3", self.target(LINUX), output)
+        self.assertFalse(output.exists())
+        self.library_check.assert_called_once_with(self.binary)
 
     def target(self, selected):
         return packaging.select_target(self.declaration, *selected)
@@ -1151,6 +1164,18 @@ class IdentityTests(unittest.TestCase):
         with self.assertRaises(packaging.Refused) as refused:
             packaging.identity(silent, released)
         self.assertIn("did not report a version", str(refused.exception))
+
+
+class BuiltInReferenceAdmissionTests(unittest.TestCase):
+    def test_executable_must_report_a_complete_verified_library(self):
+        binary = Path("/owned/readmit-desktop")
+        for status, text in [(1, ""), (0, ""), (0, "readmit-desktop HL7 definitions ready: 13 editions")]:
+            with self.subTest(status=status, text=text), patch.object(packaging.subprocess, "run", return_value=subprocess.CompletedProcess([], status, text, "")):
+                with self.assertRaises(packaging.Refused):
+                    packaging.verify_reference_library(binary)
+        with patch.object(packaging.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, "readmit-desktop HL7 definitions ready: 14 editions\n", "")) as run:
+            packaging.verify_reference_library(binary)
+            self.assertEqual(run.call_args.args[0], [str(binary), "--check-hl7-library"])
 
 
 if __name__ == "__main__":

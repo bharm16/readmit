@@ -370,7 +370,7 @@ dialog.reader-comparison-workspace::backdrop { background:transparent; }
 .hl7-reader .reader-view-raw .reader-grid-controls, .hl7-reader .reader-view-hex .reader-grid-controls, .hl7-reader .reader-view-raw .reader-view-tabs, .hl7-reader .reader-view-hex .reader-view-tabs { grid-row:2; }
 .hl7-reader .reader-view-raw > .task-panel, .hl7-reader .reader-view-hex > .task-panel { grid-row:3; }
 .hl7-reader .reader-view-raw .reader-grid-footer, .hl7-reader .reader-view-hex .reader-grid-footer { grid-row:4; }
-.hl7-reader .reader-context .reader-heading { display:flex; align-items:center; flex:none; max-width:15.625rem; background:var(--selection); border:2px solid var(--selection-border); margin-right:auto; }
+.hl7-reader .reader-context .reader-heading { display:flex; align-items:center; flex:none; max-width:15.625rem; background:var(--selection); border:0; border-radius:var(--radius-control); margin-right:auto; }
 .hl7-reader .reader-context .reader-heading h2 { border:0; flex:1; min-width:0; padding:.3125rem .625rem; }
 .hl7-reader .reader-kind-segment > .selector { display:flex; align-items:center; gap:.25rem; }
 .hl7-reader .reader-kind-segment > .selector img { display:block; flex:none; }
