@@ -119,6 +119,7 @@ test("the standalone file opens natively into the shared reader and a refused pa
     byte_offset: -1,
     raw_offset: -1,
     reveal: true,
+    grid:{expanded:[],show_omitted:false,offset:0,follow_selection:false},
   });
   const details = await screen.findByRole("region", { name: "Message details" });
   expect(within(details).queryByRole("tab", { name: "Fields" })).toBeNull();
@@ -280,4 +281,38 @@ test("restored Settings hides Back when no return location was retained", async 
   }));
   await page().findByRole("heading",{level:1,name:"Settings"});
   expect(page().queryByRole("button",{name:"Back"})).toBeNull();
+});
+
+test("returning to a file message restores its field and expansion, while changed bytes reset navigation",async()=>{
+ const user=userEvent.setup();
+ let digest=DIGEST;
+ const {facade}=await renderApp(handlers({
+  ListFileMessages:request=>({...listing(2,request),sha256:digest}),
+  InspectFileMessage:request=>{
+   const path=request.path||"MSH[1]";
+   const node={path,kind:path.includes("-")?"field":"segment",parent:path.includes("-")?"MSH[1]":"",segment:"MSH",field:path.includes("-")?9:0,state:"empty" as const,start:10,end:10};
+   return inspectionResult("",{identity:digest,message:request.message,occurrence:"",selected:node,revealed:true,raw_window:{offset:Math.max(0,request.raw_offset),end:Math.max(0,request.raw_offset)+4096,message_start:0,message_end:9000,before:"",selected:"",after:"",lines:[]},grid:{mode:"message",segment:"",offset:0,field_count:0,row_count:1,expanded:request.grid?.expanded??[],rows:[{node,label:"Owned position",selector:path,segment_name:"Owned segment",value:"",truncated:false}]}});
+  },
+ }));
+ await openTool(user);
+ const list=await screen.findByRole("table",{name:"Messages in this file"});
+ await user.click(list.querySelector<HTMLElement>('[data-row-id="0"]')!);
+ await user.click(await screen.findByRole("button",{name:"More message actions"}));
+ await user.click(screen.getByRole("menuitem",{name:"Go to field…"}));
+ const dialog=within(await screen.findByRole("dialog",{name:"Go to field"}));
+ await user.click(dialog.getByLabelText("Field path"));
+ await user.paste("MSH[1]-9");
+ await user.click(dialog.getByRole("button",{name:"Go"}));
+ await waitFor(()=>expect(facade.callsTo("InspectFileMessage").at(-1)?.args[0]).toMatchObject({path:"MSH[1]-9"}));
+ await user.click(await screen.findByRole("button",{name:"Next raw text"}));
+ await waitFor(()=>expect(facade.callsTo("InspectFileMessage").at(-1)?.args[0]).toMatchObject({raw_offset:4096}));
+ await user.click(list.querySelector<HTMLElement>('[data-row-id="1"]')!);
+ await waitFor(()=>expect(facade.callsTo("InspectFileMessage").at(-1)?.args[0]).toMatchObject({message:1,path:""}));
+ await user.click(list.querySelector<HTMLElement>('[data-row-id="0"]')!);
+ await waitFor(()=>expect(facade.callsTo("InspectFileMessage").at(-1)?.args[0]).toMatchObject({message:0,path:"MSH[1]-9",raw_offset:4096,grid:{follow_selection:false}}));
+ digest="b".repeat(64);
+ await user.click(page().getByRole("button",{name:"Open file"}));
+ await waitFor(()=>expect(screen.queryByRole("region",{name:"Message details"})).toBeNull());
+ await user.click(screen.getByRole("table",{name:"Messages in this file"}).querySelector<HTMLElement>('[data-row-id="0"]')!);
+ await waitFor(()=>expect(facade.callsTo("InspectFileMessage").at(-1)?.args[0]).toMatchObject({expect:digest,message:0,path:"",grid:{expanded:[]}}));
 });

@@ -333,3 +333,14 @@ test("Install package verifies the published identity, installs the validator fo
   expect(await within(ready).findByText("Not selected")).toBeTruthy();
   expect(facade.oneCall("RemoveValidator")[0]).toMatchObject({ ref: FHIR_ENVIRONMENT.ref });
 });
+
+test("unnamed targets use the saved address in the list and detail title without rewriting the name",async()=>{
+ const user=userEvent.setup();
+ const item={...FHIR_ENVIRONMENT,name:""};
+ const facade=installFacade({...fhirHandlers(),ListCatalog:query=>({state:"completed",context:query.context,page:{items:query.kind==="environment"?[item]:[],total:query.kind==="environment"?1:0,snapshot:"s",recorded:true,incomplete:[]}})});
+ render(<EnvironmentsWindow/>,{wrapper:vocabularyWrapper()});
+ const table=await screen.findByRole("table",{name:"Environments"});
+ await user.click(await within(table).findByRole("row",{name:FHIR_CONNECTION.base}));
+ expect(await screen.findByRole("heading",{name:FHIR_CONNECTION.base,level:1})).toBeTruthy();
+ expect(facade.callsTo("SaveItem")).toHaveLength(0);
+});

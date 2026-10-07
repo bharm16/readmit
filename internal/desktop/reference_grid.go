@@ -14,10 +14,18 @@ import (
 // bounded segment's sibling fields while the selected branch is expanded.
 // All paths, states, spans, decoded views and labels originate in Go owners.
 type HL7InspectorGrid struct {
-	Segment    string          `json:"segment"`
-	Rows       []InspectorNode `json:"rows"`
-	Offset     int             `json:"offset"`
-	FieldCount int             `json:"field_count"`
+	FollowSelection bool            `json:"follow_selection,omitzero"`
+	Mode            string          `json:"mode,omitzero"`
+	Expanded        []string        `json:"expanded,omitzero"`
+	Ancestors       []string        `json:"ancestors,omitzero"`
+	ShowOmitted     bool            `json:"show_omitted,omitzero"`
+	RowCount        int             `json:"row_count,omitzero"`
+	SelectedOffset  int             `json:"selected_offset,omitzero"`
+	SelectedParent  string          `json:"selected_parent,omitzero"`
+	Segment         string          `json:"segment"`
+	Rows            []InspectorNode `json:"rows"`
+	Offset          int             `json:"offset"`
+	FieldCount      int             `json:"field_count"`
 }
 
 func describeInspectorNode(doc *hl7.Document, message int, node hl7.Node, labels *dictionary.Dictionary, catalog *hl7reference.Catalog, reveal bool) InspectorNode {

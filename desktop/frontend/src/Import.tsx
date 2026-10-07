@@ -1,3 +1,5 @@
+import { useExplicitReaderReference, useReaderNavigation } from "./readerNavigation";
+import type { HL7ReferenceSelection, InspectionGridRequest } from "./bindings";
 // Import: one started flow — Source, Format, Preview — that turns chosen
 // messages into one case of the open project. Choosing reads nothing but the
 // inputs' heads; Preview reads them under the chosen declaration; Import
@@ -405,15 +407,19 @@ export function ImportFlow({ open, root, context, drafts, busy: windowBusy, onCl
     if (open && step === "preview") void runPreview();
   }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const readRow = async (row: number, path = "", nodeOffset = 0, byteOffset = -1, reveal = format?.kind === "fhir" ? reading?.inspection?.revealed ?? false : !(reading?.inspection?.phi_masked ?? false)) => {
+  const readerNavigation = useReaderNavigation();
+  const readerReference = useExplicitReaderReference();
+  const readRow = async (row: number, path = "", nodeOffset = 0, byteOffset = -1, reveal = format?.kind === "fhir" ? reading?.inspection?.revealed ?? false : !(reading?.inspection?.phi_masked ?? false), grid?: InspectionGridRequest, rawOffset=-1, catalog?:string, selection?:HL7ReferenceSelection, identity?:string) => {
     const req = request();
     if (!req || !preview?.preview_token) return null;
+    const position = readerNavigation.request(preview.preview_token, row, path, grid,{nodeOffset,byteOffset,rawOffset});
     const asked = ++reads.current;
     setReadingBusy(true);
-    const answer = await inspectImportPreview({ context: context(), source: req, preview_token: preview.preview_token, row, path, node_offset: nodeOffset, byte_offset: byteOffset, reveal: format?.kind === "fhir" ? reveal : true, ...(!reveal && format?.kind !== "fhir" ? {mask_phi:true} : {}) });
+    const answer = await inspectImportPreview({ context: context(), source: req, preview_token: preview.preview_token, row, path: position.path, grid: position.grid, ...readerReference(preview.preview_token,catalog,selection,identity), raw_offset:position.rawOffset, node_offset: position.nodeOffset, byte_offset: position.byteOffset, reveal: format?.kind === "fhir" ? reveal : true, ...(!reveal && format?.kind !== "fhir" ? {mask_phi:true} : {}) });
     // Only the latest read describes the row on screen.
     if (asked !== reads.current) return null;
     setReadingBusy(false);
+    readerNavigation.accept(preview.preview_token, row, answer);
     setReading(answer);
     return answer;
   };
@@ -642,7 +648,7 @@ export function ImportFlow({ open, root, context, drafts, busy: windowBusy, onCl
           result={reading}
           loading={readingBusy}
           busy={busy}
-          onInspect={(path, nodeOffset, byteOffset) => readRow(selectedRow, path, nodeOffset, byteOffset)}
+          onInspect={(path, nodeOffset, byteOffset, raw, catalog, selection, identity, grid) => readRow(selectedRow, path, nodeOffset, byteOffset, undefined, grid, raw, catalog, selection, identity)}
           onReveal={(reveal) => void readRow(selectedRow, reading?.inspection?.selected.path ?? "", 0, -1, reveal)}
         />
       ) : null}

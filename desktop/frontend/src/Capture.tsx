@@ -1,3 +1,5 @@
+import { useExplicitReaderReference, useReaderNavigation } from "./readerNavigation";
+import type { HL7ReferenceSelection, InspectionGridRequest } from "./bindings";
 import "./workflow.css";
 // Capture: a bounded session that records messages from one saved source and
 // finishes into one case. Setup names the case, the source and its limits and
@@ -417,13 +419,18 @@ export function RetainedEvidence({ name, resultLabel, reason, load, onClose }: {
     };
   }, [load]);
   const reads = useRef(0);
-  const inspect = async (occurrence: string, path = "", nodeOffset = 0, byteOffset = -1, reveal = opened?.case?.protocol === "fhir-r4" ? reading?.inspection?.revealed ?? false : !(reading?.inspection?.phi_masked ?? false)) => {
+  const readerNavigation = useReaderNavigation();
+  const readerReference = useExplicitReaderReference();
+  const inspect = async (occurrence: string, path = "", nodeOffset = 0, byteOffset = -1, reveal = opened?.case?.protocol === "fhir-r4" ? reading?.inspection?.revealed ?? false : !(reading?.inspection?.phi_masked ?? false), grid?: InspectionGridRequest, rawOffset=-1, catalog?:string, selection?:HL7ReferenceSelection, identity?:string) => {
     if (!opened?.case || !opened.workspace) return null;
+    const sourceKey = JSON.stringify([opened.workspace, opened.case.name, opened.case.identity]);
+    const position = readerNavigation.request(sourceKey, occurrence, path, grid,{nodeOffset,byteOffset,rawOffset});
     const asked = ++reads.current;
     setLoading(true);
-    const answer = await inspectOccurrence({ workspace: opened.workspace, case: opened.case.name, identity: opened.case.identity, occurrence, path, node_offset: nodeOffset, byte_offset: byteOffset, raw_offset: 0, reveal:opened.case.protocol === "fhir-r4" ? reveal : true,...(!reveal && opened.case.protocol !== "fhir-r4" ? {mask_phi:true} : {}) });
+    const answer = await inspectOccurrence({ workspace: opened.workspace, case: opened.case.name, identity: opened.case.identity, occurrence, path: position.path, grid: position.grid, ...readerReference(sourceKey,catalog,selection,identity), node_offset: position.nodeOffset, byte_offset: position.byteOffset, raw_offset: position.rawOffset, reveal:opened.case.protocol === "fhir-r4" ? reveal : true,...(!reveal && opened.case.protocol !== "fhir-r4" ? {mask_phi:true} : {}) });
     if (asked !== reads.current) return null;
     setLoading(false);
+    readerNavigation.accept(sourceKey, occurrence, answer);
     setReading(answer);
     return answer;
   };
@@ -453,7 +460,7 @@ export function RetainedEvidence({ name, resultLabel, reason, load, onClose }: {
         <p aria-live="polite">Reading…</p>
       ) : null}
       {selected ? (
-        <MessageReader result={reading} loading={loading} busy={false} onInspect={(path, nodeOffset, byteOffset) => inspect(selected, path, nodeOffset, byteOffset)} onReveal={(reveal) => void inspect(selected, reading?.inspection?.selected.path ?? "", 0, -1, reveal)} />
+        <MessageReader result={reading} loading={loading} busy={false} onInspect={(path, nodeOffset, byteOffset, raw, catalog, selection, identity, grid) => inspect(selected, path, nodeOffset, byteOffset, undefined, grid, raw, catalog, selection, identity)} onReveal={(reveal) => void inspect(selected, reading?.inspection?.selected.path ?? "", 0, -1, reveal)} />
       ) : null}
     </section>
   );

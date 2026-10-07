@@ -220,15 +220,15 @@ func segmentTerminator(source []byte, span Span, declared Terminator) (Terminato
 			continue
 		}
 		if detected != "" && detected != found {
-			return "", nil, invalid(i, "ambiguous mixed segment terminators; declare --terminator and supply uniformly terminated input")
+			return "", nil, &TerminatorError{Offset: i, Problem: MixedTerminators}
 		}
 		detected = found
 	}
 	if detected == "" {
-		return "", nil, invalid(span.Start, "missing segment terminator; declare --terminator cr, lf, or crlf")
+		return "", nil, &TerminatorError{Offset: span.Start, Problem: MissingTerminator}
 	}
 	if declared != "" && declared != "auto" && declared != detected {
-		return "", nil, invalid(span.Start, "segment terminator does not match --terminator")
+		return "", nil, &TerminatorError{Offset: span.Start, Problem: MismatchedTerminator}
 	}
 	delimiters := map[Terminator][]byte{CR: {'\r'}, LF: {'\n'}, CRLF: {'\r', '\n'}}
 	return detected, delimiters[detected], nil
@@ -237,4 +237,31 @@ func segmentTerminator(source []byte, span Span, declared Terminator) (Terminato
 // Diagnostics expose offsets and fixed error classes, never payload or filenames.
 func invalid(offset int, reason string) error {
 	return fmt.Errorf("invalid input at byte %d: %s", offset, reason)
+}
+
+// TerminatorProblem names a refusal independently of a caller's recovery UI.
+type TerminatorProblem string
+
+const (
+	MixedTerminators     TerminatorProblem = "mixed"
+	MissingTerminator    TerminatorProblem = "missing"
+	MismatchedTerminator TerminatorProblem = "mismatched"
+)
+
+// TerminatorError retains the original byte offset and CLI diagnostic while
+// allowing desktop callers to name their own format controls.
+type TerminatorError struct {
+	Offset  int
+	Problem TerminatorProblem
+}
+
+func (e *TerminatorError) Error() string {
+	reason := "segment terminator does not match --terminator"
+	switch e.Problem {
+	case MixedTerminators:
+		reason = "ambiguous mixed segment terminators; declare --terminator and supply uniformly terminated input"
+	case MissingTerminator:
+		reason = "missing segment terminator; declare --terminator cr, lf, or crlf"
+	}
+	return invalid(e.Offset, reason).Error()
 }

@@ -183,13 +183,18 @@ func (a *App) PreviewScenarioDraft(request DraftRequest) ScenarioPlanPreviewResu
 // inspector a case occurrence is inspected with. Message is its index in the
 // preview; offsets are within its generated stream.
 type ScenarioPreviewInspectRequest struct {
-	PreviewID  string `json:"preview_id"`
-	Message    int    `json:"message"`
-	Path       string `json:"path"`
-	NodeOffset int    `json:"node_offset"`
-	ByteOffset int    `json:"byte_offset"`
-	Reveal     bool   `json:"reveal"`
-	MaskPHI    bool   `json:"mask_phi,omitzero"`
+	RawOffset          int                    `json:"raw_offset,omitzero"`
+	ReferenceCatalog   string                 `json:"reference_catalog,omitzero"`
+	ReferenceIdentity  string                 `json:"reference_identity,omitzero"`
+	ReferenceSelection *HL7ReferenceSelection `json:"reference_selection,omitzero"`
+	Grid               *InspectionGridRequest `json:"grid,omitzero"`
+	PreviewID          string                 `json:"preview_id"`
+	Message            int                    `json:"message"`
+	Path               string                 `json:"path"`
+	NodeOffset         int                    `json:"node_offset"`
+	ByteOffset         int                    `json:"byte_offset"`
+	Reveal             bool                   `json:"reveal"`
+	MaskPHI            bool                   `json:"mask_phi,omitzero"`
 }
 
 // InspectScenarioPreview reads one message of a preview this process holds.
@@ -197,7 +202,7 @@ type ScenarioPreviewInspectRequest struct {
 // the plan again holds it again.
 func (a *App) InspectScenarioPreview(request ScenarioPreviewInspectRequest) InspectionResult {
 	return run(a, false, false, func(context.Context) InspectionResult {
-		if request.NodeOffset < 0 || request.ByteOffset < -1 {
+		if request.NodeOffset < 0 || request.ByteOffset < -1 || request.RawOffset < -1 {
 			return InspectionResult{State: Failed, Reason: "inspector offsets must be in range"}
 		}
 		held := a.previews.find(request.PreviewID)
@@ -208,7 +213,7 @@ func (a *App) InspectScenarioPreview(request ScenarioPreviewInspectRequest) Insp
 			return InspectionResult{State: Failed, Reason: "the selected message is not one this preview holds"}
 		}
 		place := held.at[request.Message]
-		view, reason := a.inspectDocument(held.streams[place[0]], held.parsed[place[0]], place[1], inspectorWindow{
+		view, reason := a.inspectDocument(held.streams[place[0]], held.parsed[place[0]], place[1], inspectorWindow{Grid: request.Grid, RawOffset: request.RawOffset, ReferenceCatalog: request.ReferenceCatalog, ReferenceIdentity: request.ReferenceIdentity, ReferenceSelection: request.ReferenceSelection,
 			Path: request.Path, NodeOffset: request.NodeOffset, ByteOffset: request.ByteOffset, Reveal: request.Reveal, MaskPHI: request.MaskPHI})
 		if view == nil {
 			return InspectionResult{State: Failed, Reason: reason}

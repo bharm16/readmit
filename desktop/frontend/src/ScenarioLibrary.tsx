@@ -1,3 +1,5 @@
+import { useExplicitReaderReference, useReaderNavigation } from "./readerNavigation";
+import type { HL7ReferenceSelection, InspectionGridRequest } from "./bindings";
 // Library › Scenarios: a synthetic scenario's ordered events, the whole
 // scenario editor with one Save, a deterministic in-memory Preview read in
 // the shared message reader, and Create case, which generates the saved plan
@@ -960,11 +962,14 @@ function PreviewBody({ preview, busy, onClose }: { preview: ScenarioPlanPreviewR
   const [revealed, setRevealed] = useState(true);
   // Only the answer to the newest request is shown.
   const asked = useRef(0);
-  const inspect = async (message: number, path: string, nodeOffset: number, byteOffset: number, reveal: boolean) => {
+  const readerNavigation = useReaderNavigation();
+  const readerReference = useExplicitReaderReference();
+  const inspect = async (message: number, path: string, nodeOffset: number, byteOffset: number, reveal: boolean, grid?: InspectionGridRequest, rawOffset=-1, catalog?:string, selection?:HL7ReferenceSelection, identity?:string) => {
     if (!preview.preview_id) return null;
+    const position = readerNavigation.request(preview.preview_id, message, path, grid,{nodeOffset,byteOffset,rawOffset});
     const request = ++asked.current;
-    const answer = await inspectScenarioPreview({ preview_id: preview.preview_id, message, path, node_offset: nodeOffset, byte_offset: byteOffset, reveal:true,...(!reveal ? {mask_phi:true} : {}) });
-    if (request === asked.current) setInspection(answer);
+    const answer = await inspectScenarioPreview({ preview_id: preview.preview_id, message, path: position.path, grid: position.grid, ...readerReference(preview.preview_id,catalog,selection,identity), raw_offset:position.rawOffset, node_offset: position.nodeOffset, byte_offset: position.byteOffset, reveal:true,...(!reveal ? {mask_phi:true} : {}) });
+    if (request === asked.current) { readerNavigation.accept(preview.preview_id, message, answer); setInspection(answer); }
     return answer;
   };
   if (preview.state !== "completed") {
@@ -1015,7 +1020,7 @@ function PreviewBody({ preview, busy, onClose }: { preview: ScenarioPlanPreviewR
           result={inspection}
           loading={inspection === null}
           busy={busy}
-          onInspect={(path, nodeOffset, byteOffset) => inspect(selected, path, nodeOffset, byteOffset, revealed)}
+          onInspect={(path, nodeOffset, byteOffset, raw, catalog, selection, identity, grid) => inspect(selected, path, nodeOffset, byteOffset, revealed, grid, raw, catalog, selection, identity)}
           onReveal={(reveal) => {
             setRevealed(reveal);
             void inspect(selected, inspection?.inspection?.selected.path ?? "", 0, -1, reveal);

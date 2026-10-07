@@ -456,15 +456,20 @@ func (r *importRead) previewRows() ([]ImportPreviewRow, int) {
 // ImportInspectRequest inspects one row of a preview with the shared reader.
 // Row is the row's index; the offsets are within that row's message.
 type ImportInspectRequest struct {
-	Context      RequestContext `json:"context,omitzero"`
-	Source       ImportRequest  `json:"source"`
-	PreviewToken string         `json:"preview_token"`
-	Row          int            `json:"row"`
-	Path         string         `json:"path"`
-	NodeOffset   int            `json:"node_offset"`
-	ByteOffset   int            `json:"byte_offset"`
-	Reveal       bool           `json:"reveal"`
-	MaskPHI      bool           `json:"mask_phi,omitzero"`
+	RawOffset          int                    `json:"raw_offset,omitzero"`
+	ReferenceCatalog   string                 `json:"reference_catalog,omitzero"`
+	ReferenceIdentity  string                 `json:"reference_identity,omitzero"`
+	ReferenceSelection *HL7ReferenceSelection `json:"reference_selection,omitzero"`
+	Grid               *InspectionGridRequest `json:"grid,omitzero"`
+	Context            RequestContext         `json:"context,omitzero"`
+	Source             ImportRequest          `json:"source"`
+	PreviewToken       string                 `json:"preview_token"`
+	Row                int                    `json:"row"`
+	Path               string                 `json:"path"`
+	NodeOffset         int                    `json:"node_offset"`
+	ByteOffset         int                    `json:"byte_offset"`
+	Reveal             bool                   `json:"reveal"`
+	MaskPHI            bool                   `json:"mask_phi,omitzero"`
 }
 
 // InspectImportPreview reads one preview row through the same inspector a
@@ -474,7 +479,7 @@ type ImportInspectRequest struct {
 // written.
 func (a *App) InspectImportPreview(request ImportInspectRequest) InspectionResult {
 	return runRead(a, false, func(ctx context.Context) InspectionResult {
-		if request.NodeOffset < 0 || request.ByteOffset < -1 || request.Row < 0 {
+		if request.NodeOffset < 0 || request.ByteOffset < -1 || request.RawOffset < -1 || request.Row < 0 {
 			return InspectionResult{State: Failed, Reason: "inspector offsets must be in range"}
 		}
 		source := request.Source
@@ -499,7 +504,7 @@ func (a *App) InspectImportPreview(request ImportInspectRequest) InspectionResul
 			} else if request.Row != 0 {
 				return InspectionResult{State: Failed, Reason: "the preview holds no such request"}
 			}
-			return inspectFHIR(ctx, read.token, occurrence, *source.FHIR, read.fhirRaw, read.fhir, inspectorWindow{Path: request.Path, NodeOffset: request.NodeOffset, ByteOffset: request.ByteOffset, RawOffset: -1, Reveal: request.Reveal, MaskPHI: request.MaskPHI})
+			return inspectFHIR(ctx, read.token, occurrence, *source.FHIR, read.fhirRaw, read.fhir, inspectorWindow{Grid: request.Grid, RawOffset: request.RawOffset, ReferenceCatalog: request.ReferenceCatalog, ReferenceIdentity: request.ReferenceIdentity, ReferenceSelection: request.ReferenceSelection, Path: request.Path, NodeOffset: request.NodeOffset, ByteOffset: request.ByteOffset, Reveal: request.Reveal, MaskPHI: request.MaskPHI})
 		}
 		index := 0
 		for _, unit := range read.units() {
@@ -515,13 +520,13 @@ func (a *App) InspectImportPreview(request ImportInspectRequest) InspectionResul
 			if unit.doc != nil {
 				message = request.Row - index
 			}
-			view, reason := a.inspectDocument(unit.data, unit.doc, message, inspectorWindow{
+			view, reason := a.inspectDocument(unit.data, unit.doc, message, inspectorWindow{Grid: request.Grid, RawOffset: request.RawOffset, ReferenceCatalog: request.ReferenceCatalog, ReferenceIdentity: request.ReferenceIdentity, ReferenceSelection: request.ReferenceSelection,
 				Path: request.Path, NodeOffset: request.NodeOffset, ByteOffset: request.ByteOffset, Reveal: request.Reveal, MaskPHI: request.MaskPHI,
 			})
 			if view == nil {
 				return InspectionResult{State: Failed, Reason: reason}
 			}
-			view.Identity = read.token
+			view.Identity, view.Message = read.token, request.Row
 			return InspectionResult{State: Completed, Inspection: view}
 		}
 		return InspectionResult{State: Failed, Reason: "the preview holds no such row"}

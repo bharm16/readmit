@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import type { DatasetValue, FHIRCheckPreset, FHIRInspection, FieldState, Inspection, InspectionResult, InspectorNode, RawWindow, Hl7referenceAttribute, Hl7referenceRecord, Hl7referenceOrigin, Hl7referenceSource, HL7ReferenceResult, HL7ReferenceSelection, ProfileevalNode } from "./bindings";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import type { InspectionGridRequest, DatasetValue, FHIRCheckPreset, FHIRInspection, FieldState, Inspection, InspectionResult, InspectorNode, RawWindow, Hl7referenceAttribute, Hl7referenceRecord, Hl7referenceOrigin, Hl7referenceSource, HL7ReferenceResult, HL7ReferenceSelection, ProfileevalNode } from "./bindings";
 import { chooseInspectionPath, readReferenceCatalog, lookupHL7Reference, readHL7ReferenceSelection } from "./bindings";
 import { FIELD_STATES, HIDDEN_VALUE } from "./display";
 import { TaskPanel, TaskTabs } from "./TaskTabs";
@@ -11,11 +11,16 @@ import closeAsset from "./assets/workbench/close.svg";
 import downAsset from "./assets/workbench/down.svg";
 import moreAsset from "./assets/workbench/more.svg";
 import { ReaderIcon } from "./ReaderIcon";
+import { ReaderGrid } from "./ReaderGrid";
+import { ReaderColumns } from "./ReaderColumns";
+import { ReaderResize } from "./ReaderResize";
+import { useViewState } from "./viewstate";
 import { ReaderSelectionHeader, ReferenceAttributes, ReferenceBadge, ReferenceDefinition } from "./ReaderPresentation";
 import { ReferenceLibrary } from "./ReferenceLibrary";
 import { ReferenceMenu } from "./ReferenceMenu";
 import { MessageText } from "./MessageText";
 import "./inspector.css";
+import "./reader-grid.css";
 
 type ReaderView = "fields" | "raw" | "hex";
 
@@ -41,7 +46,7 @@ function nodeName(node: InspectorNode): string {
   return node.label || node.node.path;
 }
 
-function readablePath(path:string):string { return path.replace(/\[1\]/g, ""); }
+function readablePath(path:string):string { return path; }
 
 function attributeText(attribute?: Hl7referenceAttribute): string {
   if (!attribute) return "Not available";
@@ -151,7 +156,7 @@ export function MessageReader({
   loading: boolean;
   valuesHidden?: boolean;
   busy: boolean;
-  onInspect: (path: string, nodeOffset: number, byteOffset: number, rawOffset?: number, referenceCatalog?: string, selection?: HL7ReferenceSelection,referenceIdentity?: string) => Promise<InspectionResult | null>;
+  onInspect: (path: string, nodeOffset: number, byteOffset: number, rawOffset?: number, referenceCatalog?: string, selection?: HL7ReferenceSelection,referenceIdentity?: string, grid?: InspectionGridRequest) => Promise<InspectionResult | null>;
   onReveal: (revealed: boolean) => void;
   /** Opens Filter with a rule for the selected field; absent where there is no list to filter. */
   onFilterByField?: ((selector: string, value: string | null, state: FieldState) => void) | undefined;
@@ -168,15 +173,22 @@ export function MessageReader({
   backLabel?: string | undefined;
   onBack?: (() => void) | undefined;
 }) {
+  const [layout, setLayout] = useViewState("reader-layout", () => ({wrap:false, fit:false, sourceHeight:12.25, detailsWidth:24}));
   const [view, setView] = useState<ReaderView>("fields");
   const [collapsedSegment, setCollapsedSegment] = useState<{owner:string;path:string}|null>(null);
   const returnGridFocus=useRef(false);
   const selectView=(next:ReaderView)=>{returnGridFocus.current=next==="fields" && view!=="fields";setView(next);};
   const gridElement=useRef<HTMLElement|null>(null);
-  useEffect(()=>{if(view==="fields" && returnGridFocus.current){gridElement.current?.focus();returnGridFocus.current=false;}},[view]);
+  useEffect(()=>{if(view==="fields" && returnGridFocus.current){(gridElement.current ?? workbenchElement?.querySelector<HTMLElement>('[role="treegrid"]'))?.focus();returnGridFocus.current=false;}},[view]);
   const [workbenchElement, setWorkbenchElement] = useState<HTMLDivElement | null>(null);
   const workbenchSize = useMeasured(workbenchElement);
+  const [sourceContent,setSourceContent]=useState<HTMLElement|null>(null);
+  const sourceSize=useMeasured(sourceContent);
   const compactWorkbench = workbenchSize.width > 0 && workbenchSize.width / workbenchSize.rem < 42;
+  const maxSourceHeight=workbenchSize.height ? Math.max(8,workbenchSize.height/workbenchSize.rem-14) : 24;
+  const sourceHeight=layout.fit ? Math.max(6,Math.min(24,sourceSize.height/sourceSize.rem+3,maxSourceHeight)) : Math.min(layout.sourceHeight,maxSourceHeight);
+  const maxDetailsWidth=workbenchSize.width ? Math.max(20,workbenchSize.width/workbenchSize.rem-24.375) : 48;
+  const detailsWidth=Math.min(layout.detailsWidth,maxDetailsWidth);
   const [goingTo, setGoingTo] = useState(false);
   const [info, setInfo] = useState(false);
   const [libraryOpen,setLibraryOpen]=useState(false);
@@ -189,6 +201,8 @@ export function MessageReader({
   const [catalogReading, setCatalogReading] = useState(false);
   const [fullDefinition, setFullDefinition] = useState(false);
   const [definitionVisible,setDefinitionVisible]=useState(true);
+  const referencePositions = useRef(new Map<string,{path:string;pin:string;key:string;offset:number;query:string;components:boolean;fields:boolean;overview:boolean}>());
+  const scrollPositions = useRef(new Map<string,{grid?:{top:number;left:number};source?:{top:number;left:number};details?:{top:number;left:number}}> ());
   const referenceSerial = useRef(0);
   const referenceContext = useRef("");
   const referenceOwner = useRef("");
@@ -201,6 +215,7 @@ export function MessageReader({
   const [referenceTrail, setReferenceTrail] = useState<{key:string;offset:number;query:string}[]>([]);
   const [codeQuery, setCodeQuery] = useState("");
   const [activeQuery, setActiveQuery] = useState("");
+  const [gridProblem,setGridProblem]=useState("");
   const [columnGuide, setColumnGuide] = useState(false);
   const [segmentFields,setSegmentFields] = useState(false);
   const [entityOverview,setEntityOverview] = useState(false);
@@ -215,17 +230,24 @@ export function MessageReader({
   const manualCatalog=catalogPath || suppliedCatalog;
   const referencePath=manualCatalog || inspection?.reference_catalog || "";
   const referencePin=manualCatalog ? catalogIdentity || suppliedIdentity || inspection?.reference?.identity || undefined : inspection?.reference?.identity || undefined;
-  const contextKey = `${inspection?.identity ?? ""}/${inspection?.occurrence ?? inspection?.message ?? ""}/${selected?.path ?? ""}/${result?.inspection?.revealed ?? false}/${inspection?.reference_overlay?.selection.profile_identity ?? ""}/${inspection?.reference_overlay?.selection.pack_identity ?? ""}/${inspection?.reference_overlay?.selection.documentation_identity ?? ""}`;
+  const contextKey = `${inspection?.identity ?? ""}/${inspection?.occurrence || inspection?.message || ""}/${selected?.path ?? ""}/${result?.inspection?.revealed ?? false}/${inspection?.reference_overlay?.selection.profile_identity ?? ""}/${inspection?.reference_overlay?.selection.pack_identity ?? ""}/${inspection?.reference_overlay?.selection.documentation_identity ?? ""}`;
   referenceContext.current = contextKey;
   useEffect(()=>setValidationShown(false),[inspection?.identity,inspection?.occurrence,inspection?.message]);
   const lookupContext = `${contextKey}/${referencePin ?? ""}/${referencePath}/${inspection?.reference?.status ?? ""}`;
   lookupOwner.current = lookupContext;
-  useEffect(() => { ++lookupSerial.current; setReferenceView(null); setReferenceLoading(false); setReferenceKey(""); setReferenceTrail([]); setCodeQuery(""); setActiveQuery(""); setColumnGuide(false); }, [lookupContext]);
-  useEffect(() => { setCatalogProblem(""); setFullDefinition(false); setDefinitionVisible(true); setSegmentFields(false); setEntityOverview(false); }, [contextKey]);
+  useEffect(() => {
+    ++lookupSerial.current; setReferenceView(null); setReferenceLoading(false); setReferenceKey(""); setReferenceTrail([]); setCodeQuery(""); setActiveQuery(""); setColumnGuide(false);
+    const saved=referencePositions.current.get(captionOwner);
+    if(saved && saved.path===selected?.path && saved.pin===referencePin && inspection?.reference?.status==="available") {
+      if(saved.key) void openReference(saved.key,saved.offset,false,saved.query,saved.components,saved.overview);
+      setSegmentFields(saved.fields);
+    } else setSegmentFields(false);
+  }, [lookupContext]);
+  useEffect(() => { setCatalogProblem(""); setFullDefinition(false); setDefinitionVisible(true); }, [contextKey]);
   useEffect(() => {
     const identity = inspection?.identity;
     if (!identity) return; // A transient read clears its result, not its owner.
-    if (referenceOwner.current && referenceOwner.current !== identity) {setCatalogPath("");setCatalogIdentity("");setOverlaySelection(undefined);setOverlayProblem("");}
+    if (referenceOwner.current && referenceOwner.current !== identity) {setCatalogPath("");setCatalogIdentity("");setOverlaySelection(undefined);setOverlayProblem("");referencePositions.current.clear();scrollPositions.current.clear();}
     referenceOwner.current = identity;
   }, [inspection?.identity]);
   const revealed = inspection?.revealed ?? false;
@@ -258,16 +280,41 @@ export function MessageReader({
   useEffect(()=>{gridElement.current?.querySelector<HTMLElement>('[aria-current="location"]')?.scrollIntoView?.({block:"nearest",inline:"nearest"});},[selected?.path,view]);
   const segmentCollapsed = collapsedSegment?.owner === captionOwner && collapsedSegment.path === inspection?.grid?.segment;
   const visibleGridNodes = segmentCollapsed ? gridNodes.filter(row => row.node.kind === "segment") : gridNodes;
-  const inspectSelection = (target: string, rawOffset?: number) => {
+  const gridRequest = (changes: Partial<InspectionGridRequest> = {}): InspectionGridRequest => ({expanded:inspection?.grid?.expanded ?? [],show_omitted:inspection?.grid?.show_omitted ?? false,offset:inspection?.grid?.offset ?? 0,follow_selection:true,...changes});
+  const rememberReference = (key="",offset=0,query="",components=false,fields=false,overview=false) => {
+    referencePositions.current.delete(captionOwner);
+    referencePositions.current.set(captionOwner,{path:selected?.path??"",pin:referencePin??"",key,offset,query,components,fields,overview});
+    if(referencePositions.current.size>64)referencePositions.current.delete(referencePositions.current.keys().next().value!);
+  };
+  const inspectSelection = async (target: string, rawOffset?: number, grid?: InspectionGridRequest) => {
     setCollapsedSegment(null);
+    referencePositions.current.delete(captionOwner);
     // Fence the user's new selection intent before the asynchronous host reply
     // changes props. An older catalog/profile read must not navigate back.
     ++referenceSerial.current; ++overlaySerial.current; ++lookupSerial.current;
     setCatalogReading(false); setReferenceLoading(false); setReferenceView(null);
     setReferenceKey(""); setReferenceTrail([]);
-    return onInspect(target,0,-1,rawOffset,catalogPath || suppliedCatalog || undefined,overlaySelection || suppliedSelection,referencePin);
+    setGridProblem("");
+    const args = [target,0,-1,rawOffset,catalogPath || suppliedCatalog || undefined,overlaySelection || suppliedSelection,referencePin] as const;
+    const answer = inspection?.grid?.mode === "message" ? await onInspect(...args,grid ?? gridRequest()) : await onInspect(...args);
+    if (answer && answer.state !== "completed") setGridProblem(answer.reason || "This position could not be read.");
+    return answer;
   };
   const go = (target: string) => void inspectSelection(target);
+  const toggleBranch = (row: InspectorNode) => {
+    const expanded = new Set(inspection?.grid?.expanded ?? []);
+    if (row.expanded) expanded.delete(row.node.path); else expanded.add(row.node.path);
+    const target = row.expanded && inspection?.grid?.ancestors?.includes(row.node.path) ? row.node.path : selected?.path ?? "";
+    void inspectSelection(target,undefined,gridRequest({expanded:[...expanded],follow_selection:false}));
+  };
+  const pageGrid = async (offset:number,edge?:"first"|"last") => {
+    const owner=contextKey;
+    const answer=await inspectSelection(selected?.path ?? "",undefined,gridRequest({offset,follow_selection:false}));
+    if(!edge || referenceContext.current!==owner || answer?.state!=="completed")return;
+    const rows=answer.inspection?.grid?.rows;
+    const row=edge==="first" ? rows?.[0] : rows?.at(-1);
+    if(row)void inspectSelection(row.node.path,undefined,gridRequest({offset}));
+  };
   const chooseReference = async (expectedEdition?: string) => {
     const owner = contextKey;
     const serial = ++referenceSerial.current;
@@ -330,14 +377,15 @@ export function MessageReader({
     await onInspect(selected?.path ?? "",inspection?.node_offset ?? 0,-1,undefined,catalogPath || suppliedCatalog || undefined,verified.overlay.selection,referencePin);
   };
 
-  const openReference = async (key: string, offset = 0, remember = true, query = "", asComponents = false) => {
+  const openReference = async (key: string, offset = 0, remember = true, query = "", asComponents = false, overview = false) => {
     if (!inspection?.reference) return;
+    rememberReference(key,offset,query,asComponents,false,overview);
     const owner = lookupContext;
     const serial = ++lookupSerial.current;
     if (remember && referenceKey && referenceKey !== key) setReferenceTrail((held) => [...held, {key:referenceKey,offset:referenceView?.offset ?? 0,query:activeQuery}]);
     if(referenceKey!==key)setLookupDefinitionExpanded(false);
     setFieldComponents(asComponents);
-    setEntityOverview(false);
+    setEntityOverview(overview);
     setReferenceKey(key);
     setCodeQuery(query);
     setActiveQuery(query);
@@ -354,6 +402,7 @@ export function MessageReader({
       setReferenceTrail((held) => held.slice(0,-1));
       void openReference(previous.key,previous.offset,false,previous.query);
     } else {
+      rememberReference();
       ++lookupSerial.current;
       setReferenceView(null);
       setReferenceLoading(false);
@@ -367,21 +416,39 @@ export function MessageReader({
     const record=referenceView?.reference?.record;
     const messageEntity=record?.kind==="message" || record?.kind==="structure";
     const datatypeEntity=record?.kind==="datatype";
-    const reset=()=>{++lookupSerial.current;setReferenceTrail([]);setReferenceView(null);setReferenceKey("");setReferenceLoading(false);setSegmentFields(false);};
+    const reset=()=>{rememberReference();++lookupSerial.current;setReferenceTrail([]);setReferenceView(null);setReferenceKey("");setReferenceLoading(false);setSegmentFields(false);};
     const tabs:{name:string;icon:"overview"|"componentTab"|"components"|"dataElement";selected:boolean;action:()=>void}[]=[];
     if(messageEntity){
       tabs.push({name:"Overview",icon:"overview",selected:record.kind==="message",action:()=>{if(inspection.message_context?.message_key)void openReference(inspection.message_context.message_key);}});
       if(inspection.message_context?.structure_key)tabs.push({name:"Structure",icon:"componentTab",selected:record.kind==="structure",action:()=>void openReference(inspection.message_context!.structure_key)});
     } else if(datatypeEntity && !fieldComponents){
-      tabs.push({name:"Overview",icon:"overview",selected:entityOverview,action:()=>setEntityOverview(true)},{name:"Components",icon:"componentTab",selected:!entityOverview,action:()=>setEntityOverview(false)});
+      tabs.push({name:"Overview",icon:"overview",selected:entityOverview,action:()=>{rememberReference(referenceKey,referenceView?.offset??0,activeQuery,fieldComponents,false,true);setEntityOverview(true);}},{name:"Components",icon:"componentTab",selected:!entityOverview,action:()=>{rememberReference(referenceKey,referenceView?.offset??0,activeQuery,fieldComponents,false,false);setEntityOverview(false);}});
     } else {
       tabs.push({name:"Overview",icon:"overview",selected:!referenceKey&&!segmentFields,action:reset});
-      if(selected.kind==="segment")tabs.push({name:"Fields",icon:"componentTab",selected:segmentFields,action:()=>{reset();setSegmentFields(true);}});
+      if(selected.kind==="segment")tabs.push({name:"Fields",icon:"componentTab",selected:segmentFields,action:()=>{reset();rememberReference("",0,"",false,true);setSegmentFields(true);}});
       else if(reference.datatype_key && inspection.reference_values?.some(value=>value.node.kind === (selected.kind === "component" ? "subcomponent" : "component")) && (selected.kind==="field" || selected.kind==="repetition" || selected.kind==="component"))tabs.push({name:selected.kind === "component" ? "Subcomponents" : "Components",icon:"componentTab",selected:fieldComponents && Boolean(referenceKey),action:()=>void openReference(reference.datatype_key!,0,true,"",true)});
       for(const key of reference.table_keys??[])tabs.push({name:reference.table_keys!.length>1 ? `Table ${key.slice(6)}`:"Table",icon:"components",selected:referenceKey===key,action:()=>void openReference(key)});
       if(reference.element_key)tabs.push({name:"Data element",icon:"dataElement",selected:referenceKey===reference.element_key,action:()=>void openReference(reference.element_key!)});
     }
     return <div className="reader-reference-tabs" onKeyDown={referenceKeys} role="tablist" aria-label="Reference views">{tabs.map(tab=><button key={tab.name} type="button" role="tab" aria-selected={tab.selected} disabled={busy} onClick={tab.action}><ReaderIcon name={tab.icon}/>{tab.name}</button>)}</div>;
+  };
+
+  useLayoutEffect(()=>setSourceContent(workbenchElement?.querySelector<HTMLElement>(".reader-original .raw-numbered") ?? null),[workbenchElement,inspection,view,layout.wrap]);
+  useLayoutEffect(()=>{
+    const saved=scrollPositions.current.get(captionOwner);
+    if(!workbenchElement)return;
+    for(const [part,selector] of [["grid",".message-grid"],["source",".raw-source"],["details",".reader-reference-scroll"]] as const){
+      const node=workbenchElement.querySelector<HTMLElement>(selector), position=saved?.[part];
+      if(node){node.scrollTop=position?.top ?? 0;node.scrollLeft=position?.left ?? 0;}
+    }
+  },[captionOwner,workbenchElement,Boolean(inspection),referenceLoading]);
+  const keepScroll = (target:EventTarget) => {
+    if(!(target instanceof HTMLElement)||!inspection)return;
+    const part=target.classList.contains("message-grid") ? "grid" : target.classList.contains("raw-source") ? "source" : target.classList.contains("reader-reference-scroll") ? "details" : null;
+    if(!part)return;
+    const positions=scrollPositions.current;
+    positions.set(captionOwner,{...positions.get(captionOwner),[part]:{top:target.scrollTop,left:target.scrollLeft}});
+    if(positions.size>64)positions.delete(positions.keys().next().value!);
   };
 
   if (inspection?.fhir) return <FHIRReader inspection={inspection} fhir={inspection.fhir} busy={busy} onInspect={onInspect} onReveal={onReveal} onInspectResource={onInspectResource} onCreateCheck={onCreateFHIRCheck} onClose={onClose} backLabel={backLabel} onBack={onBack} />;
@@ -406,7 +473,8 @@ export function MessageReader({
           ) : null}
           {catalogProblem ? <p role="alert">{catalogProblem}</p> : null}
           {overlayProblem ? <p role="alert">{overlayProblem}</p> : null}
-          <div ref={setWorkbenchElement} className={`reader-workbench${compactWorkbench ? " compact-workbench" : ""}${detailsVisible ? "" : " reader-details-hidden"}`}>
+          {gridProblem ? <p role="alert">{gridProblem}</p> : null}
+          <div ref={setWorkbenchElement} onScrollCapture={event=>keepScroll(event.target)} style={{["--reader-reference-width" as string]:`${detailsWidth}rem`,["--reader-source-height" as string]:`${sourceHeight}rem`}} className={`reader-workbench reader-adjustable${compactWorkbench ? " compact-workbench" : ""}${detailsVisible ? "" : " reader-details-hidden"}`}>
           <div className={`reader-center reader-view-${view}`}>
       <header className="reader-header reader-context">
         {backLabel && onBack ? <BackLink label={backLabel} onBack={onBack} /> : null}
@@ -444,8 +512,8 @@ export function MessageReader({
           />
         ) : null}
       </header>
-          {view === "fields" ? <section className="reader-original" aria-label="Original message">{revealed && (inspection.readable_window || inspection.raw_window) ? <RawText window={inspection.readable_window || inspection.raw_window!} busy={busy} onSelect={path=>void inspectSelection(path,inspection.readable_window?.offset)} onPage={(offset) => void onInspect(selected.path, inspection.node_offset, inspection.byte_offset, offset, catalogPath || suppliedCatalog || undefined,overlaySelection || suppliedSelection,referencePin)} /> : <p className="reader-hidden">{HIDDEN_VALUE}</p>}</section> : null}
-          <div className="reader-grid-controls"><h3>Segment grid</h3><IconButton icon="help" label="Column guide" className="reader-action" onClick={()=>{setDetailsVisible(true);setValidationShown(false);setColumnGuide(!columnGuide);}} /></div>
+          {view === "fields" ? <section className={`reader-original${layout.wrap ? " reader-source-wrap" : ""}`} aria-label="Original message"><div className="reader-source-toolbar"><span>Original message</span>{view === "fields" ? <div className="reader-source-controls" role="group" aria-label="Source presentation"><button type="button" aria-pressed={layout.fit} onClick={()=>setLayout(current=>({...current,fit:!current.fit}))}>Fit</button><button type="button" aria-pressed={layout.wrap} onClick={()=>setLayout(current=>({...current,wrap:!current.wrap}))}>Wrap</button></div> : null}</div>{revealed && (inspection.readable_window || inspection.raw_window) ? <RawText followSelection={inspection.grid?.mode !== "message" || Boolean(inspection.grid.follow_selection)} window={inspection.readable_window || inspection.raw_window!} busy={busy} onSelect={path=>void inspectSelection(path,inspection.readable_window?.offset)} onPage={(offset) => void onInspect(selected.path, inspection.node_offset, inspection.byte_offset, offset, catalogPath || suppliedCatalog || undefined,overlaySelection || suppliedSelection,referencePin)} /> : <p className="reader-hidden">{HIDDEN_VALUE}</p>}</section> : null}
+          <div className="reader-grid-controls">{view === "fields" ? <ReaderResize label="Source height" horizontal className="reader-source-resize" value={sourceHeight} min={6} max={maxSourceHeight} onChange={height=>setLayout(current=>({...current,sourceHeight:height,fit:false}))} /> : null}<h3>Segment grid</h3>{inspection.grid?.mode === "message" ? <label className="reader-omitted-toggle"><input type="checkbox" checked={Boolean(inspection.grid.show_omitted)} disabled={busy} onChange={event=>void inspectSelection(selected.path,undefined,gridRequest({show_omitted:event.target.checked,offset:0}))}/>Show fields not present</label> : null}{inspection.grid?.mode === "message" ? <><ReaderColumns /><IconButton icon="up" label="Collapse all segments" disabled={busy || !inspection.grid.expanded?.length} onClick={()=>void inspectSelection("",undefined,gridRequest({expanded:[],offset:0,follow_selection:false}))}/></> : null}<IconButton icon="help" label="Column guide" className="reader-action" onClick={()=>{setDetailsVisible(true);setValidationShown(false);setColumnGuide(!columnGuide);}} /></div>
           {view !== "fields" ? <TaskTabs tablistClass="reader-view-tabs" label="Message views" id="reader-views" tabs={VIEWS} selected={view} onSelect={selectView} panels>{null}</TaskTabs> : <span id="reader-views-tab-fields" hidden>Fields</span>}
           <>
             <TaskPanel tabs="reader-views" tab="fields" shown={view === "fields"}>
@@ -457,7 +525,7 @@ export function MessageReader({
                 </div>
               ) : (
                 <>
-                  {gridNodes.length > 0 ? (
+                  {inspection.grid?.mode === "message" ? <ReaderGrid grid={inspection.grid} selected={selected.path} busy={busy} value={row=>childValueText(row,revealed)} onSelect={go} onExpand={toggleBranch} onPage={(offset,edge)=>void pageGrid(offset,edge)} /> : gridNodes.length > 0 ? (
                     <section ref={gridElement} className="reader-grid-scroll" aria-label="Segment grid" tabIndex={0}>
                       <div className="reader-grid-columns" aria-hidden="true">{["Path", "Name", "Type", "Opt", "Len", "C-Len", "Rep", "Item#", "Tbl", "Sect", "Value"].map((column) => <span key={column}>{column}</span>)}</div>
                       <ul className="outline reader-grid" aria-label={atRoot ? "Segments" : `Parts of ${selected.path}`}>
@@ -476,7 +544,7 @@ export function MessageReader({
                     </section>
                   ) : null}
                   {!segmentCollapsed && inspection.grid && inspection.grid.field_count > 100 ? <nav className="pager" aria-label="Segment fields pages"><button type="button" disabled={busy || inspection.grid.offset === 0} onClick={() => void onInspect(inspection.grid!.segment,Math.max(0,inspection.grid!.offset-100),-1,undefined,catalogPath || suppliedCatalog || undefined,overlaySelection || suppliedSelection,referencePin)}>Previous segment fields</button><span>{inspection.grid.offset+1}–{Math.min(inspection.grid.field_count,inspection.grid.offset+100)} of {inspection.grid.field_count}</span><button type="button" disabled={busy || inspection.grid.offset+100 >= inspection.grid.field_count} onClick={() => void onInspect(inspection.grid!.segment,inspection.grid!.offset+100,-1,undefined,catalogPath || suppliedCatalog || undefined,overlaySelection || suppliedSelection,referencePin)}>Next segment fields</button></nav> : null}
-                  {!segmentCollapsed && inspection.child_count > inspection.children.length ? (
+                  {inspection.grid?.mode !== "message" && !segmentCollapsed && inspection.child_count > inspection.children.length ? (
                     <nav aria-label="Parts pages" className="pager">
                       <IconButton
                         icon="previous"
@@ -520,9 +588,10 @@ export function MessageReader({
               )}
             </TaskPanel>
           </>
-          <footer className="reader-grid-footer">{segmentShortcuts.length ? <nav aria-label="Other segments" className="crumbs">{segmentShortcuts.map(row=><button key={row.node.path} type="button" title={row.node.path} aria-label={`Inspect ${row.node.path}`} disabled={busy} onClick={()=>go(row.node.path)}>{row.node.segment}</button>)}</nav> : null}<nav aria-label="Path" className="crumbs"><button type="button" disabled={busy} onClick={()=>go("")}>Segments</button>{selected.parent && selected.parent !== selected.path ? <button type="button" disabled={busy} onClick={()=>go(selected.parent)}>{selected.parent}</button> : null}</nav></footer>
+          <footer className="reader-grid-footer">{inspection.grid?.mode === "message" ? <><nav aria-label="Path" className="crumbs"><button type="button" disabled={busy} onClick={()=>go("")}>Message</button>{(inspection.parents ?? []).filter(parent=>parent.node.kind!=="repetition").map(parent=><button type="button" key={parent.node.path} title={parent.node.path} disabled={busy} onClick={()=>go(parent.node.path)}>{parent.display_path || parent.node.path}</button>)}{selected.path ? <code title={selected.path}>{inspection.display_path || selected.path}</code> : null}</nav><span className="reader-grid-key-hint">↑ ↓ Move · ← → Expand / collapse</span></> : <>{segmentShortcuts.length ? <nav aria-label="Other segments" className="crumbs">{segmentShortcuts.map(row=><button key={row.node.path} type="button" title={row.node.path} aria-label={`Inspect ${row.node.path}`} disabled={busy} onClick={()=>go(row.node.path)}>{row.node.segment}</button>)}</nav> : null}<nav aria-label="Path" className="crumbs"><button type="button" disabled={busy} onClick={()=>go("")}>Segments</button>{selected.parent && selected.parent !== selected.path ? <button type="button" disabled={busy} onClick={()=>go(selected.parent)}>{selected.parent}</button> : null}</nav></>}</footer>
           </div>
-          {contextDetails !== undefined && contextDetails !== null && !validationShown ? <section className="reader-reference" aria-label="Context details" hidden={!detailsVisible}><h3 className="reader-pane-heading">{contextDetailsTitle}</h3><div className="reader-reference-scroll">{contextDetails}</div></section> : inspection.reference ? <section className="reader-reference" aria-label="Reference details" hidden={!detailsVisible}>{validationShown ? <div className="reader-pane-tabs" onKeyDown={referenceKeys} role="tablist" aria-label="Inspector views"><button type="button" role="tab" aria-selected={!validationShown} onClick={()=>setValidationShown(false)}>Details</button><button type="button" role="tab" aria-selected={validationShown} onClick={()=>setValidationShown(true)}>Validation</button></div> : <div className="reader-pane-heading"><h3>Details</h3><button type="button" className="reader-plain-icon" aria-label="Hide Details panel" onClick={()=>setDetailsVisible(false)}><ReaderIcon name="close" /></button><button type="button" className="reader-plain-icon reader-pane-options" aria-label="Reference information" onClick={()=>setReferenceInfo(true)}><ReaderIcon name="settings" /></button></div>}{!validationShown && !columnGuide ? <ReaderSelectionHeader inspection={inspection} nodes={gridNodes} busy={busy} onSelect={go} onGoToField={()=>setGoingTo(true)} /> : null}<div className="reader-reference-scroll">
+          {detailsVisible && !compactWorkbench ? <ReaderResize label="Details width" reverse className="reader-details-resize" value={detailsWidth} min={20} max={maxDetailsWidth} onChange={width=>setLayout(current=>({...current,detailsWidth:width}))} /> : null}
+          {contextDetails !== undefined && contextDetails !== null && !validationShown ? <section className="reader-reference" aria-label="Context details" hidden={!detailsVisible}><h3 className="reader-pane-heading">{contextDetailsTitle}</h3><div className="reader-reference-scroll">{contextDetails}</div></section> : inspection.reference ? <section className="reader-reference" aria-label="Reference details" hidden={!detailsVisible}>{validationShown ? <div className="reader-pane-tabs" onKeyDown={referenceKeys} role="tablist" aria-label="Inspector views"><button type="button" role="tab" aria-selected={!validationShown} onClick={()=>setValidationShown(false)}>Details</button><button type="button" role="tab" aria-selected={validationShown} onClick={()=>setValidationShown(true)}>Validation</button></div> : <div className="reader-pane-heading"><h3>Details</h3><button type="button" className="reader-plain-icon" aria-label="Hide Details panel" onClick={()=>setDetailsVisible(false)}><ReaderIcon name="close" /></button><button type="button" className="reader-plain-icon reader-pane-options" aria-label="Reference information" onClick={()=>setReferenceInfo(true)}><ReaderIcon name="settings" /></button></div>}{!validationShown && !columnGuide ? <ReaderSelectionHeader inspection={inspection} nodes={[...(inspection.parents ?? []),...gridNodes]} busy={busy} onSelect={go} onGoToField={()=>setGoingTo(true)} /> : null}<div className="reader-reference-scroll">
             {!validationShown && !columnGuide && field ? <div className="reader-value-control"><pre className="value" aria-label="Original value">{selected.state === "present" ? revealed ? inspection.raw || decodeStateText(inspection.decode_state) : HIDDEN_VALUE : stateText(selected.state,revealed,"")}</pre>{inspection.reference?.datatype_key && inspection.reference_values?.some(value=>value.node.kind === (selected.kind === "component" ? "subcomponent" : "component")) ? <button type="button" className="reader-plain-icon" aria-label={selected.kind === "component" ? "Inspect subcomponents" : "Inspect components"} disabled={busy} onClick={()=>void openReference(inspection.reference!.datatype_key!,0,true,"",true)}><ReaderIcon name="components" /></button> : null}<button type="button" className="reader-plain-icon" aria-label="Copy value" disabled={!revealed || selected.state!=="present" || !inspection.raw || inspection.decode_state==="too_large"} onClick={()=>void navigator.clipboard?.writeText(inspection.raw)}><ReaderIcon name="copy" /></button></div> : null}
             {!validationShown && !columnGuide && inspection.message_context && (atRoot || selected.segment==="MSH" && selected.field===9) ? <div className="reader-structure-strip"><span>Message structure</span><button type="button" className="link" disabled={busy || !inspection.message_context.structure_key} onClick={()=>inspection.message_context?.structure_key && void openReference(inspection.message_context.structure_key)}>{inspection.message_context.resolved_structure || "Not available"}</button></div> : null}
             {validationShown ? <section className="reader-validation" aria-label="Validation"><h4>Validation</h4><h5>No validation result available in this inspection</h5><p>Choose the specification used to check these messages. Reading reference metadata does not run validation.</p><button type="button" className="primary" disabled={busy} onClick={()=>onRequirements?.(inspection.selector || selected.path)}>Select specification</button><ValueRows rows={[{label:"Message",value:title},{label:"Field",value:inspection.selector || selected.path || "Message"}]} /><label>Original value</label><pre className="value">{selected.state === "present" ? revealed ? inspection.raw || decodeStateText(inspection.decode_state) : HIDDEN_VALUE : stateText(selected.state,revealed,"")}</pre>{onValidationFindings ? <button type="button" className="link" onClick={onValidationFindings}>View findings</button> : null}</section> : null}
@@ -570,11 +639,11 @@ export function MessageReader({
             {inspection.reference.edition && inspection.reference.edition !== inspection.metadata.hl7_version ? <aside className="notice warning" role="status"><p>Reference: HL7 {inspection.reference.edition}<br/>Message declares: HL7 {inspection.metadata.hl7_version || "Not available"}</p><button type="button" disabled={busy || catalogReading} onClick={() => void chooseReference(inspection.metadata.hl7_version)}>Return to message edition</button></aside> : null}
             {inspection.reference.reason ? <p role="status">{inspection.reference.reason}</p> : null}
             {inspection.reference.type_resolution === "unresolved" ? <p>Reference declared datatype: {inspection.reference.declared_datatype || "Not available"}. Contextual resolution: Not available.</p> : null}
-            {segmentFields ? <div className="reader-components-scroll"><table className="data-table reader-segment-fields" aria-label="Segment fields"><thead><tr><th>Path</th><th>Name</th><th>Type</th><th>Opt</th></tr></thead><tbody>{gridNodes.filter(row=>row.node.kind==="field"&&row.node.segment===selected.segment).map(row=><tr key={row.node.path}><td><button type="button" className="link" onClick={()=>go(row.node.path)}>{readablePath(row.node.path)}</button></td><td>{row.label}</td><td>{attributeText(row.reference?.datatype)}</td><td>{attributeText(row.reference?.optionality)}</td></tr>)}</tbody></table></div> : null}
+            {segmentFields ? <div className="reader-components-scroll"><table className="data-table reader-segment-fields" aria-label="Segment fields"><thead><tr><th>Path</th><th>Name</th><th>Type</th><th>Opt</th></tr></thead><tbody>{gridNodes.filter(row=>row.node.kind==="field"&&row.node.segment===selected.segment).map(row=><tr key={row.node.path}><td><button type="button" className="link" onClick={()=>go(row.node.path)}>{row.display_path || readablePath(row.node.path)}</button></td><td>{row.label}</td><td>{attributeText(row.reference?.datatype)}</td><td>{attributeText(row.reference?.optionality)}</td></tr>)}</tbody></table></div> : null}
             {inspection.reference.record && !segmentFields ? <>
-              <div className="reader-definition-heading"><button type="button" className={`reader-plain-icon${definitionVisible ? "" : " reader-definition-closed"}`} aria-label={definitionVisible ? "Hide definition" : "Show definition"} aria-expanded={definitionVisible} onClick={()=>setDefinitionVisible(shown=>!shown)}><ReaderIcon name="disclosure" /></button><ReaderIcon name="book" /><button type="button" className="link" disabled={busy || !inspection.reference.section_key} onClick={()=>inspection.reference?.section_key && void openReference(inspection.reference.section_key)}>§{attributeText(inspection.reference.record.section)}</button><span>{readablePath(selected.path) || inspection.reference.record.name} {inspection.reference.record.name}</span></div>
-              {inspection.reference.record.definition ? definitionVisible ? <ReferenceDefinition text={inspection.reference.record.definition} compact={compactDefinition(inspection.reference.record.definition)} expanded={fullDefinition} onToggle={()=>setFullDefinition(shown=>!shown)} /> : null : <p>Definition not available.</p>}
-              {field ? <ReferenceAttributes record={inspection.reference.record} datatype={inspection.reference.datatype_key ? ()=>void openReference(inspection.reference!.datatype_key!) : undefined} element={inspection.reference.element_key ? ()=>void openReference(inspection.reference!.element_key!) : undefined} /> : <section className="reader-segment-evidence" aria-label="Selected segment evidence"><ValueRows rows={[{label:"Occurrence",value:selected.path},{label:"Original byte span",value:`${selected.start}–${selected.end}`}]} /><label>Actual segment</label><pre className="value">{revealed ? inspection.raw_window?.selected || inspection.raw || decodeStateText(inspection.decode_state) : HIDDEN_VALUE}</pre>{inspection.grid?.rows.find(row=>row.node.kind==="field" && row.node.field===9 && row.node.segment===selected.segment) ? <button type="button" onClick={()=>go(`${selected.path}-9`)}>Inspect Message Type</button> : null}</section>}
+              <div className="reader-definition-heading"><button type="button" className={`reader-plain-icon${definitionVisible ? "" : " reader-definition-closed"}`} aria-label={definitionVisible ? "Hide definition" : "Show definition"} aria-expanded={definitionVisible} onClick={()=>setDefinitionVisible(shown=>!shown)}><ReaderIcon name="disclosure" /></button><ReaderIcon name="book" /><button type="button" className="link" disabled={busy || !inspection.reference.section_key} onClick={()=>inspection.reference?.section_key && void openReference(inspection.reference.section_key)}>§{attributeText(inspection.reference.record.section)}</button><span>{inspection.display_path || readablePath(selected.path) || inspection.reference.record.name} {inspection.reference.record.name}</span></div>
+              {inspection.reference.record.definition ? definitionVisible ? <ReferenceDefinition tables={inspection.reference.table_keys ?? []} onTable={key=>void openReference(key)} text={inspection.reference.record.definition} compact={compactDefinition(inspection.reference.record.definition)} expanded={fullDefinition} onToggle={()=>setFullDefinition(shown=>!shown)} /> : null : <p>Definition not available.</p>}
+              {field ? <ReferenceAttributes record={inspection.reference.record} datatype={inspection.reference.datatype_key ? ()=>void openReference(inspection.reference!.datatype_key!) : undefined} element={inspection.reference.element_key ? ()=>void openReference(inspection.reference!.element_key!) : undefined} /> : <section className="reader-segment-evidence" aria-label="Selected segment evidence"><ValueRows rows={[{label:"Occurrence",value:selected.path},{label:"Original byte span",value:`${selected.start}–${selected.end}`}]} /><label>Actual segment</label><pre className="value">{revealed ? inspection.raw_window?.selected || inspection.raw || decodeStateText(inspection.decode_state) : HIDDEN_VALUE}</pre>{inspection.grid?.rows.find(row=>row.node.kind==="field" && row.node.field===9 && row.node.segment===selected.segment) ? <IconButton icon="book" label="Inspect Message Type" className="reader-action" disabled={busy} onClick={()=>go(`${selected.path}-9`)} /> : null}</section>}
               <div className="reader-reference-links">
                 {onRequirements ? <IconButton icon="book" label="Open specification" className="reader-action" disabled={busy} onClick={()=>onRequirements(inspection.selector || selected.path)} /> : null}
                 {onFieldValues && field && inspection.selector ? <IconButton icon="search" label="Field values" className="reader-action" disabled={busy} onClick={()=>onFieldValues(inspection.selector)} /> : null}
@@ -600,7 +669,7 @@ export function MessageReader({
               {label:"Sect",value:"Source definition section for this entity and edition."},
               {label:"Value",value:"Original evidence. Empty, Null, Omitted, Hidden, Truncated and undecodable remain distinct."},
             ]} /><button type="button" onClick={() => setColumnGuide(false)}>Back to reader</button></section> : null}
-          </div></section> : <section className="reader-reference" aria-label="Selected details" hidden={!detailsVisible}><div className="reader-pane-heading"><h3>Details</h3><button type="button" className="reader-plain-icon" aria-label="Hide Details panel" onClick={()=>setDetailsVisible(false)}><ReaderIcon name="close" /></button><button type="button" className="reader-plain-icon reader-pane-options" aria-label="Reference information" onClick={()=>setReferenceInfo(true)}><ReaderIcon name="settings" /></button></div><ReaderSelectionHeader inspection={inspection} nodes={gridNodes} busy={busy} onSelect={go} onGoToField={()=>setGoingTo(true)} /><div className="reader-reference-scroll">{field ? <><label>Original encoded value</label><pre className="value">{selected.state === "present" ? revealed ? inspection.raw || decodeStateText(inspection.decode_state) : HIDDEN_VALUE : stateText(selected.state,revealed,"")}</pre><div className="selected-field-actions">{revealed && selected.state === "present" && (inspection.decoded || inspection.raw) ? <button type="button" onClick={()=>void navigator.clipboard?.writeText(inspection.raw)}>Copy value</button> : null}{onFilterByField && inspection.selector ? <button type="button" onClick={()=>onFilterByField(inspection.selector,revealed && selected.state === "present" ? inspection.decoded || null : null,selected.state)}>Filter by this field</button> : null}</div></> : null}</div></section>}
+          </div></section> : <section className="reader-reference" aria-label="Selected details" hidden={!detailsVisible}><div className="reader-pane-heading"><h3>Details</h3><button type="button" className="reader-plain-icon" aria-label="Hide Details panel" onClick={()=>setDetailsVisible(false)}><ReaderIcon name="close" /></button><button type="button" className="reader-plain-icon reader-pane-options" aria-label="Reference information" onClick={()=>setReferenceInfo(true)}><ReaderIcon name="settings" /></button></div><ReaderSelectionHeader inspection={inspection} nodes={[...(inspection.parents ?? []),...gridNodes]} busy={busy} onSelect={go} onGoToField={()=>setGoingTo(true)} /><div className="reader-reference-scroll">{field ? <><label>Original encoded value</label><pre className="value">{selected.state === "present" ? revealed ? inspection.raw || decodeStateText(inspection.decode_state) : HIDDEN_VALUE : stateText(selected.state,revealed,"")}</pre><div className="selected-field-actions">{revealed && selected.state === "present" && (inspection.decoded || inspection.raw) ? <button type="button" onClick={()=>void navigator.clipboard?.writeText(inspection.raw)}>Copy value</button> : null}{onFilterByField && inspection.selector ? <button type="button" onClick={()=>onFilterByField(inspection.selector,revealed && selected.state === "present" ? inspection.decoded || null : null,selected.state)}>Filter by this field</button> : null}</div></> : null}</div></section>}
           </div>
 
         </>
@@ -805,14 +874,14 @@ export function HexTable({
 /** The whole message as escaped original text, a window at a time, with the
  * selected part marked. It pages only when the message is longer than one
  * window. */
-export function RawText({ window: raw, busy, onPage, onSelect }: { window: RawWindow; busy: boolean; onPage: (offset: number) => void; onSelect?: (path: string) => void }) {
+export function RawText({ window: raw, busy, onPage, onSelect, followSelection = true }: { followSelection?: boolean; window: RawWindow; busy: boolean; onPage: (offset: number) => void; onSelect?: (path: string) => void }) {
   const paged = raw.message_end - raw.message_start > RAW_WINDOW;
   const lineStart=raw.before.lastIndexOf("\n")+1;
   const nextLine=raw.after.indexOf("\n");
   const lineEnd=nextLine<0 ? raw.after.length : nextLine;
   return (
     <>
-      {raw.lines ? <MessageText lines={raw.lines} busy={busy} onSelect={onSelect} /> : <pre className="value raw">
+      {raw.lines ? <MessageText lines={raw.lines} busy={busy} followSelection={followSelection} onSelect={onSelect} /> : <pre className="value raw">
         {raw.selected ? <>{raw.before.slice(0,lineStart)}<span className="selected-line">{raw.before.slice(lineStart)}<mark>{raw.selected}</mark>{raw.after.slice(0,lineEnd)}</span>{raw.after.slice(lineEnd)}</> : <>{raw.before}{raw.after}</>}
       </pre>}
       {paged ? (

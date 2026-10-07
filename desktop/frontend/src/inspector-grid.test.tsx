@@ -385,6 +385,7 @@ test("selecting a message reads it through the shared reader bound to the displa
     byte_offset: -1,
     raw_offset: -1,
     reveal: true,
+    grid: {expanded:[],show_omitted:false,offset:0,follow_selection:false},
   });
   const details = await screen.findByRole("region", { name: "Message details" });
   expect(within(details).getByRole("heading", { name: "SIU · S12" })).toBeTruthy();

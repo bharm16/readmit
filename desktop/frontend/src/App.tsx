@@ -1,3 +1,5 @@
+import { useReaderNavigation } from "./readerNavigation";
+import type { InspectionGridRequest } from "./bindings";
 import { ReferenceMenu } from "./ReferenceMenu";
 import type {ReactNode} from "react";
 import type { ValueMapEditorDraft } from "./bindings";
@@ -945,6 +947,7 @@ export default function App() {
   // the window verified otherwise. Either way the inspector is bound to the
   // identity that was displayed, so a value is never read out of evidence that
   // has changed since.
+  const readerNavigation = useReaderNavigation();
   const inspect = useCallback(
     async (
       occurrence: string,
@@ -958,6 +961,7 @@ export default function App() {
       selection?: HL7ReferenceSelection,
       catalogIdentity?: string,
       maskPHI = phiMasked,
+      messageGrid?: InspectionGridRequest,
     ): Promise<InspectionResult | null> => {
       const grid = messages;
       const open =
@@ -974,6 +978,8 @@ export default function App() {
       }
       if (catalogIdentity !== undefined) referenceIdentity.current = catalogIdentity;
       if (selection !== undefined) referenceSelection.current = selection;
+      const sourceKey = JSON.stringify([root, open.case, open.identity]);
+      const position = readerNavigation.request(sourceKey, occurrence, path, messageGrid,{nodeOffset,byteOffset,rawOffset});
       let answer: InspectionResult | null = null;
       await run("inspect", async (current) => {
         const moving = occurrence !== selectedOccurrence;
@@ -984,10 +990,11 @@ export default function App() {
           case: open.case,
           identity: open.identity,
           occurrence,
-          path,
-          node_offset: nodeOffset,
-          byte_offset: byteOffset,
-          raw_offset: rawOffset,
+          path: position.path,
+          grid: position.grid,
+          node_offset: position.nodeOffset,
+          byte_offset: position.byteOffset,
+          raw_offset: position.rawOffset,
           reveal: open.protocol && open.protocol !== "fhir-r4" ? true : reveal,
           ...(open.protocol && open.protocol !== "fhir-r4" && maskPHI ? {mask_phi:true} : {}),
           ...(referenceCatalog.current ? { reference_catalog: referenceCatalog.current } : {}),
@@ -998,6 +1005,7 @@ export default function App() {
         // A field that is not in the message leaves the message as it was.
         if (current() && (result.state === "completed" || moving || path === "")) {
           if (!referenceIdentity.current && result.inspection?.reference?.identity) referenceIdentity.current = result.inspection.reference.identity;
+          readerNavigation.accept(sourceKey, occurrence, result);
           setInspectionResult(result);
         }
       });
@@ -3109,8 +3117,8 @@ export default function App() {
                   <div className="toolbar toolbar-group source-export-actions">
  <button type="button" disabled={busy || !selectedSourceRef} onClick={()=>setCaptureContextSource(selectedSourceRef)}>Source context</button>
                     <button type="button" disabled={busy || !selectedSourceRef || checkedMessages.size!==2} onClick={()=>setSelectedComparison(true)}>Compare selected</button>
-                    <button type="button" disabled={busy || !root} onClick={configureTargetFromSource}>Configure target</button>
-                    <button type="button" disabled={busy || !root} onClick={()=>setReceivingSetup(true)}>Receive setup</button>
+                    <IconButton icon="target" label="Configure target" className="reader-action" disabled={busy || !root} onClick={configureTargetFromSource} />
+                    <IconButton icon="receive" label="Receive setup" className="reader-action" disabled={busy || !root} onClick={()=>setReceivingSetup(true)} />
                     <button type="button" disabled={busy || !selectedSourceRef || checkedMessages.size === 0} onClick={() => setSelectedExportOpen(true)}>Export selected</button>
                     <button type="button" disabled={busy || !selectedSourceRef} onClick={() => setSourceExportsOpen(true)}>Capture exports</button>
                   </div>
@@ -3294,11 +3302,11 @@ export default function App() {
           )}
         </Page>
 
-        <Page id="new-test" shown={place === "new-test"} title={tests.title} back={tests.back} actions={<>{tests.actions}{root ? <button type="button" disabled={busy} onClick={()=>setReceivingSetup(true)}>Receive setup</button>:null}</>}>
+        <Page id="new-test" shown={place === "new-test"} title={tests.title} back={tests.back} actions={<>{tests.actions}{root ? <IconButton icon="receive" label="Receive setup" className="reader-action" disabled={busy} onClick={()=>setReceivingSetup(true)} />:null}</>}>
           {root && place === "new-test" ? tests.body : null}
         </Page>
 
-        <Page id="edit-test" shown={place === "edit-test"} title={tests.title} back={tests.back} actions={<>{tests.actions}{root ? <button type="button" disabled={busy} onClick={()=>setReceivingSetup(true)}>Receive setup</button>:null}</>}>
+        <Page id="edit-test" shown={place === "edit-test"} title={tests.title} back={tests.back} actions={<>{tests.actions}{root ? <IconButton icon="receive" label="Receive setup" className="reader-action" disabled={busy} onClick={()=>setReceivingSetup(true)} />:null}</>}>
           {root && place === "edit-test" ? tests.body : null}
         </Page>
 
@@ -3862,7 +3870,7 @@ export default function App() {
             {...(selectedRow ? { kind: selectedRow.kind, source: selectedRow.source_name || selectedRow.source_id } : {})}
             loading={running === "inspect"}
             busy={busy}
-            onInspect={(path, nodeOffset, byteOffset, rawOffset, catalogPath?: string, selection?: HL7ReferenceSelection, catalogIdentity?: string) => (selectedOccurrence ? inspect(selectedOccurrence, path, nodeOffset, byteOffset, undefined, revealed, rawOffset, catalogPath, selection, catalogIdentity) : Promise.resolve(null))}
+            onInspect={(path, nodeOffset, byteOffset, rawOffset, catalogPath?: string, selection?: HL7ReferenceSelection, catalogIdentity?: string, grid?: InspectionGridRequest) => (selectedOccurrence ? inspect(selectedOccurrence, path, nodeOffset, byteOffset, undefined, revealed, rawOffset, catalogPath, selection, catalogIdentity, phiMasked, grid) : Promise.resolve(null))}
             onReveal={(next) => {
               const at = inspectionResult?.inspection;
               if(at?.fhir) setRevealed(next); else {setPHIMasked(!next);}

@@ -259,3 +259,62 @@ test("component Details keeps its single-repetition parent field context", () =>
   render(<MessageReader result={result} loading={false} busy={false} onInspect={async()=>result} onReveal={()=>undefined}/>);
   expect(screen.getByRole("region",{name:"Reference details"}).querySelector(".reader-parent-context")?.textContent).toContain("Assigned Patient Location");
 });
+
+test("a complete short definition has no expansion control",()=>{
+ const record={...ownedFieldReference(),definition:"Definition: Owned short definition."};
+ const result=inspectionResult(undefined,{reference:{status:"available",reason:"",identity:"catalog",edition:"2.5.1",coverage:{segments:0,fields:1,definitions:1,missing:[]},missing_count:0,record}});
+ render(<MessageReader result={result} loading={false} busy={false} onInspect={async()=>null} onReveal={()=>undefined}/>);
+ expect(screen.getByText("Owned short definition.")).toBeTruthy();
+ expect(screen.queryByRole("button",{name:"Expand definition"})).toBeNull();
+});
+
+test("embedded table source is separated from prose and leads to the pinned structured table",async()=>{
+ const user=userEvent.setup();
+ const full="Definition: Owned explanatory text. Refer to HL7 Table 0004 for values. HL7 Table 0004 - Owned values Value Description A Owned code. Owned note after table.";
+ const record={...ownedFieldReference(),definition:full};
+ const facade=installFacade({LookupHL7Reference:()=>({state:"completed",children:[],offset:0,child_count:0,total_count:0,reference:{status:"available",reason:"",identity:"catalog",edition:"2.5.1",coverage:{segments:0,fields:1,definitions:1,missing:[]},missing_count:0,record:{...record,key:"table/0004",kind:"table",content_state:"available",definition:"Owned table."}}})});
+ const result=inspectionResult(undefined,{reference:{status:"available",reason:"",identity:"catalog",edition:"2.5.1",coverage:{segments:0,fields:1,definitions:1,missing:[]},missing_count:0,record,table_keys:["table/0004"]}});
+ render(<MessageReader result={result} loading={false} busy={false} onInspect={async()=>null} onReveal={()=>undefined}/>);
+ expect(screen.getByText("Owned explanatory text. Refer to HL7 Table 0004 for values.")).toBeTruthy();
+ await user.click(screen.getByRole("button",{name:"Expand definition"}));
+ expect(screen.getByText(full,{exact:true,normalizer:text=>text})).toBeTruthy();
+ await user.click(screen.getByRole("button",{name:"View Table 0004"}));
+ expect(await screen.findByRole("table",{name:"Reference codes"})).toBeTruthy();
+ expect(facade.callsTo("LookupHL7Reference")[0]?.args[0]).toMatchObject({identity:"catalog",edition:"2.5.1",key:"table/0004"});
+});
+
+test("switching messages restores its reference tab and rereads the pinned catalog",async()=>{
+ const user=userEvent.setup();
+ const table={...ownedFieldReference(),key:"table/0004",kind:"table",content_state:"available",definition:"Owned table definition."};
+ const facade=installFacade({LookupHL7Reference:()=>({state:"completed",children:[],offset:0,child_count:0,total_count:0,reference:{status:"available",reason:"",identity:"catalog",edition:"2.5.1",coverage:{segments:0,fields:1,definitions:1,missing:[]},missing_count:0,record:table}})});
+ const first=inspectionResult(undefined,{occurrence:"first",reference:{status:"available",reason:"",identity:"catalog",edition:"2.5.1",coverage:{segments:0,fields:1,definitions:1,missing:[]},missing_count:0,record:ownedFieldReference(),table_keys:["table/0004"]}});
+ const second=inspectionResult(undefined,{...first.inspection,occurrence:"second"});
+ const props={loading:false,busy:false,onInspect:async()=>null,onReveal:()=>undefined};
+ const {rerender}=render(<MessageReader {...props} result={first}/>);
+ await user.click(screen.getByRole("tab",{name:"Table"}));
+ expect(await screen.findByRole("table",{name:"Reference codes"})).toBeTruthy();
+ rerender(<MessageReader {...props} result={second}/>);
+ expect(screen.getByRole("tab",{name:"Overview"}).getAttribute("aria-selected")).toBe("true");
+ rerender(<MessageReader {...props} result={first}/>);
+ expect(await screen.findByRole("table",{name:"Reference codes"})).toBeTruthy();
+ expect(screen.getByRole("tab",{name:"Table"}).getAttribute("aria-selected")).toBe("true");
+ expect(facade.callsTo("LookupHL7Reference")).toHaveLength(2);
+ rerender(<MessageReader {...props} result={inspectionResult(undefined,{...first.inspection,identity:"changed-source"})}/>);
+ expect(screen.getByRole("tab",{name:"Overview"}).getAttribute("aria-selected")).toBe("true");
+});
+
+
+test("returning to a datatype restores its Overview rather than changing to Components",async()=>{
+ const user=userEvent.setup();
+ const record={...ownedFieldReference(),key:"datatype/MSG",kind:"datatype"};
+ installFacade({LookupHL7Reference:()=>({state:"completed",children:[],offset:0,child_count:0,total_count:0,reference:{status:"available",reason:"",identity:"catalog",edition:"2.5.1",coverage:{segments:0,fields:1,definitions:0,missing:[]},missing_count:0,record}})});
+ const first=inspectionResult(undefined,{occurrence:"first",selected:{path:"MSH[1]-9",kind:"field",parent:"MSH[1]",segment:"MSH",field:9,state:"empty",start:1,end:1},reference:{status:"available",reason:"",identity:"catalog",edition:"2.5.1",coverage:{segments:0,fields:1,definitions:0,missing:[]},missing_count:0,record:ownedFieldReference(),datatype_key:"datatype/MSG"}});
+ const props={loading:false,busy:false,onInspect:async()=>null,onReveal:()=>undefined};
+ const {rerender}=render(<MessageReader {...props} result={first}/>);
+ await user.click(screen.getByRole("button",{name:"Datatype · MSG"}));
+ await user.click(await screen.findByRole("tab",{name:"Overview"}));
+ rerender(<MessageReader {...props} result={inspectionResult(undefined,{...first.inspection,occurrence:"second"})}/>);
+ rerender(<MessageReader {...props} result={first}/>);
+ await screen.findByRole("heading",{name:"Datatype reference"});
+ expect(screen.getByRole("tab",{name:"Overview"}).getAttribute("aria-selected")).toBe("true");
+});

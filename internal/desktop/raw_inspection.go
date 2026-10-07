@@ -3,6 +3,7 @@ package desktop
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -162,7 +163,7 @@ func (a *App) ListFileMessages(request FileMessagesRequest) FileMessagesResult {
 			FormatSelection: selectionOf(request.Format), TerminatorSelection: selectionOf(request.Terminator), Rows: []FileMessage{}}
 		document, err := hl7.Parse(data, options)
 		if err != nil {
-			result.State, result.Reason = Failed, err.Error()
+			result.State, result.Reason = Failed, desktopParseReason(err)
 			return result
 		}
 		result.Format, result.Total, result.Offset = string(document.Format), len(document.Messages), request.Offset
@@ -186,6 +187,7 @@ func (a *App) ListFileMessages(request FileMessagesRequest) FileMessagesResult {
 // message list was read from; a file that changed since is refused rather
 // than joined to a list of a different file. Message is zero-based.
 type FileInspectRequest struct {
+	Grid               *InspectionGridRequest `json:"grid,omitzero"`
 	ReferenceSelection *HL7ReferenceSelection `json:"reference_selection,omitzero"`
 	ReferenceIdentity  string                 `json:"reference_identity,omitzero"`
 	ReferenceCatalog   string                 `json:"reference_catalog,omitzero"`
@@ -223,10 +225,10 @@ func (a *App) InspectFileMessage(request FileInspectRequest) InspectionResult {
 		}
 		document, err := hl7.Parse(data, options)
 		if err != nil {
-			return fail(Failed, err.Error())
+			return fail(Failed, desktopParseReason(err))
 		}
 		view, reason := a.inspectDocument(data, document, request.Message, inspectorWindow{
-			Path: request.Path, NodeOffset: request.NodeOffset, ByteOffset: request.ByteOffset, RawOffset: request.RawOffset, Reveal: request.Reveal, MaskPHI: request.MaskPHI, ReferenceCatalog: request.ReferenceCatalog, ReferenceIdentity: request.ReferenceIdentity, ReferenceSelection: request.ReferenceSelection,
+			Path: request.Path, NodeOffset: request.NodeOffset, ByteOffset: request.ByteOffset, RawOffset: request.RawOffset, Reveal: request.Reveal, MaskPHI: request.MaskPHI, ReferenceCatalog: request.ReferenceCatalog, ReferenceIdentity: request.ReferenceIdentity, ReferenceSelection: request.ReferenceSelection, Grid: request.Grid,
 		})
 		if view == nil {
 			return fail(Failed, reason)
@@ -341,7 +343,7 @@ func (a *App) SaveFileCopy(request SaveCopyRequest) RoundTripResult {
 		}
 		document, err := hl7.Parse(data, options)
 		if err != nil {
-			return fail(Failed, err.Error())
+			return fail(Failed, desktopParseReason(err))
 		}
 		if err := operation.WriteNewFile(destination, document.Serialize(),
 			"cannot create round-trip file; destination must be new and writable",
@@ -444,4 +446,25 @@ func (a *App) chooseOneFile(ctx context.Context, title string) (string, refusal)
 		return "", refusal{Failed, "choose exactly one file"}
 	}
 	return files[0], refusal{}
+}
+
+// The parser owns offsets and refusal semantics. Only its CLI recovery wording
+// is translated for the desktop; no missing or mixed bytes are normalized.
+func desktopParseReason(err error) string {
+	var terminator *hl7.TerminatorError
+	if !errors.As(err, &terminator) {
+		return err.Error()
+	}
+	reason := ""
+	switch terminator.Problem {
+	case hl7.MixedTerminators:
+		reason = "mixed segment terminators; supply a uniformly terminated source. File format can select its terminator but cannot repair mixed line endings"
+	case hl7.MissingTerminator:
+		reason = "missing segment terminator; open a source with its original final terminator. File format cannot add missing bytes"
+	case hl7.MismatchedTerminator:
+		reason = "segment terminator does not match the selection; choose the matching segment terminator in File format"
+	default:
+		return err.Error()
+	}
+	return fmt.Sprintf("invalid input at byte %d: %s", terminator.Offset, reason)
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -359,7 +360,10 @@ func TestFileMessagesRefuseWhatTheCommandRefuses(t *testing.T) {
 			t.Fatalf("%s: the command answered %v and the window %+v", name, cliErr, result)
 		}
 		if want := "readmit: " + result.Reason + "\n"; stderr != want {
-			t.Errorf("%s: the window refused with %q where the command printed %q", name, result.Reason, stderr)
+			var terminator *hl7.TerminatorError
+			if !errors.As(cliErr, &terminator) || !strings.HasPrefix(result.Reason, fmt.Sprintf("invalid input at byte %d:", terminator.Offset)) || !strings.Contains(result.Reason, "File format") {
+				t.Errorf("%s: the window refused with %q where the command printed %q", name, result.Reason, stderr)
+			}
 		}
 		if strings.Contains(result.Reason, dir) {
 			t.Errorf("%s: the refusal named the path: %q", name, result.Reason)
@@ -392,5 +396,31 @@ func TestFileMessagesRefuseWhatTheCommandRefuses(t *testing.T) {
 		if got := app.ListFileMessages(request); got.State != desktop.Failed || got.Reason != want {
 			t.Errorf("%+v answered %+v, want %q", request, got, want)
 		}
+	}
+}
+
+func TestFileParseGuidanceNamesDesktopRecoveryWithoutChangingSource(t *testing.T) {
+	app := workspaceApp(t)
+	for _, tc := range []struct {
+		name         string
+		data         []byte
+		ending, want string
+	}{
+		{"mixed", []byte("MSH|^~\\&|SYNTH|LAB|RECV|LAB|20260101120000||ADT^A08|MIX-1|P|2.5.1\rPID|1\n"), "auto", "uniform"},
+		{"missing", []byte("MSH|^~\\&|SYNTH|LAB|RECV|LAB|20260101120000||ADT^A08|MIX-1|P|2.5.1"), "auto", "missing"},
+		{"mismatch", []byte("MSH|^~\\&|SYNTH|LAB|RECV|LAB|20260101120000||ADT^A08|MIX-1|P|2.5.1\r"), "lf", "File format"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeRaw(t, t.TempDir(), tc.name+".hl7", tc.data)
+			before := sourceStateOf(t, path)
+			result := app.ListFileMessages(desktop.FileMessagesRequest{File: path, Format: "auto", Terminator: tc.ending})
+			if result.State != desktop.Failed || strings.Contains(result.Reason, "--terminator") || !strings.Contains(result.Reason, tc.want) {
+				t.Fatalf("desktop guidance: %+v", result)
+			}
+			if result.SHA256 != before.digest || result.Bytes != len(tc.data) {
+				t.Fatal("refusal lost source identity")
+			}
+			before.unchanged(t, path)
+		})
 	}
 }
