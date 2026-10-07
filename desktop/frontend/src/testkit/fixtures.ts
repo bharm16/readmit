@@ -146,7 +146,7 @@ export function shellResult(): ShellResult {
       { id: "cancel-operation", title: "Cancel operation" },
     ],
     themes: ["system", "light", "dark"],
-    text_scales: [100, 125, 150, 175, 200],
+    text_scales: [50, 75, 90, 100, 125, 150, 175, 200],
     version: "0.0.0-test",
     build: {
       version: "0.0.0-test",

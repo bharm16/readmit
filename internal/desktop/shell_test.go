@@ -252,8 +252,8 @@ func TestTextScalesAndThemesAreOfferedAsChoices(t *testing.T) {
 	if !slices.Contains(described.Themes, "system") || !slices.Contains(described.Themes, "light") || !slices.Contains(described.Themes, "dark") {
 		t.Fatalf("the window does not offer system, light and dark: %v", described.Themes)
 	}
-	if described.TextScales[0] != 100 {
-		t.Fatalf("text scaling does not start at the unscaled size: %v", described.TextScales)
+	if described.TextScales[0] != 50 {
+		t.Fatalf("text scaling does not reach half size: %v", described.TextScales)
 	}
 	if !slices.IsSorted(described.TextScales) {
 		t.Fatalf("text scales are not offered in order: %v", described.TextScales)
@@ -263,7 +263,7 @@ func TestTextScalesAndThemesAreOfferedAsChoices(t *testing.T) {
 	if described.TextScales[len(described.TextScales)-1] < 200 {
 		t.Fatalf("text does not scale to twice its size: %v", described.TextScales)
 	}
-	for _, offered := range []int{100, 125, 150, 175, 200} {
+	for _, offered := range []int{50, 75, 90, 100, 125, 150, 175, 200} {
 		if !slices.Contains(described.TextScales, offered) {
 			t.Fatalf("text size %d%% is not offered: %v", offered, described.TextScales)
 		}

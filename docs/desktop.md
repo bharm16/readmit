@@ -1553,6 +1553,11 @@ own index, stating when its retention has ended.
 
 ## The message grid
 
+The table scrolls continuously. Reads default to 100 rows; the viewport may
+request up to 1,000 rows to cover a tall window at reduced text size. The host
+still owns row order, expansion and source interpretation. Scrolling keeps the
+selected source position and reference details unchanged.
+
 The window no longer calls `OpenGrid`; the Messages view reads through
 `ReadMessages` above. `OpenGrid` stays for callers that already name an index.
 
@@ -2699,7 +2704,7 @@ executable and whether its working tree had changes, and the release channel,
 "Development preview, unsigned". A build without a version-control stamp shows
 no revision or time rather than an invented one.
 
-The window offers `system`, `light` and `dark`, and text sizes of 100%, 125%,
+The window offers `system`, `light` and `dark`, and text sizes of 50%, 75%, 90%, 100%, 125%,
 150%, 175% and 200%. Until a person saves a choice in Settings › General the
 window follows the system theme at 100%. The shell keeps ten separate
 owner-only local documents: saved

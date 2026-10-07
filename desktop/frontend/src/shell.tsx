@@ -120,13 +120,18 @@ export function Separator({
         }
       }}
       onPointerDown={(event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        event.currentTarget.focus({ preventScroll: true });
         event.currentTarget.setPointerCapture(event.pointerId);
         dragging.current = true;
       }}
       onPointerUp={(event) => {
-        event.currentTarget.releasePointerCapture(event.pointerId);
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
         dragging.current = false;
       }}
+      onPointerCancel={() => { dragging.current = false; }}
+      onLostPointerCapture={() => { dragging.current = false; }}
       onPointerMove={(event) => {
         const right = edge();
         if (!dragging.current || right === null) return;

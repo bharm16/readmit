@@ -6132,6 +6132,7 @@ export interface InspectionGridRequest {
   expanded: string[];
   show_omitted: boolean;
   offset: number;
+  limit?: number;
   follow_selection: boolean;
 }
 

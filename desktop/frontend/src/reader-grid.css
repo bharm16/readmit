@@ -35,7 +35,7 @@
 .message-grid-head > div { position:relative; min-height:2rem; padding:.5rem; box-sizing:border-box; }
 .message-grid-head .reader-resize { position:absolute; right:0; top:0; height:100%; background:transparent; border-right:1px solid var(--line); }
 .message-grid-head .reader-resize:focus-visible, .message-grid-head .reader-resize:hover { background:var(--selection); }
-.message-grid-row { min-height:2.875rem; align-items:stretch; font-size:.8125rem; line-height:1.25rem; cursor:pointer; border-bottom:1px solid var(--line); }
+.message-grid-row { height:2.875rem; align-items:stretch; font-size:.8125rem; line-height:1.25rem; cursor:pointer; border-bottom:1px solid var(--line); }
 .message-grid-row > div { padding:.75rem .5rem; min-width:0; box-sizing:border-box; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .message-grid-row:hover { background:var(--rail); }
 .message-grid-row[aria-selected="true"] { background:var(--selection); color:var(--selection-text); }
@@ -43,16 +43,15 @@
 .message-grid-row[aria-selected="true"] .message-grid-path { background:var(--selection); box-shadow:inset 2px 0 var(--text); }
 .message-grid-row .message-grid-name { display:flex; align-items:center; padding-block:0; }
 .message-grid-disclosure { display:inline-flex; flex:none; align-items:center; justify-content:center; width:1.25rem; height:2rem; padding:0; border:0; background:transparent; }
+/* A pending read disables every disclosure; it must not paint them as active. */
+.message-grid-disclosure:disabled { background:transparent; }
 .message-grid-disclosure .reader-icon { width:.625rem; height:.875rem; }
 .message-grid-disclosure.is-expanded .reader-icon { transform:rotate(90deg); }
 .message-grid-segment { background:var(--rail); font-weight:600; }
 .message-grid-value, .message-grid-attribute { font-family:var(--mono); font-size:.9375rem; }
 .message-grid-state { font-family:var(--font); color:var(--muted); font-size:.8125rem; }
 .message-grid-datatype { color:var(--syntax-type); }
-.message-grid-region .pager { flex:none; padding:.375rem; border-top:1px solid var(--line); }
 .hl7-reader .reader-adjustable .raw-line { min-height:1.5rem; margin-bottom:0; }
 .hl7-reader .reader-adjustable .raw-line-code, .hl7-reader .reader-adjustable .raw-line-number { padding-block:0; }
 .hl7-reader .reader-definition-tables { display:flex; gap:.5rem; flex-wrap:wrap; margin-top:.5rem; }
 .hl7-reader .reader-source-toolbar { display:flex; justify-content:space-between; align-items:center; flex:none; min-height:2rem; color:var(--muted); font-size:.75rem; }
-
-.hl7-reader .reader-grid-key-hint { color:var(--muted); font-size:.75rem; white-space:nowrap; margin-left:auto; }

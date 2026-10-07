@@ -280,7 +280,8 @@ export function MessageReader({
   useEffect(()=>{gridElement.current?.querySelector<HTMLElement>('[aria-current="location"]')?.scrollIntoView?.({block:"nearest",inline:"nearest"});},[selected?.path,view]);
   const segmentCollapsed = collapsedSegment?.owner === captionOwner && collapsedSegment.path === inspection?.grid?.segment;
   const visibleGridNodes = segmentCollapsed ? gridNodes.filter(row => row.node.kind === "segment") : gridNodes;
-  const gridRequest = (changes: Partial<InspectionGridRequest> = {}): InspectionGridRequest => ({expanded:inspection?.grid?.expanded ?? [],show_omitted:inspection?.grid?.show_omitted ?? false,offset:inspection?.grid?.offset ?? 0,follow_selection:true,...changes});
+  const gridWindowLimit = useRef<number | undefined>(undefined);
+  const gridRequest = (changes: Partial<InspectionGridRequest> = {}): InspectionGridRequest => ({expanded:inspection?.grid?.expanded ?? [],show_omitted:inspection?.grid?.show_omitted ?? false,offset:inspection?.grid?.offset ?? 0,follow_selection:true,...(gridWindowLimit.current ? {limit:gridWindowLimit.current} : {}),...changes});
   const rememberReference = (key="",offset=0,query="",components=false,fields=false,overview=false) => {
     referencePositions.current.delete(captionOwner);
     referencePositions.current.set(captionOwner,{path:selected?.path??"",pin:referencePin??"",key,offset,query,components,fields,overview});
@@ -307,13 +308,17 @@ export function MessageReader({
     const target = row.expanded && inspection?.grid?.ancestors?.includes(row.node.path) ? row.node.path : selected?.path ?? "";
     void inspectSelection(target,undefined,gridRequest({expanded:[...expanded],follow_selection:false}));
   };
-  const pageGrid = async (offset:number,edge?:"first"|"last") => {
+  const pageGrid = async (offset:number,edge?:"first"|"last",limit?:number) => {
+    if(limit!==undefined)gridWindowLimit.current=limit;
     const owner=contextKey;
-    const answer=await inspectSelection(selected?.path ?? "",undefined,gridRequest({offset,follow_selection:false}));
+    // Scrolling reads another grid window without resetting the selected source
+    // or the open reference details.
+    const answer=await onInspect(selected?.path ?? "",0,-1,inspection?.readable_window?.offset ?? inspection?.raw_window?.offset,catalogPath || suppliedCatalog || undefined,overlaySelection || suppliedSelection,referencePin,gridRequest({offset,follow_selection:false}));
+    if(answer && answer.state!=="completed")setGridProblem(answer.reason || "This position could not be read.");
     if(!edge || referenceContext.current!==owner || answer?.state!=="completed")return;
     const rows=answer.inspection?.grid?.rows;
     const row=edge==="first" ? rows?.[0] : rows?.at(-1);
-    if(row)void inspectSelection(row.node.path,undefined,gridRequest({offset}));
+    if(row)await inspectSelection(row.node.path,undefined,gridRequest({offset}));
   };
   const chooseReference = async (expectedEdition?: string) => {
     const owner = contextKey;
@@ -525,7 +530,7 @@ export function MessageReader({
                 </div>
               ) : (
                 <>
-                  {inspection.grid?.mode === "message" ? <ReaderGrid grid={inspection.grid} selected={selected.path} busy={busy} value={row=>childValueText(row,revealed)} onSelect={go} onExpand={toggleBranch} onPage={(offset,edge)=>void pageGrid(offset,edge)} /> : gridNodes.length > 0 ? (
+                  {inspection.grid?.mode === "message" ? <ReaderGrid key={captionOwner} grid={inspection.grid} selected={selected.path} busy={busy} value={row=>childValueText(row,revealed)} onSelect={go} onExpand={toggleBranch} onPage={pageGrid} /> : gridNodes.length > 0 ? (
                     <section ref={gridElement} className="reader-grid-scroll" aria-label="Segment grid" tabIndex={0}>
                       <div className="reader-grid-columns" aria-hidden="true">{["Path", "Name", "Type", "Opt", "Len", "C-Len", "Rep", "Item#", "Tbl", "Sect", "Value"].map((column) => <span key={column}>{column}</span>)}</div>
                       <ul className="outline reader-grid" aria-label={atRoot ? "Segments" : `Parts of ${selected.path}`}>
@@ -588,7 +593,7 @@ export function MessageReader({
               )}
             </TaskPanel>
           </>
-          <footer className="reader-grid-footer">{inspection.grid?.mode === "message" ? <><nav aria-label="Path" className="crumbs"><button type="button" disabled={busy} onClick={()=>go("")}>Message</button>{(inspection.parents ?? []).filter(parent=>parent.node.kind!=="repetition").map(parent=><button type="button" key={parent.node.path} title={parent.node.path} disabled={busy} onClick={()=>go(parent.node.path)}>{parent.display_path || parent.node.path}</button>)}{selected.path ? <code title={selected.path}>{inspection.display_path || selected.path}</code> : null}</nav><span className="reader-grid-key-hint">↑ ↓ Move · ← → Expand / collapse</span></> : <>{segmentShortcuts.length ? <nav aria-label="Other segments" className="crumbs">{segmentShortcuts.map(row=><button key={row.node.path} type="button" title={row.node.path} aria-label={`Inspect ${row.node.path}`} disabled={busy} onClick={()=>go(row.node.path)}>{row.node.segment}</button>)}</nav> : null}<nav aria-label="Path" className="crumbs"><button type="button" disabled={busy} onClick={()=>go("")}>Segments</button>{selected.parent && selected.parent !== selected.path ? <button type="button" disabled={busy} onClick={()=>go(selected.parent)}>{selected.parent}</button> : null}</nav></>}</footer>
+          <footer className="reader-grid-footer">{inspection.grid?.mode === "message" ? <><nav aria-label="Path" className="crumbs"><button type="button" disabled={busy} onClick={()=>go("")}>Message</button>{(inspection.parents ?? []).filter(parent=>parent.node.kind!=="repetition").map(parent=><button type="button" key={parent.node.path} title={parent.node.path} disabled={busy} onClick={()=>go(parent.node.path)}>{parent.display_path || parent.node.path}</button>)}{selected.path ? <code title={selected.path}>{inspection.display_path || selected.path}</code> : null}</nav></> : <>{segmentShortcuts.length ? <nav aria-label="Other segments" className="crumbs">{segmentShortcuts.map(row=><button key={row.node.path} type="button" title={row.node.path} aria-label={`Inspect ${row.node.path}`} disabled={busy} onClick={()=>go(row.node.path)}>{row.node.segment}</button>)}</nav> : null}<nav aria-label="Path" className="crumbs"><button type="button" disabled={busy} onClick={()=>go("")}>Segments</button>{selected.parent && selected.parent !== selected.path ? <button type="button" disabled={busy} onClick={()=>go(selected.parent)}>{selected.parent}</button> : null}</nav></>}</footer>
           </div>
           {detailsVisible && !compactWorkbench ? <ReaderResize label="Details width" reverse className="reader-details-resize" value={detailsWidth} min={20} max={maxDetailsWidth} onChange={width=>setLayout(current=>({...current,detailsWidth:width}))} /> : null}
           {contextDetails !== undefined && contextDetails !== null && !validationShown ? <section className="reader-reference" aria-label="Context details" hidden={!detailsVisible}><h3 className="reader-pane-heading">{contextDetailsTitle}</h3><div className="reader-reference-scroll">{contextDetails}</div></section> : inspection.reference ? <section className="reader-reference" aria-label="Reference details" hidden={!detailsVisible}>{validationShown ? <div className="reader-pane-tabs" onKeyDown={referenceKeys} role="tablist" aria-label="Inspector views"><button type="button" role="tab" aria-selected={!validationShown} onClick={()=>setValidationShown(false)}>Details</button><button type="button" role="tab" aria-selected={validationShown} onClick={()=>setValidationShown(true)}>Validation</button></div> : <div className="reader-pane-heading"><h3>Details</h3><button type="button" className="reader-plain-icon" aria-label="Hide Details panel" onClick={()=>setDetailsVisible(false)}><ReaderIcon name="close" /></button><button type="button" className="reader-plain-icon reader-pane-options" aria-label="Reference information" onClick={()=>setReferenceInfo(true)}><ReaderIcon name="settings" /></button></div>}{!validationShown && !columnGuide ? <ReaderSelectionHeader inspection={inspection} nodes={[...(inspection.parents ?? []),...gridNodes]} busy={busy} onSelect={go} onGoToField={()=>setGoingTo(true)} /> : null}<div className="reader-reference-scroll">

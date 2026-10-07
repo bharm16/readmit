@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { render, screen, within, fireEvent } from "@testing-library/react";
+import { render, screen, within, fireEvent, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { MessageReader } from "./Inspector";
 import { inspectionResult } from "./testkit/fixtures";
 import type { InspectionResult, InspectorNode } from "./bindings";
@@ -86,4 +86,119 @@ test("returning directly to a message restores source scroll without following i
   expect(screen.getByLabelText("HL7 message text").scrollTop).toBe(100);
   expect(screen.getByLabelText("HL7 message text").scrollLeft).toBe(40);
  } finally {if(prior)Object.defineProperty(HTMLElement.prototype,"scrollIntoView",prior);else Reflect.deleteProperty(HTMLElement.prototype,"scrollIntoView");}
+});
+
+test("the message table scrolls across host windows without paging controls or moving selection", async () => {
+  const { ReaderGrid } = await import("./ReaderGrid");
+  const all = Array.from({length:106}, (_, index) => ({...nodes[0]!,node:{...nodes[0]!.node,path:`SEG[${index+1}]`},display_path:`SEG[${index+1}]`,expanded:false}));
+  const requests:number[]=[];
+  function Table() {
+    const [offset,setOffset]=useState(0);
+    return <ReaderGrid grid={{mode:"message",segment:"",offset,field_count:0,row_count:all.length,rows:all.slice(offset,offset+100),follow_selection:false}} selected={all[0]!.node.path} busy={false} value={()=>""} onSelect={()=>{throw new Error("scrolling must not select a row");}} onPage={next=>{requests.push(next);setOffset(next);}}/>;
+  }
+  render(<Table/>);
+  const grid=screen.getByRole("treegrid",{name:"Message fields"});
+  Object.defineProperty(grid,"clientHeight",{configurable:true,value:460});
+  expect(screen.queryByRole("button",{name:"Next rows"})).toBeNull();
+  expect(grid.getAttribute("aria-rowcount")).toBe("107");
+  fireEvent.scroll(grid,{target:{scrollTop:96*46}});
+  expect(await within(grid).findByRole("button",{name:/^SEG\[106\] Owned segment/})).toBeTruthy();
+  expect(requests.length).toBe(1);
+  expect(within(grid).getAllByRole("row").length).toBeLessThanOrEqual(101);
+  expect(grid.scrollTop).toBe(96*46);
+  fireEvent.scroll(grid,{target:{scrollTop:0}});
+  expect(await within(grid).findByRole("button",{name:/^SEG\[1\] Owned segment/})).toBeTruthy();
+  expect(requests.at(-1)).toBe(0);
+});
+
+test("scrolling again during a pending window read loads the latest viewport", async () => {
+  const { ReaderGrid } = await import("./ReaderGrid");
+  const all=Array.from({length:1000},(_,index)=>({...nodes[0]!,node:{...nodes[0]!.node,path:`SEG[${index+1}]`},display_path:`SEG[${index+1}]`}));
+  const requests:number[]=[];
+  let finish:()=>void=()=>undefined;
+  function Table(){
+    const [offset,setOffset]=useState(0),[busy,setBusy]=useState(false);
+    return <ReaderGrid grid={{mode:"message",segment:"",offset,field_count:0,row_count:all.length,rows:all.slice(offset,offset+100),follow_selection:false}} selected="" busy={busy} value={()=>""} onSelect={()=>undefined} onPage={next=>{requests.push(next);setBusy(true);finish=()=>{setOffset(next);setBusy(false);};}}/>;
+  }
+  render(<Table/>);
+  const grid=screen.getByRole("treegrid",{name:"Message fields"});
+  Object.defineProperty(grid,"clientHeight",{configurable:true,value:460});
+  fireEvent.scroll(grid,{target:{scrollTop:150*46}});
+  expect(requests).toEqual([140]);
+  fireEvent.scroll(grid,{target:{scrollTop:990*46}});
+  expect(requests).toHaveLength(1);
+  await act(async()=>finish());
+  expect(requests).toEqual([140,980]);
+  await act(async()=>finish());
+  expect(await within(grid).findByRole("button",{name:/^SEG\[1000\] Owned segment/})).toBeTruthy();
+  expect(grid.scrollTop).toBe(990*46);
+});
+
+test("a tall viewport at half-size zoom settles with every visible row loaded", async () => {
+ const {ReaderGrid}=await import("./ReaderGrid");
+ const previous=document.documentElement.style.fontSize;
+ document.documentElement.style.fontSize="8px";
+ try {
+  const all=Array.from({length:1000},(_,index)=>({...nodes[0]!,node:{...nodes[0]!.node,path:`SEG[${index+1}]`},display_path:`SEG[${index+1}]`}));
+  const requests:{offset:number;limit:number}[]=[];
+  let finish:()=>void=()=>undefined;
+  function Table(){
+   const [window,setWindow]=useState({offset:0,limit:100}),[busy,setBusy]=useState(false);
+   return <ReaderGrid grid={{mode:"message",segment:"",offset:window.offset,field_count:0,row_count:all.length,rows:all.slice(window.offset,window.offset+window.limit),follow_selection:false}} selected="" busy={busy} value={()=>""} onSelect={()=>undefined} onPage={(offset,_edge,limit=100)=>{requests.push({offset,limit});setBusy(true);finish=()=>{setWindow({offset,limit});setBusy(false);};}}/>;
+  }
+  render(<Table/>);
+  const grid=screen.getByRole("treegrid",{name:"Message fields"});
+  Object.defineProperty(grid,"clientHeight",{configurable:true,value:3000});
+  fireEvent.scroll(grid,{target:{scrollTop:2300}});
+  expect(requests).toHaveLength(1);
+  expect(requests[0]!.limit).toBeGreaterThan(100);
+  await act(async()=>finish());
+  expect(requests).toHaveLength(1);
+  expect(within(grid).getByRole("button",{name:/^SEG\[230\] Owned segment/})).toBeTruthy();
+  expect(grid.scrollTop).toBe(2300);
+ } finally { document.documentElement.style.fontSize=previous; }
+});
+
+for(const direction of ["down","up"] as const) {
+ test(`keyboard boundary ${direction} uses the adjacent absolute row in a large nonaligned window`, async()=>{
+  const {ReaderGrid}=await import("./ReaderGrid");
+  const rows=Array.from({length:180},(_,index)=>({...nodes[0]!,node:{...nodes[0]!.node,path:`SEG[${index+74}]`},display_path:`SEG[${index+74}]`}));
+  const onPage=vi.fn();
+  render(<ReaderGrid grid={{mode:"message",segment:"",offset:73,field_count:0,row_count:1000,rows}} selected={rows[direction==="down"?179:0]!.node.path} busy={false} value={()=>""} onSelect={()=>undefined} onPage={onPage}/>);
+  const grid=screen.getByRole("treegrid",{name:"Message fields"});
+  onPage.mockClear();
+  await act(async()=>fireEvent.keyDown(grid,{key:direction==="down"?"ArrowDown":"ArrowUp"}));
+  expect(onPage).toHaveBeenCalledWith(...(direction==="down"?[253,"first",180]:[0,"last",73]));
+ });
+}
+
+test("wide tables share spare width between Name and Value while preserving manual resizing", async()=>{
+ const {ReaderGrid}=await import("./ReaderGrid");
+ const user=userEvent.setup();
+ render(<ReaderGrid grid={gridResult().inspection!.grid!} selected="" busy={false} value={()=>""} onSelect={()=>undefined}/>);
+ const grid=screen.getByRole("treegrid",{name:"Message fields"});
+ Object.defineProperty(grid,"clientWidth",{configurable:true,value:1200});
+ fireEvent.resize(window);
+ const name=screen.getByRole("separator",{name:"Name column width"});
+ const value=screen.getByRole("separator",{name:"Value column width"});
+ expect(Number(name.getAttribute("aria-valuenow"))).toBeGreaterThan(17.5);
+ expect(Number(value.getAttribute("aria-valuenow"))).toBeGreaterThan(20);
+ const before=Number(name.getAttribute("aria-valuenow"));
+ name.focus();await user.keyboard("{ArrowRight}");
+ expect(Number(name.getAttribute("aria-valuenow"))).toBeCloseTo(before+1,1);
+ const kept=Number(name.getAttribute("aria-valuenow"));
+ const oldValue=Number(value.getAttribute("aria-valuenow"));
+ Object.defineProperty(grid,"clientWidth",{configurable:true,value:1400});
+ fireEvent.resize(window);
+ expect(Number(name.getAttribute("aria-valuenow"))).toBe(kept);
+ expect(Number(value.getAttribute("aria-valuenow"))).toBeGreaterThan(oldValue);
+ const beforeValue=Number(value.getAttribute("aria-valuenow"));
+ value.focus();await user.keyboard("{ArrowLeft}");
+ expect(Number(value.getAttribute("aria-valuenow"))).toBeCloseTo(beforeValue-1,1);
+ name.focus();await user.keyboard("{End}");
+ const wideName=Number(name.getAttribute("aria-valuenow"));
+ Object.defineProperty(grid,"clientWidth",{configurable:true,value:560});
+ fireEvent.resize(window);
+ await user.keyboard("{ArrowLeft}");
+ expect(Number(name.getAttribute("aria-valuenow"))).toBeCloseTo(wideName-1,1);
 });

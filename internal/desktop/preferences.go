@@ -24,7 +24,7 @@ const maxReviewerBytes = 200
 // minTextScale and maxTextScale bound a kept text size. Any percent between
 // them reads, so a size an earlier release offered stays selectable.
 const (
-	minTextScale = 100
+	minTextScale = 50
 	maxTextScale = 200
 )
 
@@ -52,7 +52,7 @@ type preferencesDocument struct {
 	Reviewer  string `json:"reviewer,omitzero"`
 }
 
-var defaultPreferences = Preferences{Theme: SystemTheme, TextScale: minTextScale}
+var defaultPreferences = Preferences{Theme: SystemTheme, TextScale: 100}
 
 // unreadablePreferences refuses a kept preferences document this release
 // cannot read. It is left exactly as written.
@@ -63,7 +63,7 @@ func validPreferences(p Preferences) string {
 	case !slices.Contains(themes, p.Theme):
 		return "choose one of the offered themes"
 	case p.TextScale < minTextScale || p.TextScale > maxTextScale:
-		return "choose a text size between 100% and 200%"
+		return "choose a text size between 50% and 200%"
 	case p.Reviewer != "" && !printable(p.Reviewer, maxReviewerBytes):
 		return "a reviewer name is at most 200 printable characters"
 	}
@@ -103,7 +103,7 @@ func (a *App) ReadPreferences() PreferencesResult {
 }
 
 // SavePreferences keeps exactly the preferences given, replacing the document
-// whole. A theme the window does not offer, a text size outside 100–200% or a
+// whole. A theme the window does not offer, a text size outside 50–200% or a
 // reviewer name that is not printable is refused and nothing is written. Like
 // ReadPreferences it does not claim the operation slot.
 func (a *App) SavePreferences(p Preferences) PreferencesResult {

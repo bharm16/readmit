@@ -1,0 +1,3 @@
+- Centered the collapsed reader navigation icons, removed the redundant Messages heading and keyboard hint, and stopped disclosure arrows from flashing together while a section loads. Resizing the message pane no longer selects surrounding text.
+- Scroll the complete message field table without paging controls, and zoom out below the default to 90%, 75% or 50%.
+- Balance Name and Value columns across the available table width, including at reduced zoom.
