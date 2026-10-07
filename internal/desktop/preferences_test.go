@@ -52,7 +52,7 @@ func TestPreferencesPersistThemeTextScaleAndReviewerAcrossWindows(t *testing.T) 
 	}
 }
 
-// A theme the window does not offer, a size outside 100–200% and a reviewer
+// A theme the window does not offer, a size outside 50–200% and a reviewer
 // name that is not printable are refused, and what was kept is unchanged. A
 // document this release cannot read is reported and left as written.
 func TestPreferencesRefuseAnUnprintableReviewerAndAnUnofferedTheme(t *testing.T) {
@@ -64,7 +64,7 @@ func TestPreferencesRefuseAnUnprintableReviewerAndAnUnofferedTheme(t *testing.T)
 	}
 	for label, refused := range map[string]desktop.Preferences{
 		"an unoffered theme":    {Theme: "sepia", TextScale: 100},
-		"a size below 100%":     {Theme: desktop.SystemTheme, TextScale: 90},
+		"a size below 50%":      {Theme: desktop.SystemTheme, TextScale: 49},
 		"a size above 200%":     {Theme: desktop.SystemTheme, TextScale: 250},
 		"a control character":   {Theme: desktop.SystemTheme, TextScale: 100, Reviewer: "Dana\x1b[2J"},
 		"a name past 200 bytes": {Theme: desktop.SystemTheme, TextScale: 100, Reviewer: string(make([]byte, 201))},
@@ -100,4 +100,19 @@ func fileHolds(t *testing.T, path, text string) bool {
 		t.Fatal(err)
 	}
 	return strings.Contains(string(data), text)
+}
+
+func TestPreferencesKeepZoomBelowDefaultAcrossWindows(t *testing.T) {
+	state := t.TempDir()
+	app := desktop.New(&chooser{}, desktop.ShellDocuments{Folder: state})
+	for _, scale := range []int{90, 75, 50} {
+		expected := desktop.Preferences{Theme: desktop.SystemTheme, TextScale: scale}
+		if saved := app.SavePreferences(expected); saved.State != desktop.Completed {
+			t.Fatalf("save %d%%: %+v", scale, saved)
+		}
+		reopened := desktop.New(&chooser{}, desktop.ShellDocuments{Folder: state})
+		if got := reopened.ReadPreferences(); got.State != desktop.Completed || got.Preferences != expected {
+			t.Fatalf("reopen %d%%: %+v", scale, got)
+		}
+	}
 }

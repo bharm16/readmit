@@ -189,3 +189,27 @@ func TestMessageGridRejectsUnboundedAndMalformedExpansions(t *testing.T) {
 		}
 	}
 }
+
+func TestMessageGridFillsABoundedViewportWindow(t *testing.T) {
+	app, root, _ := gridWorkspace(t)
+	b := writeCase(t, root, "viewport-grid", framed("MSH|^~\\&|A|B|C|D|20260101||SIU^S12|owned|P|2.5.1\r"+strings.Repeat("NTE|1||SYNTHETIC\r", 350)))
+	for _, limit := range []int{0, 180, 1000} {
+		got := app.InspectOccurrence(desktop.InspectRequest{Workspace: root, Case: "viewport-grid", Identity: b.Identity, Occurrence: "s0001-e000001", ByteOffset: -1, RawOffset: -1, Grid: &desktop.InspectionGridRequest{Limit: limit}})
+		want := limit
+		if want == 0 {
+			want = desktop.InspectorNodeWindow
+		}
+		if want > 351 {
+			want = 351
+		}
+		if got.State != desktop.Completed || got.Inspection == nil || got.Inspection.Grid == nil || len(got.Inspection.Grid.Rows) != want || got.Inspection.Grid.RowCount != 351 {
+			t.Fatalf("limit %d did not fill its bounded viewport: %+v", limit, got)
+		}
+	}
+	for _, limit := range []int{-1, 1001} {
+		got := app.InspectOccurrence(desktop.InspectRequest{Workspace: root, Case: "viewport-grid", Identity: b.Identity, Occurrence: "s0001-e000001", ByteOffset: -1, RawOffset: -1, Grid: &desktop.InspectionGridRequest{Limit: limit}})
+		if got.State != desktop.Failed || got.Inspection != nil {
+			t.Fatalf("unbounded limit %d accepted", limit)
+		}
+	}
+}

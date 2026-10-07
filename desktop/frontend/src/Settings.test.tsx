@@ -3,8 +3,8 @@
 // facade reads from saved configuration and the window's own state, and
 // edits privacy values in one sheet. Fixtures carry names, states and times
 // only; destinations are synthetic.
-import { expect, test } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { expect, test, vi } from "vitest";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { CatalogItem, ConnectionRow, ItemDraft, ItemRequest, Preferences } from "./bindings";
 import { renderApp } from "./testkit/app";
@@ -856,4 +856,22 @@ test("Security holds its connections, privacy values and Encryption, and no Team
     expect(page().queryByRole("region", { name })).toBeNull();
   }
   expect(page().getByRole("list", { name: "Encryption" })).toBeTruthy();
+});
+
+test("Command-minus zooms below default and Command-plus returns to default", async () => {
+ const platform=vi.spyOn(navigator,"platform","get").mockReturnValue("MacIntel");
+ try {
+  const {facade}=await renderApp({SavePreferences: preferences=>({state:"completed",preferences})});
+  for(const percent of [90,75,50]) {
+   fireEvent.keyDown(window,{key:"-",metaKey:true});
+   await waitFor(()=>expect(document.documentElement.style.getPropertyValue("--text-scale")).toBe(String(percent/100)));
+  }
+  const saved=facade.callsTo("SavePreferences").length;
+  fireEvent.keyDown(window,{key:"-",metaKey:true});
+  expect(facade.callsTo("SavePreferences")).toHaveLength(saved);
+  for(const percent of [75,90,100]) {
+   fireEvent.keyDown(window,{key:"+",metaKey:true});
+   await waitFor(()=>expect(document.documentElement.style.getPropertyValue("--text-scale")).toBe(String(percent/100)));
+  }
+ } finally { platform.mockRestore(); }
 });

@@ -1,8 +1,14 @@
-import { useId, useRef, useLayoutEffect, type KeyboardEvent } from "react";
+import { useId, useRef, useCallback, useState, useEffect, useLayoutEffect, type KeyboardEvent } from "react";
 import type { HL7InspectorGrid, InspectorNode } from "./bindings";
+import { useMeasured } from "./measure";
 import { ReaderIcon } from "./ReaderIcon";
 import { ReaderResize } from "./ReaderResize";
 import { referenceColumns, useReaderColumns } from "./ReaderColumns";
+
+// The host accepts bounded windows up to 1,000 rows, with 100 as its default.
+const DEFAULT_WINDOW_ROWS = 100;
+const MAX_WINDOW_ROWS = 1000;
+const OVERSCAN_ROWS = 10;
 
 /** The host supplies source order, depth and canonical identities. This view
  * navigates that bounded projection; it never reconstructs HL7 structure. */
@@ -13,34 +19,56 @@ export function ReaderGrid({ grid, selected, busy, value, onSelect, onExpand, on
   value: (row: InspectorNode) => string;
   onSelect: (path: string) => void;
   onExpand?: (row: InspectorNode) => void;
-  onPage?: (offset: number, edge?: "first" | "last") => void;
+  onPage?: (offset: number, edge?: "first" | "last", limit?: number) => void | Promise<void>;
 }) {
   const element = useRef<HTMLDivElement>(null);
+  const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
+  const bindViewport = useCallback((node: HTMLDivElement | null) => { element.current = node; setViewport(node); }, []);
+  const [keyboardRead, setKeyboardRead] = useState(false);
+  const [scrollTop, setScrollTop] = useState(0);
+  const { height, width, rem } = useMeasured(viewport);
+  const rowHeight = 2.875 * rem;
+  const total = grid.row_count ?? grid.rows.length;
+  const requested = useRef<{ offset: number; limit: number } | null>(null);
+  const previousSelection = useRef(selected);
   const id = useId();
   const [columns, setColumns] = useReaderColumns();
   const metadata = referenceColumns.filter(column => columns.visible.includes(column.name));
   const pathWidth=Math.max(6.5,Math.min(20,Math.max(0,...grid.rows.map(row=>(row.display_path || row.node.path).length*.5+1))));
-  const tracks = `${pathWidth}rem ${columns.name}rem ${metadata.map(column => `${column.width}rem`).join(" ")} minmax(${columns.value}rem,1fr)`;
+  const available = Math.max(columns.name + columns.value, width / rem - pathWidth - metadata.reduce((sum, column) => sum + column.width, 0));
+  // Spread a wide pane across the descriptive columns. A manually resized
+  // column stays at its chosen width; the other absorbs the available space.
+  const nameWidth = columns.fixedColumn === "name" ? columns.name
+    : columns.fixedColumn === "value" ? available - columns.value
+    : Math.max(columns.name, Math.min(available / 2, available - columns.value));
+  const valueWidth = available - nameWidth;
+  const tracks = `${pathWidth}rem ${nameWidth}rem ${metadata.map(column => `${column.width}rem`).join(" ")} ${valueWidth}rem`;
   const at = grid.rows.findIndex(row => row.node.path === selected);
   const choose = (row: InspectorNode) => {
     if (busy) return;
     element.current?.focus({ preventScroll: true });
     onSelect(row.node.path);
   };
+  const page = (offset: number, edge: "first" | "last", limit: number) => {
+    setKeyboardRead(true);
+    void Promise.resolve(onPage?.(offset, edge, limit)).finally(() => setKeyboardRead(false));
+  };
   const keys = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget) return;
     if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
     const row = grid.rows[at];
+    const windowSize = Math.max(DEFAULT_WINDOW_ROWS, grid.rows.length);
+    const previous = Math.max(0, grid.offset - windowSize);
     const more = grid.offset + grid.rows.length < (grid.row_count ?? 0);
-    if (!busy && (event.key === "PageDown" || event.key === "ArrowDown" && at === grid.rows.length-1) && more) { event.preventDefault(); onPage?.(grid.offset+100,"first"); return; }
-    if (!busy && (event.key === "PageUp" || event.key === "ArrowUp" && at === 0) && grid.offset > 0) { event.preventDefault(); onPage?.(Math.max(0,grid.offset-100),"last"); return; }
-    if (!busy && event.key === "Home" && grid.offset > 0) {event.preventDefault(); onPage?.(0,"first");return;}
-    if (!busy && event.key === "End" && more) {event.preventDefault(); onPage?.(Math.floor(((grid.row_count ?? 1)-1)/100)*100,"last");return;}
+    if (!busy && !keyboardRead && (event.key === "PageDown" || event.key === "ArrowDown" && at === grid.rows.length-1) && more) { event.preventDefault(); page(grid.offset+grid.rows.length,"first",windowSize); return; }
+    if (!busy && !keyboardRead && (event.key === "PageUp" || event.key === "ArrowUp" && at === 0) && grid.offset > 0) { event.preventDefault(); page(previous,"last",grid.offset-previous); return; }
+    if (!busy && !keyboardRead && event.key === "Home" && grid.offset > 0) {event.preventDefault(); page(0,"first",windowSize);return;}
+    if (!busy && !keyboardRead && event.key === "End" && more) {event.preventDefault(); page(Math.max(0,total-windowSize),"last",windowSize);return;}
     const index = event.key === "ArrowDown" ? Math.min(at + 1, grid.rows.length - 1)
       : event.key === "ArrowUp" ? Math.max(0, at - 1)
       : event.key === "Home" ? 0 : event.key === "End" ? grid.rows.length - 1 : -1;
     if (index >= 0) { event.preventDefault(); if (grid.rows[index]) choose(grid.rows[index]); return; }
-    if (!row || busy) return;
+    if (!row || busy || keyboardRead) return;
     if (event.key === "ArrowRight") {
       event.preventDefault();
       if (row.has_children && !row.expanded) onExpand?.(row);
@@ -51,10 +79,29 @@ export function ReaderGrid({ grid, selected, busy, value, onSelect, onExpand, on
       else if (row.grid_parent) onSelect(row.grid_parent);
     }
   };
-  useLayoutEffect(() => { if (grid.follow_selection || document.activeElement === element.current) element.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView?.({block:"nearest",inline:"nearest"}); }, [selected,grid.follow_selection]);
+  useLayoutEffect(() => {
+    if (grid.follow_selection || previousSelection.current !== selected) element.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView?.({block:"nearest",inline:"nearest"});
+    previousSelection.current = selected;
+  }, [selected, grid]);
+  // Keep the full scroll range while retaining only the host's bounded window.
+  // A later scroll during a pending read is considered again when it finishes.
+  useEffect(() => {
+    if (!viewport || busy || keyboardRead || !onPage || total <= grid.rows.length) return;
+    const first = Math.max(0, Math.floor(viewport.scrollTop / rowHeight));
+    const visible = Math.max(1, Math.ceil(viewport.clientHeight / rowHeight));
+    const limit = Math.min(MAX_WINDOW_ROWS, Math.max(DEFAULT_WINDOW_ROWS, visible + 2 * OVERSCAN_ROWS));
+    const start = Math.max(0, first - OVERSCAN_ROWS);
+    const end = Math.min(total, first + visible + OVERSCAN_ROWS);
+    if (start >= grid.offset && end <= grid.offset + grid.rows.length) { requested.current = null; return; }
+    const offset = Math.min(start, Math.max(0, total - 1));
+    if (requested.current?.offset === offset && requested.current.limit === limit) return;
+    requested.current = { offset, limit };
+    onPage(offset, undefined, limit);
+  }, [viewport, height, rowHeight, scrollTop, grid, busy, keyboardRead, onPage, total]);
   return <section className="message-grid-region" aria-label="Segment grid">
-    <div ref={element} className="message-grid" style={{["--message-grid-tracks" as string]:tracks}} role="treegrid" aria-label="Message fields" aria-busy={busy} aria-rowcount={(grid.row_count ?? grid.rows.length) + 1} aria-activedescendant={at < 0 ? undefined : `${id}-${at}`} tabIndex={0} onKeyDown={keys}>
-      <div role="row" className="message-grid-head">{["Path", "Name", ...metadata.map(column => column.name), "Value"].map(name => <div role="columnheader" aria-label={name} key={name}>{name}{name === "Name" || name === "Value" ? <ReaderResize label={`${name} column width`} value={name === "Name" ? columns.name : columns.value} min={name === "Name" ? 10 : 12} max={name === "Name" ? 40 : 80} onChange={width => setColumns(current => ({...current, [name === "Name" ? "name" : "value"]:width}))} /> : null}</div>)}</div>
+    <div ref={bindViewport} className="message-grid" onScroll={event => setScrollTop(event.currentTarget.scrollTop)} style={{["--message-grid-tracks" as string]:tracks, maxHeight:(MAX_WINDOW_ROWS - 2 * OVERSCAN_ROWS) * rowHeight}} role="treegrid" aria-label="Message fields" aria-busy={busy} aria-rowcount={(grid.row_count ?? grid.rows.length) + 1} aria-activedescendant={at < 0 ? undefined : `${id}-${at}`} tabIndex={0} onKeyDown={keys}>
+      <div role="row" className="message-grid-head">{["Path", "Name", ...metadata.map(column => column.name), "Value"].map(name => <div role="columnheader" aria-label={name} key={name}>{name}{name === "Name" || name === "Value" ? <ReaderResize label={`${name} column width`} value={name === "Name" ? nameWidth : valueWidth} min={name === "Name" ? 10 : 12} max={Math.max(name === "Name" ? 40 : 80, width / rem, name === "Name" ? nameWidth : valueWidth)} onChange={width => setColumns(current => ({...current, [name === "Name" ? "name" : "value"]:width, fixedColumn:name === "Name" ? "name" : "value"}))} /> : null}</div>)}</div>
+      <div aria-hidden="true" style={{ height: grid.offset * rowHeight }} />
       {grid.rows.map((row, index) => <div id={`${id}-${index}`} key={row.node.path} role="row" aria-rowindex={grid.offset + index + 2} aria-level={(row.depth ?? 0) + 1} aria-selected={row.node.path === selected} aria-expanded={row.has_children ? Boolean(row.expanded) : undefined} className={`message-grid-row message-grid-${row.node.kind}`} onClick={() => choose(row)}>
         <div role="gridcell" className="message-grid-path" title={row.node.path}>{row.display_path || row.node.path}</div>
         <div role="gridcell" className="message-grid-name" style={{ paddingInlineStart: `${.5 + (row.depth ?? 0) * 1.5}rem` }}>
@@ -64,7 +111,7 @@ export function ReaderGrid({ grid, selected, busy, value, onSelect, onExpand, on
         {metadata.map(column => { const attribute = row.reference?.[column.attribute]; return <div role="gridcell" key={column.name} className={`message-grid-attribute message-grid-${column.attribute}`} title={attribute?.state === "specified" ? attribute.value : attribute?.state?.replaceAll("_", " ") || "Not available"}>{row.node.kind === "segment" ? "" : attribute?.state === "specified" ? attribute.value : attribute?.state === "not_available" || !attribute ? "?" : "—"}</div>; })}
         <div role="gridcell" className={`message-grid-value${row.node.state === "present" ? "" : " message-grid-state"}`}>{row.node.kind === "segment" ? "" : value(row)}</div>
       </div>)}
+      <div aria-hidden="true" style={{ height: Math.max(0, total - grid.offset - grid.rows.length) * rowHeight }} />
     </div>
-    {(grid.row_count ?? 0) > grid.rows.length ? <nav className="pager" aria-label="Message field pages"><button type="button" disabled={busy || grid.offset === 0} onClick={() => onPage?.(Math.max(0, grid.offset - 100))}>Previous rows</button><span>{grid.offset + 1}–{grid.offset + grid.rows.length} of {grid.row_count}</span><button type="button" disabled={busy || grid.offset + grid.rows.length >= (grid.row_count ?? 0)} onClick={() => onPage?.(grid.offset + 100)}>Next rows</button></nav> : null}
   </section>;
 }

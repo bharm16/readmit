@@ -254,7 +254,7 @@ const (
 // system theme at the unscaled size.
 var (
 	themes     = []Theme{SystemTheme, LightTheme, DarkTheme}
-	textScales = []int{100, 125, 150, 175, 200}
+	textScales = []int{50, 75, 90, 100, 125, 150, 175, 200}
 )
 
 // privacyStatus is the truth about this build, stated in the window. There is

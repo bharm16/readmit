@@ -9,7 +9,8 @@ export const referenceColumns: { name: string; attribute: keyof Pick<Hl7referenc
   { name: "Rep", attribute: "repetition", width: 3 }, { name: "Item#", attribute: "item", width: 4.5 },
   { name: "Tbl", attribute: "table", width: 4 }, { name: "Sect", attribute: "section", width: 6 },
 ];
-export const useReaderColumns = () => useViewState("reader-columns", () => ({ visible: ["Type", "Opt"], name: 17.5, value: 20 }));
+type ReaderColumnLayout = { visible: string[]; name: number; value: number; fixedColumn?: "name" | "value" };
+export const useReaderColumns = () => useViewState("reader-columns", (): ReaderColumnLayout => ({ visible: ["Type", "Opt"], name: 17.5, value: 20 }));
 
 export function ReaderColumns() {
   const [columns, setColumns] = useReaderColumns();

@@ -18,10 +18,12 @@ type InspectionGridRequest struct {
 	Expanded        []string `json:"expanded"`
 	ShowOmitted     bool     `json:"show_omitted"`
 	Offset          int      `json:"offset"`
+	Limit           int      `json:"limit,omitzero"`
 	FollowSelection bool     `json:"follow_selection"`
 }
 
 const maxGridExpansions = 128
+const maxMessageGridWindow = 1000
 
 type messageGridPosition struct {
 	node   hl7.Node
@@ -215,8 +217,8 @@ func mergeGridNodes(observed, forced []hl7.Node) []hl7.Node {
 }
 
 func attachMessageGrid(view *Inspection, doc *hl7.Document, message int, labels *dictionary.Dictionary, catalog *hl7reference.Catalog, request InspectionGridRequest) string {
-	if request.Offset < 0 || len(request.Expanded) > maxGridExpansions {
-		return "the message grid request exceeds its position or expansion bound"
+	if request.Offset < 0 || request.Limit < 0 || request.Limit > maxMessageGridWindow || len(request.Expanded) > maxGridExpansions {
+		return "the message grid request exceeds its position, window or expansion bound"
 	}
 	expanded := map[string]bool{}
 	pathLabels := newInspectorPathLabels(doc, message)
@@ -285,9 +287,13 @@ func attachMessageGrid(view *Inspection, doc *hl7.Document, message int, labels 
 			break
 		}
 	}
+	limit := request.Limit
+	if limit == 0 {
+		limit = InspectorNodeWindow
+	}
 	offset := min(request.Offset, max(0, len(positions)-1))
 	if request.FollowSelection && selectedOffset >= 0 {
-		offset = selectedOffset / InspectorNodeWindow * InspectorNodeWindow
+		offset = selectedOffset / limit * limit
 	}
 	grid := &HL7InspectorGrid{Mode: "message", FollowSelection: request.FollowSelection, Rows: []InspectorNode{}, RowCount: len(positions), Offset: offset, SelectedOffset: selectedOffset, Ancestors: ancestors, ShowOmitted: request.ShowOmitted}
 	if selectedOffset >= 0 {
@@ -297,7 +303,7 @@ func attachMessageGrid(view *Inspection, doc *hl7.Document, message int, labels 
 		grid.Expanded = append(grid.Expanded, path)
 	}
 	slices.Sort(grid.Expanded)
-	for _, position := range positions[offset:min(len(positions), offset+InspectorNodeWindow)] {
+	for _, position := range positions[offset:min(len(positions), offset+limit)] {
 		row := describeInspectorNode(doc, message, position.node, labels, catalog, view.Revealed)
 		row.DisplayPath = pathLabels.display(position.node)
 		row.Depth, row.GridParent, row.HasChildren = position.depth, position.parent, len(tree.children(position.node)) > 0
