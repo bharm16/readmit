@@ -133,10 +133,12 @@ func Execute(ctx context.Context, p *Prepared, authority Authority, instance, ou
 			}
 			key, err := p.key.Read(ctx)
 			if err != nil {
+				_ = retainClientRefusal(w, "client-key-unavailable")
 				return Receipt{}, refused
 			}
 			cert, err := tls.X509KeyPair(p.retained["client.pem"], key.Expose())
 			if err != nil {
+				_ = retainClientRefusal(w, "client-key-pair-invalid")
 				return Receipt{}, refused
 			}
 			security.Certificate = &cert

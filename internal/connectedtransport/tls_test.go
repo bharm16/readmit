@@ -43,7 +43,7 @@ func certificate(t *testing.T, parent *testCertificate, ca, expired bool, usage 
 	if err != nil {
 		t.Fatal(err)
 	}
-	template := &x509.Certificate{SerialNumber: serial, Subject: pkix.Name{CommonName: "Synthetic lab"}, DNSNames: []string{"receiver.test"}, NotBefore: time.Now().Add(-2 * time.Hour), NotAfter: time.Now().Add(time.Hour), BasicConstraintsValid: true, IsCA: ca, KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{usage}}
+	template := &x509.Certificate{SerialNumber: serial, Subject: pkix.Name{CommonName: "Synthetic lab"}, DNSNames: []string{"receiver.test"}, IPAddresses: []net.IP{net.ParseIP("127.0.0.1")}, NotBefore: time.Now().Add(-2 * time.Hour), NotAfter: time.Now().Add(time.Hour), BasicConstraintsValid: true, IsCA: ca, KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{usage}}
 	if ca {
 		template.KeyUsage |= x509.KeyUsageCertSign
 		template.ExtKeyUsage = nil
@@ -73,12 +73,12 @@ func TestConnectedTransportTLSVerificationAndPurposeBoundClientKey(t *testing.T)
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX synthetic secret-provider fixture")
 	}
-	for _, name := range []string{"tls", "mtls", "name-mismatch", "expired-ca", "expired-client"} {
+	for _, name := range []string{"tls", "mtls", "tls-ip", "mtls-ip", "name-mismatch", "expired-ca", "expired-client"} {
 		t.Run(name, func(t *testing.T) {
 			ca := certificate(t, nil, true, name == "expired-ca", x509.ExtKeyUsageServerAuth)
 			serverCert := certificate(t, &ca, false, false, x509.ExtKeyUsageServerAuth)
 			config := &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{serverCert.tls}}
-			mutual := name == "mtls" || name == "expired-client"
+			mutual := name == "mtls" || name == "mtls-ip" || name == "expired-client"
 			if mutual {
 				config.ClientAuth = tls.RequireAndVerifyClientCert
 				config.ClientCAs = x509.NewCertPool()
@@ -93,6 +93,9 @@ func TestConnectedTransportTLSVerificationAndPurposeBoundClientKey(t *testing.T)
 			p, selected, dir := prepared(t, l.Addr().String(), func(dir string, target *replay.Target, s *connectedtransport.Selection) {
 				target.Transport = "tls"
 				target.ServerName = "receiver.test"
+				if name == "tls-ip" || name == "mtls-ip" {
+					target.ServerName = "127.0.0.1"
+				}
 				if name == "name-mismatch" {
 					target.ServerName = "wrong.test"
 				}
@@ -135,7 +138,7 @@ func TestConnectedTransportTLSVerificationAndPurposeBoundClientKey(t *testing.T)
 			if err != nil {
 				t.Fatal(err)
 			}
-			success := name == "tls" || name == "mtls"
+			success := name == "tls" || name == "mtls" || name == "tls-ip" || name == "mtls-ip"
 			if success && (r.State != "settled" || count.Load() != 2) {
 				t.Fatalf("TLS failed: %+v received %d", r, count.Load())
 			}

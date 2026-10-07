@@ -119,3 +119,23 @@ test("connected suite dispatch shows every job and editing installed authority w
  await waitFor(()=>expect(facade.callsTo("WithdrawReview").some(call=>call.args[0]==="installed-review")).toBe(true));
  expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
 });
+
+test.each([
+  ["mtls", "MLLP · Mutual TLS"],
+  ["tls", "MLLP · TLS"],
+  ["plain", "MLLP · Plain"],
+])("connected Run review shows its compiled %s transport before consent", async (transport, label) => {
+  const facade = installFacade({
+    ListCatalog: request => ({ state: "completed", context: request.context, page: { items: [], total: 0, snapshot: "s", recorded: true, incomplete: [] } }),
+    PrepareAction: request => ({ state: "completed", context: request.context, review: {
+      action: "run.test", token: "transport-review", ready: true, requirements: [], consent: "send", items: [], destination: { name: "Receiver" },
+      run: { kind: "test", name: "Saved test", environment_name: "Receiver", environment: {kind: "environment", id: "receiver"}, message_count: 2, environments: [], targets: [], jobs: [], resets: [], setup: [], messages: [],
+        lifecycle: { transport, plan: "plan", input: "input", instance: "instance", boundary: "application-state", phases: [], effects: [], endpoints: [] } },
+    } }),
+    WithdrawReview: () => ({state:"completed", context:{project:"",generation:0}}),
+  });
+  render(<SendReview request={{ kind: "test", test: { kind: "test", id: "saved" } }} context={() => ({ project: "/owned", generation: 1 })} onClose={() => {}} onStarted={() => {}} onEditEnvironment={() => {}} onActivate={() => {}} />);
+  expect(await screen.findByText(label)).toBeTruthy();
+  expect(screen.getByText("Transport")).toBeTruthy();
+  expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
+});

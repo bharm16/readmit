@@ -235,3 +235,105 @@ rendered bytes. Changes require fresh review. Completed output reopens offline
 without regenerating target state. Connected mode choices are retained under
 `readmit-report-share-draft/v2`; legacy v1 rejects the new member, including
 empty or null values, and neither version restores a preview or consent.
+
+## Saved mutual TLS tests
+
+A saved nonproduction MLLP environment may name the server CA and verification
+name, a public client certificate, and an `mllp-endpoint` secret reference scoped
+to its exact address. The existing environment editor registers these choices.
+Saved tests compile them to the existing mutual TLS transport: the plan records
+`mtls`, and each sending phase selects a `readmit-connected-credential/v1`
+binding with the reference's current generation. Relative certificate and
+registry paths are anchored to the project before plan/configuration identity
+is computed. Opening, saving and preparing resolve no key and make no connection.
+Normal Run review displays the compiled MLLP transport before Send.
+
+The existing scoped executor rechecks authority and exact input bytes before
+DNS admission, private-key lookup, dialing and writes. The production runner
+uses its own installed finite authority and registered provider; a Desktop
+review token or private key cannot replace that authority. A changed certificate,
+CA, provider registration, credential generation or environment invalidates the
+previous review. IP verification names legitimately omit TLS SNI; retained
+readback accepts that absence only for an explicitly configured IP identity.
+
+A failed client-key lookup or invalid certificate/key pair leaves the transport
+incomplete. Its bounded `refusal.json` diagnostic is
+`readmit-connected-transport-refusal/v1`, with `stage: before-dial` and reason
+`client-key-unavailable` or `client-key-pair-invalid`. It exposes no provider
+output or private key. DNS admission can already have happened at this point.
+`connectedtransport.ReadRefusal` reads that diagnostic offline; it is **not a
+sealed execution receipt**, and the normal evidence reader continues to refuse
+it as proof of a completed run. TLS/ACK outcomes that reach the sender retain
+the existing transport records and correlated responses. Losing an ACK after
+acceptance remains uncertain and never triggers a resend.
+
+### Reproduce the independent transport qualification
+
+The opt-in peer is `internal/desktop/testdata/mtls_peer.py`: a standalone Python
+standard-library SSL/socket receiver. Its fixed expected ACKs are independently
+authored for synthetic `BOOK-1` and `MOVE-1`; it imports no Readmit parser,
+framing, sender or ACK code. It requires a verified client certificate and
+records exact accepted payloads/control IDs plus the presented certificate hash
+before acknowledging (or deliberately dropping the connection). Its readiness
+receipt records its source SHA-256, Python and OpenSSL versions. This is a
+bounded interoperability fixture, not HAPI, OIE or downstream workflow evidence;
+#593 retains downstream qualification.
+
+Select an absolute Python executable and a new private evidence directory:
+
+```sh
+READMIT_MTLS_PYTHON="$(command -v python3)" \
+READMIT_MTLS_EVIDENCE_DIR=/tmp/readmit-mtls-qualification \
+make test-focused PKGS='./internal/desktop' \
+  ARGS='-run "TestSavedConnectedMutualTLS(IndependentPeer|Prepares|Rejects)" -count=1 -v'
+```
+
+The tests generate fresh short-lived synthetic certificates and a temporary
+provider. They cover trusted TLS, missing/expired/untrusted client certificates,
+wrong/unavailable keys, server-name/CA mismatches, changed credential scope and
+generation, changed certificates/authority, and an accepted message whose ACK
+is lost. Repeated steps in two explicitly declared phases remain separate
+sends. The trusted path also shares a value-free report and checks that offline
+reads/sharing do not resolve keys or contact the peer. Retained output contains
+public certificates and synthetic evidence, never fixture private keys.
+
+For the actual production runner, provision the disposable PostgreSQL fixture
+as documented in `hub/README.md`, export `READMIT_HUB_TEST_SOCKET`,
+`READMIT_HUB_TEST_PORT`, and `READMIT_HUB_TEST_USER`, then run in `hub`:
+
+```sh
+READMIT_MTLS_PYTHON="$(command -v python3)" \
+READMIT_MTLS_EVIDENCE_DIR=/tmp/readmit-mtls-runner-qualification \
+go test -tags readmit_nosync -run TestSavedConnectedMutualTLSActualRunnerUsesOwnAuthorityAndProvider -count=1 -v .
+```
+
+This creates the environment/test/suite through the real facade, approves its
+baseline and promotion, and calls the production customer runner with a finite
+installed grant. Expired, changed and revoked authority, a Desktop token and a
+private key supplied as authority all refuse. Trusted execution correlates AA;
+a separate deliberately dropped ACK remains uncertain and cannot be retried
+with the same dispatch identity. Offline readback then runs after removing
+keys and stopping the peers. The recorded run and certificate identities are in
+[the qualification receipt](qualification/700-saved-mtls.json).
+
+Native validation uses the same temporary saved project and running peer:
+set `READMIT_MTLS_NATIVE_DIR` to a new absolute directory and run
+`TestSavedConnectedMutualTLSNativeFixture` with `-timeout 50m`. Its
+`fixture-info.json` names the isolated HOME, saved project and test, peer
+receipts, and stop file. Launch the candidate application with that HOME,
+open the project, review **MLLP · Mutual TLS**, then Send. Retain screenshots,
+app build identity and peer receipts before creating the stop file. This is an
+explicit human-driven qualification fixture and skips in normal test/CI runs.
+
+To qualify **the same saved test** in the installed application and the runner,
+set `READMIT_MTLS_RUNNER_NATIVE_DIR` to a new absolute directory on the hub
+command above and add `-timeout 45m`. After refusing the invalid authorities,
+the test pauses with `fixture-info.json` in that directory. Launch the candidate
+application with its preactivated synthetic HOME, open the named project/test,
+and perform exactly one Run/Send. After its correlated AA is visible, create
+the descriptor's stop file. The test verifies the native run's exact saved test
+ID/revision and retained ACK, then executes that same approved test through the
+production runner and performs the dropped-ACK control. It retains both native
+and runner evidence. It never executes the native operation on the operator's
+behalf, and a preparation, screenshot or separate equivalent test cannot satisfy
+this handoff.

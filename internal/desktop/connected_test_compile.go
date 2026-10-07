@@ -23,6 +23,7 @@ import (
 	"github.com/bharm16/readmit/internal/catalog"
 	"github.com/bharm16/readmit/internal/connectedrun"
 	"github.com/bharm16/readmit/internal/connectedtest"
+	"github.com/bharm16/readmit/internal/connectedtransport"
 	"github.com/bharm16/readmit/internal/dataset"
 	"github.com/bharm16/readmit/internal/fhirevidence"
 	"github.com/bharm16/readmit/internal/fhirobserve"
@@ -412,12 +413,29 @@ func (c *loadedCatalog) compileConnected(d ConnectedTestDraft, id, revision stri
 		add("test.environment", "classify this environment as Nonproduction before a connected test runs against it")
 	}
 	var target replay.Target
+	var transportCredential []byte
 	if primary.members.fhir == nil {
 		target = primary.members.target
 		environment.Name, environment.Endpoint = target.Name, connectedReceiver
 		environment.TLS = connectedtest.TLS{Mode: target.Transport, ServerName: target.ServerName}
-		if target.ClientCertificate != "" || target.Credential.Declared() {
-			add("test.environment", "a connected test reaches this environment without a client certificate; choose a plain or TLS connection")
+		// Saved environment paths are project-relative. Anchor every transport
+		// input before both planning and configuration publication so their
+		// identities agree, without resolving a private key or contacting a peer.
+		for _, path := range []*string{&target.CAFile, &target.ClientCertificate, &target.Credential.SecretsFile} {
+			if *path != "" && !filepath.IsAbs(*path) {
+				*path = filepath.Join(c.root, *path)
+			}
+		}
+		if target.ClientCertificate != "" {
+			environment.TLS.Mode = "mtls"
+			reference, err := replay.BindCredential(target)
+			if err != nil {
+				add("test.environment", err.Error())
+			} else {
+				transportCredential, _ = encodeMember(connectedtransport.Credential{Schema: connectedtransport.CredentialSchema,
+					Project: project, Environment: environment.ID, Endpoint: connectedReceiver, Operation: sendpolicy.V2Stimulus,
+					Address: target.Address, Generation: reference.Generation, Reference: target.Credential.Reference})
+			}
 		}
 		allow("test.environment", connectedReceiver, target.Address, primary.members.policy, sendpolicy.V2Stimulus)
 	} else {
@@ -833,7 +851,10 @@ func (c *loadedCatalog) compileConnected(d ConnectedTestDraft, id, revision stri
 	for name, raw := range captureConfigurations {
 		own[name] = raw
 	}
-	var targetFile string
+	var targetFile, credentialFile string
+	if transportCredential != nil {
+		own["mllp-credential.json"], credentialFile = transportCredential, "mllp-credential.json"
+	}
 	if primary.members.fhir == nil {
 		copied := target
 		if copied.CAFile != "" && !filepath.IsAbs(copied.CAFile) {
@@ -893,7 +914,7 @@ func (c *loadedCatalog) compileConnected(d ConnectedTestDraft, id, revision stri
 			for _, id := range phase.Steps {
 				if path := cases[id]; path != "" {
 					send := connectedGrant(phase.ID + ":stimulus")
-					selection.Case, selection.Target, selection.Send = place(path), targetFile, &send
+					selection.Case, selection.Target, selection.Credential, selection.Send = place(path), targetFile, credentialFile, &send
 					continue
 				}
 				selection.Grants["step:"+id] = connectedGrant(phase.ID + ":step:" + id)

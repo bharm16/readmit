@@ -1,0 +1,1035 @@
+{
+  "scope": "Synthetic saved-test mutual TLS transport qualification; downstream workflow qualification remains #593.",
+  "date": "2026-10-06",
+  "source_base": "3d43b4f78f6d7c9ab32cd3724f96c4622ac59f92",
+  "go": "go version go1.27.1 darwin/arm64",
+  "facade": [
+    {
+      "case": "drop-before-ack",
+      "runtime": {
+        "python": "3.13.0 (v3.13.0:60403a5409f, Oct  7 2024, 00:37:40) [Clang 15.0.0 (clang-1500.3.9.4)]",
+        "openssl": "OpenSSL 3.0.15 3 Sep 2024",
+        "source_sha256": "21669267df9f65db98bda9518f530976334d057fb2f2f940222eb82e0d5a4f31"
+      },
+      "action_state": "completed",
+      "action_outcome": "uncertain",
+      "lifecycle": {
+        "state": "uncertain",
+        "verdict": "undecided"
+      },
+      "peer_events": [
+        {
+          "event": "connection"
+        },
+        {
+          "event": "authenticated"
+        },
+        {
+          "event": "accepted",
+          "control_id": "BOOK-1",
+          "client_certificate_der_sha256": "e60eb8eeb5b88d41b4adb953a05b747680c704e1cb84ef723af639a3012ca372",
+          "payload_sha256": "7064729398198c67655a2ba2e413a11476824434cd59b81c735867774b90d402",
+          "expected_ack_sha256": "ced57f36c6b53af995c17afff1f41a290b14fa1481adcc2d2de0a0569ccc9abc",
+          "tls": "TLSv1.3"
+        },
+        {
+          "event": "refused-or-dropped",
+          "reason": "deliberate drop after acceptance before ACK"
+        }
+      ],
+      "transport_receipts": [
+        {
+          "schema": "readmit-connected-transport/v2",
+          "identity": "294054d052fef939e94c4936092ac8bbe9b12319b7a6b79cba8d22e3560b9e3e",
+          "run_identity": "55006707778cefe6ed11bfd596bf1aea537af06fd07e6cc4a02e2f6e5d40eb7b",
+          "state": "uncertain",
+          "binding": {
+            "plan": "38bc3a0f2e74bc88391a42c245f7fecab4ed42ad0d12eaac577f5ed947164ac9",
+            "configuration": "085d71cebef1f447efc11bbd441ad2548aa4870f025fcb671b8a0e332b8bd11d",
+            "policy": "c6474eaf31b8307552109ae329fdc41fa6af110c0b4abdd097de4433ba2d690a",
+            "credentials": "e7a58be2648a5006a3bc8fe81713c0c8e2327e36085d65866be51ef704b60173",
+            "source": "df20002d3ed28f6444eedf6c0c7ccf04b61934cb645625d6f0419f1a1a1501d6",
+            "project": "dc1066d059e111bdf3225f88",
+            "environment": "qa",
+            "revision": "1",
+            "endpoint": "receiver",
+            "operation": "v2-stimulus"
+          },
+          "environment": {
+            "project": "dc1066d059e111bdf3225f88",
+            "id": "qa",
+            "revision": "1",
+            "name": "mutual-tls-receiver",
+            "classification": "nonproduction",
+            "endpoint": "receiver",
+            "target_identity": "d69bf514fa74000a3cecd98b3400d5e4cf22489a7f8a380c518aaf68fc774587",
+            "address_policy_identity": "c6474eaf31b8307552109ae329fdc41fa6af110c0b4abdd097de4433ba2d690a",
+            "grants": [
+              {
+                "project": "dc1066d059e111bdf3225f88",
+                "id": "address-policy",
+                "schema": "readmit-network-policy/v1",
+                "file": "address-policy.json",
+                "sha256": "c6474eaf31b8307552109ae329fdc41fa6af110c0b4abdd097de4433ba2d690a"
+              }
+            ],
+            "tls": {
+              "mode": "mtls",
+              "server_name": "receiver.test"
+            },
+            "target_revision": {
+              "provenance": "unknown"
+            }
+          }
+        }
+      ],
+      "public_certificates": [
+        {
+          "file": "ca.pem",
+          "der_sha256": "fd78921e2f164637095c6dac9fe82d760ffa6b3d2eff6d74bd3bc7149df7a828"
+        },
+        {
+          "file": "readmit-evidence/phases/reschedule/transport/configuration/authorities.pem",
+          "der_sha256": "fd78921e2f164637095c6dac9fe82d760ffa6b3d2eff6d74bd3bc7149df7a828"
+        },
+        {
+          "file": "readmit-evidence/phases/reschedule/transport/configuration/client.pem",
+          "der_sha256": "e60eb8eeb5b88d41b4adb953a05b747680c704e1cb84ef723af639a3012ca372"
+        },
+        {
+          "file": "server.pem",
+          "der_sha256": "1adce243ef1923a7097b2daf0c424a34f1046cbf1df6fd969a3d6bfaa7e52e39"
+        }
+      ]
+    },
+    {
+      "case": "expired-client",
+      "runtime": {
+        "python": "3.13.0 (v3.13.0:60403a5409f, Oct  7 2024, 00:37:40) [Clang 15.0.0 (clang-1500.3.9.4)]",
+        "openssl": "OpenSSL 3.0.15 3 Sep 2024",
+        "source_sha256": "21669267df9f65db98bda9518f530976334d057fb2f2f940222eb82e0d5a4f31"
+      },
+      "action_state": "completed",
+      "action_outcome": "completed",
+      "lifecycle": {
+        "state": "incomplete",
+        "verdict": "undecided"
+      },
+      "peer_events": [
+        {
+          "event": "connection"
+        },
+        {
+          "event": "refused-or-dropped",
+          "reason": "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: certificate has expired (_ssl.c:1020)"
+        }
+      ],
+      "transport_receipts": [
+        {
+          "schema": "readmit-connected-transport/v2",
+          "identity": "36fc59ebe281cb171f00dcb0960269da215fb9d73df2dc80f8f2c9fc60628b5b",
+          "run_identity": "654b0453da9194d4cf661a34d31625c853d474fb1bd27d4b3de9da408ad1489e",
+          "state": "incomplete",
+          "binding": {
+            "plan": "dfa1cbcbca3e63395756e08b003a5ae06f1d390bd3cbc6a7013a9ada8d846eeb",
+            "configuration": "e502b80eff6bba38a64166285cf48c8e5896f84166c0e56fd04afa7e590707e5",
+            "policy": "9757d3d5238fa8f1a53ba78cd0c87648de716442f1b21a09784bbe306de78dc5",
+            "credentials": "14f02818887d6d1235a3e61c125b6f3dc331d4eb8c3730c96d8ad8d88cfa3c20",
+            "source": "92340af5c35ed88d0a2b03b1d3d0246094bc186b0bf5aa7c0bca00a112d6e8f2",
+            "project": "99ead37472f27b18930c9586",
+            "environment": "qa",
+            "revision": "1",
+            "endpoint": "receiver",
+            "operation": "v2-stimulus"
+          },
+          "environment": {
+            "project": "99ead37472f27b18930c9586",
+            "id": "qa",
+            "revision": "1",
+            "name": "mutual-tls-receiver",
+            "classification": "nonproduction",
+            "endpoint": "receiver",
+            "target_identity": "48f2c0915b934706afe8c922622be739c2ec46457bbec92abc6cf1f1598dacb2",
+            "address_policy_identity": "9757d3d5238fa8f1a53ba78cd0c87648de716442f1b21a09784bbe306de78dc5",
+            "grants": [
+              {
+                "project": "99ead37472f27b18930c9586",
+                "id": "address-policy",
+                "schema": "readmit-network-policy/v1",
+                "file": "address-policy.json",
+                "sha256": "9757d3d5238fa8f1a53ba78cd0c87648de716442f1b21a09784bbe306de78dc5"
+              }
+            ],
+            "tls": {
+              "mode": "mtls",
+              "server_name": "receiver.test"
+            },
+            "target_revision": {
+              "provenance": "unknown"
+            }
+          }
+        }
+      ],
+      "public_certificates": [
+        {
+          "file": "ca.pem",
+          "der_sha256": "ef4efd72e30ee13619863e23fc5389e5b0f947bcb0067e8bf6bb723e5f32f533"
+        },
+        {
+          "file": "readmit-evidence/phases/reschedule/transport/configuration/authorities.pem",
+          "der_sha256": "ef4efd72e30ee13619863e23fc5389e5b0f947bcb0067e8bf6bb723e5f32f533"
+        },
+        {
+          "file": "readmit-evidence/phases/reschedule/transport/configuration/client.pem",
+          "der_sha256": "c59219f45a6ef2a7bacd7adda8eed66a3984101b890386b60d4ec7ad48ab3ce3"
+        },
+        {
+          "file": "server.pem",
+          "der_sha256": "e271c294666be536ec58a702f95867fea8802ae63b051ddc9c0e963323c9b6b0"
+        }
+      ]
+    },
+    {
+      "case": "missing-client",
+      "runtime": {
+        "python": "3.13.0 (v3.13.0:60403a5409f, Oct  7 2024, 00:37:40) [Clang 15.0.0 (clang-1500.3.9.4)]",
+        "openssl": "OpenSSL 3.0.15 3 Sep 2024",
+        "source_sha256": "21669267df9f65db98bda9518f530976334d057fb2f2f940222eb82e0d5a4f31"
+      },
+      "action_state": "completed",
+      "action_outcome": "completed",
+      "lifecycle": {
+        "state": "incomplete",
+        "verdict": "undecided"
+      },
+      "peer_events": [
+        {
+          "event": "connection"
+        },
+        {
+          "event": "refused-or-dropped",
+          "reason": "[SSL: PEER_DID_NOT_RETURN_A_CERTIFICATE] peer did not return a certificate (_ssl.c:1020)"
+        }
+      ],
+      "transport_receipts": [
+        {
+          "schema": "readmit-connected-transport/v2",
+          "identity": "a6cf35512707d9836c1f83c947ad5cf32c6f83be6965906d9f7f5144259f7a30",
+          "run_identity": "d50d58250f70dd92f078fe4cb23314d72aa94ef5fb46ef7b966cf68fb3b45dae",
+          "state": "incomplete",
+          "binding": {
+            "plan": "1cf3f455809f7088dba1032975d30fdc1610b6431ab64f876c97e29803ff68fd",
+            "configuration": "f90929c0884b3b0ab3d72a7e745128d806d9f2f1f7d57af2c3428d80e730be6a",
+            "policy": "2045e832f4875835d28c5fe033807cf6a336633885ec460b50cbd1a5c20362f3",
+            "credentials": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "source": "9320e6b97cf03700fbbcdac1fa7451030ec7c10c82d4c1e0edc8ccb66510d404",
+            "project": "ab735f4493ca4c281a27d5d9",
+            "environment": "qa",
+            "revision": "1",
+            "endpoint": "receiver",
+            "operation": "v2-stimulus"
+          },
+          "environment": {
+            "project": "ab735f4493ca4c281a27d5d9",
+            "id": "qa",
+            "revision": "1",
+            "name": "mutual-tls-receiver",
+            "classification": "nonproduction",
+            "endpoint": "receiver",
+            "target_identity": "63f022717871df683c732f9b0640110c5c26e44c63d5977e94a19b5c869de04b",
+            "address_policy_identity": "2045e832f4875835d28c5fe033807cf6a336633885ec460b50cbd1a5c20362f3",
+            "grants": [
+              {
+                "project": "ab735f4493ca4c281a27d5d9",
+                "id": "address-policy",
+                "schema": "readmit-network-policy/v1",
+                "file": "address-policy.json",
+                "sha256": "2045e832f4875835d28c5fe033807cf6a336633885ec460b50cbd1a5c20362f3"
+              }
+            ],
+            "tls": {
+              "mode": "tls",
+              "server_name": "receiver.test"
+            },
+            "target_revision": {
+              "provenance": "unknown"
+            }
+          }
+        }
+      ],
+      "public_certificates": [
+        {
+          "file": "ca.pem",
+          "der_sha256": "48f08f78a8ecc1e26152d02ddc2e1cae1a51f04330f177d902724a95d0d6d935"
+        },
+        {
+          "file": "readmit-evidence/phases/reschedule/transport/configuration/authorities.pem",
+          "der_sha256": "48f08f78a8ecc1e26152d02ddc2e1cae1a51f04330f177d902724a95d0d6d935"
+        },
+        {
+          "file": "server.pem",
+          "der_sha256": "86967d55fd0b1560a921431b6816cceb7b7824a4a5547364df8a3b049a512e1e"
+        }
+      ]
+    },
+    {
+      "case": "repeated-step",
+      "runtime": {
+        "python": "3.13.0 (v3.13.0:60403a5409f, Oct  7 2024, 00:37:40) [Clang 15.0.0 (clang-1500.3.9.4)]",
+        "openssl": "OpenSSL 3.0.15 3 Sep 2024",
+        "source_sha256": "21669267df9f65db98bda9518f530976334d057fb2f2f940222eb82e0d5a4f31"
+      },
+      "action_state": "completed",
+      "action_outcome": "completed",
+      "lifecycle": {
+        "state": "complete",
+        "verdict": "pass"
+      },
+      "peer_events": [
+        {
+          "event": "connection"
+        },
+        {
+          "event": "authenticated"
+        },
+        {
+          "event": "accepted",
+          "control_id": "BOOK-1",
+          "client_certificate_der_sha256": "0f499dc01041c72dd002096d489341f4b0601004a7c2aa8313350d9292df4db3",
+          "payload_sha256": "7064729398198c67655a2ba2e413a11476824434cd59b81c735867774b90d402",
+          "expected_ack_sha256": "ced57f36c6b53af995c17afff1f41a290b14fa1481adcc2d2de0a0569ccc9abc",
+          "tls": "TLSv1.3"
+        },
+        {
+          "event": "ack-sent"
+        },
+        {
+          "event": "connection"
+        },
+        {
+          "event": "authenticated"
+        },
+        {
+          "event": "accepted",
+          "control_id": "BOOK-1",
+          "client_certificate_der_sha256": "0f499dc01041c72dd002096d489341f4b0601004a7c2aa8313350d9292df4db3",
+          "payload_sha256": "7064729398198c67655a2ba2e413a11476824434cd59b81c735867774b90d402",
+          "expected_ack_sha256": "ced57f36c6b53af995c17afff1f41a290b14fa1481adcc2d2de0a0569ccc9abc",
+          "tls": "TLSv1.3"
+        },
+        {
+          "event": "ack-sent"
+        }
+      ],
+      "transport_receipts": [
+        {
+          "schema": "readmit-connected-transport/v2",
+          "identity": "6d85f808198cc6e849aa7c95dbede99e0fdd73317d9dc1581c44fee2bb2d64b2",
+          "run_identity": "4c0741984957be9c493d5d16c2a801d96b9ff6f9b658453eec1b1f54cd2e5267",
+          "state": "settled",
+          "binding": {
+            "plan": "aeedabd90400a8d3bd2b556128345e69b81ed636ca6f83768bc2f002f27e62fd",
+            "configuration": "a5ad1699673e824c2d6a6bcdc2a61351c3f10adb56bdd392b0f13ed38c82689d",
+            "policy": "3622d6f034bf7201a813cbe3104ef551b0f95cecf5c75b4b967d4ba4a0df90ed",
+            "credentials": "54bbad11164f99086f90930b381dd887ca44be5d9a431dde796adc89f5820256",
+            "source": "fd894079d0841dc2b1b02634f8ef148e6319ad163d58a8d5ac8f353b2aed2007",
+            "project": "f4a0e739bd50bc9d9cb3f7b4",
+            "environment": "qa",
+            "revision": "1",
+            "endpoint": "receiver",
+            "operation": "v2-stimulus"
+          },
+          "environment": {
+            "project": "f4a0e739bd50bc9d9cb3f7b4",
+            "id": "qa",
+            "revision": "1",
+            "name": "mutual-tls-receiver",
+            "classification": "nonproduction",
+            "endpoint": "receiver",
+            "target_identity": "2da87c2dd27bd2adb43c019a77378b79cbc1406adda871bcdbd289d524d91cf7",
+            "address_policy_identity": "3622d6f034bf7201a813cbe3104ef551b0f95cecf5c75b4b967d4ba4a0df90ed",
+            "grants": [
+              {
+                "project": "f4a0e739bd50bc9d9cb3f7b4",
+                "id": "address-policy",
+                "schema": "readmit-network-policy/v1",
+                "file": "address-policy.json",
+                "sha256": "3622d6f034bf7201a813cbe3104ef551b0f95cecf5c75b4b967d4ba4a0df90ed"
+              }
+            ],
+            "tls": {
+              "mode": "mtls",
+              "server_name": "receiver.test"
+            },
+            "target_revision": {
+              "provenance": "unknown"
+            }
+          }
+        },
+        {
+          "schema": "readmit-connected-transport/v2",
+          "identity": "663758e7be3cc7018e9360c9968c31a72e52a22704ba1e3c22c9fefa9a407c55",
+          "run_identity": "7a4ac445b00f46a4177b02bc765535af5e88e840bd5209e9b4925ca0cd59dc8f",
+          "state": "settled",
+          "binding": {
+            "plan": "af72bcfcc5e6bdcb8a36987d1b2448a8fbe3f4b71f71871beac67c1a1bad6d2d",
+            "configuration": "3bf3deeb802e8885d210bf16353c71e22ac421bb10927dade94de9606e616bd0",
+            "policy": "3622d6f034bf7201a813cbe3104ef551b0f95cecf5c75b4b967d4ba4a0df90ed",
+            "credentials": "54bbad11164f99086f90930b381dd887ca44be5d9a431dde796adc89f5820256",
+            "source": "fd894079d0841dc2b1b02634f8ef148e6319ad163d58a8d5ac8f353b2aed2007",
+            "project": "f4a0e739bd50bc9d9cb3f7b4",
+            "environment": "qa",
+            "revision": "1",
+            "endpoint": "receiver",
+            "operation": "v2-stimulus"
+          },
+          "environment": {
+            "project": "f4a0e739bd50bc9d9cb3f7b4",
+            "id": "qa",
+            "revision": "1",
+            "name": "mutual-tls-receiver",
+            "classification": "nonproduction",
+            "endpoint": "receiver",
+            "target_identity": "2da87c2dd27bd2adb43c019a77378b79cbc1406adda871bcdbd289d524d91cf7",
+            "address_policy_identity": "3622d6f034bf7201a813cbe3104ef551b0f95cecf5c75b4b967d4ba4a0df90ed",
+            "grants": [
+              {
+                "project": "f4a0e739bd50bc9d9cb3f7b4",
+                "id": "address-policy",
+                "schema": "readmit-network-policy/v1",
+                "file": "address-policy.json",
+                "sha256": "3622d6f034bf7201a813cbe3104ef551b0f95cecf5c75b4b967d4ba4a0df90ed"
+              }
+            ],
+            "tls": {
+              "mode": "mtls",
+              "server_name": "receiver.test"
+            },
+            "target_revision": {
+              "provenance": "unknown"
+            }
+          }
+        }
+      ],
+      "public_certificates": [
+        {
+          "file": "ca.pem",
+          "der_sha256": "09cd0e07a0146f8758be42e127d122a25a976597c1f22a93b1ba9f8fef80ae13"
+        },
+        {
+          "file": "readmit-evidence/phases/first/transport/configuration/authorities.pem",
+          "der_sha256": "09cd0e07a0146f8758be42e127d122a25a976597c1f22a93b1ba9f8fef80ae13"
+        },
+        {
+          "file": "readmit-evidence/phases/first/transport/configuration/client.pem",
+          "der_sha256": "0f499dc01041c72dd002096d489341f4b0601004a7c2aa8313350d9292df4db3"
+        },
+        {
+          "file": "readmit-evidence/phases/repeat/transport/configuration/authorities.pem",
+          "der_sha256": "09cd0e07a0146f8758be42e127d122a25a976597c1f22a93b1ba9f8fef80ae13"
+        },
+        {
+          "file": "readmit-evidence/phases/repeat/transport/configuration/client.pem",
+          "der_sha256": "0f499dc01041c72dd002096d489341f4b0601004a7c2aa8313350d9292df4db3"
+        },
+        {
+          "file": "server.pem",
+          "der_sha256": "e5b1fe6827db01c62178c0dccdf02a257a523c71adc032559d3259a8fd12e530"
+        }
+      ]
+    },
+    {
+      "case": "server-ca",
+      "runtime": {
+        "python": "3.13.0 (v3.13.0:60403a5409f, Oct  7 2024, 00:37:40) [Clang 15.0.0 (clang-1500.3.9.4)]",
+        "openssl": "OpenSSL 3.0.15 3 Sep 2024",
+        "source_sha256": "21669267df9f65db98bda9518f530976334d057fb2f2f940222eb82e0d5a4f31"
+      },
+      "action_state": "completed",
+      "action_outcome": "completed",
+      "lifecycle": {
+        "state": "incomplete",
+        "verdict": "undecided"
+      },
+      "peer_events": [
+        {
+          "event": "connection"
+        },
+        {
+          "event": "refused-or-dropped",
+          "reason": "[SSL: SSLV3_ALERT_BAD_CERTIFICATE] sslv3 alert bad certificate (_ssl.c:1020)"
+        }
+      ],
+      "transport_receipts": [
+        {
+          "schema": "readmit-connected-transport/v2",
+          "identity": "df0b00e35a488b40a79560304135d93f2defd8be0b6728143f9e3f1cd2b0bed0",
+          "run_identity": "964cf480afcb51ffc0927a2e886749656b4c1e6f0c2f177c5c1660a71317d229",
+          "state": "incomplete",
+          "binding": {
+            "plan": "65ecc36cd9d8e2bbaa94f8ec5406e5f7666dfaa0e32c9196a98f74e076ffc1e4",
+            "configuration": "972381a038b07c3ee4bf0fe454144a4b239e621daf1df4bc1a0ab32b57a839ba",
+            "policy": "9df4fad946c7dc762aa2a1a2a46be40402053b45b5a69c0412097ba97516ecf1",
+            "credentials": "391d369fd0556035d2731c42135250043171d3a2f5e0d727513aa183e3a5226f",
+            "source": "38758d64380a8286391525bd3d84e3706c2ad0ea9d5472e1a2cc57df5d4c6df8",
+            "project": "06f319965d381a3d0e833665",
+            "environment": "qa",
+            "revision": "1",
+            "endpoint": "receiver",
+            "operation": "v2-stimulus"
+          },
+          "environment": {
+            "project": "06f319965d381a3d0e833665",
+            "id": "qa",
+            "revision": "1",
+            "name": "mutual-tls-receiver",
+            "classification": "nonproduction",
+            "endpoint": "receiver",
+            "target_identity": "8c3306398c81e818cde1b10acc2753a1209c0831f73ecbaf98b53ccd1d323ef9",
+            "address_policy_identity": "9df4fad946c7dc762aa2a1a2a46be40402053b45b5a69c0412097ba97516ecf1",
+            "grants": [
+              {
+                "project": "06f319965d381a3d0e833665",
+                "id": "address-policy",
+                "schema": "readmit-network-policy/v1",
+                "file": "address-policy.json",
+                "sha256": "9df4fad946c7dc762aa2a1a2a46be40402053b45b5a69c0412097ba97516ecf1"
+              }
+            ],
+            "tls": {
+              "mode": "mtls",
+              "server_name": "receiver.test"
+            },
+            "target_revision": {
+              "provenance": "unknown"
+            }
+          }
+        }
+      ],
+      "public_certificates": [
+        {
+          "file": "ca.pem",
+          "der_sha256": "b9429aa7b4d3ceec6def2618799c6890f55ab94b07f1ca1a53688e20d999e491"
+        },
+        {
+          "file": "readmit-evidence/phases/reschedule/transport/configuration/authorities.pem",
+          "der_sha256": "90a287df878e5321ac949df75e5fe546bfb5e02ea721bddf5c70aceabad51aa2"
+        },
+        {
+          "file": "readmit-evidence/phases/reschedule/transport/configuration/client.pem",
+          "der_sha256": "ae174c7fa5995b3113c247f20b35c8e3e0483a5c5e27e426e6ac8c6e58440997"
+        },
+        {
+          "file": "server.pem",
+          "der_sha256": "02e09ab187a427bd38a648479fa8e2d71cd3f1dc042d2192454cf153dd6f2766"
+        }
+      ]
+    },
+    {
+      "case": "server-name",
+      "runtime": {
+        "python": "3.13.0 (v3.13.0:60403a5409f, Oct  7 2024, 00:37:40) [Clang 15.0.0 (clang-1500.3.9.4)]",
+        "openssl": "OpenSSL 3.0.15 3 Sep 2024",
+        "source_sha256": "21669267df9f65db98bda9518f530976334d057fb2f2f940222eb82e0d5a4f31"
+      },
+      "action_state": "completed",
+      "action_outcome": "completed",
+      "lifecycle": {
+        "state": "incomplete",
+        "verdict": "undecided"
+      },
+      "peer_events": [
+        {
+          "event": "connection"
+        },
+        {
+          "event": "refused-or-dropped",
+          "reason": "[SSL: SSLV3_ALERT_BAD_CERTIFICATE] sslv3 alert bad certificate (_ssl.c:1020)"
+        }
+      ],
+      "transport_receipts": [
+        {
+          "schema": "readmit-connected-transport/v2",
+          "identity": "5c895238083809eea54b64857b74534d9152400c777febb2ab31d642a5541b85",
+          "run_identity": "3072a303d50284671582c4962ea4cf0def679b7d1e9e334a722417d6fd703010",
+          "state": "incomplete",
+          "binding": {
+            "plan": "ccf9b5de393c880992e45b2b191f95c71d58ba0fdb176d315642378c1832af79",
+            "configuration": "808580473a3c0e1c80f02356f934057fabcadd7587b068a5eff2833dad6cc205",
+            "policy": "e0d413eb2d187268803abb168cdf853d940198e0c29407410ac1556ae56bb622",
+            "credentials": "b0c93fa6223d224373699b5c47cc8c9e7f96dc89e7d2d1d1daea2d82013d5e04",
+            "source": "e6ef9a6ca1e6429a7d74c37826c600791cc20edbeed43807a109b4932884d25f",
+            "project": "7a1d8f5d04edc5d366550ab7",
+            "environment": "qa",
+            "revision": "1",
+            "endpoint": "receiver",
+            "operation": "v2-stimulus"
+          },
+          "environment": {
+            "project": "7a1d8f5d04edc5d366550ab7",
+            "id": "qa",
+            "revision": "1",
+            "name": "mutual-tls-receiver",
+            "classification": "nonproduction",
+            "endpoint": "receiver",
+            "target_identity": "c9bbcd2263b98951b934a96912396776da6feb551b684800f2845198ae0cef82",
+            "address_policy_identity": "e0d413eb2d187268803abb168cdf853d940198e0c29407410ac1556ae56bb622",
+            "grants": [
+              {
+                "project": "7a1d8f5d04edc5d366550ab7",
+                "id": "address-policy",
+                "schema": "readmit-network-policy/v1",
+                "file": "address-policy.json",
+                "sha256": "e0d413eb2d187268803abb168cdf853d940198e0c29407410ac1556ae56bb622"
+              }
+            ],
+            "tls": {
+              "mode": "mtls",
+              "server_name": "wrong.test"
+            },
+            "target_revision": {
+              "provenance": "unknown"
+            }
+          }
+        }
+      ],
+      "public_certificates": [
+        {
+          "file": "ca.pem",
+          "der_sha256": "da83b9f8eb1b00c7a0bd6c81d46d0e28497f2fe993a39ff3299cd6e17291586a"
+        },
+        {
+          "file": "readmit-evidence/phases/reschedule/transport/configuration/authorities.pem",
+          "der_sha256": "da83b9f8eb1b00c7a0bd6c81d46d0e28497f2fe993a39ff3299cd6e17291586a"
+        },
+        {
+          "file": "readmit-evidence/phases/reschedule/transport/configuration/client.pem",
+          "der_sha256": "7392a0939893cd528454b88589aeaeec918279aa5b5b2286bdd1d28eccd0b813"
+        },
+        {
+          "file": "server.pem",
+          "der_sha256": "82e39aa5c6444499fb35d5cb8e1f9d84e9f55bf4a09a33dec17220040006e5e8"
+        }
+      ]
+    },
+    {
+      "case": "trusted",
+      "runtime": {
+        "python": "3.13.0 (v3.13.0:60403a5409f, Oct  7 2024, 00:37:40) [Clang 15.0.0 (clang-1500.3.9.4)]",
+        "openssl": "OpenSSL 3.0.15 3 Sep 2024",
+        "source_sha256": "21669267df9f65db98bda9518f530976334d057fb2f2f940222eb82e0d5a4f31"
+      },
+      "action_state": "completed",
+      "action_outcome": "completed",
+      "lifecycle": {
+        "state": "complete",
+        "verdict": "pass"
+      },
+      "peer_events": [
+        {
+          "event": "connection"
+        },
+        {
+          "event": "authenticated"
+        },
+        {
+          "event": "accepted",
+          "control_id": "BOOK-1",
+          "client_certificate_der_sha256": "d4544025ff68e66f6f34bc5882102c38233687fc82031479eceef87da4341fc9",
+          "payload_sha256": "7064729398198c67655a2ba2e413a11476824434cd59b81c735867774b90d402",
+          "expected_ack_sha256": "ced57f36c6b53af995c17afff1f41a290b14fa1481adcc2d2de0a0569ccc9abc",
+          "tls": "TLSv1.3"
+        },
+        {
+          "event": "ack-sent"
+        },
+        {
+          "event": "accepted",
+          "control_id": "MOVE-1",
+          "client_certificate_der_sha256": "d4544025ff68e66f6f34bc5882102c38233687fc82031479eceef87da4341fc9",
+          "payload_sha256": "1b6eb94e57fef9ebc13b7fbb0d53437e0883ede4390e37bfbd867a9c2e133cc4",
+          "expected_ack_sha256": "f5ef792c5115c4ba6053fdf0226d36e69b2d0f6d83294f22f8623e3c861bc6ec",
+          "tls": "TLSv1.3"
+        },
+        {
+          "event": "ack-sent"
+        }
+      ],
+      "transport_receipts": [
+        {
+          "schema": "readmit-connected-transport/v2",
+          "identity": "a58f1487eec98c960b5e67c71ead26cbe2d1295373e91d46d055d73d3fe0a702",
+          "run_identity": "93e93da7bf0197864a04c75733fa3780b75bc85d99b4ac99c2d8f981bc1aee82",
+          "state": "settled",
+          "binding": {
+            "plan": "8f4f4c711fdb7c1793c2e12106ec1cc7ecdef8db676013231564c3068d16bb59",
+            "configuration": "56dcbd84360616bd72a9e22a14d35fa517de9b28585565fd2b48875f2a06aa41",
+            "policy": "74f0cf53380b779a3a04bc840c78894654509553b25fc3d68c6f9a843de29e99",
+            "credentials": "446444532fc1e7e9344dbd28a6b23e79f371f94f03b29eb6b08aff1eb895933e",
+            "source": "978a8df687fc8a069ac4d6430a66224d0a3a321382861c040a708b391c43e11f",
+            "project": "704ddc0e34ab75fb958ddc95",
+            "environment": "qa",
+            "revision": "1",
+            "endpoint": "receiver",
+            "operation": "v2-stimulus"
+          },
+          "environment": {
+            "project": "704ddc0e34ab75fb958ddc95",
+            "id": "qa",
+            "revision": "1",
+            "name": "mutual-tls-receiver",
+            "classification": "nonproduction",
+            "endpoint": "receiver",
+            "target_identity": "e1cba5baf251577efa6420923e7b79d286c14f7f85247fec7aa8bee11e59533d",
+            "address_policy_identity": "74f0cf53380b779a3a04bc840c78894654509553b25fc3d68c6f9a843de29e99",
+            "grants": [
+              {
+                "project": "704ddc0e34ab75fb958ddc95",
+                "id": "address-policy",
+                "schema": "readmit-network-policy/v1",
+                "file": "address-policy.json",
+                "sha256": "74f0cf53380b779a3a04bc840c78894654509553b25fc3d68c6f9a843de29e99"
+              }
+            ],
+            "tls": {
+              "mode": "mtls",
+              "server_name": "receiver.test"
+            },
+            "target_revision": {
+              "provenance": "unknown"
+            }
+          }
+        }
+      ],
+      "public_certificates": [
+        {
+          "file": "ca.pem",
+          "der_sha256": "051a407c7e1c729c0a4caf74b13a54eb289790fc59364b8fbde7ac463954a509"
+        },
+        {
+          "file": "readmit-evidence/phases/reschedule/transport/configuration/authorities.pem",
+          "der_sha256": "051a407c7e1c729c0a4caf74b13a54eb289790fc59364b8fbde7ac463954a509"
+        },
+        {
+          "file": "readmit-evidence/phases/reschedule/transport/configuration/client.pem",
+          "der_sha256": "d4544025ff68e66f6f34bc5882102c38233687fc82031479eceef87da4341fc9"
+        },
+        {
+          "file": "server.pem",
+          "der_sha256": "589a6dafc982912f9ba677fc419767839dacb812d9664493cfff198be4bdcfc9"
+        }
+      ]
+    },
+    {
+      "case": "untrusted-client",
+      "runtime": {
+        "python": "3.13.0 (v3.13.0:60403a5409f, Oct  7 2024, 00:37:40) [Clang 15.0.0 (clang-1500.3.9.4)]",
+        "openssl": "OpenSSL 3.0.15 3 Sep 2024",
+        "source_sha256": "21669267df9f65db98bda9518f530976334d057fb2f2f940222eb82e0d5a4f31"
+      },
+      "action_state": "completed",
+      "action_outcome": "completed",
+      "lifecycle": {
+        "state": "incomplete",
+        "verdict": "undecided"
+      },
+      "peer_events": [
+        {
+          "event": "connection"
+        },
+        {
+          "event": "refused-or-dropped",
+          "reason": "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1020)"
+        }
+      ],
+      "transport_receipts": [
+        {
+          "schema": "readmit-connected-transport/v2",
+          "identity": "4313ad6086c646e8ddbe9946f7cc290d66e9e92736bdf75692c0a204607937d1",
+          "run_identity": "15914719db0a2526673f542e0b3411a7cc03a6a2d06332b6cf38d37a596a8374",
+          "state": "incomplete",
+          "binding": {
+            "plan": "d16a0063189341fc5ffe3fe387f39d922963f9ed7b6ab5d5ee9140b6f2f18ebb",
+            "configuration": "8eaf15d52b0b460dfd3afccd8d0a7edfe36443db0abe773161737e60a1423586",
+            "policy": "36de139fe447b0229763187907ace94228b9f4b0ef465cf734fc1d20ef5a1c95",
+            "credentials": "040bbaa9baded99a980e07ed7dfc34058825c398043a310c11d77eb840c6af8f",
+            "source": "3fb164dabdfcf972a3951fa8276dcaf8b8941b3f79577f6e1af1adc43564e83a",
+            "project": "00af074685484f5170afefbb",
+            "environment": "qa",
+            "revision": "1",
+            "endpoint": "receiver",
+            "operation": "v2-stimulus"
+          },
+          "environment": {
+            "project": "00af074685484f5170afefbb",
+            "id": "qa",
+            "revision": "1",
+            "name": "mutual-tls-receiver",
+            "classification": "nonproduction",
+            "endpoint": "receiver",
+            "target_identity": "35b17d420533383556349f97dc1f1e427ec3cc68f90bdfa6ff6d6f614e39091f",
+            "address_policy_identity": "36de139fe447b0229763187907ace94228b9f4b0ef465cf734fc1d20ef5a1c95",
+            "grants": [
+              {
+                "project": "00af074685484f5170afefbb",
+                "id": "address-policy",
+                "schema": "readmit-network-policy/v1",
+                "file": "address-policy.json",
+                "sha256": "36de139fe447b0229763187907ace94228b9f4b0ef465cf734fc1d20ef5a1c95"
+              }
+            ],
+            "tls": {
+              "mode": "mtls",
+              "server_name": "receiver.test"
+            },
+            "target_revision": {
+              "provenance": "unknown"
+            }
+          }
+        }
+      ],
+      "public_certificates": [
+        {
+          "file": "ca.pem",
+          "der_sha256": "0aeeed4d920ffe5075f704adaa3f94220b7859582d211344b5517f2cd0848811"
+        },
+        {
+          "file": "readmit-evidence/phases/reschedule/transport/configuration/authorities.pem",
+          "der_sha256": "0aeeed4d920ffe5075f704adaa3f94220b7859582d211344b5517f2cd0848811"
+        },
+        {
+          "file": "readmit-evidence/phases/reschedule/transport/configuration/client.pem",
+          "der_sha256": "5c2602d33ba7951d161d665c053a12f977bc7993c9ccbbc00fd39ad3faa1fa21"
+        },
+        {
+          "file": "server.pem",
+          "der_sha256": "4f00367c5607f216770289919f3bcd90e776a2c2713976a3b46566ea79b5b891"
+        }
+      ]
+    },
+    {
+      "case": "wrong-key",
+      "runtime": {
+        "python": "3.13.0 (v3.13.0:60403a5409f, Oct  7 2024, 00:37:40) [Clang 15.0.0 (clang-1500.3.9.4)]",
+        "openssl": "OpenSSL 3.0.15 3 Sep 2024",
+        "source_sha256": "21669267df9f65db98bda9518f530976334d057fb2f2f940222eb82e0d5a4f31"
+      },
+      "action_state": "failed",
+      "action_outcome": "refused",
+      "lifecycle": null,
+      "peer_events": [],
+      "diagnostic": {
+        "schema": "readmit-connected-transport-refusal/v1",
+        "stage": "before-dial",
+        "reason": "client-key-pair-invalid"
+      },
+      "transport_receipts": [],
+      "public_certificates": [
+        {
+          "file": "ca.pem",
+          "der_sha256": "00d97e5d64b15e1a51d56ccb4ff26dbecbb1aa449ec762b54931b99f608fc871"
+        },
+        {
+          "file": "server.pem",
+          "der_sha256": "3f8c97afbecdcf3042ef7687d93f84fd0ce9326837dbe7b148181bdcade575dd"
+        }
+      ]
+    },
+    {
+      "case": "key-unavailable",
+      "action_state": "failed",
+      "action_outcome": "refused",
+      "diagnostic": {
+        "schema": "readmit-connected-transport-refusal/v1",
+        "stage": "before-dial",
+        "reason": "client-key-unavailable"
+      },
+      "peer_events": [],
+      "public_certificates": [
+        {
+          "file": "ca.pem",
+          "der_sha256": "a38e398b72c7674ba6a886937cad99432170d6033ddf817caf1c6be11197869d"
+        },
+        {
+          "file": "server.pem",
+          "der_sha256": "64433b7c2070c64e76ae3f87c469852179df0ab0cf162a85e4d4ed5a45513a30"
+        }
+      ]
+    }
+  ],
+  "runner": {
+    "runtime": {
+      "python": "3.13.0 (v3.13.0:60403a5409f, Oct  7 2024, 00:37:40) [Clang 15.0.0 (clang-1500.3.9.4)]",
+      "openssl": "OpenSSL 3.0.15 3 Sep 2024",
+      "source_sha256": "21669267df9f65db98bda9518f530976334d057fb2f2f940222eb82e0d5a4f31"
+    },
+    "test": "hub.TestSavedConnectedMutualTLSActualRunnerUsesOwnAuthorityAndProvider",
+    "assertions": [
+      "saved facade environment/test/suite and approved promotion",
+      "installed finite authority and own endpoint credential provider",
+      "expired, changed, revoked authority refused before endpoint key resolution",
+      "Desktop token and private key cannot substitute for authority",
+      "accepted BOOK-1 retains correlated AA",
+      "separate dropped ACK retains uncertainty; same dispatch never resends",
+      "offline readback after key removal and stopped peers",
+      "retained evidence contains no client private key or hub token"
+    ],
+    "executions": [
+      {
+        "case": "execution",
+        "transport_identity": "8c18d1979c2a98dec146ecf385d026588119cf319b828c5cf398bc74bab9cd36",
+        "run_identity": "40550b5c67d05df7b2a69508016f014fc763730a7f287bb512e9c1d53d138383",
+        "state": "settled",
+        "binding": {
+          "plan": "0a2002c92edca28227b8f4a7aa6c6f01e399d2ee8b1ec8e1c953abe87880cf19",
+          "configuration": "0d4ed57a4044ddbc90fdf94282be1889aa82dad598f637a2465b178ccc145e20",
+          "policy": "145a64bb51f9a260287c708808d749bdcd903d80393190553db0d5c04b78018e",
+          "credentials": "16fd5196bcc2b5fdb0f826d7e9c5e372ad174a9fa7085ee146b498f35155af96",
+          "source": "150ad62ad5d9ad1afae598e0d7c80ec350fe245796003d661fcf401284d25a1f",
+          "project": "45fa5d3c3d51a4c4ffc5fb10",
+          "environment": "test",
+          "revision": "1",
+          "endpoint": "receiver",
+          "operation": "v2-stimulus"
+        },
+        "environment": {
+          "project": "45fa5d3c3d51a4c4ffc5fb10",
+          "id": "test",
+          "revision": "1",
+          "name": "independent-mutual-tls-peer",
+          "classification": "nonproduction",
+          "endpoint": "receiver",
+          "target_identity": "9776f1cdb10eb86c255541f5f9f798f32ad468a8a2445616899547c20f861380",
+          "address_policy_identity": "145a64bb51f9a260287c708808d749bdcd903d80393190553db0d5c04b78018e",
+          "grants": [
+            {
+              "project": "45fa5d3c3d51a4c4ffc5fb10",
+              "id": "address-policy",
+              "schema": "readmit-network-policy/v1",
+              "file": "address-policy.json",
+              "sha256": "145a64bb51f9a260287c708808d749bdcd903d80393190553db0d5c04b78018e"
+            }
+          ],
+          "tls": {
+            "mode": "mtls",
+            "server_name": "127.0.0.1"
+          },
+          "target_revision": {
+            "provenance": "unknown"
+          }
+        }
+      },
+      {
+        "case": "dropped",
+        "transport_identity": "21474decc0fede968130adc711d639f5202350c3d7aa0001d1a4ffc342323cef",
+        "run_identity": "c2d30dfc496f939914ed740431956ef47aee00300ea893cc73aced099ffc1246",
+        "state": "uncertain",
+        "binding": {
+          "plan": "0a2002c92edca28227b8f4a7aa6c6f01e399d2ee8b1ec8e1c953abe87880cf19",
+          "configuration": "0d4ed57a4044ddbc90fdf94282be1889aa82dad598f637a2465b178ccc145e20",
+          "policy": "145a64bb51f9a260287c708808d749bdcd903d80393190553db0d5c04b78018e",
+          "credentials": "16fd5196bcc2b5fdb0f826d7e9c5e372ad174a9fa7085ee146b498f35155af96",
+          "source": "150ad62ad5d9ad1afae598e0d7c80ec350fe245796003d661fcf401284d25a1f",
+          "project": "45fa5d3c3d51a4c4ffc5fb10",
+          "environment": "test",
+          "revision": "1",
+          "endpoint": "receiver",
+          "operation": "v2-stimulus"
+        },
+        "environment": {
+          "project": "45fa5d3c3d51a4c4ffc5fb10",
+          "id": "test",
+          "revision": "1",
+          "name": "independent-mutual-tls-peer",
+          "classification": "nonproduction",
+          "endpoint": "receiver",
+          "target_identity": "9776f1cdb10eb86c255541f5f9f798f32ad468a8a2445616899547c20f861380",
+          "address_policy_identity": "145a64bb51f9a260287c708808d749bdcd903d80393190553db0d5c04b78018e",
+          "grants": [
+            {
+              "project": "45fa5d3c3d51a4c4ffc5fb10",
+              "id": "address-policy",
+              "schema": "readmit-network-policy/v1",
+              "file": "address-policy.json",
+              "sha256": "145a64bb51f9a260287c708808d749bdcd903d80393190553db0d5c04b78018e"
+            }
+          ],
+          "tls": {
+            "mode": "mtls",
+            "server_name": "127.0.0.1"
+          },
+          "target_revision": {
+            "provenance": "unknown"
+          }
+        }
+      }
+    ],
+    "public_certificates": {
+      "ca.pem": "a682e8e3873d661e808643d4b2e0cf01fc7d605542bc2c5eea81a779a329909c",
+      "client.pem": "9c7f2ca59a49f294b7c0b39c27248af1561d4a404316a0e5a25a6910ed56ed3e",
+      "server.pem": "9bf823f24c98fb9c288a6026a8cfb750571a9c5f8f58bdf2217db2c2f8531094"
+    },
+    "postgresql": "PostgreSQL 14.19 (Homebrew) on aarch64-apple-darwin24.4.0, compiled by Apple clang version 17.0.0 (clang-1700.0.13.3), 64-bit",
+    "race": true,
+    "vet": "passed",
+    "duration_seconds": 41.503
+  },
+  "source_sha256": {
+    "internal/desktop/connected_test_compile.go": "7de441ff33b28d5c43a771e210964983280eda3e83da988b6bc4bfdb4db79d49",
+    "internal/desktop/connected_test_run.go": "5bb43d2850f04b5057062cd1b04017ef480d78be6780d378a08d353f0ea8d618",
+    "internal/connectedtransport/read.go": "f2b858e7709c0611a3e303de0fca40ff8bb5cec00609dfc0af19e7409fa30f3d",
+    "internal/connectedtransport/run.go": "81a9da3abd28e743d96f0d35aaad53154230d2b91550474bd680dc8fa33b95fa",
+    "internal/connectedtransport/refusal.go": "69e0a3dcd9c5f6aa83fd6f42003481725380573c0f75e78f65ff7db2a3dc65c9",
+    "internal/desktop/testdata/mtls_peer.py": "21669267df9f65db98bda9518f530976334d057fb2f2f940222eb82e0d5a4f31",
+    "desktop/frontend/src/RunPanel.tsx": "57c1af46646c5066fe27c28f380b454f6970c454a59546a850bdf43c19c7fd79",
+    "internal/desktop/connected_mtls_test.go": "3ccb6b287fe5ff04bc4424bf53de9645b24e883ace617c809b68415eff88cba7",
+    "hub/runner_connected_mtls_test.go": "381778406136c059228998804dd890f4c691fc3e2db551793ee7786b8acc6ec5"
+  },
+  "approved_design": {
+    "page": "https://www.figma.com/design/xI2G6uB2BQil3v7UWOhTz1/Readmit?node-id=2480-2257",
+    "mutual_tls_frame": "2480:2258",
+    "tls_frame": "2480:2341",
+    "plain_frame": "2480:2424",
+    "approval": "https://github.com/bharm16/readmit/issues/700#issuecomment-6029661233"
+  },
+  "same_saved_test_native_and_runner": {
+    "status": "passed",
+    "race": true,
+    "package_seconds_including_native_wait": 239.396,
+    "saved_test_id": "a7f62e7910526d9ebe198db2",
+    "saved_test_revision": "1",
+    "native_run_id": "d7391f3090a26f59376f0b90",
+    "native_result_identity": "0f228e009f2f3574671d203c470afede696e8c9660ec26442151738fca6c7c75",
+    "runner_execution_identity": "98eb782b2b344534f5ae5c98a6d800fee9729dc976d05edc090754729f421517",
+    "runner_child_identity": "e2b1e223782bb95ae2a3c224ff4cdefab96706787117a92850fea1b17bdae230",
+    "same_compiled_test_definition_sha256": "55f8c990fdff163fe83e9cc0537f0fba6c6a6638074a5a38b078ba5aea18e6b7",
+    "identical_native_runner_definition_bytes": true,
+    "synthetic_source_and_intended_sha256": "d763f2cef90d06eb721f5386d35402b9c7a2ad0f1b0caceda541958011daa952",
+    "peer": {
+      "address": "127.0.0.1:63813",
+      "python": "3.13.0 (v3.13.0:60403a5409f, Oct  7 2024, 00:37:40) [Clang 15.0.0 (clang-1500.3.9.4)]",
+      "openssl": "OpenSSL 3.0.15 3 Sep 2024",
+      "source_sha256": "21669267df9f65db98bda9518f530976334d057fb2f2f940222eb82e0d5a4f31"
+    },
+    "postgresql": "PostgreSQL 14.19 (Homebrew), aarch64-apple-darwin24.4.0",
+    "hub_vet": "passed",
+    "accepted_peer_messages": 3,
+    "meaning": "One native execution, one separately authorized production runner execution, one explicit separate runner occurrence with dropped ACK; no retries.",
+    "native_build": {
+      "binary_sha256": "835340510233d10665204bcdf65ffed482ceb9a3654ed525a6543af4f97dffb8",
+      "source_commit": "6c6d368f3ffbce9bbf35a82b19418b46d91835e4",
+      "source_version": "readmit-desktop version 0.0.0+issue700.6c6d368f3ffb"
+    },
+    "native_observation": {
+      "saved_test": "a7f62e7910526d9ebe198db2",
+      "revision": 1,
+      "native_name": "Saved mutual TLS booking",
+      "review_transport": "MLLP \u00b7 Mutual TLS",
+      "send_actions": 1,
+      "displayed_result": "Passed",
+      "displayed_ack": "book ACK AA recorded",
+      "displayed_duration_seconds": 9,
+      "screenshot_evidence": "Captured by CUA in implementation chat; approved Transport row and Passed result"
+    }
+  }
+}

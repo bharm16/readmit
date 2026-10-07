@@ -2040,6 +2040,7 @@ export interface ConnectedRunPhaseReview {
 
 /** internal/desktop.ConnectedRunReview */
 export interface ConnectedRunReview {
+  transport?: string;
   collectors?: ConnectedRunCollectorReview[];
   derived_inputs?: ConnectedDerivedInputReview[];
   runtime_marker_required?: boolean;

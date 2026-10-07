@@ -61,6 +61,7 @@
     "docs/run-bundle.md",
     "docs/test-runner.md",
     "docs/connected-tests.md",
+    "docs/qualification/700-saved-mtls.json",
     "docs/connected-transports.md",
     "docs/typed-datasets.md",
     "docs/connected-runtime.md",
