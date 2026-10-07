@@ -4,6 +4,7 @@ import { useMeasured } from "./measure";
 import { ReaderIcon } from "./ReaderIcon";
 import { ReaderResize } from "./ReaderResize";
 import { referenceColumns, useReaderColumns } from "./ReaderColumns";
+import { useReferenceHover, type ReferenceHoverScope, type ReferenceHoverTarget } from "./ReferenceHover";
 
 // The host accepts bounded windows up to 1,000 rows, with 100 as its default.
 const DEFAULT_WINDOW_ROWS = 100;
@@ -12,7 +13,7 @@ const OVERSCAN_ROWS = 10;
 
 /** The host supplies source order, depth and canonical identities. This view
  * navigates that bounded projection; it never reconstructs HL7 structure. */
-export function ReaderGrid({ grid, selected, busy, value, onSelect, onExpand, onPage }: {
+export function ReaderGrid({ grid, selected, busy, value, onSelect, onExpand, onPage, reference }: {
   grid: HL7InspectorGrid;
   selected: string;
   busy: boolean;
@@ -20,6 +21,7 @@ export function ReaderGrid({ grid, selected, busy, value, onSelect, onExpand, on
   onSelect: (path: string) => void;
   onExpand?: (row: InspectorNode) => void;
   onPage?: (offset: number, edge?: "first" | "last", limit?: number) => void | Promise<void>;
+  reference?: ReferenceHoverScope;
 }) {
   const element = useRef<HTMLDivElement>(null);
   const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
@@ -32,6 +34,7 @@ export function ReaderGrid({ grid, selected, busy, value, onSelect, onExpand, on
   const requested = useRef<{ offset: number; limit: number } | null>(null);
   const previousSelection = useRef(selected);
   const id = useId();
+  const hover = useReferenceHover(reference);
   const [columns, setColumns] = useReaderColumns();
   const metadata = referenceColumns.filter(column => columns.visible.includes(column.name));
   const pathWidth=Math.max(6.5,Math.min(20,Math.max(0,...grid.rows.map(row=>(row.display_path || row.node.path).length*.5+1))));
@@ -54,9 +57,16 @@ export function ReaderGrid({ grid, selected, busy, value, onSelect, onExpand, on
     void Promise.resolve(onPage?.(offset, edge, limit)).finally(() => setKeyboardRead(false));
   };
   const keys = (event: KeyboardEvent<HTMLDivElement>) => {
+    hover.keyDown(event);
+    if (event.defaultPrevented) return;
     if (event.target !== event.currentTarget) return;
     if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
     const row = grid.rows[at];
+    if (event.key === "Enter" && row && !busy) {
+      const trigger = element.current?.querySelector<HTMLButtonElement>('[aria-selected="true"] .reference-preview-trigger');
+      if (trigger) { event.preventDefault(); trigger.focus(); }
+      return;
+    }
     const windowSize = Math.max(DEFAULT_WINDOW_ROWS, grid.rows.length);
     const previous = Math.max(0, grid.offset - windowSize);
     const more = grid.offset + grid.rows.length < (grid.row_count ?? 0);
@@ -108,10 +118,16 @@ export function ReaderGrid({ grid, selected, busy, value, onSelect, onExpand, on
           {row.has_children ? <button type="button" tabIndex={-1} className={`message-grid-disclosure${row.expanded ? " is-expanded" : ""}`} aria-label={`${row.expanded ? "Collapse" : "Expand"} ${row.display_path || row.node.path}`} disabled={busy} onClick={event => { event.stopPropagation(); element.current?.focus({ preventScroll: true }); onExpand?.(row); }}><ReaderIcon name="next" /></button> : <span className="message-grid-disclosure" />}
           <button type="button" tabIndex={-1} disabled={busy} aria-current={row.node.path === selected ? "location" : undefined} aria-label={`${row.node.path} ${row.node.kind === "segment" ? row.segment_name || row.node.segment : row.label || row.node.path} ${value(row)}`}>{row.node.kind === "segment" ? row.segment_name || row.node.segment : row.label || row.display_path || row.node.path}</button>
         </div>
-        {metadata.map(column => { const attribute = row.reference?.[column.attribute]; return <div role="gridcell" key={column.name} className={`message-grid-attribute message-grid-${column.attribute}`} title={attribute?.state === "specified" ? attribute.value : attribute?.state?.replaceAll("_", " ") || "Not available"}>{row.node.kind === "segment" ? "" : attribute?.state === "specified" ? attribute.value : attribute?.state === "not_available" || !attribute ? "?" : "—"}</div>; })}
+        {metadata.map(column => {
+          const attribute = row.reference?.[column.attribute];
+          const text = attribute?.state === "specified" ? attribute.value : attribute?.state === "not_available" || !attribute ? "?" : "—";
+          const target = (anchor: HTMLButtonElement): ReferenceHoverTarget => ({ anchor, path: row.node.path, displayPath: row.display_path || row.node.path, label: row.reference?.name || row.label, recordKey: row.reference?.key || "", attribute: column.attribute, value: text });
+          return <div role="gridcell" key={column.name} className={`message-grid-attribute message-grid-${column.attribute}`}>{row.node.kind === "segment" ? "" : reference ? <button type="button" className="reference-preview-trigger" tabIndex={row.node.path === selected ? 0 : -1} disabled={busy} aria-label={`${column.name} reference for ${row.display_path || row.node.path}: ${text}`} aria-haspopup="dialog" aria-controls={hover.activeAnchor?.dataset.referenceTarget === `${row.node.path}/${column.attribute}` ? hover.id : undefined} aria-expanded={hover.activeAnchor?.dataset.referenceTarget === `${row.node.path}/${column.attribute}`} data-reference-target={`${row.node.path}/${column.attribute}`} onPointerEnter={event => hover.show(target(event.currentTarget))} onPointerLeave={hover.leave} onFocus={event => hover.show(target(event.currentTarget), true)} onBlur={hover.blur} onKeyDown={hover.keyDown} onClick={event => { event.stopPropagation(); hover.show(target(event.currentTarget), true); }}>{text}</button> : text}</div>;
+        })}
         <div role="gridcell" className={`message-grid-value${row.node.state === "present" ? "" : " message-grid-state"}`}>{row.node.kind === "segment" ? "" : value(row)}</div>
       </div>)}
       <div aria-hidden="true" style={{ height: Math.max(0, total - grid.offset - grid.rows.length) * rowHeight }} />
     </div>
+    {hover.card}
   </section>;
 }

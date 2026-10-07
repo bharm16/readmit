@@ -4899,6 +4899,7 @@ export interface HL7ReferenceRequest {
   offset: number;
   limit: number;
   query?: string;
+  attribute?: Hl7referencePreviewAttribute;
 }
 
 /** internal/desktop.HL7ReferenceResult */
@@ -4910,6 +4911,7 @@ export interface HL7ReferenceResult {
   offset: number;
   child_count: number;
   total_count: number;
+  preview?: Hl7referencePreview;
 }
 
 /** internal/desktop.HL7ReferenceSelection */
@@ -5075,6 +5077,48 @@ export interface Hl7referenceOrigin {
   locator?: string;
 }
 
+/** internal/hl7reference.Preview */
+export interface Hl7referencePreview {
+  kind: Hl7referencePreviewKind;
+  code: string;
+  title: string;
+  definition: string;
+  maximum_length?: string;
+  datatype_name?: string;
+  target_key?: string;
+  context?: Hl7referenceRecord;
+  tables?: Hl7referencePreviewLink[];
+  uses?: Hl7referencePreviewLink[];
+}
+
+/** internal/hl7reference.PreviewAttribute */
+export type Hl7referencePreviewAttribute =
+  | "datatype"
+  | "table"
+  | "item"
+  | "section"
+  | "optionality"
+  | "length"
+  | "conformance_length"
+  | "repetition";
+
+/** internal/hl7reference.PreviewKind */
+export type Hl7referencePreviewKind =
+  | "datatype"
+  | "table"
+  | "element"
+  | "section"
+  | "attribute"
+  | "tables";
+
+/** internal/hl7reference.PreviewLink */
+export interface Hl7referencePreviewLink {
+  key: string;
+  code: string;
+  name: string;
+  kind: string;
+}
+
 /** internal/hl7reference.Record */
 export interface Hl7referenceRecord {
   table_metadata?: Hl7referenceTableMetadata;
@@ -5121,6 +5165,8 @@ export interface Hl7referenceSource {
 
 /** internal/hl7reference.TableMetadata */
 export interface Hl7referenceTableMetadata {
+  description?: string;
+  binding?: string;
   table_oid?: string;
   code_system_oid?: string;
   value_set_oid?: string;

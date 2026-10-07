@@ -54,8 +54,8 @@ test("reopening restores the retained source, saved view and field selection wit
   await reader.findAllByText("MSH[1]-9[1].2");
   await journey.settled();
   await journey.chooseFiles([journey.path("reference/navigation.json")], "Open offline HL7 reference catalog");
-  await press(user, screen.getByRole("button", { name: "HL7 reference version" }));
-  await press(user, screen.getByRole("menuitem", { name: "Use local catalog…" }));
+  await press(user, screen.getByRole("button", { name: "HL7 version" }));
+  await press(user, screen.getByRole("menuitem", { name: "Use custom definitions…" }));
   await expectReferenceEdition(user, "2.5.1");
   await press(user, reader.getByRole("button", { name: "Enable PHI masking" }));
   await reader.findByRole("button", { name: "Disable PHI masking" });

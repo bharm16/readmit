@@ -1,10 +1,10 @@
 # Offline HL7 reference catalogs
 
-Open a message or retained capture in Messages. In its reader, choose
-**Reference** and select a local `readmit-hl7-reference/v1` through v6 catalog. Selection
-reads local files only. It does not start a listener, send messages or download
-reference material. Choose a segment or field to synchronize its original byte
-span, grid row and available definition.
+The desktop includes the standard HL7 definitions, fields, datatypes and tables
+for 14 editions from 2.1 through 2.9. Open a message or retained capture in
+Messages: the app selects its exact MSH-12 version automatically. No source files,
+installation or network connection are required. The **HL7 version** menu lets you
+browse another edition without changing the received message.
 
 The grid retains Path, Name, Type, Opt, Len, C-Len, Rep, Item#, Tbl, Sect and
 Value. Scroll the grid horizontally to reach columns outside the current width.
@@ -82,8 +82,7 @@ without a matched source heading or missing normative rows stay visible as gaps.
 The receipt is the complete inventory; the reader shows at most 100 gap entries.
 
 Catalogs and exact controlled chapter text remain outside source control and
-release bundles while distribution approval #627 is pending. The application
-ships no reference library and does not acquire one automatically. See
+release bundles while distribution approval #627 is pending. The maintainer build includes the local library as an application resource; public redistribution of the exact source content remains gated. The application performs no runtime acquisition. See
 [ADR-0029](adr/0029-offline-hl7-reference-catalog.md) for the stable catalog
 identity, coverage and reading bounds.
 
@@ -103,8 +102,8 @@ MSH-2 has Len `4..5`; MSH-7 uses DTM; MSH-8 has C-Len `40=`; MSH-10 has Len
 than an inferred minimum/maximum. C-Len is receiving storage capacity; `=` means
 no truncation, while `#` applies that datatype's truncation behavior. The reader
 preserves the markers and establishes no conformance verdict from them.
-**Return to message edition** opens the local chooser and requires the catalog
-for the actual declared edition; it never rewrites MSH-12 or acquires a catalog.
+**Return to message edition** restores automatic matching to the included definitions
+for the actual declared edition; it never rewrites MSH-12 or opens a file picker.
 
 | Later edition | Segments | Fields | Datatypes | Components | Tables | Codes | Elements | Message/events | Structures | Explicit gaps |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -132,20 +131,27 @@ applicable field constraints. Verified profile/pack identities do not themselves
 prove applicability or validation.
 
 
-## Install the full reference library
+## Built-in versions and custom definitions
 
-Choose the **HL7 version** button in the Messages toolbar, then **Install
-library…**, and select a folder containing `library.json` and its catalogs.
-Installation validates the complete manifest and copies exact catalog bytes to
-the shell's local reference store. The next inspection automatically uses the
-received message's exact edition. Choose another installed version to browse it
-explicitly; **Use message version** returns to automatic selection. This never
-rewrites MSH-12, reveals values, or establishes validation support.
+The **HL7 version** toolbar dropdown lists every included edition directly.
+Selecting an edition updates the reference immediately; there is no intermediate dialog.
+**Use message version** restores automatic selection. The available editions are
+2.1, 2.2, 2.3, 2.3.1, 2.4, 2.5, 2.5.1, 2.6, 2.7, 2.7.1, 2.8, 2.8.1, 2.8.2 and 2.9.
+Reference browsing does not rewrite MSH-12, reveal masked values or establish
+validation support. Missing source records remain explicitly unavailable.
 
-The version list covers 2.1 through 2.9, including 2.3.1, 2.5.1, 2.7.1, 2.8.1
-and 2.8.2. A version without an installed catalog is shown as not installed.
-Changed retained bytes are refused until the source is explicitly installed again.
-Catalog setup survives restart and is independent of projects and source files.
+The collapsed **Custom definitions** section is for optional organization-supplied
+catalogs. A standard message needs no custom definitions. Custom catalogs retain
+their exact edition and identity, independently of the built-in library.
+
+## Maintainer build inputs
+
+`make install-desktop` embeds the maintainer's retained complete library into the
+native executable. `--reference-library` or `READMIT_HL7_REFERENCE_LIBRARY` can name
+an explicit source folder. A build without all 14 editions fails before replacing
+the installed app. `readmit-desktop --check-hl7-library` verifies the embedded
+catalogs without opening a window or using a previous user installation. Native
+packaging runs this check and refuses an incomplete application.
 
 Local setup from the owner's supplied archives and published reference pages:
 
@@ -161,7 +167,7 @@ python3 tools/reference_html.py --sources /absolute/path/to/private/sources \
 The tools are development/setup commands; the installed application performs no
 network acquisition. The optional terminology input is the pinned official HL7
 Terminology package. Its source digest and resource locator accompany OIDs and
-code-system metadata under catalog v6; source-edition code values are retained.
+code-system metadata under catalog v7; source-edition code values are retained.
 Keep source archives, generated catalogs and receipts out of Git and release
 packages while distribution decision #627 remains open. Inspect each receipt's
 coverage and unavailable chapters; the version list is not a claim that every

@@ -17,3 +17,15 @@ func TestOnlyAnExplicitVersionRequestReplacesTheWindow(t *testing.T) {
 		}
 	}
 }
+
+func TestEmbeddedReferenceInventoryContainsOnlyDeclaredResources(t *testing.T) {
+	entries, err := referenceAssets.ReadDir("reference-assets")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || entry.Name() != "README.md" && entry.Name() != "library.zip" {
+			t.Fatalf("unexpected embedded resource: %s", entry.Name())
+		}
+	}
+}

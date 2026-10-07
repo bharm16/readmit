@@ -66,6 +66,7 @@
         "readmit-hl7-reference/v4",
         "readmit-hl7-reference/v5",
         "readmit-hl7-reference/v6",
+        "readmit-hl7-reference/v7",
         "readmit-hl7-reference-library/v1"
       ],
       "outputs": [
@@ -101,6 +102,7 @@
         "readmit-hl7-reference/v4",
         "readmit-hl7-reference/v5",
         "readmit-hl7-reference/v6",
+        "readmit-hl7-reference/v7",
         "readmit-hl7-reference-library/v1"
       ],
       "outputs": [
@@ -121,7 +123,7 @@
       "id": "desktop.ReadReferenceLibrary",
       "source": "desktop.App.ReadReferenceLibrary",
       "kind": "desktop",
-      "capability": "Install and read the private exact-edition HL7 reference library",
+      "capability": "Read built-in HL7 editions and explicitly selected custom definitions",
       "owner": "bharm16/readmit#690",
       "screen": "HL7 reference library",
       "action": "read installed editions",
@@ -136,7 +138,9 @@
         "readmit-hl7-reference/v4",
         "readmit-hl7-reference/v5",
         "readmit-hl7-reference/v6",
-        "readmit-hl7-reference-library/v1"
+        "readmit-hl7-reference/v7",
+        "readmit-hl7-reference-library/v1",
+        "readmit-hl7-reference-bundle/v1"
       ],
       "outputs": [],
       "prerequisites": [],
@@ -147,7 +151,7 @@
       },
       "parity_test": {
         "package": "internal/desktop",
-        "name": "TestReferenceLibraryRefusesChangedCatalogAndFailedImportKeepsPreviousSelection"
+        "name": "TestBundledDefinitionsWorkOnFirstLaunchWithoutInstallation"
       }
     },
     {
@@ -1009,7 +1013,8 @@
         "readmit-hl7-reference/v3",
         "readmit-hl7-reference/v4",
         "readmit-hl7-reference/v5",
-        "readmit-hl7-reference/v6"
+        "readmit-hl7-reference/v6",
+        "readmit-hl7-reference/v7"
       ],
       "outputs": [],
       "prerequisites": [],
@@ -20553,7 +20558,7 @@
       "implemented": false,
       "disposition": {
         "kind": "developer-tooling",
-        "reason": "repository build, test and release tooling that developers and CI run against readmit (docs/agents/testing.md); it is not shipped to customers and no customer workflow depends on it"
+        "reason": "repository build, test and release tooling that developers and CI run against readmit (docs/agents/testing.md); it is not shipped to customers and no customer workflow depends on it; refuses desktop executables without a complete verified built-in HL7 library"
       }
     },
     {
@@ -20710,7 +20715,7 @@
       "id": "tooling.tools.install_desktop",
       "source": "tools/install_desktop.py",
       "kind": "tooling",
-      "capability": "Build and refresh the local macOS application and Desktop shortcut",
+      "capability": "Build and install the desktop with all standard HL7 definitions embedded",
       "owner": "bharm16/readmit#542",
       "inputs": [],
       "outputs": [],
@@ -20718,7 +20723,7 @@
       "implemented": false,
       "disposition": {
         "kind": "developer-tooling",
-        "reason": "explicit local developer installation from this checkout; not a customer distribution or automatic update workflow"
+        "reason": "developer build tooling, including tools/referencebundle; validates and embeds the maintainer library without customer setup; redistribution rights remain separate"
       }
     },
     {

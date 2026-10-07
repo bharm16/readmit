@@ -1,6 +1,9 @@
 """Build and install a local macOS Readmit.app; launching it never builds code."""
 
 import argparse
+from contextlib import contextmanager
+import hashlib
+import json
 import os
 from pathlib import Path
 import plistlib
@@ -88,7 +91,68 @@ def install_bundle(bundle, destination, shortcut):
             shutil.rmtree(directory)
 
 
-def build_bundle(directory):
+@contextmanager
+def retained_reference_library(explicit=None):
+    """Resolve maintainer build inputs; users never see this source workflow."""
+    supplied = explicit or os.environ.get("READMIT_HL7_REFERENCE_LIBRARY")
+    if supplied:
+        yield Path(supplied).expanduser().resolve()
+        return
+    registry = Path.home() / "Library/Application Support/readmit/reference-library.json"
+    try:
+        if registry.is_symlink() or registry.stat().st_size > 16384:
+            raise ValueError("invalid registry")
+        document = json.loads(registry.read_bytes())
+        if document.get("schema") != "readmit-hl7-reference-library/v1" or len(document.get("editions", [])) != 14:
+            raise ValueError("incomplete library")
+        with tempfile.TemporaryDirectory(prefix="readmit-build-references-") as directory:
+            folder = Path(directory)
+            names = []
+            for index, entry in enumerate(document["editions"]):
+                path = Path(entry["path"])
+                if not path.is_absolute() or path.is_symlink() or not path.is_file() or path.stat().st_size > 32 << 20:
+                    raise ValueError("unreadable catalog")
+                raw = path.read_bytes()
+                if "sha256:" + hashlib.sha256(raw).hexdigest() != entry["identity"]:
+                    raise ValueError("changed catalog")
+                name = f"catalog-{index}.json"
+                (folder / name).write_bytes(raw)
+                names.append(name)
+            (folder / "library.json").write_text(json.dumps({"schema": "readmit-hl7-reference-library/v1", "catalogs": names}))
+            yield folder
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        raise packaging.Refused("The desktop build requires a complete, unchanged HL7 library. Supply the maintainer's library with --reference-library; this is not an end-user installation step.") from error
+
+
+@contextmanager
+def embedded_reference_library(source=None, environment=None):
+    archive = ROOT / "desktop/reference-assets/library.zip"
+    if archive.exists() or archive.is_symlink():
+        raise packaging.Refused("A staged HL7 archive already exists; preserve or remove it before building.")
+    with tempfile.TemporaryDirectory(prefix=".reference-build-", dir=ROOT / "desktop") as directory:
+        staged = Path(directory) / "library.zip"
+        with retained_reference_library(source) as folder:
+            run(["go", "run", "./tools/referencebundle", "-source", str(folder), "-output", str(staged)], cwd=ROOT, env=environment)
+        # Publish exclusively. A losing creator never owns the shared name and
+        # therefore never removes the other build's input during cleanup.
+        try:
+            os.link(staged, archive)
+        except FileExistsError as error:
+            raise packaging.Refused("Another build staged the HL7 library; its archive is unchanged.") from error
+        owned = staged.stat()
+        try:
+            yield
+        finally:
+            try:
+                current = archive.lstat()
+            except FileNotFoundError:
+                pass
+            else:
+                if (current.st_dev, current.st_ino) == (owned.st_dev, owned.st_ino):
+                    archive.unlink()
+
+
+def build_bundle(directory, reference_library=None):
     packaging.require_macos("local application installation")
     run(["python3", str(ROOT / "tools/toolchain.py"), "--check"], cwd=ROOT)
     revision = subprocess.check_output(["git", "rev-parse", "--short=12", "HEAD"], cwd=ROOT, text=True).strip()
@@ -103,9 +167,11 @@ def build_bundle(directory):
     # A local install targets the host, even if the caller was cross-compiling.
     for name in ("GOOS", "GOARCH", "GOFLAGS"):
         environment.pop(name, None)
-    run(["go", "build", "-tags", "production", "-trimpath", "-ldflags",
-         "-X github.com/bharm16/readmit/internal/engine.version=" + version,
-         "-o", str(binary), "."], cwd=ROOT / "desktop", env=environment)
+    with embedded_reference_library(reference_library, environment):
+        run(["go", "build", "-tags", "production", "-trimpath", "-ldflags",
+             "-X github.com/bharm16/readmit/internal/engine.version=" + version,
+             "-o", str(binary), "."], cwd=ROOT / "desktop", env=environment)
+    packaging.verify_reference_library(binary)
     declaration = packaging.read_declaration()
     bundle = packaging.application_bundle(declaration, binary, version, directory)
     information_path = bundle / "Contents/Info.plist"
@@ -129,6 +195,7 @@ def main():
     parser.add_argument("--applications-dir", type=Path, default=Path("/Applications"),
                         help="installation folder (default: /Applications; no sudo is used)")
     parser.add_argument("--no-desktop-shortcut", action="store_true")
+    parser.add_argument("--reference-library", type=Path, help="maintainer build input containing all 14 editions; otherwise use the retained local library")
     args = parser.parse_args()
     packaging.require_macos("local application installation")
     import fcntl  # macOS only; other hosts refuse above before importing it.
@@ -147,7 +214,7 @@ def main():
             raise packaging.Refused("another Readmit installation is in progress") from error
         check_destination(destination, shortcut)
         with tempfile.TemporaryDirectory(prefix="readmit-local-build-") as directory:
-            bundle, version = build_bundle(Path(directory))
+            bundle, version = build_bundle(Path(directory), args.reference_library)
             install_bundle(bundle, destination, shortcut)
     print(f"Installed {destination} ({version})")
     if shortcut is not None:

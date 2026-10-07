@@ -136,6 +136,31 @@ selected paths/hashes and the protective PHI mask preference, never source
 values, prose or reveal/execution authorization; earlier session
 schemas retain their documented readers. Reopen refuses changed identities.
 
+## Contextual reference previews (amended 2026-10-07)
+
+Grid metadata previews use the existing pinned entity lookup with an optional
+attribute selector. Go resolves the relationship from the supplied reference
+record in the same catalog read, preserving its field/component context. A
+missing datatype or table never borrows the field's definition. Attribute
+availability, printed notation and source prose remain separate from validation.
+Hover does not change evidence selection or reveal consent; stale UI replies are
+fenced by source, message, path, edition, catalog identity and reveal context.
+
+Datatype previews retain a bounded introductory excerpt and any explicitly
+printed Maximum Length statement as text. That statement does not become a
+field limit. Composite previews show five children, with complete details
+available through the existing reader. Table search retains the 100-record
+window and reports matched and source totals independently.
+
+Catalog v7 adds optional terminology description and raw binding-realm code
+inside the existing separately sourced table metadata. Both come from the
+already-pinned THO archive; edition definitions and codes are untouched. The
+realm labels follow the publication's `utg-concept-properties` definition of
+`v2-binding` (0 none/not applicable, 1 example, 2 representative, 3 universal,
+4 US realm), not FHIR binding strength. V1–v6 reject these new members by
+presence, including empty and null values. Older catalogs remain readable and
+show unavailable terminology context. Hover never downloads reference material.
+
 ## Earlier editions and explicit reference selection (amended 2026-10-03)
 
 An explicitly selected catalog determines the reference edition for browsing.
@@ -277,3 +302,28 @@ existing pinned Table view supplies structured values, and Expand retains the
 complete original definition including any subsequent prose. No table rows are
 parsed or invented by the webview. Short complete definitions have no expansion
 control; actual overflow or additional source text exposes it.
+
+
+## Definitions are application content (amended 2026-10-07)
+
+Owner direction supersedes manual installation as the standard product workflow.
+The desktop includes the full 14-edition reference library. Opening a message
+uses its exact MSH-12 edition without a download, source picker or installation.
+The user-facing control is **HL7 version**; selecting another edition is optional.
+Custom definitions remain an advanced, explicit choice with the same pinned
+identity behavior. A version choice never changes evidence or evaluator support.
+
+The maintainer build validates all catalog records and packages their exact bytes
+in `readmit-hl7-reference-bundle/v1`. The native executable embeds that archive,
+independent of web assets, and checks all 14 editions before packaging. At launch,
+the shared reader retains the pinned resources for offline lookup without creating
+a manual selection document. Existing explicit custom selections remain intact;
+changed cached bytes are refused rather than silently repinned. Failed bootstrap
+leaves original message inspection available and reports definitions unavailable.
+
+This changes product setup, not the exact-content redistribution determination.
+The owner's local builds include the supplied catalogs now. Controlled catalog
+bytes remain outside Git and public packages while #627 is open; a public desktop
+package cannot pass its content check with an empty placeholder library. Catalog
+coverage gaps remain explicit. Bundling an edition is not a claim of complete
+source extraction or qualified validation support.

@@ -24,12 +24,13 @@ test("installing every reference edition makes exact message selection automatic
   await journey.chooseFiles([source],"Open HL7 file");await press(user,screen.getByRole("button",{name:"Open file"}));
   let list=await screen.findByRole("table",{name:"Messages in this file"});
   await press(user,list.querySelector<HTMLElement>('[data-row-id="0"]')!);
-  await press(user,screen.getByRole("button",{name:"HL7 reference version"}));await press(user,screen.getByRole("menuitem",{name:"Manage reference library…"}));
-  const library=within(await screen.findByRole("dialog",{name:"HL7 reference library"}));
-  await library.findByRole("option",{name:"HL7 2.9 · Not installed"});
-  await journey.chooseFolder(journey.path("references"),"Install HL7 reference library");await press(user,library.getByRole("button",{name:"Install library…"}));
+  await press(user,screen.getByRole("button",{name:"HL7 version"}));await press(user,screen.getByRole("menuitem",{name:"Manage custom definitions…"}));
+  const library=within(await screen.findByRole("dialog",{name:"HL7 versions"}));
+  await library.findByRole("option",{name:"HL7 2.9 · Unavailable in this build"});
+  await user.click(library.getByText("Custom definitions",{selector:"summary"}));
+  await journey.chooseFolder(journey.path("references"),"Install HL7 reference library");await press(user,library.getByRole("button",{name:"Open custom library…"}));
   await library.findByRole("option",{name:"HL7 2.9"});
-  await press(user,library.getByRole("button",{name:"Use reference"}));
+  await press(user,library.getByRole("button",{name:"Use version"}));
   const select=async()=>{
     const details=within(screen.getByRole("region",{name:"Message details"}));
     await press(user,details.getByRole("button",{name:"More message actions"}));await press(user,screen.getByRole("menuitem",{name:"Go to field…"}));

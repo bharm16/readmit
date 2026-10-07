@@ -43,6 +43,7 @@
 
   /* Figma page 12: Codex Light 2388:26677 and Dark 2394:3836. */
   --canvas: #ffffff;
+  --reference-hover-shadow-color: #0000002e;
   --syntax-type: #751ed9;
   --syntax-date: #008809;
   --syntax-code: #bd5800;
@@ -170,6 +171,7 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
   --canvas: #181818;
+  --reference-hover-shadow-color: #0000002e;
   --syntax-type: #b06dff;
   --syntax-date: #85df7b;
   --syntax-code: #fa994c;
@@ -192,6 +194,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --canvas: #181818;
+  --reference-hover-shadow-color: #0000002e;
     --syntax-type: #b06dff;
     --syntax-date: #85df7b;
     --syntax-code: #fa994c;
@@ -3288,7 +3291,9 @@ h2 .count {
 .app-workbench { --header:3.75rem; }
 .app-workbench .sidebar { background:var(--rail); }
 .app-workbench .sidebar-switcher { border:0; margin:0 0 1rem; padding:0; }
-.app-workbench .project-switcher > .menu-trigger { border:1px solid var(--line); background:var(--canvas); min-height:3rem; padding:.5rem .75rem; }
+.app-workbench .project-switcher > .menu-trigger { border:1px solid transparent; background:transparent; min-height:3rem; padding:.5rem .75rem; }
+.app-workbench .project-switcher > .menu-trigger:hover,
+.app-workbench .project-switcher > .menu-trigger[aria-expanded="true"] { background:var(--hover); }
 .switcher-caption { display:flex; flex-direction:column; min-width:0; gap:.125rem; text-align:start; }
 .switcher-kind { color:var(--muted); font-size:.75rem; line-height:1rem; font-weight:400; }
 .app-workbench .sidebar .nav-list { gap:.25rem; }
@@ -3609,10 +3614,10 @@ button.reference-badge-link { background:var(--selection); color:var(--accent); 
 .raw-token-empty { display:inline-block; min-width:2px; height:1.5rem; vertical-align:bottom; }
 
 .reader-action.icon-button { flex:none; width:2rem; height:2rem; }
-.reader-action.icon-button > button { display:grid; place-items:center; width:2rem; height:2rem; min-width:2rem; min-height:2rem; padding:0; border:1px solid var(--line); background:var(--canvas); color:var(--text); }
+.reader-action.icon-button > button { display:grid; place-items:center; width:2rem; height:2rem; min-width:2rem; min-height:2rem; padding:0; border:1px solid transparent; background:transparent; color:var(--text); }
 .reader-action.icon-button > button:hover:not(:disabled),
 .reader-action.icon-button > button[aria-pressed="true"] { background:var(--selection); }
-.reader-action.icon-button > button:disabled { background:var(--rail); color:var(--muted); }
+.reader-action.icon-button > button:disabled { background:transparent; color:var(--muted); }
 .reader-action.icon-button > button:disabled img { opacity:.4; }
 .reader-action-primary.icon-button > button { background:var(--accent); border-color:var(--accent); color:var(--accent-text); }
 .reader-action-primary.icon-button > button:hover:not(:disabled) { background:var(--accent); opacity:.85; }
@@ -3628,12 +3633,33 @@ button.reference-badge-link { background:var(--selection); color:var(--accent); 
 .hl7-reader .reader-phi-toggle { padding:0; margin-left:auto; border:0; background:transparent; }
 .hl7-reader .reader-phi-toggle svg path { stroke-width:1.8; }
 .hl7-reader .reader-original .pager { flex:none; margin:0; }
-.app-reader .page-actions .reader-menu > .menu-trigger { border:1px solid var(--line); background:var(--canvas); }
+.app-reader .page-actions .reader-menu > .menu-trigger { border-color:transparent; background:transparent; }
 
 .raw-source::before { content:""; position:absolute; left:0; top:0; bottom:0; width:2.25rem; background:var(--rail); border-right:1px solid var(--line); pointer-events:none; }
 .hl7-reader .reference-attributes > div:first-child .reference-badge { color:var(--syntax-type); background:var(--canvas); }
 .hl7-reader .reference-attributes > div { column-gap:.5rem; }
 
 /* Shared control geometry for the page 13 reader. */
-.hl7-reader .reader-source-controls button, .reader-columns-control > button { min-height:2rem; font-size:.75rem; padding:.25rem .5rem; }
+.hl7-reader .reader-source-controls button, .reader-columns-control > button { min-height:2rem; font-size:.75rem; padding:.25rem .5rem; border-color:transparent; background:transparent; }
+.hl7-reader .reader-source-controls button:hover:not(:disabled), .reader-columns-control > button:hover:not(:disabled) { background:var(--hover); }
+.reader-reference-menu > .menu-trigger { border-color:var(--line); }
+.reader-reference-menu .menu-popover { left:0; right:auto; min-width:10rem; max-height:calc(100vh - 8rem); overflow-y:auto; }
+.reader-reference-menu .menu-popover [aria-current="true"] { background:var(--selection); font-weight:600; }
+.page[data-page="home"] .page-actions > button:not(.primary),
+.page[data-page="home"] .row-actions > button:not(.primary),
+.page[data-page="home"] .row-actions .menu-trigger,
+.page[data-page="home"] .row-actions .icon-button > button { border-color:transparent; background:transparent; }
+.page[data-page="home"] .page-actions > button:not(.primary):hover:not(:disabled),
+.page[data-page="home"] .row-actions > button:not(.primary):hover:not(:disabled),
+.page[data-page="home"] .row-actions .menu-trigger:hover:not(:disabled),
+.page[data-page="home"] .row-actions .icon-button > button:hover:not(:disabled) { background:var(--hover); }
 .message-grid-name > button:not(.message-grid-disclosure) { display:block; border:0; background:transparent; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; color:inherit; padding:0; font:inherit; }
+
+/* Page 14 contextual-reference controls use the shared geometry owner. */
+.reference-hover button { font:inherit; min-height:1.5rem; padding:0; border:0; background:transparent; color:inherit; border-radius:var(--radius-control); }
+.reference-hover .reference-hover-source { position:absolute; right:var(--s2); top:var(--s2); min-width:1.5rem; }
+.reference-hover .reference-hover-copy { width:1.5rem; height:1.5rem; flex:none; display:grid; place-items:center; padding:0; }
+.reference-hover-search input { min-width:0; width:100%; min-height:2.25rem; padding:var(--s2); font:inherit; background:transparent; border:0; box-shadow:none; outline:0; }
+.reference-hover .reference-hover-code-copy { flex:none; min-width:2rem; max-width:5rem; font-family:var(--mono); color:var(--syntax-code); overflow-wrap:anywhere; text-align:left; }
+.reference-hover .reference-hover-open { display:flex; justify-content:space-between; align-items:center; width:100%; text-align:left; color:var(--link); font-weight:600; }
+.message-grid .reference-preview-trigger { display:inline-block; min-width:1.5rem; min-height:1.25rem; max-width:100%; padding:0; margin:0; border:0; background:transparent; color:inherit; font:inherit; text-align:left; white-space:nowrap; text-overflow:ellipsis; overflow:hidden; vertical-align:top; cursor:help; }

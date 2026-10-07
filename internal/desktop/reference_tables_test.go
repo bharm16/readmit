@@ -74,4 +74,14 @@ func TestOfflineReferenceSearchAndElementsUseBoundedPinnedCatalog(t *testing.T) 
 	if wrong.State != desktop.Completed || wrong.Reference.Status != "unsupported_edition" || wrong.Reference.Record != nil || len(wrong.Children) != 0 {
 		t.Fatalf("borrowed other edition: %+v", wrong)
 	}
+	request.Edition, request.Key, request.Attribute, request.Query = "2.5.1", "table/0003", "section", ""
+	preview := app.LookupHL7Reference(request)
+	if preview.State != desktop.Completed || preview.Preview == nil || preview.Preview.Kind != "section" || preview.Preview.TargetKey != "table/0003" {
+		t.Fatalf("pinned hover did not use reference reader: %+v", preview)
+	}
+	request.Identity = "changed"
+	refused := app.LookupHL7Reference(request)
+	if refused.State != desktop.Failed || refused.Preview != nil || refused.Reference != nil {
+		t.Fatalf("changed catalog retained a hover answer: %+v", refused)
+	}
 }

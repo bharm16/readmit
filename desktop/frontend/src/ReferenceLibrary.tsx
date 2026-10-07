@@ -45,19 +45,19 @@ export function ReferenceLibrary({ open, messageEdition, onClose, onSelect }: {
     setLoading(false);onClose();
   };
 
-  return <Modal open={open} title="HL7 reference library" onClose={onClose}>
-    {loading?<p role="status">Reading reference library…</p>:null}
+  return <Modal open={open} title="HL7 versions" onClose={onClose}>
+    {loading?<p role="status">Reading HL7 definitions…</p>:null}
     {problem?<p role="alert">{problem}</p>:null}
-    <label htmlFor="reference-edition">Reference version</label>
+    <label htmlFor="reference-edition">HL7 version</label>
     <select id="reference-edition" value={edition} disabled={loading} onChange={event=>setEdition(event.target.value)}>
       <option value="">Use message version{messageEdition?` (${messageEdition})`:""}</option>
-      {library?.editions.map(item=><option key={item.edition} value={item.edition} disabled={!item.path}>HL7 {item.edition}{item.path?"":" · Not installed"}</option>)}
+      {library?.editions.map(item=><option key={item.edition} value={item.edition} disabled={!item.path}>HL7 {item.edition}{item.path?"":" · Unavailable in this build"}</option>)}
     </select>
-    <p>The message version stays as received. A different reference version is shown explicitly.</p>
-    <div className="toolbar">
-      <button type="button" disabled={loading} onClick={()=>void install(true)}>Install library…</button>
-      <button type="button" disabled={loading} onClick={()=>void install(false)}>Install catalog…</button>
-    </div>
-    <button type="button" className="primary" disabled={loading||library?.state!=="completed"} onClick={()=>void useEdition()}>Use reference</button>
+    <p>Fields, definitions and tables are included in the app. By default, they match the message’s HL7 version. Choosing another version does not change the message.</p>
+    <details><summary>Custom definitions</summary><p>Optional: use definitions supplied by your organization.</p><div className="toolbar">
+      <button type="button" disabled={loading} onClick={()=>void install(true)}>Open custom library…</button>
+      <button type="button" disabled={loading} onClick={()=>void install(false)}>Open custom catalog…</button>
+    </div></details>
+    <button type="button" className="primary" disabled={loading||library?.state!=="completed"} onClick={()=>void useEdition()}>Use version</button>
   </Modal>;
 }

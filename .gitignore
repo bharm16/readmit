@@ -8,5 +8,7 @@
 /desktop/frontend/dist/
 /desktop/frontend/node_modules/
 /desktop/frontend/wailsjs/
+/desktop/reference-assets/library.zip
+/desktop/.reference-build-*/
 .DS_Store
 desktop/desktop

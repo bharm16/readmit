@@ -17,7 +17,7 @@ import (
 const referenceLibrarySchema = "readmit-hl7-reference-library/v1"
 const maxReferenceLibraryBytes = 16384
 
-var referenceEditions = []string{"2.9", "2.8.2", "2.8.1", "2.8", "2.7.1", "2.7", "2.6", "2.5.1", "2.5", "2.4", "2.3.1", "2.3", "2.2", "2.1"}
+var referenceEditions = hl7reference.Editions()
 
 type ReferenceEdition struct {
 	Edition  string `json:"edition"`
@@ -43,6 +43,26 @@ type referenceLibraryDocument struct {
 }
 
 func (a *App) referenceLibrary() ([]ReferenceEdition, error) {
+	if a.bundledReferenceError != nil {
+		return nil, a.bundledReferenceError
+	}
+	installed, err := a.installedReferenceLibrary()
+	if err != nil {
+		return nil, err
+	}
+	return a.withBundledReferences(installed), nil
+}
+
+func (a *App) withBundledReferences(installed []ReferenceEdition) []ReferenceEdition {
+	entries := slices.Clone(a.bundledReferences)
+	for _, entry := range installed {
+		entries = slices.DeleteFunc(entries, func(builtIn ReferenceEdition) bool { return builtIn.Edition == entry.Edition })
+		entries = append(entries, entry)
+	}
+	return entries
+}
+
+func (a *App) installedReferenceLibrary() ([]ReferenceEdition, error) {
 	if !filepath.IsAbs(a.documents.Folder) {
 		return []ReferenceEdition{}, nil
 	}
@@ -82,14 +102,14 @@ func referenceLibraryResult(entries []ReferenceEdition) ReferenceLibraryResult {
 	return result
 }
 
-// ReadReferenceLibrary lists supported editions and their explicitly installed pins.
+// ReadReferenceLibrary lists app definitions and explicitly chosen custom pins.
 // The selected catalog is verified again when used; listing never repins content.
 func (a *App) ReadReferenceLibrary() ReferenceLibraryResult {
 	a.referenceLibraryMu.Lock()
 	defer a.referenceLibraryMu.Unlock()
 	entries, err := a.referenceLibrary()
 	if err != nil {
-		return ReferenceLibraryResult{State: Failed, Reason: "The installed reference library cannot be read. Its selections are unchanged.", Editions: []ReferenceEdition{}}
+		return ReferenceLibraryResult{State: Failed, Reason: "The app's HL7 definitions cannot be read. Saved selections are unchanged.", Editions: []ReferenceEdition{}}
 	}
 	return referenceLibraryResult(entries)
 }
@@ -97,12 +117,12 @@ func (a *App) ReadReferenceLibrary() ReferenceLibraryResult {
 func (a *App) installReferenceCatalogs(ctx context.Context, paths []string) ReferenceLibraryResult {
 	a.referenceLibraryMu.Lock()
 	defer a.referenceLibraryMu.Unlock()
-	previous, err := a.referenceLibrary()
+	previous, err := a.installedReferenceLibrary()
 	if !filepath.IsAbs(a.documents.Folder) {
 		return ReferenceLibraryResult{State: Failed, Reason: "The local reference store is not configured.", Editions: []ReferenceEdition{}}
 	}
 	fail := func(reason string) ReferenceLibraryResult {
-		return ReferenceLibraryResult{State: Failed, Reason: reason, Editions: referenceLibraryResult(previous).Editions}
+		return ReferenceLibraryResult{State: Failed, Reason: reason, Editions: referenceLibraryResult(a.withBundledReferences(previous)).Editions}
 	}
 	if err != nil {
 		return fail("The installed reference library cannot be read. Its selections are unchanged.")
@@ -172,7 +192,7 @@ func (a *App) installReferenceCatalogs(ctx context.Context, paths []string) Refe
 	if err := a.documents.write(referenceLibraryName, append(raw, '\n')); err != nil {
 		return fail("The reference library could not be saved. Its previous selections remain in use.")
 	}
-	return referenceLibraryResult(next)
+	return referenceLibraryResult(a.withBundledReferences(next))
 }
 
 // InstallReferenceCatalog retains exact supplied catalog bytes in the local store.

@@ -445,6 +445,8 @@ declare global {
     go?: { desktop?: { App?: Facade }; hubadmin?: { Admin?: HubAdminFacade } };
     /** The host runtime's file drop, present only in the native window. */
     runtime?: {
+      BrowserOpenURL?: (url: string) => void;
+      ClipboardSetText?: (text: string) => Promise<boolean>;
       OnFileDrop?: (callback: (x: number, y: number, paths: string[] | null) => void, useDropTarget: boolean) => void;
       OnFileDropOff?: () => void;
     };

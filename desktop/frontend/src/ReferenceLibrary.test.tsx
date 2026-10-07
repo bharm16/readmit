@@ -12,11 +12,12 @@ test("reference browsing selects an installed edition or returns to the message 
   render(<ReferenceLibrary open messageEdition="2.5.1" onClose={()=>undefined} onSelect={selected}/>);
   await screen.findByRole("option",{name:"HL7 2.1"});
   expect(screen.getAllByRole("option")).toHaveLength(15);
-  await user.selectOptions(screen.getByLabelText("Reference version"),"2.9");
-  await user.click(screen.getByRole("button",{name:"Use reference"}));
+  expect(screen.getByText("Custom definitions",{selector:"summary"}).parentElement?.hasAttribute("open")).toBe(false);
+  await user.selectOptions(screen.getByLabelText("HL7 version"),"2.9");
+  await user.click(screen.getByRole("button",{name:"Use version"}));
   expect(selected).toHaveBeenCalledWith(editions[0]);
-  await user.selectOptions(screen.getByLabelText("Reference version"),"");
-  await user.click(screen.getByRole("button",{name:"Use reference"}));
+  await user.selectOptions(screen.getByLabelText("HL7 version"),"");
+  await user.click(screen.getByRole("button",{name:"Use version"}));
   expect(selected).toHaveBeenLastCalledWith(null);
 });
 
@@ -25,8 +26,9 @@ test("a selected catalog is installed through its native picker before exact-edi
  const editions=[{edition:"2.5.1",path:WORKSPACE_ROOT,identity:CASE_IDENTITY}];
  const facade=installFacade({ReadReferenceLibrary:()=>({state:"completed",editions:[]}),ChooseInspectionPath:kind=>({state:"completed",kind,path:WORKSPACE_ROOT}),InstallReferenceCatalog:()=>({state:"completed",editions})});
  render(<ReferenceLibrary open messageEdition="2.5.1" onClose={()=>undefined} onSelect={selected}/>);
- await screen.findByRole("button",{name:"Install catalog…"});
- await user.click(screen.getByRole("button",{name:"Install catalog…"}));
+ await user.click(screen.getByText("Custom definitions",{selector:"summary"}));
+ await screen.findByRole("button",{name:"Open custom catalog…"});
+ await user.click(screen.getByRole("button",{name:"Open custom catalog…"}));
  await screen.findByRole("option",{name:"HL7 2.5.1"});
  expect(facade.callsTo("InstallReferenceCatalog")[0]?.args).toEqual([WORKSPACE_ROOT]);
  expect(selected).toHaveBeenCalledWith(null);

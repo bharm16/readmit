@@ -274,11 +274,13 @@ type NamedDestinationChooser interface {
 // one arriving during another action reports Busy. A finished operation always
 // releases the slot, including after failure or cancellation.
 type App struct {
-	referenceLibraryMu sync.Mutex
-	fieldValues        fieldValueSnapshots
-	operationMu        sync.Mutex
-	operationGuard     *operationguard.Guard
-	operationPolicy    string
+	referenceLibraryMu    sync.Mutex
+	bundledReferences     []ReferenceEdition
+	bundledReferenceError error
+	fieldValues           fieldValueSnapshots
+	operationMu           sync.Mutex
+	operationGuard        *operationguard.Guard
+	operationPolicy       string
 	// operationRestoreRefusal remains visible until a policy is chosen again.
 	operationRestoreRefusal string
 	chooser                 FolderChooser

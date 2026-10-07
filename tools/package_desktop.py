@@ -465,6 +465,7 @@ def build(declaration, binary, version, target, output):
     check_version(version)
     if not binary.is_file():
         raise Refused(f"{binary} is not a built desktop executable")
+    verify_reference_library(binary)
     output.mkdir(parents=True, exist_ok=False)
     built = []
     if "deb" in target["formats"]:
@@ -493,6 +494,13 @@ def build(declaration, binary, version, target, output):
     (output / MANIFEST_NAME).write_text(json.dumps(manifest, indent=2) + "\n")
     print(f"BUILT: {len(built)} unsigned {target['os']}/{target['arch']} package(s) for {version}; none is signed for distribution")
     return manifest
+
+
+def verify_reference_library(binary):
+    """The actual executable must contain every edition, with no prior install."""
+    result = subprocess.run([str(binary.resolve()), "--check-hl7-library"], capture_output=True, text=True, timeout=180)
+    if result.returncode != 0 or result.stdout.strip() != "readmit-desktop HL7 definitions ready: 14 editions":
+        raise Refused("The desktop executable lacks its complete built-in HL7 library; do not package a build that asks users to source definitions.")
 
 
 def read_manifest(directory):

@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import type { InspectionGridRequest, DatasetValue, FHIRCheckPreset, FHIRInspection, FieldState, Inspection, InspectionResult, InspectorNode, RawWindow, Hl7referenceAttribute, Hl7referenceRecord, Hl7referenceOrigin, Hl7referenceSource, HL7ReferenceResult, HL7ReferenceSelection, ProfileevalNode } from "./bindings";
+import type { InspectionGridRequest, DatasetValue, FHIRCheckPreset, FHIRInspection, FieldState, Inspection, InspectionResult, InspectorNode, RawWindow, Hl7referenceAttribute, Hl7referenceRecord, Hl7referenceOrigin, Hl7referenceSource, HL7ReferenceResult, HL7ReferenceSelection, ProfileevalNode, ReferenceEdition } from "./bindings";
 import { chooseInspectionPath, readReferenceCatalog, lookupHL7Reference, readHL7ReferenceSelection } from "./bindings";
 import { FIELD_STATES, HIDDEN_VALUE } from "./display";
 import { TaskPanel, TaskTabs } from "./TaskTabs";
@@ -17,7 +17,7 @@ import { ReaderResize } from "./ReaderResize";
 import { useViewState } from "./viewstate";
 import { ReaderSelectionHeader, ReferenceAttributes, ReferenceBadge, ReferenceDefinition } from "./ReaderPresentation";
 import { ReferenceLibrary } from "./ReferenceLibrary";
-import { ReferenceMenu } from "./ReferenceMenu";
+import { ReferenceMenu, type ReferenceChoice } from "./ReferenceMenu";
 import { MessageText } from "./MessageText";
 import "./inspector.css";
 import "./reader-grid.css";
@@ -111,6 +111,7 @@ export function MessageReader({
   referenceSelection: suppliedSelection,
   referenceRequest = 0,
   referenceLibraryRequest = 0,
+  referenceChoice,
   referenceResetRequest = 0,
   toolbarReference = false,
   compactReader,
@@ -142,6 +143,7 @@ export function MessageReader({
   referenceSelection?: HL7ReferenceSelection;
   referenceRequest?: number;
   referenceLibraryRequest?: number;
+  referenceChoice?: ReferenceChoice | null;
   referenceResetRequest?: number;
   toolbarReference?: boolean;
   compactReader?: boolean;
@@ -208,6 +210,8 @@ export function MessageReader({
   const referenceOwner = useRef("");
   const lookupSerial = useRef(0);
   const lookupOwner = useRef("");
+  const hoverReferenceFocus = useRef<{owner:string;origin:Element|null;moved:boolean;dispose:()=>void}|null>(null);
+  const [contextReferenceOwner,setContextReferenceOwner] = useState("");
   const [referenceView, setReferenceView] = useState<HL7ReferenceResult | null>(null);
   const [referenceLoading, setReferenceLoading] = useState(false);
   const [lookupDefinitionExpanded,setLookupDefinitionExpanded]=useState(false);
@@ -235,7 +239,17 @@ export function MessageReader({
   useEffect(()=>setValidationShown(false),[inspection?.identity,inspection?.occurrence,inspection?.message]);
   const lookupContext = `${contextKey}/${referencePin ?? ""}/${referencePath}/${inspection?.reference?.status ?? ""}`;
   lookupOwner.current = lookupContext;
+  useEffect(() => () => hoverReferenceFocus.current?.dispose(), []);
   useEffect(() => {
+    const ticket=hoverReferenceFocus.current;
+    if(!ticket)return;
+    if(ticket.owner!==lookupContext){ticket.dispose();hoverReferenceFocus.current=null;return;}
+    if(referenceLoading || !referenceView)return;
+    ticket.dispose();hoverReferenceFocus.current=null;
+    if(!ticket.moved && (document.activeElement===ticket.origin || document.activeElement===document.body))workbenchElement?.querySelector<HTMLElement>('.reader-reference[aria-label="Reference details"]')?.focus({preventScroll:true});
+  }, [referenceLoading, referenceView, lookupContext, workbenchElement]);
+  useEffect(() => {
+    if(contextReferenceOwner!==lookupContext)setContextReferenceOwner("");
     ++lookupSerial.current; setReferenceView(null); setReferenceLoading(false); setReferenceKey(""); setReferenceTrail([]); setCodeQuery(""); setActiveQuery(""); setColumnGuide(false);
     const saved=referencePositions.current.get(captionOwner);
     if(saved && saved.path===selected?.path && saved.pin===referencePin && inspection?.reference?.status==="available") {
@@ -350,6 +364,19 @@ export function MessageReader({
     setCatalogReading(false); setCatalogProblem(""); setCatalogPath(""); setCatalogIdentity("");
     void onInspect(selected?.path ?? "",inspection?.node_offset ?? 0,-1,undefined,"",overlaySelection || suppliedSelection,"");
   };
+  const useReferenceEdition = async (entry: ReferenceEdition) => {
+    if (!inspection || !selected || !entry.path || !entry.identity) return;
+    ++referenceSerial.current; ++lookupSerial.current;
+    setCatalogReading(false); setCatalogProblem(""); setCatalogPath(entry.path); setCatalogIdentity(entry.identity);
+    await onInspect(selected.path, inspection.node_offset, -1, undefined, entry.path, overlaySelection || suppliedSelection, entry.identity);
+  };
+  const handledReferenceChoice = useRef(referenceChoice);
+  useEffect(() => {
+    if (referenceChoice && referenceChoice !== handledReferenceChoice.current) {
+      handledReferenceChoice.current = referenceChoice;
+      void useReferenceEdition(referenceChoice.entry);
+    }
+  }, [referenceChoice]);
   const handledReferenceReset = useRef(referenceResetRequest);
   useEffect(()=>{if(referenceResetRequest!==handledReferenceReset.current){handledReferenceReset.current=referenceResetRequest;useMessageReference();}},[referenceResetRequest]);
 
@@ -402,6 +429,7 @@ export function MessageReader({
     setReferenceLoading(false);
   };
   const backReference = () => {
+    hoverReferenceFocus.current?.dispose();hoverReferenceFocus.current=null;
     const previous = referenceTrail.at(-1);
     if (previous) {
       setReferenceTrail((held) => held.slice(0,-1));
@@ -412,7 +440,23 @@ export function MessageReader({
       setReferenceView(null);
       setReferenceLoading(false);
       setReferenceKey("");
+      setContextReferenceOwner("");
     }
+  };
+
+  const openHoverReference = (key:string, query:string) => {
+    hoverReferenceFocus.current?.dispose();
+    const moved=(event:Event)=>{
+      if(event.type==="focusin" && (event.target===ticket.origin || event.target===document.body))return;
+      ticket.moved=true;
+    };
+    const dispose=()=>{document.removeEventListener("focusin",moved);document.removeEventListener("pointerdown",moved,true);document.removeEventListener("keydown",moved,true);};
+    const ticket={owner:lookupContext,origin:document.activeElement,moved:false,dispose};
+    hoverReferenceFocus.current=ticket;
+    document.addEventListener("focusin",moved);document.addEventListener("pointerdown",moved,true);document.addEventListener("keydown",moved,true);
+    setContextReferenceOwner(lookupContext);
+    setDetailsVisible(true); setColumnGuide(false); setValidationShown(false);
+    void openReference(key,0,true,query,false,true);
   };
 
   const referenceTabs = () => {
@@ -489,7 +533,7 @@ export function MessageReader({
           {facts.length > 0 ? <p className="reader-facts">{facts.join(" · ")}</p> : null}
         </div>
         <PHIToggle masked={inspection.phi_masked ?? false} disabled={busy} onToggle={()=>onReveal(Boolean(inspection.phi_masked))} />
-        {!toolbarReference ? <ReferenceMenu edition={inspection.reference?.edition || inspection.metadata.hl7_version} disabled={busy || catalogReading} onAutomatic={useMessageReference} onChoose={()=>void chooseReference()} onLibrary={()=>setLibraryOpen(true)} /> : null}
+        {!toolbarReference ? <ReferenceMenu edition={inspection.reference?.edition || inspection.metadata.hl7_version} disabled={busy || catalogReading} onAutomatic={useMessageReference} onChoose={()=>void chooseReference()} onLibrary={()=>setLibraryOpen(true)} onSelect={entry=>void useReferenceEdition(entry)} /> : null}
         {inspection ? (
           <Menu
             className="reader-menu" trigger={<img className="workbench-icon" src={moreAsset} alt="" />}
@@ -530,7 +574,7 @@ export function MessageReader({
                 </div>
               ) : (
                 <>
-                  {inspection.grid?.mode === "message" ? <ReaderGrid key={captionOwner} grid={inspection.grid} selected={selected.path} busy={busy} value={row=>childValueText(row,revealed)} onSelect={go} onExpand={toggleBranch} onPage={pageGrid} /> : gridNodes.length > 0 ? (
+                  {inspection.grid?.mode === "message" ? <ReaderGrid key={captionOwner} grid={inspection.grid} selected={selected.path} busy={busy} value={row=>childValueText(row,revealed)} onSelect={go} onExpand={toggleBranch} onPage={pageGrid} reference={{owner:`${lookupContext}/${revealed}/${inspection.phi_masked ?? false}`,catalog:referencePath,identity:referencePin || "",edition:inspection.reference?.edition || inspection.metadata.hl7_version,messageEdition:inspection.metadata.hl7_version,onOpen:openHoverReference,onChoose:()=>setLibraryOpen(true)}} /> : gridNodes.length > 0 ? (
                     <section ref={gridElement} className="reader-grid-scroll" aria-label="Segment grid" tabIndex={0}>
                       <div className="reader-grid-columns" aria-hidden="true">{["Path", "Name", "Type", "Opt", "Len", "C-Len", "Rep", "Item#", "Tbl", "Sect", "Value"].map((column) => <span key={column}>{column}</span>)}</div>
                       <ul className="outline reader-grid" aria-label={atRoot ? "Segments" : `Parts of ${selected.path}`}>
@@ -596,13 +640,14 @@ export function MessageReader({
           <footer className="reader-grid-footer">{inspection.grid?.mode === "message" ? <><nav aria-label="Path" className="crumbs"><button type="button" disabled={busy} onClick={()=>go("")}>Message</button>{(inspection.parents ?? []).filter(parent=>parent.node.kind!=="repetition").map(parent=><button type="button" key={parent.node.path} title={parent.node.path} disabled={busy} onClick={()=>go(parent.node.path)}>{parent.display_path || parent.node.path}</button>)}{selected.path ? <code title={selected.path}>{inspection.display_path || selected.path}</code> : null}</nav></> : <>{segmentShortcuts.length ? <nav aria-label="Other segments" className="crumbs">{segmentShortcuts.map(row=><button key={row.node.path} type="button" title={row.node.path} aria-label={`Inspect ${row.node.path}`} disabled={busy} onClick={()=>go(row.node.path)}>{row.node.segment}</button>)}</nav> : null}<nav aria-label="Path" className="crumbs"><button type="button" disabled={busy} onClick={()=>go("")}>Segments</button>{selected.parent && selected.parent !== selected.path ? <button type="button" disabled={busy} onClick={()=>go(selected.parent)}>{selected.parent}</button> : null}</nav></>}</footer>
           </div>
           {detailsVisible && !compactWorkbench ? <ReaderResize label="Details width" reverse className="reader-details-resize" value={detailsWidth} min={20} max={maxDetailsWidth} onChange={width=>setLayout(current=>({...current,detailsWidth:width}))} /> : null}
-          {contextDetails !== undefined && contextDetails !== null && !validationShown ? <section className="reader-reference" aria-label="Context details" hidden={!detailsVisible}><h3 className="reader-pane-heading">{contextDetailsTitle}</h3><div className="reader-reference-scroll">{contextDetails}</div></section> : inspection.reference ? <section className="reader-reference" aria-label="Reference details" hidden={!detailsVisible}>{validationShown ? <div className="reader-pane-tabs" onKeyDown={referenceKeys} role="tablist" aria-label="Inspector views"><button type="button" role="tab" aria-selected={!validationShown} onClick={()=>setValidationShown(false)}>Details</button><button type="button" role="tab" aria-selected={validationShown} onClick={()=>setValidationShown(true)}>Validation</button></div> : <div className="reader-pane-heading"><h3>Details</h3><button type="button" className="reader-plain-icon" aria-label="Hide Details panel" onClick={()=>setDetailsVisible(false)}><ReaderIcon name="close" /></button><button type="button" className="reader-plain-icon reader-pane-options" aria-label="Reference information" onClick={()=>setReferenceInfo(true)}><ReaderIcon name="settings" /></button></div>}{!validationShown && !columnGuide ? <ReaderSelectionHeader inspection={inspection} nodes={[...(inspection.parents ?? []),...gridNodes]} busy={busy} onSelect={go} onGoToField={()=>setGoingTo(true)} /> : null}<div className="reader-reference-scroll">
+          {contextDetails !== undefined && contextDetails !== null && !validationShown && contextReferenceOwner!==lookupContext ? <section className="reader-reference" aria-label="Context details" hidden={!detailsVisible}><h3 className="reader-pane-heading">{contextDetailsTitle}</h3><div className="reader-reference-scroll">{contextDetails}</div></section> : inspection.reference ? <section className="reader-reference" tabIndex={-1} aria-label="Reference details" hidden={!detailsVisible}>{validationShown ? <div className="reader-pane-tabs" onKeyDown={referenceKeys} role="tablist" aria-label="Inspector views"><button type="button" role="tab" aria-selected={!validationShown} onClick={()=>setValidationShown(false)}>Details</button><button type="button" role="tab" aria-selected={validationShown} onClick={()=>setValidationShown(true)}>Validation</button></div> : <div className="reader-pane-heading"><h3>Details</h3><button type="button" className="reader-plain-icon" aria-label="Hide Details panel" onClick={()=>setDetailsVisible(false)}><ReaderIcon name="close" /></button><button type="button" className="reader-plain-icon reader-pane-options" aria-label="Reference information" onClick={()=>setReferenceInfo(true)}><ReaderIcon name="settings" /></button></div>}{!validationShown && !columnGuide ? <ReaderSelectionHeader inspection={inspection} nodes={[...(inspection.parents ?? []),...gridNodes]} busy={busy} onSelect={go} onGoToField={()=>setGoingTo(true)} /> : null}<div className="reader-reference-scroll">
             {!validationShown && !columnGuide && field ? <div className="reader-value-control"><pre className="value" aria-label="Original value">{selected.state === "present" ? revealed ? inspection.raw || decodeStateText(inspection.decode_state) : HIDDEN_VALUE : stateText(selected.state,revealed,"")}</pre>{inspection.reference?.datatype_key && inspection.reference_values?.some(value=>value.node.kind === (selected.kind === "component" ? "subcomponent" : "component")) ? <button type="button" className="reader-plain-icon" aria-label={selected.kind === "component" ? "Inspect subcomponents" : "Inspect components"} disabled={busy} onClick={()=>void openReference(inspection.reference!.datatype_key!,0,true,"",true)}><ReaderIcon name="components" /></button> : null}<button type="button" className="reader-plain-icon" aria-label="Copy value" disabled={!revealed || selected.state!=="present" || !inspection.raw || inspection.decode_state==="too_large"} onClick={()=>void navigator.clipboard?.writeText(inspection.raw)}><ReaderIcon name="copy" /></button></div> : null}
+            {contextDetails != null && contextReferenceOwner===lookupContext && (!referenceKey || fieldComponents) ? <button type="button" className="link reader-reference-back" onClick={()=>{setReferenceTrail([]);rememberReference();++lookupSerial.current;setReferenceView(null);setReferenceLoading(false);setReferenceKey("");setContextReferenceOwner("");}}>Back to {contextDetailsTitle || "context details"}</button> : null}
             {!validationShown && !columnGuide && inspection.message_context && (atRoot || selected.segment==="MSH" && selected.field===9) ? <div className="reader-structure-strip"><span>Message structure</span><button type="button" className="link" disabled={busy || !inspection.message_context.structure_key} onClick={()=>inspection.message_context?.structure_key && void openReference(inspection.message_context.structure_key)}>{inspection.message_context.resolved_structure || "Not available"}</button></div> : null}
             {validationShown ? <section className="reader-validation" aria-label="Validation"><h4>Validation</h4><h5>No validation result available in this inspection</h5><p>Choose the specification used to check these messages. Reading reference metadata does not run validation.</p><button type="button" className="primary" disabled={busy} onClick={()=>onRequirements?.(inspection.selector || selected.path)}>Select specification</button><ValueRows rows={[{label:"Message",value:title},{label:"Field",value:inspection.selector || selected.path || "Message"}]} /><label>Original value</label><pre className="value">{selected.state === "present" ? revealed ? inspection.raw || decodeStateText(inspection.decode_state) : HIDDEN_VALUE : stateText(selected.state,revealed,"")}</pre>{onValidationFindings ? <button type="button" className="link" onClick={onValidationFindings}>View findings</button> : null}</section> : null}
             {!validationShown && !columnGuide && <>{referenceKey ? <>
               <h3 className="reader-reference-kind visually-hidden">{referenceKey.startsWith("table/") ? "Table reference" : referenceKey.startsWith("element/") ? "Data element" : referenceKey.startsWith("datatype/") ? "Datatype reference" : "Source definition"}</h3>
-              {!fieldComponents ? <button type="button" className="link reader-reference-back" onClick={backReference}>{referenceTrail.length ? "Back to reference" : "Back to selected field"}</button> : null}
+              {!fieldComponents ? <button type="button" className="link reader-reference-back" onClick={backReference}>{referenceTrail.length ? "Back to reference" : contextDetails != null && contextReferenceOwner===lookupContext ? `Back to ${contextDetailsTitle || "context details"}` : "Back to selected field"}</button> : null}
               <span className="visually-hidden">Selected field: {selected.path || "Message"}</span>
 
               {referenceTabs()}
@@ -641,7 +686,7 @@ export function MessageReader({
               {referenceView?.reference?.record?.kind === "datatype" && referenceView.child_count > 100 ? <nav aria-label="Datatype component pages"><button type="button" disabled={referenceLoading || referenceView.offset === 0} onClick={() => void openReference(referenceKey, Math.max(0, referenceView.offset-100),false)}>Previous components</button><button type="button" disabled={referenceLoading || referenceView.offset + referenceView.children.length >= referenceView.child_count} onClick={() => void openReference(referenceKey,referenceView.offset+100,false)}>Next components</button></nav> : null}
             </> : <>
             {referenceTabs()}
-            {inspection.reference.edition && inspection.reference.edition !== inspection.metadata.hl7_version ? <aside className="notice warning" role="status"><p>Reference: HL7 {inspection.reference.edition}<br/>Message declares: HL7 {inspection.metadata.hl7_version || "Not available"}</p><button type="button" disabled={busy || catalogReading} onClick={() => void chooseReference(inspection.metadata.hl7_version)}>Return to message edition</button></aside> : null}
+            {inspection.reference.edition && inspection.reference.edition !== inspection.metadata.hl7_version ? <aside className="notice warning" role="status"><p>Reference: HL7 {inspection.reference.edition}<br/>Message declares: HL7 {inspection.metadata.hl7_version || "Not available"}</p><button type="button" disabled={busy || catalogReading} onClick={useMessageReference}>Return to message edition</button></aside> : null}
             {inspection.reference.reason ? <p role="status">{inspection.reference.reason}</p> : null}
             {inspection.reference.type_resolution === "unresolved" ? <p>Reference declared datatype: {inspection.reference.declared_datatype || "Not available"}. Contextual resolution: Not available.</p> : null}
             {segmentFields ? <div className="reader-components-scroll"><table className="data-table reader-segment-fields" aria-label="Segment fields"><thead><tr><th>Path</th><th>Name</th><th>Type</th><th>Opt</th></tr></thead><tbody>{gridNodes.filter(row=>row.node.kind==="field"&&row.node.segment===selected.segment).map(row=><tr key={row.node.path}><td><button type="button" className="link" onClick={()=>go(row.node.path)}>{row.display_path || readablePath(row.node.path)}</button></td><td>{row.label}</td><td>{attributeText(row.reference?.datatype)}</td><td>{attributeText(row.reference?.optionality)}</td></tr>)}</tbody></table></div> : null}
@@ -707,7 +752,7 @@ export function MessageReader({
         await onInspect(selected.path,inspection.node_offset,-1,undefined,entry?.path || "",overlaySelection || suppliedSelection,entry?.identity || "");
       }}/>
       <Modal open={referenceInfo && Boolean(inspection)} title="Reference information" onClose={()=>setReferenceInfo(false)}>
-        {inspection && !inspection.reference ? <p>No offline reference is selected. Use Reference to select a catalog.</p> : null}
+        {inspection && !inspection.reference ? <p>The app could not match definitions to this message. Choose an HL7 version from the toolbar.</p> : null}
         {referenceKey && referenceView?.reference?.record ? <section aria-label="Current reference provenance"><h3>{referenceView.reference.record.name}</h3><p>{referenceView.reference.record.source} · {referenceView.reference.edition}</p><ReferenceOrigins record={referenceView.reference.record} {...(referenceView.reference.sources ? {sources:referenceView.reference.sources}: {})}/></section> : null}
         {inspection?.reference && selected ? <>
           {field && revealed && inspection.decode_state==="decoded" && inspection.decoded!==inspection.raw ? <><h3>Decoded value</h3><pre className="value">{inspection.decoded}</pre></> : null}

@@ -25,6 +25,7 @@ const SchemaV3 = "readmit-hl7-reference/v3"
 const SchemaV4 = "readmit-hl7-reference/v4"
 const SchemaV5 = "readmit-hl7-reference/v5"
 const SchemaV6 = "readmit-hl7-reference/v6"
+const SchemaV7 = "readmit-hl7-reference/v7"
 const LegacyMaxBytes = 16 << 20
 const MaxBytes = 32 << 20
 const MaxRecords = 20000
@@ -58,6 +59,8 @@ type Coverage struct {
 
 // Record is an entity-specific answer, not a label borrowed from its parent.
 type TableMetadata struct {
+	Description       string `json:"description,omitzero"`
+	Binding           string `json:"binding,omitzero"`
 	TableOID          string `json:"table_oid,omitzero"`
 	CodeSystemOID     string `json:"code_system_oid,omitzero"`
 	ValueSetOID       string `json:"value_set_oid,omitzero"`
@@ -151,7 +154,7 @@ func Decode(raw []byte) (*Catalog, error) {
 	var header struct {
 		Schema string `json:"schema"`
 	}
-	if len(raw) <= MaxBytes && json.Unmarshal(raw, &header) == nil && (header.Schema == SchemaV2 || header.Schema == SchemaV3 || header.Schema == SchemaV4 || header.Schema == SchemaV5 || header.Schema == SchemaV6) {
+	if len(raw) <= MaxBytes && json.Unmarshal(raw, &header) == nil && schemaRank(header.Schema) >= 2 {
 		reader.Schema = header.Schema
 		if schemaRank(header.Schema) >= 5 {
 			reader.MaxBytes = MaxBytes
@@ -287,6 +290,9 @@ func Decode(raw []byte) (*Catalog, error) {
 			}
 			if len(r.TableMetadata.CodeSystemURL) > 512 || len(r.TableMetadata.CodeSystemVersion) > 128 {
 				return nil, errors.New("unbounded terminology metadata")
+			}
+			if len(r.TableMetadata.Description) > MaxDefinitionBytes || len(r.TableMetadata.Binding) > 128 {
+				return nil, errors.New("unbounded terminology context")
 			}
 			if !validOrigin(r.TableMetadata.Origin, sourceRoles) || r.TableMetadata.Origin.Source == "" {
 				return nil, errors.New("invalid terminology metadata source")

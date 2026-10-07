@@ -1,0 +1,49 @@
+.reference-hover { position:fixed; z-index:1000; display:flex; flex-direction:column; gap:var(--s3); width:min(22.5rem,calc(100vw - 1.5rem)); box-sizing:border-box; padding:var(--s4); border:1px solid var(--interface-color-border); border-radius:var(--radius-sheet); background:var(--field); color:var(--text); box-shadow:0 .625rem 1.75rem var(--reference-hover-shadow-color); font:400 .8125rem/1.25rem var(--font); overflow:auto; }
+.reference-hover h3,.reference-hover h4,.reference-hover p { margin:0; }
+.reference-hover h3 { font-size:1rem; line-height:1.5rem; font-weight:600; overflow-wrap:anywhere; }
+.reference-hover h4 { color:var(--muted); font-size:.75rem; line-height:1.125rem; font-weight:600; }
+.reference-hover button:hover:not(:disabled) { background:var(--hover); }
+.reference-hover button:focus-visible,.reference-preview-trigger:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.reference-hover button:disabled { color:var(--muted); opacity:.5; background:transparent; }
+.reference-hover code { font:400 .8125rem/1.25rem var(--mono); color:var(--syntax-type); background:transparent; padding:0; }
+.reference-hover-identity { display:flex; align-items:center; gap:var(--s2); flex:none; font-size:.75rem; line-height:1.125rem; color:var(--muted); }
+.reference-hover-identity > code { padding:var(--s1); border-radius:var(--radius-control); background:var(--rail); }
+.reference-hover-edition { margin-left:auto; white-space:nowrap; }
+.reference-hover-table .reference-hover-identity > code,.reference-hover-related code { color:var(--syntax-code); }
+.reference-hover-element .reference-hover-identity > code { color:var(--syntax-number); }
+.reference-hover-section .reference-hover-identity > code,.reference-hover-attribute .reference-hover-identity > code { color:var(--muted); }
+.reference-hover-context,.reference-hover-muted,.reference-hover small { color:var(--muted); font-size:.75rem; line-height:1.125rem; }
+.reference-hover-context { flex:none; }
+.reference-hover-body { min-height:0; display:flex; flex-direction:column; gap:var(--s3); overflow:auto; overscroll-behavior:contain; overflow-wrap:anywhere; scrollbar-width:thin; }
+.reference-hover-table .reference-hover-body { max-height:24.25rem; }
+.reference-hover-body > * { flex:none; }
+.reference-hover-inset { display:flex; flex-direction:column; gap:var(--s1); padding:var(--s3); border-radius:var(--radius-control); background:var(--rail); }
+.reference-hover-inset small { display:block; }
+.reference-hover-components { display:flex; flex-direction:column; gap:var(--s1); }
+.reference-hover-component { display:grid; grid-template-columns:1rem minmax(0,1fr) auto; align-items:center; gap:var(--s2); padding:var(--s1) var(--s2); background:var(--rail); border-radius:var(--radius-control); }
+.reference-hover-component > span:first-child { font-family:var(--mono); color:var(--muted); }
+.reference-hover .reference-hover-related { text-align:left; }
+.reference-hover-related:hover { text-decoration:underline; }
+.reference-hover-terminology { position:relative; padding:var(--s2); }
+.reference-hover-terminology details { margin:0; border:0; padding:0; }
+.reference-hover-terminology summary { padding-right:1.5rem; font-weight:600; font-size:.75rem; cursor:pointer; }
+.reference-hover-terminology details[open] summary { margin-bottom:var(--s2); }
+.reference-hover-identifiers { display:flex; flex-direction:column; gap:var(--s1); }
+.reference-hover-identifier { display:flex; align-items:center; gap:var(--s2); padding:0 var(--s1) 0 var(--s2); border-radius:var(--radius-control); background:var(--rail); }
+.reference-hover-identifier > span { width:1.75rem; flex:none; font-size:.75rem; font-weight:600; }
+.reference-hover-identifier > code { flex:1; min-width:0; color:var(--text); font-size:.6875rem; line-height:1.125rem; overflow-wrap:anywhere; }
+.reference-hover-oid > span { color:var(--syntax-code); }.reference-hover-cs > span { color:var(--syntax-number); }.reference-hover-vs > span { color:var(--syntax-type); }
+.reference-hover .reader-icon { width:1rem; height:1rem; }
+.reference-hover .reader-icon img { width:1rem; height:1rem; }
+.reference-hover-values { display:flex; flex-direction:column; gap:var(--s3); }
+.reference-hover-search { display:flex; align-items:center; border:1px solid var(--interface-color-border); border-radius:var(--radius-control); background:var(--canvas); }
+.reference-hover-search:focus-within { outline:2px solid var(--accent); outline-offset:1px; }
+.reference-hover-search > button { margin-right:var(--s1); }
+.reference-hover-codes { display:flex; flex-direction:column; gap:var(--s1); }
+.reference-hover-code { display:flex; align-items:center; gap:var(--s2); padding:var(--s1) var(--s1) var(--s1) var(--s2); border-radius:var(--radius-control); background:var(--rail); }
+.reference-hover-code > span { flex:1; min-width:0; }
+.reference-hover-pages { display:flex; align-items:center; gap:var(--s2); color:var(--muted); font-size:.75rem; }
+.reference-hover-pages > span { margin-right:auto; }
+.reference-hover footer { flex:none; display:flex; flex-direction:column; gap:var(--s2); border-top:1px solid var(--line); padding-top:var(--s3); }
+.reference-hover-feedback:empty { display:none; }.reference-hover-feedback { color:var(--muted); font-size:.75rem; }
+.message-grid .reference-preview-trigger:hover,.message-grid .reference-preview-trigger[aria-expanded="true"] { background:var(--selection); }

@@ -14,7 +14,7 @@
 .reader-source-resize { position:absolute; top:0; left:0; right:0; }
 .hl7-reader .reader-omitted-toggle { display:flex; align-items:center; gap:.375rem; white-space:nowrap; font-size:.75rem; }
 .hl7-reader .reader-source-controls { display:flex; gap:.25rem; }
-.hl7-reader .reader-source-controls [aria-pressed="true"] { background:var(--selection); border-color:var(--selection-border); color:var(--selection-text); }
+.hl7-reader .reader-source-controls [aria-pressed="true"] { background:var(--selection); border-color:transparent; color:var(--selection-text); }
 .hl7-reader .reader-source-wrap .raw-numbered { width:100%; }
 .hl7-reader .reader-source-wrap .raw-line { grid-template-columns:2.25rem minmax(0,1fr); }
 .hl7-reader .reader-source-wrap .raw-line-code { white-space:pre-wrap; overflow-wrap:anywhere; }
@@ -48,9 +48,11 @@
 .message-grid-disclosure .reader-icon { width:.625rem; height:.875rem; }
 .message-grid-disclosure.is-expanded .reader-icon { transform:rotate(90deg); }
 .message-grid-segment { background:var(--rail); font-weight:600; }
-.message-grid-value, .message-grid-attribute { font-family:var(--mono); font-size:.9375rem; }
+.message-grid-value, .message-grid-attribute { font-family:var(--mono); font-size:.8125rem; }
 .message-grid-state { font-family:var(--font); color:var(--muted); font-size:.8125rem; }
 .message-grid-datatype { color:var(--syntax-type); }
+.message-grid-table { color:var(--syntax-code); }
+.message-grid-item { color:var(--syntax-number); }
 .hl7-reader .reader-adjustable .raw-line { min-height:1.5rem; margin-bottom:0; }
 .hl7-reader .reader-adjustable .raw-line-code, .hl7-reader .reader-adjustable .raw-line-number { padding-block:0; }
 .hl7-reader .reader-definition-tables { display:flex; gap:.5rem; flex-wrap:wrap; margin-top:.5rem; }
