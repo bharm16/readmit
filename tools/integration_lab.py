@@ -8,7 +8,7 @@ import re
 import secrets
 import shutil
 import subprocess
-from independent_lab import evidence
+from independent_lab import evidence, session
 
 HERE = Path(__file__).resolve().parent
 LAB = HERE / "independent_lab"
@@ -121,9 +121,28 @@ def export_evidence(state):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["init", "up", "qualify", "down", "export"])
+    parser.add_argument("action", choices=["init", "up", "qualify", "down", "export", "session-start", "session-revision", "session-status", "session-witness", "session-reset", "session-stop", "session-teardown", "session-export", "session-verify"])
     parser.add_argument("state", type=Path)
+    parser.add_argument("--generation")
+    parser.add_argument("--mode", choices=["positive", "defective", "corrected", "reintroduced"], default="positive")
     args = parser.parse_args()
+    if args.action == "session-verify":
+        session.verify_export(args.state.resolve())
+        print("Verified session export byte integrity offline")
+        return
+    if args.action.startswith("session-"):
+        import sys
+        return session.host(args.action[8:], args.state, args.generation, args.mode, sys.modules[__name__])
+    if args.action in ("up", "qualify", "down"):
+        state, _ = owner(args.state)
+        with session.controller(state):
+            if any((state/"control"/name).exists() for name in ("session.json", "session-intent.json")):
+                raise ValueError("owned session requires explicit session revision/reset/stop/teardown")
+            return reference_action(args)
+    return reference_action(args)
+
+
+def reference_action(args):
     if args.action in ("init","up","qualify"):verify_configuration()
     if args.action == "init":
         initialize(args.state)

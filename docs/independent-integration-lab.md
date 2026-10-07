@@ -161,3 +161,124 @@ can be reopened offline; the offline tooling test now checks that committed
 package by default rather than skipping acquisition integrity without a local
 lab directory. No hosted/amd64, separate human operator, or native-product
 qualification is implied by this Linux/arm64 reproduction.
+
+## Leave a target available for a saved product test
+
+The administrator session commands retain one SIU booking/rescheduling revision
+until an explicit change. Start a fresh lab using `init` and `up` above, then:
+
+```sh
+python3 tools/integration_lab.py session-start /absolute/new-lab-state --mode defective
+python3 tools/integration_lab.py session-status /absolute/new-lab-state --generation lab-GENERATION
+python3 tools/integration_lab.py session-witness /absolute/new-lab-state --generation lab-GENERATION
+python3 tools/integration_lab.py session-revision /absolute/new-lab-state --generation lab-GENERATION --mode corrected
+```
+
+Use the actual random generation returned by the previous command. The modes
+are `positive`, `defective`, `corrected` and `reintroduced`, selecting the
+existing duplicate-Appointment transformation. Revision resets the previous
+owned generation and creates a new one. The controller never sends a stimulus
+or creates an Appointment. It prepares only the SIU's Patient, Practitioner and
+Location, verifies an empty Appointment baseline, and verifies actual OIE/HAPI
+versions and the deployed channel script before reporting `ready`.
+
+`connection.json` is private operator configuration. It names the real loopback
+MLLP port (**plain**, not the TLS placeholder from a shipped example), the HTTPS
+FHIR base, CA and certificate name, SMART discovery/token endpoint and audience,
+and the `observer` key with read-only `system/*.rs` scope. The public token
+endpoint is also its assertion audience; the OIE engine keeps its separate
+internal audience and write credential. These are references to local secrets,
+not values to copy into evidence. Do not expose the lab outside loopback.
+
+Docker versions that suppress published ports on internal networks require a
+host path into the isolated lab. The session owns two loopback TCP listeners
+that forward byte streams using `docker exec` to only `engine:6662` and
+`fixture:9443`. TLS remains end to end and the lab retains its internal network
+with no external route. HAPI uses its [pinned proxy address strategy](https://github.com/hapifhir/hapi-fhir-jpaserver-starter/blob/image/v8.6.0-1/src/main/resources/application.yaml)
+to generate scoped Bundle links from the fixture's allowlisted forwarded host;
+response bodies are never rewritten. The owned local control socket stops the listeners;
+no PID-based termination or global Docker cleanup is used. This operator
+controller supports macOS/Linux hosts with POSIX file locking and Docker.
+
+`session-evidence/GENERATION/stimuli/` contains the original independently
+authored SIU inputs with only their `ZLG` generation placeholder substituted.
+The neighboring provenance record retains source bytes/hashes and the derived
+hashes. This lab-generation marker is separate from Readmit's own run-correlation
+marker. Each revision retains its channel export, real prerequisite receipts,
+CapabilityStatement, runtime identities and independent baseline. Witnesses use
+a separate read-only SMART acquisition and retain bounded HAPI resources/history.
+
+The controller and the product qualification driver hold the same nonblocking
+`control/session.lock`. A competing process is refused before changing targets.
+A stale `--generation` is refused; `up`, the short-lived qualifier and ordinary
+`down` cannot replace an owned session. A stopped or interrupted session stays
+that way in its retained records. An explicit `session-revision` may reset a
+non-stopped session, including one that lost readiness; a stopped session needs
+a fresh isolated lab. A failed initial start retains its intent and can be
+explicitly torn down using the generation in that intent.
+
+```sh
+python3 tools/integration_lab.py session-reset /absolute/new-lab-state --generation lab-GENERATION
+python3 tools/integration_lab.py session-stop /absolute/new-lab-state --generation lab-GENERATION
+python3 tools/integration_lab.py session-teardown /absolute/new-lab-state --generation lab-GENERATION
+python3 tools/integration_lab.py session-export /absolute/new-lab-state --generation lab-GENERATION
+python3 tools/integration_lab.py session-verify /absolute/new-lab-state/session-export
+```
+
+Reset undeploys the channel (stopping its scheduled work), cancels fixture work,
+then inventories/deletes only the recorded generation and verifies it empty.
+Stop additionally closes the host listeners. Teardown removes and verifies only
+the recorded Compose project's containers, volumes and networks; tearing down
+without a completed stop retains `interrupted`, never `passed`. Completed
+acquisitions stay on disk. Session export scans for generated secrets, private
+keys and tokens, then writes a recursive byte manifest; `session-verify` reopens
+it offline. This byte-integrity check does not convert an interrupted product
+execution into a completed result. Readmit's own offline result reader must
+also verify each retained product result.
+
+The production CLI qualification driver supplies a complete saved v5 definition,
+its private runtime configuration and the existing scoped credential/grant files:
+
+```sh
+go build -o /absolute/readmit ./cmd/readmit
+go run ./tools/labsessionverify --state /absolute/new-lab-state \
+  --readmit /absolute/readmit --output /absolute/new-private-product-run \
+  --operation-policy /absolute/operator-policy.json
+```
+
+Use the normal locally activated product and its selected operation policy;
+the driver does not bypass entitlement admission. `--operation-policy` can be
+omitted when the normal default policy is selected. The driver invokes the
+production executable's `connected prepare`, `test` preflight, `test --send`
+and offline `run status` commands. Its operator isolation adapter only reads
+the actual prerequisite Patient and acquires/releases a local run lease; it
+cannot insert or remove HAPI resources. The independent SMART observer acquires
+before/after HAPI witnesses. Typed checks require one Appointment with unique
+business keys and the expected booked/rescheduled time; wire checks require AA
+for both SIU inputs. Full observation horizons remain unchanged across modes.
+
+Run the driver once for each fresh defective, corrected and reintroduced
+revision. Immediately before the production send, it exclusively creates and
+syncs `product-attempt.json` in that generation's evidence. It never clears this
+intent: even a crash with an empty instantaneous HAPI snapshot requires an
+explicit new revision before another product attempt. Each new revision has fresh generation-bound sources and authority;
+assertion fingerprints normalize only source-occurrence bindings and must
+agree across all three runs. A successful qualification of a defective target
+means the retained product verdict is `fail`; it does not turn that product run
+into a passing run. The corrected target must produce `pass`.
+
+Keep the driver's working directory private. Its `export/` contains only the
+retained result, authored inputs, independent witnesses, exact executable build
+identity, qualification fingerprints. It excludes
+runtime provider programs, keys, credentials, grants and admission policy. It
+also reopens a relocated result with the offline reader. Copy this verified
+export into the matching session generation's evidence before session export;
+never copy the entire working directory. Native Desktop interaction, packaged
+runner qualification, external customers and other protocol families remain
+outside this slice.
+
+The [October 6 product-session qualification](../testdata/integration-lab/qualification/product-sessions-20261006.md)
+retains the real CLI fail/pass/fail cycle, independent 2/1/2 Appointment state,
+six positive AA ACKs, offline readback after teardown, and a fresh passing
+original 24-revision reference run. Its bounded compressed package is reopened
+by the default offline tooling tests.

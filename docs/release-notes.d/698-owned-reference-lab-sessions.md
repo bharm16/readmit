@@ -1,0 +1,1 @@
+- The opt-in OIE/HAPI reference lab can retain a generation-fenced SIU target revision for saved connected tests, provide private host connection settings, acquire independent read-only witnesses, and reset or tear down only its owned session while preserving evidence.
